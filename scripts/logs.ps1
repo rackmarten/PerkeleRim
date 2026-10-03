@@ -20,7 +20,7 @@ function Show-Tail($title, $path) {
 
 if ($Target -in 'all', 'skse') {
     $skseDir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games/Skyrim Special Edition/SKSE'
-    Show-Tail 'SKSE plugin' (Join-Path $skseDir 'SkyrimSummerCar.log')
+    Show-Tail 'SKSE plugin' (Join-Path $skseDir 'PerkeleRim.log')
     Show-Tail 'SKSE loader' (Join-Path $skseDir 'skse64.log')
 }
 

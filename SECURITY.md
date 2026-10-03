@@ -1,6 +1,6 @@
 # Security policy
 
-SkyrimSummerCar is a game mod that runs locally and doesn't talk to the network. Still, it loads native code into Skyrim and managed code into My Summer Car, so a bug could crash a game or corrupt a save.
+PerkeleRim is a game mod that runs locally and doesn't talk to the network. Still, it loads native code into Skyrim and managed code into My Summer Car, so a bug could crash a game or corrupt a save.
 
 ## Reporting a vulnerability
 

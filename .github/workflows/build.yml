@@ -39,9 +39,9 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SkyrimSummerCar-${{ github.sha }}
+          name: PerkeleRim-${{ github.sha }}
           path: |
-            skse/build/release/SkyrimSummerCar.dll
-            skse/build/release/SkyrimSummerCar.pdb
-            msc/bin/stubs/Release/net35/SkyrimSummerCar.dll
+            skse/build/release/PerkeleRim.dll
+            skse/build/release/PerkeleRim.pdb
+            msc/bin/stubs/Release/net35/PerkeleRim.dll
           if-no-files-found: error

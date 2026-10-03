@@ -1,11 +1,11 @@
 using MSCLoader;
 
-namespace SkyrimSummerCar
+namespace PerkeleRim
 {
-    public class SkyrimSummerCarMod : Mod
+    public class PerkeleRimMod : Mod
     {
-        public override string ID => "SkyrimSummerCar";
-        public override string Name => "SkyrimSummerCar";
+        public override string ID => "PerkeleRim";
+        public override string Name => "PerkeleRim";
         public override string Author => "Marek Uncik";
         public override string Version => "0.1.0";
         public override string Description => "Couples My Summer Car with Skyrim.";
@@ -17,7 +17,7 @@ namespace SkyrimSummerCar
 
         private void Mod_OnMenuLoad()
         {
-            ModConsole.Print("SkyrimSummerCar loaded");
+            ModConsole.Print("PerkeleRim loaded");
         }
     }
 }

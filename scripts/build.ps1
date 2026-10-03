@@ -35,13 +35,13 @@ if ($Target -in 'all', 'skse') {
         Invoke-Checked cmake @('--preset', $preset)
         Invoke-Checked cmake @('--build', '--preset', $preset)
     } finally { Pop-Location }
-    Write-Host "SKSE plugin: skse/build/$preset/SkyrimSummerCar.dll"
+    Write-Host "SKSE plugin: skse/build/$preset/PerkeleRim.dll"
 }
 
 if ($Target -in 'all', 'msc') {
-    $dotnetArgs = @('build', (Join-Path $RepoRoot 'msc/SkyrimSummerCar.csproj'), '-c', $Configuration, '-nologo')
+    $dotnetArgs = @('build', (Join-Path $RepoRoot 'msc/PerkeleRim.csproj'), '-c', $Configuration, '-nologo')
     if ($UseStubs) { $dotnetArgs += '-p:UseStubs=true' }
     Invoke-Checked dotnet $dotnetArgs
     $outDir = if ($UseStubs) { "msc/bin/stubs/$Configuration" } else { "msc/bin/$Configuration" }
-    Write-Host "MSCLoader mod: $outDir/net35/SkyrimSummerCar.dll"
+    Write-Host "MSCLoader mod: $outDir/net35/PerkeleRim.dll"
 }

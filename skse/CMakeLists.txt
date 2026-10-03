@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(
-    SkyrimSummerCar
+    PerkeleRim
     VERSION 0.1.0
     LANGUAGES CXX
 )
@@ -18,7 +18,7 @@ include(extern/CommonLibSSE-NG/cmake/CommonLibSSE.cmake)
 
 add_commonlibsse_plugin(
     ${PROJECT_NAME}
-    NAME "SkyrimSummerCar"
+    NAME "PerkeleRim"
     AUTHOR "Marek Uncik"
     SOURCES src/main.cpp
 )

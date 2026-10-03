@@ -20,7 +20,7 @@ function Copy-Built($source, $destDir) {
 
 if ($Target -in 'all', 'skse') {
     $skyrim = Get-RequiredSetting $config 'SkyrimPath'
-    $dll = Join-Path $RepoRoot "skse/build/$($Configuration.ToLower())/SkyrimSummerCar.dll"
+    $dll = Join-Path $RepoRoot "skse/build/$($Configuration.ToLower())/PerkeleRim.dll"
     Copy-Built $dll (Join-Path $skyrim 'Data/SKSE/Plugins')
     $pdb = [IO.Path]::ChangeExtension($dll, '.pdb')
     if (Test-Path $pdb) { Copy-Built $pdb (Join-Path $skyrim 'Data/SKSE/Plugins') }
@@ -28,5 +28,5 @@ if ($Target -in 'all', 'skse') {
 
 if ($Target -in 'all', 'msc') {
     $mods = Get-RequiredSetting $config 'MscModsPath'
-    Copy-Built (Join-Path $RepoRoot "msc/bin/$Configuration/net35/SkyrimSummerCar.dll") $mods
+    Copy-Built (Join-Path $RepoRoot "msc/bin/$Configuration/net35/PerkeleRim.dll") $mods
 }

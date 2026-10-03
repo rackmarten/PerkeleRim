@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <TargetFramework>net35</TargetFramework>
-    <AssemblyName>SkyrimSummerCar</AssemblyName>
-    <RootNamespace>SkyrimSummerCar</RootNamespace>
+    <AssemblyName>PerkeleRim</AssemblyName>
+    <RootNamespace>PerkeleRim</RootNamespace>
     <Version>0.1.0</Version>
     <Authors>Marek Uncik</Authors>
     <Copyright>Copyright (c) Marek Uncik</Copyright>

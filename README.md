@@ -1,6 +1,6 @@
-# SkyrimSummerCar
+# PerkeleRim
 
-> A Finnish summer in Skyrim.
+> **Fus-Perkele-Dah!** A Finnish summer in Skyrim.
 
 **My Summer Car** and **Skyrim Anniversary Edition** run at the same time. Skyrim owns the world and draws everything; My Summer Car runs hidden and simulates the player, the vehicles, the beer and the piss. Drive the Satsuma across the Whiterun tundra, get drunk, sneak by crouching, and take the Kekmet tractor up the Throat of the World.
 

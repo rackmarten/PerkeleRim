@@ -1,4 +1,4 @@
-# SkyrimSummerCar: design (working title)
+# PerkeleRim: design
 
 > A Finnish summer in Skyrim. **My Summer Car** and **Skyrim Special Edition** run at the same time: Skyrim owns the world and draws everything, while My Summer Car (MSC) runs hidden and simulates the player, the vehicles, the beer and the piss.
 
@@ -161,7 +161,7 @@ Versioned C struct layout in a shared header, mirrored in C# with `StructLayout`
 ## 13. Repo layout (proposal)
 
 ```
-SkyrimSummerCar/
+PerkeleRim/
 ├── docs/
 │   ├── DESIGN.md
 │   └── PROTOCOL.md

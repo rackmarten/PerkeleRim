@@ -1,6 +1,6 @@
 # Windows development setup
 
-Everything needed to build both halves of SkyrimSummerCar, deploy them into your game installs and read their logs. Follow it top to bottom on a fresh Windows 10/11 machine.
+Everything needed to build both halves of PerkeleRim, deploy them into your game installs and read their logs. Follow it top to bottom on a fresh Windows 10/11 machine.
 
 The toolchain is deliberately small: **Build Tools for Visual Studio 2022** (compiler only, no IDE) for the C++ SKSE plugin, and the **.NET 8 SDK** for the C# MSCLoader mod. Visual Studio itself is optional.
 
@@ -58,8 +58,8 @@ C:\vcpkg\bootstrap-vcpkg.bat
 ## 3. Clone and configure
 
 ```powershell
-git clone --recurse-submodules https://github.com/rackmarten/SkyrimSummerCar.git
-cd SkyrimSummerCar
+git clone --recurse-submodules https://github.com/rackmarten/PerkeleRim.git
+cd PerkeleRim
 Copy-Item local.props.example local.props
 ```
 
@@ -93,17 +93,17 @@ From WSL, call the same scripts through Windows PowerShell, e.g. `powershell.exe
 
 The first SKSE build takes a while (often 15 to 25 minutes): vcpkg builds the dependencies and CommonLibSSE-NG compiles from source. Later builds are incremental. Outputs:
 
-- `skse/build/release/SkyrimSummerCar.dll`, deployed to `<SkyrimPath>\Data\SKSE\Plugins\`
-- `msc/bin/Release/net35/SkyrimSummerCar.dll`, deployed to `<MscModsPath>\`
+- `skse/build/release/PerkeleRim.dll`, deployed to `<SkyrimPath>\Data\SKSE\Plugins\`
+- `msc/bin/Release/net35/PerkeleRim.dll`, deployed to `<MscModsPath>\`
 
 ### Hello-world check
 
 1. Start Skyrim with `skse64_loader.exe`, wait for the main menu, quit.
-2. Start My Summer Car, wait for the main menu (the MSCLoader console shows `SkyrimSummerCar loaded`), quit.
+2. Start My Summer Car, wait for the main menu (the MSCLoader console shows `PerkeleRim loaded`), quit.
 3. Run `scripts/logs.ps1`. Expect:
-   - in `SkyrimSummerCar.log`: `SkyrimSummerCar loaded (plugin 0.1.0, Skyrim runtime 1.7.104.0)`
-   - in `skse64.log`: a line saying `SkyrimSummerCar.dll` loaded correctly
-   - in `output_log.txt` (My Summer Car game folder): `SkyrimSummerCar: SkyrimSummerCar loaded`
+   - in `PerkeleRim.log`: `PerkeleRim loaded (plugin 0.1.0, Skyrim runtime 1.7.104.0)`
+   - in `skse64.log`: a line saying `PerkeleRim.dll` loaded correctly
+   - in `output_log.txt` (My Summer Car game folder): `PerkeleRim: PerkeleRim loaded`
 
 ## 5. Debugging and inspection tools (optional)
 
