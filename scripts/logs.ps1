@@ -26,5 +26,5 @@ if ($Target -in 'all', 'skse') {
 
 if ($Target -in 'all', 'msc') {
     $msc = Get-RequiredSetting (Get-LocalConfig) 'MscPath'
-    Show-Tail 'My Summer Car / MSCLoader' (Join-Path $msc 'mysummercar_Data/output_log.txt')
+    Show-Tail 'My Summer Car / MSCLoader' (Join-Path $msc 'output_log.txt')
 }

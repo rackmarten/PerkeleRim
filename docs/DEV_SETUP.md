@@ -103,7 +103,7 @@ The first SKSE build takes a while (often 15 to 25 minutes): vcpkg builds the de
 3. Run `scripts/logs.ps1`. Expect:
    - in `SkyrimSummerCar.log`: `SkyrimSummerCar loaded (plugin 0.1.0, Skyrim runtime 1.7.104.0)`
    - in `skse64.log`: a line saying `SkyrimSummerCar.dll` loaded correctly
-   - in `output_log.txt`: `SkyrimSummerCar: SkyrimSummerCar loaded`
+   - in `output_log.txt` (My Summer Car game folder): `SkyrimSummerCar: SkyrimSummerCar loaded`
 
 ## 5. Debugging and inspection tools (optional)
 
