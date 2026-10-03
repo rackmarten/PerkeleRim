@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+    <AssemblyName>SkyrimSummerCar</AssemblyName>
+    <RootNamespace>SkyrimSummerCar</RootNamespace>
+    <Version>0.1.0</Version>
+    <Authors>Marek Uncik</Authors>
+    <Copyright>Copyright (c) Marek Uncik</Copyright>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Builds against stub assemblies instead of the game's DLLs. Used by CI. -->
+    <UseStubs Condition="'$(UseStubs)' == ''">false</UseStubs>
+    <!-- Stub builds go to bin/stubs so deploy-local.ps1 never ships them. -->
+    <BaseOutputPath Condition="'$(UseStubs)' == 'true'">bin\stubs\</BaseOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="stubs\**" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Real build: reference MSCLoader and Unity from the local My Summer Car install. Never copied to output. -->
+  <ItemGroup Condition="'$(UseStubs)' != 'true'">
+    <Reference Include="MSCLoader" HintPath="$(MscPath)\mysummercar_Data\Managed\MSCLoader.dll" Private="false" />
+    <Reference Include="UnityEngine" HintPath="$(MscPath)\mysummercar_Data\Managed\UnityEngine.dll" Private="false" />
+  </ItemGroup>
+
+  <!-- CI build: compile against hand-written stubs of the API surface we use (msc/stubs). -->
+  <ItemGroup Condition="'$(UseStubs)' == 'true'">
+    <ProjectReference Include="stubs\MSCLoader\MSCLoader.csproj" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CheckMscPath" BeforeTargets="ResolveAssemblyReferences" Condition="'$(UseStubs)' != 'true'">
+    <Error Condition="'$(MscPath)' == ''" Text="MscPath is not set. Copy local.props.example to local.props at the repo root and set your My Summer Car path, or build with -p:UseStubs=true." />
+    <Error Condition="!Exists('$(MscPath)\mysummercar_Data\Managed\MSCLoader.dll')" Text="MSCLoader.dll not found under $(MscPath)\mysummercar_Data\Managed. Install MSCLoader (docs/DEV_SETUP.md)." />
+  </Target>
+
+</Project>

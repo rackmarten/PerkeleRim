@@ -1,0 +1,12 @@
+<!--
+  Local machine paths. Copy to local.props (gitignored) and edit.
+  Read by msc/Directory.Build.props (MSBuild) and by scripts/*.ps1.
+-->
+<Project>
+  <PropertyGroup>
+    <SkyrimPath>C:\Program Files (x86)\Steam\steamapps\common\Skyrim Special Edition</SkyrimPath>
+    <MscPath>C:\Program Files (x86)\Steam\steamapps\common\My Summer Car</MscPath>
+    <!-- Where MSCLoader loads mods from (chosen in the MSCLoader installer). -->
+    <MscModsPath>C:\Program Files (x86)\Steam\steamapps\common\My Summer Car\Mods</MscModsPath>
+  </PropertyGroup>
+</Project>

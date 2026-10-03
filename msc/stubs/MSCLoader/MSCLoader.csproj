@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Compile-only stand-in for MSCLoader.dll, used by CI where the real game DLLs
+    can't be redistributed. It declares just the API surface the mod uses, with
+    matching names and signatures. Extend it when the mod starts using more.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+    <AssemblyName>MSCLoader</AssemblyName>
+    <RootNamespace>MSCLoader</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

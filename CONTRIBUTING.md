@@ -21,11 +21,13 @@ This rule is strict because the project can only stay public if it holds:
 
 ## Development setup
 
-All building and testing happens on Windows, since both games run there. A full setup guide (`docs/DEV_SETUP.md`) will land with the first buildable code. In short you'll need:
+All building and testing happens on Windows, since both games run there. Follow [docs/DEV_SETUP.md](docs/DEV_SETUP.md). In short you'll need:
 
 - Skyrim Anniversary Edition (Steam, latest), SKSE64, Address Library
 - My Summer Car (Steam) with MSCLoader
-- Visual Studio 2022 with the C++ and .NET desktop workloads, CMake, vcpkg
+- Build Tools for Visual Studio 2022 ("Desktop development with C++", which brings CMake, Ninja and vcpkg) and the .NET 8 SDK
+
+Then `scripts/build.ps1`, `scripts/deploy-local.ps1` and `scripts/logs.ps1` cover the build, install and log loop.
 
 ## Workflow
 

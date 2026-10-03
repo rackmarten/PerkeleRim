@@ -52,3 +52,6 @@ Desktop.ini
 .env
 .env.*
 !.env.example
+
+# --- Local machine config ---
+local.props

@@ -8,7 +8,7 @@ Inspired by [SkyCraft](https://github.com/chasmlol/SkyCraft), which couples Mine
 
 ## Status
 
-**Concept / pre-prototype.** There is no working build yet. Follow the [changelog](CHANGELOG.md) for progress.
+**Concept / pre-prototype.** Both halves build as hello-world stubs that only log that they loaded. Follow the [changelog](CHANGELOG.md) for progress.
 
 ## How it works
 
@@ -25,7 +25,7 @@ Details: [docs/DESIGN.md](docs/DESIGN.md) and [docs/PROTOCOL.md](docs/PROTOCOL.m
 - [My Summer Car](https://store.steampowered.com/app/516750/) (Steam) with MSCLoader
 - A PC that can run both games at once
 
-Installation and build instructions will land with the first working build.
+To build from source, see [docs/DEV_SETUP.md](docs/DEV_SETUP.md).
 
 ## Repository layout
 
@@ -37,6 +37,7 @@ Installation and build instructions will land with the first working build.
 | [`msc/`](msc/) | MSCLoader mod (C#) |
 | [`skyrim-data/`](skyrim-data/) | Skyrim plugin (ESP), garage, scripts |
 | [`tools/`](tools/) | Mesh conversion and debugging helpers |
+| [`scripts/`](scripts/) | Build, local deploy and log scripts (PowerShell) |
 
 ## Game assets
 

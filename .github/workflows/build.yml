@@ -1,0 +1,47 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # vcpkg binary cache (its default archive location), keyed on the manifest and baseline.
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.LOCALAPPDATA }}\vcpkg\archives
+          key: vcpkg-${{ hashFiles('skse/vcpkg.json', 'skse/vcpkg-configuration.json') }}
+          restore-keys: vcpkg-
+
+      # CommonLibSSE-NG detects GITHUB_ACTIONS and links its prebuilt release bundle when the
+      # submodule sits on a release tag and the MSVC toolset matches; otherwise it builds from source.
+      - name: Build SKSE plugin
+        shell: pwsh
+        run: ./scripts/build.ps1 -Target skse
+
+      # My Summer Car, Unity and MSCLoader DLLs can't be redistributed, so CI compiles the mod
+      # against hand-written stubs of the API it uses (msc/stubs). This catches C# compile errors,
+      # not API drift against the real MSCLoader; local builds use the real DLLs.
+      - name: Build MSCLoader mod (stub references)
+        shell: pwsh
+        run: ./scripts/build.ps1 -Target msc -UseStubs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SkyrimSummerCar-${{ github.sha }}
+          path: |
+            skse/build/release/SkyrimSummerCar.dll
+            skse/build/release/SkyrimSummerCar.pdb
+            msc/bin/stubs/Release/net35/SkyrimSummerCar.dll
+          if-no-files-found: error

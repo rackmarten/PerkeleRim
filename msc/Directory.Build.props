@@ -1,0 +1,4 @@
+<Project>
+  <!-- Machine-specific game paths (see local.props.example at the repo root). -->
+  <Import Project="$(MSBuildThisFileDirectory)..\local.props" Condition="Exists('$(MSBuildThisFileDirectory)..\local.props')" />
+</Project>
