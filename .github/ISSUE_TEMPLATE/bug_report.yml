@@ -1,0 +1,51 @@
+name: Bug report
+description: Something broke, crashed, or behaves wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Spawn at the garage
+        2. Drive the Satsuma towards Whiterun
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: skyrim
+    attributes:
+      label: Skyrim runtime version
+      placeholder: e.g. 1.6.1170
+    validations:
+      required: true
+  - type: input
+    id: msc
+    attributes:
+      label: My Summer Car and MSCLoader versions
+    validations:
+      required: true
+  - type: input
+    id: mod
+    attributes:
+      label: SkyrimSummerCar version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: SKSE log (Documents/My Games/Skyrim Special Edition/SKSE) and the MSCLoader output log.
+      render: text
+  - type: textarea
+    id: mods
+    attributes:
+      label: Other mods
+      description: Anything else installed in either game.

@@ -1,0 +1,54 @@
+# --- Game assets: never commit (see CONTRIBUTING.md#game-assets) ---
+*.nif
+*.dds
+*.bsa
+*.ba2
+*.esm
+*.esl
+*.esp
+!skyrim-data/**/*.esp
+*.pex
+!skyrim-data/**/*.pex
+*.assets
+*.resS
+*.unity3d
+*.bundle
+Assembly-CSharp*.dll
+PlayMaker*.dll
+UnityEngine*.dll
+MSCLoader*.dll
+/extracted/
+/dumps/
+
+# --- C++ / CMake / vcpkg ---
+build/
+out/
+cmake-build-*/
+CMakeUserPresets.json
+vcpkg_installed/
+*.obj
+*.pdb
+*.ilk
+*.lib
+*.exp
+
+# --- C# / .NET ---
+bin/
+obj/
+*.user
+*.suo
+packages/
+
+# --- Editors / OS ---
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
+*:Zone.Identifier
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example

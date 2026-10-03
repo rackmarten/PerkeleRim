@@ -1,0 +1,21 @@
+name: Feature request
+description: An idea to make the summer more Finnish
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What should happen in game?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: What problem does it solve, or what moment does it create?
+  - type: textarea
+    id: how
+    attributes:
+      label: How it could work
+      description: Optional. Which side (Skyrim / My Summer Car / protocol) would it touch?
