@@ -33,7 +33,7 @@ Input pass-through keys (like SkyCraft's G/J/M): activate → Skyrim, shout → 
 
 ## Input
 
-MSC runs hidden while Skyrim has focus, so MSC can't read the keyboard and mouse itself. Input is captured on the Skyrim side and forwarded to MSC (an `InputState` message), and the MSC mod feeds it into MSC's input reads. Exact approach to be settled by the hidden-MSC spike.
+MSC runs hidden while Skyrim has focus, so MSC can't read the keyboard and mouse itself. Input is captured on the Skyrim side and forwarded to MSC (an `InputState` message). The MSC mod redirects every `UnityEngine.Input` call in the game's assemblies (cInput included) to a shim and answers from the latest `InputState`, so `InputState` carries raw key states (as Unity `KeyCode`s), the `Mouse X`/`Mouse Y` axes and the `Horizontal`/`Vertical` axes. Details and measurements: [SPIKE_HIDDEN_MSC.md](SPIKE_HIDDEN_MSC.md).
 
 ## Coordinates
 

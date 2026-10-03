@@ -87,6 +87,9 @@ scripts/build.ps1 -Target skse     # SKSE plugin only (-Configuration Debug for 
 scripts/build.ps1 -Target msc      # MSCLoader mod only
 scripts/deploy-local.ps1           # copy both DLLs into the games (close the games first)
 scripts/logs.ps1                   # tail of the plugin, SKSE and My Summer Car logs
+scripts/launch-msc.ps1             # start MSC windowed with no clicks (skips config dialog and news screen)
+scripts/msc-save.ps1 snapshot NAME  # save MSC save data outside the repo; "restore NAME" puts it back
+scripts/spike.ps1 -Command dump    # hidden-MSC spike tools, see docs/SPIKE_HIDDEN_MSC.md
 ```
 
 From WSL, call the same scripts through Windows PowerShell, e.g. `powershell.exe -File scripts/build.ps1`.

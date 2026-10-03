@@ -20,7 +20,8 @@ add_commonlibsse_plugin(
     ${PROJECT_NAME}
     NAME "PerkeleRim"
     AUTHOR "Marek Uncik"
-    SOURCES src/main.cpp
+    SOURCES src/main.cpp src/spike/PoseTest.cpp
 )
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
+target_include_directories(${PROJECT_NAME} PRIVATE src)

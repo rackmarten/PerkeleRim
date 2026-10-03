@@ -1,0 +1,8 @@
+# C cycles stand -> crouch -> prone -> stand.
+1
+0.2; C
+1.5
+0.2; C
+1.5
+0.2; C
+1.5

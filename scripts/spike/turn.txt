@@ -1,0 +1,4 @@
+# Look around: right 2 s, left 2 s.
+2; Mouse X=5
+2; Mouse X=-5
+1; W; Vertical=1

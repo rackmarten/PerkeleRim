@@ -1,0 +1,9 @@
+# <seconds>; <key or axis=value or button:Name>...
+# Pressed both as raw keys (for cInput bindings) and as Unity axes (for scripts reading Input.GetAxis).
+1
+3; W; Vertical=1
+2; Mouse X=5
+3; W; LeftShift; Vertical=1
+2; S; Vertical=-1
+2; A; Horizontal=-1
+1

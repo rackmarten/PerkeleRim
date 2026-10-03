@@ -1,0 +1,6 @@
+# Outdoor test: walk 3 s, run 3 s, crouch-walk 3 s (LeftControl, guess), jump.
+3; W; Vertical=1
+3; W; LeftShift; Vertical=1
+3; W; LeftControl; Vertical=1
+1; Space
+1

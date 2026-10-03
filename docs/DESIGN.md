@@ -88,10 +88,12 @@ Alternatives considered: Motor Town (best trucks/drift, but early access and har
 
 ### Running MSC hidden
 
-- MSC can't really run headless; run it minimized/windowed at minimum resolution and settings.
-- Unity games often pause when unfocused; the mod will likely need to force `Application.runInBackground`.
-- MSC can't read the keyboard and mouse while Skyrim has focus, so input is forwarded from Skyrim over the protocol (see [PROTOCOL.md](PROTOCOL.md#input)).
-- Its logic lives mostly in **PlayMaker FSMs**; use an FSM viewer to find drinking, pissing, crouching, vehicle and death states.
+Proven by the hidden-MSC spike ([SPIKE_HIDDEN_MSC.md](SPIKE_HIDDEN_MSC.md)):
+
+- MSC runs windowed at a small resolution, unfocused or minimized; the mod forces `Application.runInBackground` and physics keeps a steady 50 Hz.
+- MSC can't read the keyboard and mouse while Skyrim has focus, so input is forwarded from Skyrim over the protocol and fed in by redirecting MSC's `UnityEngine.Input` calls to a shim (see [PROTOCOL.md](PROTOCOL.md#input)).
+- Its logic lives mostly in **PlayMaker FSMs**; the ones we need are mapped in [FSM_MAP.md](FSM_MAP.md).
+- On the Skyrim side the player is placed every frame from the MSC pose in a `PlayerCharacter::Update` hook (position, heading, zeroed controller velocity); the native controller doesn't fight it.
 
 ## 6. Protocol
 

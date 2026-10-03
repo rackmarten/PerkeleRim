@@ -25,10 +25,19 @@
   <ItemGroup Condition="'$(UseStubs)' != 'true'">
     <Reference Include="MSCLoader" HintPath="$(MscPath)\mysummercar_Data\Managed\MSCLoader.dll" Private="false" />
     <Reference Include="UnityEngine" HintPath="$(MscPath)\mysummercar_Data\Managed\UnityEngine.dll" Private="false" />
+    <Reference Include="0Harmony" HintPath="$(MscPath)\mysummercar_Data\Managed\0Harmony.dll" Private="false" />
+    <Reference Include="PlayMaker" HintPath="$(MscPath)\mysummercar_Data\Managed\PlayMaker.dll" Private="false" />
+    <Reference Include="cInput" HintPath="$(MscPath)\mysummercar_Data\Managed\cInput.dll" Private="false" />
   </ItemGroup>
+
+  <!-- Hidden-MSC spike code (src/Spike) needs Unity, PlayMaker, cInput and Harmony, which have no stubs. -->
+  <PropertyGroup Condition="'$(UseStubs)' != 'true'">
+    <DefineConstants>$(DefineConstants);PERKELERIM_SPIKE</DefineConstants>
+  </PropertyGroup>
 
   <!-- CI build: compile against hand-written stubs of the API surface we use (msc/stubs). -->
   <ItemGroup Condition="'$(UseStubs)' == 'true'">
+    <Compile Remove="src\Spike\**" />
     <ProjectReference Include="stubs\MSCLoader\MSCLoader.csproj" Private="false" />
   </ItemGroup>
 
