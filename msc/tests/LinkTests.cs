@@ -175,7 +175,7 @@ namespace PerkeleRim.Tests
                 p.Tick(1);
             }
             Assert.That(p.Msc.CurrentState, Is.EqualTo(Link.State.Disabled));
-            Assert.That(Has(p.MscLog, "protocol mismatch: the Skyrim plugin speaks v99, this MSC mod speaks v1"));
+            Assert.That(Has(p.MscLog, "protocol mismatch: the Skyrim plugin speaks v99, this MSC mod speaks v" + Wire.ProtocolVersion));
         }
 
         [Test]
@@ -192,7 +192,7 @@ namespace PerkeleRim.Tests
             using var msc = new Link(Side.Msc, log.Add, name);
             msc.Tick(1000);
             Assert.That(msc.CurrentState, Is.EqualTo(Link.State.Disabled));
-            Assert.That(Has(log, "protocol mismatch: the shared memory was created with protocol v99, this MSC mod speaks v1"));
+            Assert.That(Has(log, "protocol mismatch: the shared memory was created with protocol v99, this MSC mod speaks v" + Wire.ProtocolVersion));
             Assert.That(raw.Header->peers1.version, Is.EqualTo(Wire.ProtocolVersion));
         }
 

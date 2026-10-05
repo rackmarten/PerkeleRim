@@ -239,7 +239,7 @@ TEST_CASE("a peer speaking another protocol version disables the link")
     msc.version = 99;
     p.Tick(1);
     CHECK(p.skyrim->GetState() == Link::State::Disabled);
-    CHECK(p.skyrimLog.Has("protocol mismatch: the MSC mod speaks v99, this Skyrim plugin speaks v1"));
+    CHECK(p.skyrimLog.Has("protocol mismatch: the MSC mod speaks v99, this Skyrim plugin speaks v" + std::to_string(kProtocolVersion)));
 }
 
 TEST_CASE("a section created by another protocol version disables the joining side")
@@ -255,7 +255,7 @@ TEST_CASE("a section created by another protocol version disables the joining si
     Link   msc(Side::Msc, log.Fn(), name);
     msc.Tick(1000);
     CHECK(msc.GetState() == Link::State::Disabled);
-    CHECK(log.Has("protocol mismatch: the shared memory was created with protocol v99, this MSC mod speaks v1"));
+    CHECK(log.Has("protocol mismatch: the shared memory was created with protocol v99, this MSC mod speaks v" + std::to_string(kProtocolVersion)));
     // Its version is published anyway, so the creator side can report the mismatch as well.
     CHECK(raw.Header()->peers[static_cast<int>(Side::Msc)].version == kProtocolVersion);
 }

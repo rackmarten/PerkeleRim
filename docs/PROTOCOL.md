@@ -1,6 +1,6 @@
 # Protocol
 
-> Status: v1 transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a). Message contents beyond `InputState`, `PlayerState`, `CollisionChunk` and `WorldspaceChange` arrive with the milestones that need them.
+> Status: protocol v2. Transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a); collision chunks streamed (milestone 1b). Message contents beyond `InputState`, `PlayerState`, `CollisionChunk` and `WorldspaceChange` arrive with the milestones that need them.
 
 The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchange data over one shared memory section. See [DESIGN.md](DESIGN.md) for the overall architecture and ownership rules.
 
@@ -53,11 +53,21 @@ One single-producer, single-consumer byte ring per direction, for messages that 
 | Direction | Message | Contents |
 |---|---|---|
 | Skyrim → MSC | `CollisionChunk` | `CollisionChunkHeader` (chunk x/y, worldspace, generation, origin, counts), vertices relative to origin, triangle indices |
-| Skyrim → MSC | `WorldspaceChange` | worldspace, interior cell, generation, spawn position and heading; also sent on every handover as the island anchor |
+| Skyrim → MSC | `WorldspaceChange` | worldspace, interior cell, generation, spawn position and heading; sent on every handover and whenever the game moves the player (load door, fast travel), as the island anchor |
 
 Planned, added with their milestones (each one bumps the version): `ActorList`, `PlayerDamage`, `ConsumeEvent` (Skyrim → MSC); `VehicleState`, `ItemState`, `ImpactEvent`, `PunchEvent`, `UrineHit`, `Death` (MSC → Skyrim).
 
 Input pass-through keys (activate, shout, journal/map) stay with Skyrim.
+
+## Collision chunks
+
+Chunks are `kCollisionChunkUnits` (2048 units, about 29 m) squares on a grid anchored at world (0, 0); chunk `(x, y)` starts at `(x * 2048, y * 2048)`. A payload is the header, `vertexCount` vertices (`float[3]`, Skyrim units relative to `origin`) and `indexCount` triangle indices. Triangles wind counterclockwise seen from above in Skyrim; MSC swaps two corners per triangle because the Y/Z swap flips the handedness. A chunk with the same x/y and generation replaces the older one; chunks for another generation are dropped.
+
+Skyrim side (`skse/src/collision/CollisionSampler.cpp`, geometry in `protocol/cpp/collision.h`): while MSC owns the player, a heightfield of 33 x 33 samples (64 units apart) per chunk, from top-down Havok raycasts that keep terrain, statics, animated statics, stair helpers and tree trunks and pass through everything else (clutter, actors, debris, water). So it is the top surface only: no overhangs, walls become steep slopes. A miss leaves a hole (no triangles touching it). The 5 x 5 chunks around the player are sampled nearest first, about 2 ms per frame; a chunk with holes is sampled again every 2 s (up to 5 tries) and resent when it improves. Skyrim forgets chunks more than 3 away and MSC drops them more than 4 away, so a chunk MSC dropped is always resent.
+
+MSC side (`msc/src/Link/CollisionChunk.cs`, `msc/src/Game/PlayerLink.cs`): one `MeshCollider` per chunk under `PerkeleRim.Island`. A new anchor clears them; the player is held at the anchor with its motor off until a chunk under it has arrived, then put down on it.
+
+Log lines: `collision: chunk (x,y) gen N try T: hits/1089 hit (terrain, static, trees, passed through), ms over frames` in `PerkeleRim.log`; `player: chunk (x,y) gen N: ... new|rebuilt`, `player: dropped N far chunks`, `player: placed on the island for gen N after S s` in MSC's log.
 
 ## Input
 
@@ -75,9 +85,10 @@ Skyrim side (`protocol/cpp/input.h`, `skse/src/player/PlayerSync.cpp`): DirectIn
 F10 in Skyrim toggles who owns the player. Taking over:
 
 1. Skyrim sends `WorldspaceChange` with the player's position and heading as `spawn` (a new `generation` each time), then publishes `InputState` with `kInputOwnsPlayer` and turns off its own movement, look, sneak, jump, attack and POV controls.
-2. MSC drains its ring before writing a pose, so the anchor is always applied first. The anchor maps to `Island.Base` on a collision island far from MSC's map (milestone 1a: a flat 2 km placeholder MeshCollider), and MSC teleports the player's feet there.
-3. Every frame MSC writes `PlayerState` (feet position in Skyrim world space, velocity, heading, camera pitch, stance from the `Crouch` FSM). `kPlayerValid` is set only while MSC owns the player and stands on the current anchor's island, so Skyrim never applies a pose from an earlier handover.
-4. Skyrim's `PlayerCharacter::Update` hook places the player at every valid pose (position, heading, pitch, zeroed controller velocity) and sets sneak while the stance is crouch or prone.
+2. MSC drains its ring before writing a pose, so the anchor is always applied first. The anchor maps to `Island.Base` on a collision island far from MSC's map, built from `CollisionChunk`s (see above). MSC holds the player's feet at the anchor until the ground there arrives, then puts it down.
+3. Every frame MSC writes `PlayerState` (feet position in Skyrim world space, velocity, heading, camera pitch, stance from the `Crouch` FSM, and the anchor `generation`). `kPlayerValid` is set only while MSC owns the player and stands on the current anchor's island.
+4. Skyrim's `PlayerCharacter::Update` hook places the player at every valid pose whose `generation` is the current one (position, heading, pitch, zeroed controller velocity) and sets sneak while the stance is crouch or prone.
+5. If the game moves the player itself while MSC owns it (another worldspace or interior cell, or a jump of more than 2048 units: load doors, fast travel, scripts), Skyrim sends a new anchor and the island is rebuilt there.
 
 F10 again, or the link going down, hands the player back to Skyrim and turns its controls back on.
 

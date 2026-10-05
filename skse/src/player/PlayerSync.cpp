@@ -1,5 +1,6 @@
 #include "player/PlayerSync.h"
 
+#include "collision/CollisionSampler.h"
 #include "coords.h"
 #include "input.h"
 #include "link/LinkService.h"
@@ -18,11 +19,18 @@ namespace PerkeleRim::PlayerSync
             static_cast<std::uint32_t>(UEFlag::kFighting) | static_cast<std::uint32_t>(UEFlag::kPOVSwitch) |
             static_cast<std::uint32_t>(UEFlag::kWheelZoom));
 
+        // A jump this big between two frames means the game moved the player (fast travel, a
+        // script), so MSC needs a new anchor.
+        constexpr float kTeleportUnits = 2048.0f;
+
         // Main thread only: the input and menu sinks and the Update hook all run there.
         struct State
         {
             bool           owned = false;
             std::uint32_t  generation = 0;
+            std::uint32_t  anchorWorldspace = 0;
+            std::uint32_t  anchorCell = 0;
+            RE::NiPoint3   lastPlaced;  // where the player was last put (anchor or MSC pose)
             std::uint32_t  inputFrame = 0;
             Input::Builder input;
 
@@ -68,8 +76,54 @@ namespace PerkeleRim::PlayerSync
                 player->AsActorState()->actorState1.sneaking = false;
                 player->NotifyAnimationGraph("SneakStop"sv);
             }
+            CollisionSampler::Stop();
             Publish();
             SKSE::log::info("player sync: Skyrim owns the player ({})", a_reason);
+        }
+
+        std::uint32_t WorldspaceOf(RE::PlayerCharacter* a_player)
+        {
+            auto* world = a_player->GetWorldspace();
+            return world ? world->GetFormID() : 0;
+        }
+
+        std::uint32_t InteriorOf(RE::TESObjectCELL* a_cell)
+        {
+            return a_cell && a_cell->IsInteriorCell() ? a_cell->GetFormID() : 0;
+        }
+
+        // Sends the player's spot as a new anchor (WorldspaceChange). MSC rebuilds its island
+        // around it and holds the player until the ground there has arrived; poses for older
+        // anchors are ignored from here on.
+        bool SendAnchor(RE::PlayerCharacter* a_player, const char* a_reason)
+        {
+            auto* cell = a_player->GetParentCell();
+            if (!cell) {
+                return false;
+            }
+            const auto               pos = a_player->GetPosition();
+            Protocol::WorldspaceChange change{};
+            change.worldspace = WorldspaceOf(a_player);
+            change.cell = InteriorOf(cell);
+            change.generation = state.generation + 1;
+            change.spawn[0] = pos.x;
+            change.spawn[1] = pos.y;
+            change.spawn[2] = pos.z;
+            change.spawnHeading = a_player->GetAngleZ();
+            if (!LinkService::Get().Send(Protocol::MessageType::WorldspaceChange, &change, sizeof(change))) {
+                SKSE::log::warn("player sync: could not send the anchor to MSC");
+                return false;
+            }
+
+            state.generation = change.generation;
+            state.anchorWorldspace = change.worldspace;
+            state.anchorCell = change.cell;
+            state.lastPlaced = pos;
+            CollisionSampler::Reset(change.generation, change.worldspace);
+            SKSE::log::info(
+                "player sync: anchor gen {} ({}) at ({:.0f},{:.0f},{:.0f}) heading {:.3f} worldspace {:08X} cell {:08X}",
+                change.generation, a_reason, pos.x, pos.y, pos.z, change.spawnHeading, change.worldspace, change.cell);
+            return true;
         }
 
         void TakeOver(RE::PlayerCharacter* a_player)
@@ -78,23 +132,7 @@ namespace PerkeleRim::PlayerSync
                 SKSE::log::info("player sync: link is down, can't hand the player to MSC");
                 return;
             }
-            auto* cell = a_player->GetParentCell();
-            if (!cell) {
-                return;
-            }
-
-            const auto pos = a_player->GetPosition();
-            Protocol::WorldspaceChange change{};
-            auto* world = a_player->GetWorldspace();
-            change.worldspace = world ? world->GetFormID() : 0;
-            change.cell = cell->IsInteriorCell() ? cell->GetFormID() : 0;
-            change.generation = ++state.generation;
-            change.spawn[0] = pos.x;
-            change.spawn[1] = pos.y;
-            change.spawn[2] = pos.z;
-            change.spawnHeading = a_player->GetAngleZ();
-            if (!LinkService::Get().Send(Protocol::MessageType::WorldspaceChange, &change, sizeof(change))) {
-                SKSE::log::warn("player sync: could not send the anchor to MSC");
+            if (!SendAnchor(a_player, "handover")) {
                 return;
             }
 
@@ -103,14 +141,29 @@ namespace PerkeleRim::PlayerSync
             state.frames = state.placed = state.newPoses = 0;
             SetControls(false);
             Publish();
-            SKSE::log::info(
-                "player sync: MSC owns the player, anchor ({:.0f},{:.0f},{:.0f}) heading {:.3f} worldspace {:08X} cell {:08X} gen {}",
-                pos.x, pos.y, pos.z, change.spawnHeading, change.worldspace, change.cell, change.generation);
+            SKSE::log::info("player sync: MSC owns the player");
+        }
+
+        // A load door, fast travel or a script moved the player somewhere MSC's island doesn't cover.
+        const char* MovedByGame(RE::PlayerCharacter* a_player)
+        {
+            auto* cell = a_player->GetParentCell();
+            if (!cell) {
+                return nullptr;  // loading
+            }
+            if (WorldspaceOf(a_player) != state.anchorWorldspace || InteriorOf(cell) != state.anchorCell) {
+                return "worldspace or cell changed";
+            }
+            if (a_player->GetPosition().GetDistance(state.lastPlaced) > kTeleportUnits) {
+                return "teleported";
+            }
+            return nullptr;
         }
 
         void Place(RE::PlayerCharacter* a_player, const Protocol::PlayerState& a_pose)
         {
-            a_player->SetPosition(RE::NiPoint3(a_pose.position[0], a_pose.position[1], a_pose.position[2]), true);
+            state.lastPlaced = RE::NiPoint3(a_pose.position[0], a_pose.position[1], a_pose.position[2]);
+            a_player->SetPosition(state.lastPlaced, true);
             a_player->SetHeading(a_pose.heading);
             a_player->data.angle.x = a_pose.pitch;
             // The native controller would otherwise carry momentum into the next frame.
@@ -135,8 +188,14 @@ namespace PerkeleRim::PlayerSync
             }
             Publish();
 
+            if (const char* reason = MovedByGame(a_player)) {
+                SendAnchor(a_player, reason);  // retried next frame if the ring is full
+            }
+
+            // A pose for an older anchor would put the player back where it came from.
             Protocol::PlayerState pose{};
-            const bool            valid = link.ReadPlayer(pose) && (pose.flags & Protocol::kPlayerValid) != 0;
+            const bool            valid = link.ReadPlayer(pose) && (pose.flags & Protocol::kPlayerValid) != 0 &&
+                               pose.generation == state.generation;
             if (valid) {
                 Place(a_player, pose);
                 state.placed++;
@@ -145,6 +204,7 @@ namespace PerkeleRim::PlayerSync
                     state.lastPoseFrame = pose.frame;
                 }
             }
+            CollisionSampler::Update(a_player);
 
             state.frames++;
             state.statTime += a_delta;

@@ -17,13 +17,17 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 1;
+    inline constexpr std::uint32_t kProtocolVersion = 2;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
 
     // A peer counts as gone when its heartbeat hasn't moved for this long.
     inline constexpr std::uint32_t kPeerTimeoutMs = 2000;
+
+    // Collision chunks are squares of this many Skyrim units on a grid anchored at world (0, 0):
+    // chunk (x, y) covers [x * size, (x + 1) * size) on X and the same on Y.
+    inline constexpr std::uint32_t kCollisionChunkUnits = 2048;
 
     // Section layout (byte offsets from the start of the mapping).
     inline constexpr std::uint32_t kOffsetHeader = 0;
@@ -104,7 +108,8 @@ namespace PerkeleRim::Protocol
         float         heading;      // radians
         float         pitch;        // radians, positive looks down
         std::uint8_t  stance;       // 0 standing, 1 crouching, 2 prone
-        std::uint8_t  reserved[7];
+        std::uint8_t  reserved[3];
+        std::uint32_t generation;   // WorldspaceChange.generation this pose belongs to
     };
 
     struct PlayerSlot
@@ -146,7 +151,9 @@ namespace PerkeleRim::Protocol
     };
 
     // Payload: this header, then vertexCount * float[3] vertices (Skyrim units, relative to origin),
-    // then indexCount uint32 triangle indices.
+    // then indexCount uint32 triangle indices. Triangles wind counterclockwise seen from above in
+    // Skyrim space (cross(b - a, c - a) points up). A newer chunk with the same x/y and generation
+    // replaces the older one.
     struct CollisionChunkHeader
     {
         std::int32_t  chunkX;
@@ -190,6 +197,7 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(PlayerState, heading) == 32);
     static_assert(offsetof(PlayerState, pitch) == 36);
     static_assert(offsetof(PlayerState, stance) == 40);
+    static_assert(offsetof(PlayerState, generation) == 44);
     static_assert(sizeof(PlayerSlot) == 64);
     static_assert(offsetof(PlayerSlot, value) == 8);
     static_assert(sizeof(RingHeader) == 64);

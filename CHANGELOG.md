@@ -20,8 +20,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Protocol v1 link ([docs/PROTOCOL.md](docs/PROTOCOL.md)): shared memory section with version handshake and heartbeat, latest-value slots for input and player state, one ring per direction, Skyrim <-> Unity coordinate conversion. C++ in `protocol/` (used by the SKSE plugin), C# mirror in `msc/src/Link`. Both games log `link up` when running together.
 - Unit tests for both ends (`scripts/test.ps1`, also run in CI): C++ doctest, C# NUnit, layout checked against the C++ header's asserts, shared conversion vectors.
 - Milestone 1a, live player loop: F10 in Skyrim hands the player to MSC. Skyrim forwards keyboard and mouse as `InputState` (scan codes mapped to Unity key codes, Escape/Tab/~ stay with Skyrim) and turns off its own movement, look, sneak, jump, attack and POV controls; MSC builds a flat placeholder collision island, plays the player on it from that input and reports `PlayerState`, and Skyrim places its player there every frame. MSC's Escape menu closes itself while handed over, MSC crouch/prone becomes Skyrim sneak, and MSC movement speeds are scaled by 2.75 while handed over (Harmony prefix on the character motor, with ground acceleration raised to match). Unit tests for the key mapping, input decoding and island math.
+- Milestone 1b, real Skyrim ground: while MSC owns the player, the SKSE plugin samples Skyrim's collision around it (top-down Havok raycasts on a 64-unit grid, 5 x 5 chunks of 2048 units, terrain, statics and tree trunks kept, clutter, actors and water passed through) and streams `CollisionChunk` heightfields; MSC builds a MeshCollider per chunk on the island, replacing the flat placeholder, and drops chunks the player walked away from. Chunks with holes are sampled again. A new anchor (handover, load door, fast travel) clears the island and MSC holds the player until the ground under it has arrived. Unit tests for chunk building and parsing.
 
 ### Changed
+
+- Protocol v2: `PlayerState.generation` (the anchor a pose belongs to; Skyrim ignores poses for older anchors) and `kCollisionChunkUnits`. Both halves must be updated together.
 
 - `scripts/launch-msc.ps1` keeps watching for Unity's configuration dialog until the game window appears (it can take over 10 s on a cold start).
 

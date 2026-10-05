@@ -5,7 +5,9 @@
 //    attack and POV controls are off;
 //  - every frame, the PlayerCharacter::Update hook places the player at the pose MSC reports.
 // Taking over sends a WorldspaceChange with the player's spot, which MSC uses as the anchor of its
-// collision island. Ownership ends on F10 again or when the link goes down.
+// collision island, and starts CollisionSampler. A load door, fast travel or other jump sends a
+// new anchor; poses for older anchors are ignored. Ownership ends on F10 again or when the link
+// goes down.
 namespace PerkeleRim::PlayerSync
 {
     void Install();       // hook; call at SKSE load

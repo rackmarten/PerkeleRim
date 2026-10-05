@@ -1,4 +1,4 @@
-# Unit tests for the C++ end of the link: layout, coordinate conversion, shared memory link.
+# Unit tests for the C++ end of the link: layout, coordinate conversion, collision chunks, shared memory link.
 # Standalone (no CommonLibSSE-NG), so it builds in seconds. Run with scripts/test.ps1.
 cmake_minimum_required(VERSION 3.21)
 
@@ -12,6 +12,7 @@ find_package(doctest CONFIG REQUIRED)
 add_executable(protocol_tests
     cpp/link.cpp
     tests/cpp/main.cpp
+    tests/cpp/test_collision.cpp
     tests/cpp/test_coords.cpp
     tests/cpp/test_input.cpp
     tests/cpp/test_link.cpp

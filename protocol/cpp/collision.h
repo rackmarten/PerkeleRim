@@ -1,0 +1,129 @@
+// Collision chunk geometry: the chunk grid and turning a sampled heightfield into a
+// CollisionChunk payload. Used by the SKSE sampler, tested standalone. The MSC side parses the
+// payload in msc/src/Link/CollisionChunk.cs.
+
+#pragma once
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <vector>
+
+#include "../perkelerim_protocol.h"
+
+namespace PerkeleRim::Collision
+{
+    // Chunk index of a Skyrim world coordinate (X or Y).
+    inline std::int32_t ChunkIndex(float a_coord)
+    {
+        return static_cast<std::int32_t>(std::floor(a_coord / static_cast<float>(Protocol::kCollisionChunkUnits)));
+    }
+
+    // Heights sampled on a (cells + 1) x (cells + 1) grid covering one chunk, edges included, so
+    // neighbouring chunks share their border samples. Sample (i, j) sits at
+    // x = chunkX * size + i * step, y = chunkY * size + j * step and is stored at j * (cells + 1) + i.
+    struct Heightfield
+    {
+        std::int32_t              chunkX = 0;
+        std::int32_t              chunkY = 0;
+        std::uint32_t             cells = 0;
+        std::vector<float>        heights;  // Skyrim Z of the surface
+        std::vector<std::uint8_t> hit;      // 0: nothing found there, the height is meaningless
+
+        void Reset(std::int32_t a_chunkX, std::int32_t a_chunkY, std::uint32_t a_cells)
+        {
+            chunkX = a_chunkX;
+            chunkY = a_chunkY;
+            cells = a_cells;
+            heights.assign(Samples(), 0.0f);
+            hit.assign(Samples(), 0);
+        }
+
+        std::uint32_t Side() const { return cells + 1; }
+        std::uint32_t Samples() const { return Side() * Side(); }
+        float         Step() const { return static_cast<float>(Protocol::kCollisionChunkUnits) / static_cast<float>(cells); }
+        float         X(std::uint32_t a_i) const { return static_cast<float>(chunkX) * Protocol::kCollisionChunkUnits + a_i * Step(); }
+        float         Y(std::uint32_t a_j) const { return static_cast<float>(chunkY) * Protocol::kCollisionChunkUnits + a_j * Step(); }
+
+        std::uint32_t Hits() const
+        {
+            return static_cast<std::uint32_t>(std::count(hit.begin(), hit.end(), std::uint8_t{ 1 }));
+        }
+    };
+
+    // CollisionChunk payload for a heightfield: a vertex per hit sample, two triangles per grid
+    // cell, and a triangle only where all three corners were hit, so misses leave holes instead
+    // of spikes. The origin is the chunk's corner at the lowest hit height, which keeps the
+    // relative vertices small.
+    inline std::vector<std::uint8_t> BuildChunkPayload(const Heightfield& a_field, std::uint32_t a_worldspace, std::uint32_t a_generation)
+    {
+        const std::uint32_t side = a_field.Side();
+        float               minZ = 0.0f;
+        bool                any = false;
+        for (std::uint32_t k = 0; k < a_field.Samples(); k++) {
+            if (a_field.hit[k] && (!any || a_field.heights[k] < minZ)) {
+                minZ = a_field.heights[k];
+                any = true;
+            }
+        }
+
+        Protocol::CollisionChunkHeader header{};
+        header.chunkX = a_field.chunkX;
+        header.chunkY = a_field.chunkY;
+        header.worldspace = a_worldspace;
+        header.generation = a_generation;
+        header.origin[0] = a_field.X(0);
+        header.origin[1] = a_field.Y(0);
+        header.origin[2] = minZ;
+
+        std::vector<float>         vertices;
+        std::vector<std::uint32_t> remap(a_field.Samples(), UINT32_MAX);
+        for (std::uint32_t j = 0; j < side; j++) {
+            for (std::uint32_t i = 0; i < side; i++) {
+                const std::uint32_t k = j * side + i;
+                if (!a_field.hit[k]) {
+                    continue;
+                }
+                remap[k] = static_cast<std::uint32_t>(vertices.size() / 3);
+                vertices.push_back(i * a_field.Step());
+                vertices.push_back(j * a_field.Step());
+                vertices.push_back(a_field.heights[k] - minZ);
+            }
+        }
+
+        // a = (i, j), b = (i + 1, j) east, c = (i, j + 1) north, d = (i + 1, j + 1).
+        // a-b-c and b-d-c both wind counterclockwise seen from above.
+        std::vector<std::uint32_t> indices;
+        const auto                 triangle = [&](std::uint32_t a_a, std::uint32_t a_b, std::uint32_t a_c) {
+            if (remap[a_a] != UINT32_MAX && remap[a_b] != UINT32_MAX && remap[a_c] != UINT32_MAX) {
+                indices.push_back(remap[a_a]);
+                indices.push_back(remap[a_b]);
+                indices.push_back(remap[a_c]);
+            }
+        };
+        for (std::uint32_t j = 0; j < a_field.cells; j++) {
+            for (std::uint32_t i = 0; i < a_field.cells; i++) {
+                const std::uint32_t a = j * side + i, b = a + 1, c = a + side, d = c + 1;
+                triangle(a, b, c);
+                triangle(b, d, c);
+            }
+        }
+
+        header.vertexCount = static_cast<std::uint32_t>(vertices.size() / 3);
+        header.indexCount = static_cast<std::uint32_t>(indices.size());
+
+        std::vector<std::uint8_t> payload(sizeof(header) + vertices.size() * sizeof(float) + indices.size() * sizeof(std::uint32_t));
+        std::uint8_t*             out = payload.data();
+        std::memcpy(out, &header, sizeof(header));
+        out += sizeof(header);
+        if (!vertices.empty()) {
+            std::memcpy(out, vertices.data(), vertices.size() * sizeof(float));
+            out += vertices.size() * sizeof(float);
+        }
+        if (!indices.empty()) {
+            std::memcpy(out, indices.data(), indices.size() * sizeof(std::uint32_t));
+        }
+        return payload;
+    }
+}

@@ -8,9 +8,10 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 1;
+        public const uint ProtocolVersion = 2;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
+        public const uint CollisionChunkUnits = 2048;
 
         public const uint OffsetHeader = 0;
         public const uint OffsetInputSlot = 128;
@@ -106,7 +107,8 @@ namespace PerkeleRim.Protocol
         public float heading;
         public float pitch;
         public byte stance;
-        public fixed byte reserved[7];
+        public fixed byte reserved[3];
+        public uint generation;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

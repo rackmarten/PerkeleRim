@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using PerkeleRim.Protocol;
 using UnityEngine;
 
@@ -6,25 +7,34 @@ namespace PerkeleRim.Game
 {
     // The player half of the link, next to LinkHost:
     //  - feeds InputShim from Skyrim's InputState, so MSC's own scripts walk, look and crouch;
-    //  - takes the anchor from WorldspaceChange, builds the island collider there and teleports
-    //    the player onto it;
+    //  - takes the anchor from WorldspaceChange and builds the collision island from Skyrim's
+    //    CollisionChunk messages, one MeshCollider per chunk, dropping chunks the player left behind;
+    //  - holds the player at a new anchor until the ground there has arrived, then puts it down;
     //  - writes PlayerState (Skyrim world space) every frame, valid only while Skyrim has handed
     //    the player over and the player stands on the current anchor's island.
     public unsafe class PlayerLink : MonoBehaviour
     {
-        // Placeholder island until Skyrim's collision arrives (milestone 1b): a flat square,
-        // IslandSize meters across, centred on Island.Base.
-        const float IslandSize = 2000f;
-        const int IslandCells = 20;
-        // Drop the player this far above the island so it never starts inside the collider.
+        // Drop the player this far above the ground so it never starts inside the collider.
         const float SpawnClearance = 0.05f;
+        // Chunks further than this (in chunks, either axis) from the player's are dropped. Skyrim
+        // streams 2 around the player and forgets at 3, so it always resends what's dropped here.
+        const int KeepRadius = 4;
+        // Rays looking for the ground under a new anchor start this far above it.
+        const float GroundSearch = 50f;
 
         readonly Island island = new Island();
         readonly InputFrame input = new InputFrame();
         Action<string> log;
 
         GameObject islandObject;
-        uint placedGeneration;  // island generation the player was teleported for; 0 = none
+        readonly Dictionary<long, GameObject> chunks = new Dictionary<long, GameObject>();
+        float nextPrune;
+        uint placedGeneration;  // island generation the player was put down for; 0 = none
+        uint holdingGeneration;  // generation the player is held for while its ground loads
+        float holdSince;
+        bool holdLogged;
+        Behaviour motor;
+        bool motorDisabled;
         bool lastOwned;
         float nextMenuClose;
 
@@ -102,7 +112,8 @@ namespace PerkeleRim.Game
             }
 
             if (player != null && island.HasAnchor && placedGeneration != island.Generation)
-                Teleport();
+                Settle();
+            PruneChunks();
 
             var state = new PlayerState { frame = fixedFrame };
             if (owned) CloseMenu();
@@ -110,6 +121,7 @@ namespace PerkeleRim.Game
             bool playing = owned && player != null && island.HasAnchor && placedGeneration == island.Generation;
             MotorBoost.Active = playing;
             if (playing) FillPose(ref state);
+            state.generation = island.Generation;
             link.WritePlayer(ref state);
         }
 
@@ -143,13 +155,17 @@ namespace PerkeleRim.Game
 
         void OnMessage(MessageType type, byte[] payload, int size)
         {
-            if (type != MessageType.WorldspaceChange || size < sizeof(WorldspaceChange)) return;
-            WorldspaceChange c;
-            fixed (byte* p = payload) c = *(WorldspaceChange*)p;
-            var anchor = new Vec3(c.spawn[0], c.spawn[1], c.spawn[2]);
-            island.SetAnchor(c.generation, c.worldspace, c.cell, anchor, c.spawnHeading);
-            log($"player: anchor gen {c.generation} worldspace {c.worldspace:X8} cell {c.cell:X8} at ({anchor.x:0},{anchor.y:0},{anchor.z:0})");
-            EnsureIsland();
+            if (type == MessageType.WorldspaceChange && size >= sizeof(WorldspaceChange))
+            {
+                WorldspaceChange c;
+                fixed (byte* p = payload) c = *(WorldspaceChange*)p;
+                var anchor = new Vec3(c.spawn[0], c.spawn[1], c.spawn[2]);
+                island.SetAnchor(c.generation, c.worldspace, c.cell, anchor, c.spawnHeading);
+                log($"player: anchor gen {c.generation} worldspace {c.worldspace:X8} cell {c.cell:X8} at ({anchor.x:0},{anchor.y:0},{anchor.z:0}), rebuilding the island");
+                ClearChunks();
+            }
+            else if (type == MessageType.CollisionChunk)
+                OnChunk(payload, size);
         }
 
         void FindPlayer()
@@ -164,60 +180,161 @@ namespace PerkeleRim.Game
             foreach (var f in go.GetComponents<PlayMakerFSM>())
                 if (f.FsmName == "Crouch") crouch = f;
             haveLastFeet = false;
+            motor = go.GetComponent("CharacterMotor") as Behaviour;
+            motorDisabled = false;
             log($"player: found PLAYER (controller {(controller != null)}, camera {(fpsCamera != null)}, crouch fsm {(crouch != null)})");
             MotorBoost.Install(go, log);
         }
 
         // ---- Island ----
 
-        void EnsureIsland()
+        Transform IslandRoot()
         {
-            if (islandObject != null) return;
-            islandObject = new GameObject("PerkeleRim.Island");
-            DontDestroyOnLoad(islandObject);
-            islandObject.transform.position = ToVector3(Island.Base);
-            var mesh = FlatGrid(IslandSize, IslandCells);
-            islandObject.AddComponent<MeshCollider>().sharedMesh = mesh;
-            log($"player: built flat island {IslandSize:0} m at ({Island.Base.x:0},{Island.Base.y:0},{Island.Base.z:0})");
+            if (islandObject == null)
+            {
+                islandObject = new GameObject("PerkeleRim.Island");
+                DontDestroyOnLoad(islandObject);
+            }
+            return islandObject.transform;
         }
 
-        // Square grid in the XZ plane, centred on the origin, triangles facing up.
-        static Mesh FlatGrid(float size, int cells)
+        void OnChunk(byte[] payload, int size)
         {
-            int n = cells + 1;
-            float step = size / cells, half = size / 2f;
-            var vertices = new Vector3[n * n];
-            for (int i = 0; i < n; i++)
-                for (int j = 0; j < n; j++)
-                    vertices[i * n + j] = new Vector3(i * step - half, 0f, j * step - half);
+            if (!island.HasAnchor) return;
+            string error;
+            var chunk = CollisionChunk.Parse(payload, size, island, out error);
+            if (chunk == null) { log("player: bad collision chunk: " + error); return; }
+            if (chunk.Generation != island.Generation) return;  // for an older anchor
 
-            var triangles = new int[cells * cells * 6];
-            int t = 0;
-            for (int i = 0; i < cells; i++)
-                for (int j = 0; j < cells; j++)
-                {
-                    int a = i * n + j, b = a + 1, c = a + n, d = c + 1;  // b is +z, c is +x
-                    triangles[t++] = a; triangles[t++] = b; triangles[t++] = c;
-                    triangles[t++] = b; triangles[t++] = d; triangles[t++] = c;
-                }
-
-            var mesh = new Mesh { name = "PerkeleRim.IslandFlat", vertices = vertices, triangles = triangles };
-            mesh.RecalculateNormals();
+            var vertices = new Vector3[chunk.Vertices.Length];
+            for (int i = 0; i < vertices.Length; i++) vertices[i] = ToVector3(chunk.Vertices[i]);
+            var mesh = new Mesh { name = $"PerkeleRim.Chunk {chunk.ChunkX},{chunk.ChunkY}", vertices = vertices, triangles = chunk.Triangles };
             mesh.RecalculateBounds();
-            return mesh;
+
+            GameObject go;
+            bool rebuilt = chunks.TryGetValue(chunk.Key, out go);
+            if (!rebuilt)
+            {
+                go = new GameObject(mesh.name);
+                go.transform.parent = IslandRoot();
+                chunks[chunk.Key] = go;
+            }
+            var collider = go.GetComponent<MeshCollider>();
+            if (collider == null) collider = go.AddComponent<MeshCollider>();
+            var old = collider.sharedMesh;
+            collider.sharedMesh = mesh;
+            if (old != null) Destroy(old);
+            log($"player: chunk ({chunk.ChunkX},{chunk.ChunkY}) gen {chunk.Generation}: {vertices.Length} vertices, {chunk.Triangles.Length / 3} triangles, {(rebuilt ? "rebuilt" : "new")}");
         }
 
-        void Teleport()
+        void ClearChunks()
         {
-            placedGeneration = island.Generation;
-            var target = ToVector3(island.SkyrimToIsland(island.Anchor)) + Vector3.up * SpawnClearance;
+            foreach (var go in chunks.Values) DestroyChunk(go);
+            chunks.Clear();
+        }
+
+        // Destroy only happens at the end of the frame, so take the chunk out of the island (and
+        // physics) right away: FindGround must not mistake it for the new anchor's ground.
+        static void DestroyChunk(GameObject go)
+        {
+            go.transform.parent = null;
+            var collider = go.GetComponent<MeshCollider>();
+            if (collider != null) collider.enabled = false;
+            if (collider != null && collider.sharedMesh != null) Destroy(collider.sharedMesh);
+            Destroy(go);
+        }
+
+        // Drops chunks the player has walked away from, once a second.
+        void PruneChunks()
+        {
+            if (chunks.Count == 0 || player == null || placedGeneration != island.Generation || Time.realtimeSinceStartup < nextPrune) return;
+            nextPrune = Time.realtimeSinceStartup + 1f;
+
+            var at = island.IslandToSkyrim(ToVec3(Feet()));
+            int cx = CollisionChunk.ChunkIndex(at.x), cy = CollisionChunk.ChunkIndex(at.y);
+            var drop = new List<long>();
+            foreach (var key in chunks.Keys)
+            {
+                int x = (int)(key >> 32), y = (int)key;
+                if (Math.Max(Math.Abs(x - cx), Math.Abs(y - cy)) > KeepRadius) drop.Add(key);
+            }
+            foreach (var key in drop)
+            {
+                DestroyChunk(chunks[key]);
+                chunks.Remove(key);
+            }
+            if (drop.Count > 0) log($"player: dropped {drop.Count} far chunks, {chunks.Count} left around ({cx},{cy})");
+        }
+
+        // Puts the player down at the anchor once the ground under it has arrived. Until then it
+        // is held there with the motor off, so it doesn't fall.
+        void Settle()
+        {
+            if (holdingGeneration != island.Generation)
+            {
+                holdingGeneration = island.Generation;
+                holdSince = Time.realtimeSinceStartup;
+                holdLogged = false;
+            }
+
+            var anchor = ToVector3(island.SkyrimToIsland(island.Anchor));
+            Vector3 ground;
+            bool ready = FindGround(anchor, out ground);
+            var target = (ready ? ground : anchor) + Vector3.up * SpawnClearance;
             player.position += target - Feet();
             player.rotation = Quaternion.Euler(0f, Coords.SkyrimAngleToUnity(island.AnchorHeading), 0f);
             var body = player.GetComponent<Rigidbody>();
             if (body != null && !body.isKinematic) body.velocity = Vector3.zero;
             haveLastFeet = false;
             velocity = new Vec3();
-            log($"player: placed on the island for gen {island.Generation}, feet at ({target.x:0.00},{target.y:0.00},{target.z:0.00})");
+
+            if (!ready)
+            {
+                SetMotor(false);
+                if (!holdLogged && Time.realtimeSinceStartup - holdSince > 3f)
+                {
+                    holdLogged = true;
+                    log($"player: still waiting for the ground at the gen {island.Generation} anchor ({chunks.Count} chunks so far)");
+                }
+                return;
+            }
+
+            SetMotor(true);
+            placedGeneration = island.Generation;
+            log($"player: placed on the island for gen {island.Generation} after {Time.realtimeSinceStartup - holdSince:0.0} s, feet at ({target.x:0.00},{target.y:0.00},{target.z:0.00})");
+        }
+
+        // The island surface closest in height to p, straight above or below it.
+        bool FindGround(Vector3 p, out Vector3 ground)
+        {
+            ground = p;
+            if (islandObject == null) return false;
+            bool found = false;
+            foreach (var hit in Physics.RaycastAll(p + Vector3.up * GroundSearch, Vector3.down, GroundSearch * 2f))
+            {
+                if (hit.collider.transform.parent != islandObject.transform) continue;
+                if (!found || Mathf.Abs(hit.point.y - p.y) < Mathf.Abs(ground.y - p.y)) ground = hit.point;
+                found = true;
+            }
+            return found;
+        }
+
+        void SetMotor(bool on)
+        {
+            if (motor == null) return;
+            if (!on && motor.enabled)
+            {
+                motor.enabled = false;
+                motorDisabled = true;
+            }
+            else if (on && motorDisabled)
+            {
+                motor.enabled = true;
+                motorDisabled = false;
+                // Drop whatever speed it had before it was stopped (falling, walking).
+                var setVelocity = motor.GetType().GetMethod("SetVelocity", new[] { typeof(Vector3) });
+                if (setVelocity != null) setVelocity.Invoke(motor, new object[] { Vector3.zero });
+            }
         }
 
         // ---- Pose ----
