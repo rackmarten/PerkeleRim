@@ -21,11 +21,17 @@ Pipeline (`convert-vehicle.ps1`):
    left-handed) to Skyrim space (Z up, 1 unit = 0.0142875 m) and writes the NIF.
 
 Which parts go in, and how wheels are named, lives in `nif/<vehicle>.json` (`hayosiko.json` for the
-van: skipped parts and materials, alpha-blended materials, wheel nodes).
+van: skipped parts and materials, alpha-blended materials, wheel nodes, moving parts).
 
 The NIF has the body's shapes under the root, and per wheel a `WheelFL`/`WheelFR`/`WheelRL`/`WheelRR`
 node at the wheel center with a `<name>:Spin` child holding the tire and rim. The SKSE plugin steers
 the front wheel nodes about Z and spins the `:Spin` nodes about X from `VehicleState`.
+
+Each entry of `parts` (MSC hierarchy paths, the same list and order as `kHayosikoParts` in
+`protocol/perkelerim_protocol.h`, checked by `msc/tests`) becomes a node named by its path, at the
+part's pivot, directly under the root; the shapes below that path hang in it. The SKSE plugin poses
+these nodes and hides switched-off ones from `VehicleParts`. `"lit": true` parts (lights, lamps)
+are kept even where `skip` matches and use Skyrim's glow shader with their lit texture as glow map.
 
 ### Setup (once)
 

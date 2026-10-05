@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 4;
+        public const uint ProtocolVersion = 5;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -17,11 +17,12 @@ namespace PerkeleRim.Protocol
         public const uint OffsetInputSlot = 128;
         public const uint OffsetPlayerSlot = 256;
         public const uint OffsetVehicleSlot = 320;
-        public const uint OffsetRingToMsc = 448;
+        public const uint OffsetVehiclePartsSlot = 448;
+        public const uint OffsetRingToMsc = 2048;
         public const uint RingToMscCapacity = 4194304;
-        public const uint OffsetRingToSkyrim = 4194816;
+        public const uint OffsetRingToSkyrim = 4196416;
         public const uint RingToSkyrimCapacity = 262144;
-        public const uint MappingSize = 4457024;
+        public const uint MappingSize = 4458624;
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint PlayerValid = 0x1;
@@ -29,6 +30,57 @@ namespace PerkeleRim.Protocol
         public const uint VehicleDriven = 0x2;
         public const uint VehicleHayosiko = 1;
         public const uint AnchorVehicleSpot = 0x1;
+        public const uint VehiclePartCapacity = 48;
+        public const uint PartVisible = 0x1;
+        public const uint HayosikoPartCount = 40;
+
+        // VehicleParts.parts order for the van; msc/tests checks it against the header's list.
+        public static readonly string[] HayosikoParts =
+        {
+            // Doors
+            "DriverDoors/doorl",
+            "DriverDoors/doorr",
+            "SideDoor/door",
+            "RearDoor/doorear",
+            // Controls
+            "LOD/Dashboard/Steering/VanSteeringPivot",
+            "LOD/Dashboard/KeyHole/Keys/Key",
+            "LOD/Dashboard/Gauges/NeedleSpeedometer/Needle",
+            "LOD/Dashboard/Gauges/NeedleFuel/Needle",
+            "LOD/Dashboard/Gauges/NeedleTemp/Needle",
+            "LOD/Dashboard/Pedals 1/clutch",
+            "LOD/Dashboard/Pedals 1/brake",
+            "LOD/Dashboard/Pedals 1/throttle",
+            "LOD/Dashboard/GearShifter/lever",
+            "LOD/Dashboard/ParkingBrake/lever",
+            "LOD/Dashboard/BlinkerLever/lever",
+            "LOD/Dashboard/WipersLever/lever",
+            "LOD/Wipers/Pivot/WiperLeftPivot",
+            "LOD/Wipers/Pivot/WiperRightPivot",
+            "LOD/FuelFiller/Pivot",
+            "LOD/FuelFiller/OpenCap",
+            "RadioPivot/Radio/TunerPivot",
+            "LOD/seatbelts/HandleUpPivot/SeatbeltHandle",
+            "LOD/seatbelts/Fastened_mesh",
+            // Lights (lit meshes, shown while on)
+            "LOD/Electricity/PowerON/Driving/BeamsShort/drive",
+            "LOD/Electricity/PowerON/Driving/BeamsLong/drive",
+            "LOD/Electricity/PowerON/Brake/brake",
+            "LOD/Electricity/PowerON/Reverse/reverse",
+            "LOD/Electricity/PowerON/Blinkers/Left/indicator_left",
+            "LOD/Electricity/PowerON/Blinkers/Right/indicator_right",
+            "LOD/Dashboard/Gauges/GaugesLights",
+            "LOD/Dashboard/Indicators/indicator_battery",
+            "LOD/Dashboard/Indicators/indicator_brake",
+            "LOD/Dashboard/Indicators/indicator_filter",
+            "LOD/Dashboard/Indicators/indicator_glowplug",
+            "LOD/Dashboard/Indicators/indicator_hazards",
+            "LOD/Dashboard/Indicators/indicator_left",
+            "LOD/Dashboard/Indicators/indicator_lights",
+            "LOD/Dashboard/Indicators/indicator_oil",
+            "LOD/Dashboard/Indicators/indicator_preheat",
+            "LOD/Dashboard/Indicators/indicator_right",
+        };
     }
 
     public enum Side : uint
@@ -146,6 +198,46 @@ namespace PerkeleRim.Protocol
         public uint seq;
         public uint reserved;
         public VehicleState value;
+        public fixed byte pad[40];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct VehiclePart
+    {
+        public fixed float rotation[4];
+        public fixed float translation[3];
+        public uint flags;
+    }
+
+    // parts holds kVehiclePartCapacity VehicleParts (C# can't make a fixed buffer of structs).
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct VehicleParts
+    {
+        public uint frame;
+        public uint vehicle;
+        public uint generation;
+        public uint count;
+        public fixed byte parts[1536];
+
+        public VehiclePart Get(int i)
+        {
+            if ((uint)i >= Wire.VehiclePartCapacity) throw new System.ArgumentOutOfRangeException(nameof(i));
+            fixed (byte* p = parts) return ((VehiclePart*)p)[i];
+        }
+
+        public void Set(int i, VehiclePart part)
+        {
+            if ((uint)i >= Wire.VehiclePartCapacity) throw new System.ArgumentOutOfRangeException(nameof(i));
+            fixed (byte* p = parts) ((VehiclePart*)p)[i] = part;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct VehiclePartsSlot
+    {
+        public uint seq;
+        public uint reserved;
+        public VehicleParts value;
         public fixed byte pad[40];
     }
 

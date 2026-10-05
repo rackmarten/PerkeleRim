@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 4;
+    inline constexpr std::uint32_t kProtocolVersion = 5;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -34,11 +34,12 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kOffsetInputSlot = 128;
     inline constexpr std::uint32_t kOffsetPlayerSlot = 256;
     inline constexpr std::uint32_t kOffsetVehicleSlot = 320;
-    inline constexpr std::uint32_t kOffsetRingToMsc = 448;          // RingHeader, data follows
+    inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 448;
+    inline constexpr std::uint32_t kOffsetRingToMsc = 2048;         // RingHeader, data follows
     inline constexpr std::uint32_t kRingToMscCapacity = 4194304;    // 4 MiB: collision chunks
-    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4194816;   // 448 + 64 + 4 MiB
+    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4196416;   // 2048 + 64 + 4 MiB
     inline constexpr std::uint32_t kRingToSkyrimCapacity = 262144;  // 256 KiB: events
-    inline constexpr std::uint32_t kMappingSize = 4457024;         // 4194816 + 64 + 256 KiB
+    inline constexpr std::uint32_t kMappingSize = 4458624;         // 4196416 + 64 + 256 KiB
 
     enum class Side : std::uint32_t
     {
@@ -151,6 +152,87 @@ namespace PerkeleRim::Protocol
         std::uint8_t  pad[40];
     };
 
+    inline constexpr std::uint32_t kVehiclePartCapacity = 48;  // VehicleParts.parts
+    inline constexpr std::uint32_t kPartVisible = 0x1;         // VehiclePart.flags: drawn (MSC shows it)
+
+    // The Hayosiko's moving and switchable parts, in VehicleParts.parts order: paths below the van's
+    // root in MSC's hierarchy (tools/nif/hayosiko.json lists the same paths, and the converted NIF
+    // has one node per part named by its path). Changing the list bumps kProtocolVersion.
+    inline constexpr const char* kHayosikoParts[] = {
+        // Doors
+        "DriverDoors/doorl",
+        "DriverDoors/doorr",
+        "SideDoor/door",
+        "RearDoor/doorear",
+        // Controls
+        "LOD/Dashboard/Steering/VanSteeringPivot",
+        "LOD/Dashboard/KeyHole/Keys/Key",
+        "LOD/Dashboard/Gauges/NeedleSpeedometer/Needle",
+        "LOD/Dashboard/Gauges/NeedleFuel/Needle",
+        "LOD/Dashboard/Gauges/NeedleTemp/Needle",
+        "LOD/Dashboard/Pedals 1/clutch",
+        "LOD/Dashboard/Pedals 1/brake",
+        "LOD/Dashboard/Pedals 1/throttle",
+        "LOD/Dashboard/GearShifter/lever",
+        "LOD/Dashboard/ParkingBrake/lever",
+        "LOD/Dashboard/BlinkerLever/lever",
+        "LOD/Dashboard/WipersLever/lever",
+        "LOD/Wipers/Pivot/WiperLeftPivot",
+        "LOD/Wipers/Pivot/WiperRightPivot",
+        "LOD/FuelFiller/Pivot",
+        "LOD/FuelFiller/OpenCap",
+        "RadioPivot/Radio/TunerPivot",
+        "LOD/seatbelts/HandleUpPivot/SeatbeltHandle",
+        "LOD/seatbelts/Fastened_mesh",
+        // Lights (lit meshes, shown while on)
+        "LOD/Electricity/PowerON/Driving/BeamsShort/drive",
+        "LOD/Electricity/PowerON/Driving/BeamsLong/drive",
+        "LOD/Electricity/PowerON/Brake/brake",
+        "LOD/Electricity/PowerON/Reverse/reverse",
+        "LOD/Electricity/PowerON/Blinkers/Left/indicator_left",
+        "LOD/Electricity/PowerON/Blinkers/Right/indicator_right",
+        "LOD/Dashboard/Gauges/GaugesLights",
+        "LOD/Dashboard/Indicators/indicator_battery",
+        "LOD/Dashboard/Indicators/indicator_brake",
+        "LOD/Dashboard/Indicators/indicator_filter",
+        "LOD/Dashboard/Indicators/indicator_glowplug",
+        "LOD/Dashboard/Indicators/indicator_hazards",
+        "LOD/Dashboard/Indicators/indicator_left",
+        "LOD/Dashboard/Indicators/indicator_lights",
+        "LOD/Dashboard/Indicators/indicator_oil",
+        "LOD/Dashboard/Indicators/indicator_preheat",
+        "LOD/Dashboard/Indicators/indicator_right",
+    };
+    inline constexpr std::uint32_t kHayosikoPartCount = 40;
+
+    // A part's pose relative to the vehicle's body (VehicleState position and rotation): Skyrim axes
+    // and units, vehicle +Y forward, +Z up.
+    struct VehiclePart
+    {
+        float         rotation[4];     // x, y, z, w
+        float         translation[3];  // the part's pivot
+        std::uint32_t flags;           // kPart*
+    };
+
+    // MSC -> Skyrim, written right after VehicleState. parts[i] is part i of the vehicle's list
+    // (kHayosikoParts); count is that list's length, the rest is zero.
+    struct VehicleParts
+    {
+        std::uint32_t frame;       // MSC frame counter
+        std::uint32_t vehicle;     // kVehicle* id, 0 = none
+        std::uint32_t generation;  // WorldspaceChange.generation
+        std::uint32_t count;
+        VehiclePart   parts[48];   // kVehiclePartCapacity
+    };
+
+    struct VehiclePartsSlot
+    {
+        std::uint32_t seq;
+        std::uint32_t reserved;
+        VehicleParts  value;
+        std::uint8_t  pad[40];
+    };
+
     // ---- Rings (single producer, single consumer) ----
     //
     // head and tail are monotonic byte counts; position = count % capacity. The producer owns head,
@@ -244,6 +326,14 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(VehicleState, wheelSpin) == 60);
     static_assert(sizeof(VehicleSlot) == 128);
     static_assert(offsetof(VehicleSlot, value) == 8);
+    static_assert(sizeof(VehiclePart) == 32);
+    static_assert(offsetof(VehiclePart, translation) == 16);
+    static_assert(offsetof(VehiclePart, flags) == 28);
+    static_assert(sizeof(VehicleParts) == 1552);
+    static_assert(offsetof(VehicleParts, count) == 12);
+    static_assert(offsetof(VehicleParts, parts) == 16);
+    static_assert(sizeof(VehiclePartsSlot) == 1600);
+    static_assert(offsetof(VehiclePartsSlot, value) == 8);
     static_assert(sizeof(RingHeader) == 64);
     static_assert(offsetof(RingHeader, head) == 8);
     static_assert(offsetof(RingHeader, tail) == 32);
@@ -264,9 +354,12 @@ namespace PerkeleRim::Protocol
     static_assert(kOffsetInputSlot == kOffsetHeader + sizeof(LinkHeader));
     static_assert(kOffsetPlayerSlot == kOffsetInputSlot + sizeof(InputSlot));
     static_assert(kOffsetVehicleSlot == kOffsetPlayerSlot + sizeof(PlayerSlot));
-    static_assert(kOffsetRingToMsc == kOffsetVehicleSlot + sizeof(VehicleSlot));
+    static_assert(kOffsetVehiclePartsSlot == kOffsetVehicleSlot + sizeof(VehicleSlot));
+    static_assert(kOffsetRingToMsc == kOffsetVehiclePartsSlot + sizeof(VehiclePartsSlot));
     static_assert(kOffsetRingToSkyrim == kOffsetRingToMsc + sizeof(RingHeader) + kRingToMscCapacity);
     static_assert(kMappingSize == kOffsetRingToSkyrim + sizeof(RingHeader) + kRingToSkyrimCapacity);
+    static_assert(sizeof(kHayosikoParts) / sizeof(kHayosikoParts[0]) == kHayosikoPartCount);
+    static_assert(kHayosikoPartCount <= kVehiclePartCapacity);
     static_assert((kRingToMscCapacity & (kRingToMscCapacity - 1)) == 0);
     static_assert((kRingToSkyrimCapacity & (kRingToSkyrimCapacity - 1)) == 0);
 }

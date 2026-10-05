@@ -7,9 +7,12 @@ Builds a Skyrim SE NIF of an MSC vehicle from tools/unity-export's model.json, i
 named "textures", PyNifly writes texture paths from there on. <vehicle json> picks parts, see
 hayosiko.json.
 
-The NIF: root NiNode, the body's shapes straight under it, and per wheel a NiNode "<Wheel>" at the
-wheel center (steers about Z) with a child NiNode "<Wheel>:Spin" (spins about X). Skyrim space:
-+Y forward, +Z up, +X right, 1 unit = 0.0142875 m.
+The NIF: root NiNode, the body's shapes straight under it, per wheel a NiNode "<Wheel>" at the
+wheel center (steers about Z) with a child NiNode "<Wheel>:Spin" (spins about X), and per listed
+part a NiNode named by its MSC path, at the part's pivot (VehicleView sets its transform from
+VehicleParts). Parts are flat under the root: their pose is relative to the van, not to each other.
+"lit" parts glow (Skyrim glow shader). Skyrim space: +Y forward, +Z up, +X right,
+1 unit = 0.0142875 m.
 """
 import json
 import os
@@ -23,6 +26,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PYNIFLY = os.path.join(HERE, "..", ".deps", "pynifly")
 UNITS_PER_METER = 1.0 / 0.0142875
 FLAT_NORMAL = "flat_n.dds"
+GLOW_MULT = 1.5
 
 # Unity (left-handed, Y up) to Skyrim (right-handed, Z up): swap Y and Z. A reflection, so triangles
 # get their winding reversed. Same mapping as protocol/cpp/coords.h UnityToSkyrim.
@@ -61,6 +65,17 @@ def world_matrices(nodes):
     return mats
 
 
+def world_rotations(nodes):
+    """Each node's rotation relative to the root as Unity's Transform.rotation has it: the product of
+    the local rotations, scale left out. MSC sends part poses built from the same thing."""
+    rots = []
+    for n in nodes:
+        x, y, z, w = n["rotation"]
+        local = Quaternion((w, x, y, z))
+        rots.append(Quaternion() if n["parent"] < 0 else rots[n["parent"]] @ local)
+    return rots
+
+
 def to_skyrim(m):
     """A Unity-space (meters) transform as the same transform in Skyrim space (units)."""
     s = Matrix.Diagonal(Vector((UNITS_PER_METER,) * 3 + (1.0,)))
@@ -78,8 +93,17 @@ def write_flat_normal(path, size=16):
         f.write(header + bytes((255, 128, 128, 0)) * (size * size))
 
 
-def make_material(name, info, tex_dir, settings, shaders_blend, shader_io):
-    mat = bpy.data.materials.new(name)
+def glow_texture(info):
+    """The texture a lit part glows with: a "_lit" companion texture if the material has one, else
+    its diffuse (the light textures are drawn switched on)."""
+    for t in info["textures"]:
+        if t["slot"] != "diffuse" and "_lit" in t["file"]:
+            return t["file"]
+    return next((t["file"] for t in info["textures"] if t["slot"] == "diffuse"), None)
+
+
+def make_material(name, info, tex_dir, settings, shaders_blend, shader_io, lit=False):
+    mat = bpy.data.materials.new(name + (":lit" if lit else ""))
     tree = mat.node_tree
     tree.nodes.clear()
     out = tree.nodes.new("ShaderNodeOutputMaterial")
@@ -111,6 +135,18 @@ def make_material(name, info, tex_dir, settings, shaders_blend, shader_io):
         alpha.inputs["Alpha Blend"].default_value = True
         alpha.inputs["Source Blend Mode"].default_value = 6       # SRC_ALPHA
         alpha.inputs["Destination Blend Mode"].default_value = 7  # INV_SRC_ALPHA
+
+    glow = glow_texture(info) if lit else None
+    if glow:
+        # Glow shader: adds glow map * emissive color * multiple, on top of the lit diffuse. PyNifly
+        # writes OWN_EMIT on every shape already; the glow map, type and flag come from these.
+        glow_path = settings["textures"] + "/" + os.path.splitext(glow)[0] + ".dds"
+        mat["BSShaderTextureSet_Glow"] = glow_path.replace("/", "\\").lower()
+        mat.pyn_shader.Shader_Type = "Glow_Shader"
+        mat.pyn_shader.Shader_Flags_2 = "ZBUFFER_WRITE | GLOW_MAP"
+        em = "Emission Color" if "Emission Color" in shader.inputs else "Emission"
+        shader.inputs[em].default_value = (1.0, 1.0, 1.0, 1.0)
+        shader.inputs["Emission Strength"].default_value = GLOW_MULT
     return mat
 
 
@@ -169,6 +205,7 @@ def main():
     nodes = model["nodes"]
     paths = node_paths(nodes)
     worlds = world_matrices(nodes)
+    rotations = world_rotations(nodes)
     skip = [re.compile(p) for p in settings["skip"]]
 
     scene = bpy.context.scene
@@ -188,22 +225,37 @@ def main():
         scene.collection.objects.link(steer)
         scene.collection.objects.link(spin)
         anchor = Matrix.Translation(center)
-        anchors.append((wheel["node"] + "/" + wheel["spin"] + "/", spin, anchor))
+        anchors.append((wheel["node"] + "/" + wheel["spin"] + "/", spin, anchor, False))
         if wheel.get("steers"):
-            anchors.append((wheel["node"] + "/", steer, anchor))
+            anchors.append((wheel["node"] + "/", steer, anchor, False))
+
+    # Part nodes: at the part's pivot, turned like the part (Unity rotation, scale stays in the mesh).
+    for part in settings.get("parts", []):
+        if part["path"] not in paths:
+            raise SystemExit(f"build_nif: part {part['path']} not in the model")
+        i = paths.index(part["path"])
+        pose = to_skyrim(Matrix.Translation(worlds[i].to_translation()) @ rotations[i].to_matrix().to_4x4())
+        empty = bpy.data.objects.new(part["path"], None)
+        empty.matrix_basis = pose
+        empty.parent = root
+        scene.collection.objects.link(empty)
+        anchors.append((part["path"] + "/", empty, pose, part.get("lit", False)))
     anchors.sort(key=lambda a: -len(a[0]))  # most specific prefix first
 
     materials = {}
     count = 0
     for i, node in enumerate(nodes):
         mesh = node.get("mesh")
-        if not mesh or any(p.search(paths[i]) for p in skip):
+        if not mesh:
             continue
-        parent, anchor = root, Matrix.Identity(4)
-        for prefix, empty, m in anchors:
+        parent, anchor, lit = root, Matrix.Identity(4), False
+        for prefix, empty, m, glows in anchors:
             if (paths[i] + "/").startswith(prefix):
-                parent, anchor = empty, m
+                parent, anchor, lit = empty, m, glows
                 break
+        # Lit parts sit in skipped areas (switched-on lights): they're shown only while MSC shows them.
+        if not lit and any(p.search(paths[i]) for p in skip):
+            continue
         # Unity-space vertex -> van space (meters) -> Skyrim axes and units -> the anchor's frame.
         matrix =anchor.inverted() @ Matrix.Diagonal(Vector((UNITS_PER_METER,) * 3 + (1.0,))) @ UNITY_TO_SKYRIM @ worlds[i]
         for s, sub in enumerate(mesh["submeshes"]):
@@ -211,12 +263,13 @@ def main():
             if not mname or mname in settings["skip_materials"] or not sub["triangles"]:
                 continue
             info = model["materials"].get(mname, {"color": [1, 1, 1, 1], "textures": []})
-            if mname not in materials:
-                materials[mname] = make_material(mname, info, tex_dir, settings, shaders_blend, shader_io)
+            key = (mname, lit)
+            if key not in materials:
+                materials[key] = make_material(mname, info, tex_dir, settings, shaders_blend, shader_io, lit)
             c = info["color"]
             color = None if all(abs(x - 1.0) < 1e-3 for x in c[:3]) else (c[0], c[1], c[2], 1.0)
             name = f"{paths[i]}:{s}".replace("/", "|")
-            obj = build_mesh(name, mesh, sub, matrix, materials[mname], color)
+            obj = build_mesh(name, mesh, sub, matrix, materials[key], color)
             obj.parent = parent
             count += 1
 

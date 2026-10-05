@@ -43,7 +43,7 @@ namespace PerkeleRim
         State GetState() const { return _state.load(std::memory_order_acquire); }
         bool  IsUp() const { return GetState() == State::Up; }
 
-        // Latest-value slots. Write only the slot your side owns (Skyrim: input, MSC: player, vehicle).
+        // Latest-value slots. Write only the slot your side owns (Skyrim: input, MSC: player, vehicle, parts).
         // Read returns false while the link is down or the slot was never written.
         void WriteInput(const Protocol::InputState& a_value);
         bool ReadInput(Protocol::InputState& a_out) const;
@@ -51,6 +51,8 @@ namespace PerkeleRim
         bool ReadPlayer(Protocol::PlayerState& a_out) const;
         void WriteVehicle(const Protocol::VehicleState& a_value);
         bool ReadVehicle(Protocol::VehicleState& a_out) const;
+        void WriteVehicleParts(const Protocol::VehicleParts& a_value);
+        bool ReadVehicleParts(Protocol::VehicleParts& a_out) const;
 
         // Outbound ring (Skyrim -> MSC for Skyrim, MSC -> Skyrim for MSC). Returns false when the
         // link is down, the ring is full or the message can never fit.

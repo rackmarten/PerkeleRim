@@ -421,7 +421,9 @@ namespace PerkeleRim::PlayerSync
             if (seated) {
                 LockVanToCamera(vehicle);
             }
-            VehicleView::Update(hasVehicle ? &vehicle : nullptr, state.generation);
+            Protocol::VehicleParts parts{};
+            const bool             hasParts = hasVehicle && link.ReadVehicleParts(parts);
+            VehicleView::Update(hasVehicle ? &vehicle : nullptr, hasParts ? &parts : nullptr, state.generation);
             // Stream ahead of the player while it moves fast (driving).
             const RE::NiPoint3 velocity = valid ? RE::NiPoint3(pose.velocity[0], pose.velocity[1], pose.velocity[2]) : RE::NiPoint3();
             CollisionSampler::Update(a_player, velocity);

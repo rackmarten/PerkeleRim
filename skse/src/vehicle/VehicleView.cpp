@@ -24,13 +24,28 @@ namespace PerkeleRim::VehicleView
             RE::NiAVObject* spin = nullptr;
         };
 
+        // Part nodes of the converted mesh are named by their MSC path, in VehicleParts order.
+        constexpr std::size_t kPartCount = Protocol::kHayosikoPartCount;
+
         struct State
         {
-            RE::NiPointer<RE::NiNode>         node;
-            std::array<Wheel, kWheels.size()> wheels{};
-            bool                              failed = false;  // nothing loaded; don't retry every frame
-            bool                              shown = false;
+            RE::NiPointer<RE::NiNode>               node;
+            std::array<Wheel, kWheels.size()>       wheels{};
+            std::array<RE::NiAVObject*, kPartCount> parts{};
+            bool                                    failed = false;  // nothing loaded; don't retry every frame
+            bool                                    shown = false;
         } state;
+
+        void SetRotation(RE::NiMatrix3& a_out, const float (&a_quat)[4])
+        {
+            float m[3][3];
+            Coords::ToMatrix({ a_quat[0], a_quat[1], a_quat[2], a_quat[3] }, m);
+            for (int r = 0; r < 3; r++) {
+                for (int c = 0; c < 3; c++) {
+                    a_out.entry[r][c] = m[r][c];
+                }
+            }
+        }
 
         // Right-handed rotation matrices (Skyrim space), for column vectors like NiMatrix3.
         RE::NiMatrix3 RotationX(float a_angle)
@@ -63,6 +78,33 @@ namespace PerkeleRim::VehicleView
                 found += state.wheels[i].spin ? 1 : 0;
             }
             SKSE::log::info("vehicle view: {} of {} wheel nodes", found, kWheels.size());
+        }
+
+        // Only the converted van has them; the stand-ins find none.
+        void FindParts()
+        {
+            int found = 0;
+            for (std::size_t i = 0; i < kPartCount; i++) {
+                state.parts[i] = state.node->GetObjectByName(Protocol::kHayosikoParts[i]);
+                found += state.parts[i] ? 1 : 0;
+            }
+            SKSE::log::info("vehicle view: {} of {} part nodes", found, kPartCount);
+        }
+
+        // Pose relative to the body, and hidden while MSC doesn't draw the part (lights switched off,
+        // the key out of the ignition).
+        void PoseParts(const Protocol::VehicleParts& a_parts)
+        {
+            for (std::size_t i = 0; i < kPartCount; i++) {
+                auto* part = state.parts[i];
+                if (!part) {
+                    continue;
+                }
+                const auto& in = a_parts.parts[i];
+                SetRotation(part->local.rotate, in.rotation);
+                part->local.translate = RE::NiPoint3(in.translation[0], in.translation[1], in.translation[2]);
+                part->SetAppCulled((in.flags & Protocol::kPartVisible) == 0);
+            }
         }
 
         // Steer turns right for positive angles (clockwise seen from above, so negative about +Z);
@@ -104,6 +146,7 @@ namespace PerkeleRim::VehicleView
                     state.node = model;
                     SKSE::log::info("vehicle view: model {}", path);
                     FindWheels();
+                    FindParts();
                     return true;
                 }
                 SKSE::log::info("vehicle view: {} did not load (error {})", path, static_cast<int>(error));
@@ -126,7 +169,7 @@ namespace PerkeleRim::VehicleView
         }
     }
 
-    void Update(const Protocol::VehicleState* a_state, std::uint32_t a_generation)
+    void Update(const Protocol::VehicleState* a_state, const Protocol::VehicleParts* a_parts, std::uint32_t a_generation)
     {
         const bool valid = a_state && (a_state->flags & Protocol::kVehicleValid) != 0 && a_state->generation == a_generation;
         if (!valid) {
@@ -138,17 +181,14 @@ namespace PerkeleRim::VehicleView
         }
         Attach();
 
-        auto&                node = *state.node;
-        const Coords::Quat q{ a_state->rotation[0], a_state->rotation[1], a_state->rotation[2], a_state->rotation[3] };
-        float              m[3][3];
-        Coords::ToMatrix(q, m);
-        for (int r = 0; r < 3; r++) {
-            for (int c = 0; c < 3; c++) {
-                node.local.rotate.entry[r][c] = m[r][c];
-            }
-        }
+        auto& node = *state.node;
+        SetRotation(node.local.rotate, a_state->rotation);
         node.local.translate = RE::NiPoint3(a_state->position[0], a_state->position[1], a_state->position[2]);
         PoseWheels(*a_state);
+        if (a_parts && a_parts->vehicle == a_state->vehicle && a_parts->generation == a_generation &&
+            a_parts->count == kPartCount) {
+            PoseParts(*a_parts);
+        }
         node.SetAppCulled(false);
         // A model loaded outside a cell is never faded in by the game and stays invisible.
         if (auto* fade = node.AsFadeNode()) {

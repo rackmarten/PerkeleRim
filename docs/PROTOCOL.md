@@ -1,6 +1,6 @@
 # Protocol
 
-> Status: protocol v4. Transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a); collision chunks streamed (milestone 1b); one vehicle pose (milestone 2a); the van parked at a given spot (milestone 2c). Message contents beyond `InputState`, `PlayerState`, `VehicleState`, `CollisionChunk` and `WorldspaceChange` arrive with the milestones that need them.
+> Status: protocol v5. Transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a); collision chunks streamed (milestone 1b); one vehicle pose (milestone 2a); the van parked at a given spot (milestone 2c); the van's doors, controls and lights (milestone 2d). Message contents beyond `InputState`, `PlayerState`, `VehicleState`, `VehicleParts`, `CollisionChunk` and `WorldspaceChange` arrive with the milestones that need them.
 
 The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchange data over one shared memory section. See [DESIGN.md](DESIGN.md) for the overall architecture and ownership rules.
 
@@ -14,7 +14,7 @@ The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchang
 
 ## Section layout
 
-One section, `Local\PerkeleRim.Link`, 4,457,024 bytes. Whichever game starts first creates it; it disappears when both have closed.
+One section, `Local\PerkeleRim.Link`, 4,458,624 bytes. Whichever game starts first creates it; it disappears when both have closed.
 
 | Offset | Size | Part | Written by |
 |---|---|---|---|
@@ -22,8 +22,9 @@ One section, `Local\PerkeleRim.Link`, 4,457,024 bytes. Whichever game starts fir
 | 128 | 128 | `InputSlot` (latest `InputState`) | Skyrim |
 | 256 | 64 | `PlayerSlot` (latest `PlayerState`) | MSC |
 | 320 | 128 | `VehicleSlot` (latest `VehicleState`) | MSC |
-| 448 | 64 + 4 MiB | ring Skyrim → MSC (collision chunks, worldspace changes) | Skyrim produces, MSC consumes |
-| 4,194,816 | 64 + 256 KiB | ring MSC → Skyrim (events) | MSC produces, Skyrim consumes |
+| 448 | 1600 | `VehiclePartsSlot` (latest `VehicleParts`) | MSC |
+| 2048 | 64 + 4 MiB | ring Skyrim → MSC (collision chunks, worldspace changes) | Skyrim produces, MSC consumes |
+| 4,196,416 | 64 + 256 KiB | ring MSC → Skyrim (events) | MSC produces, Skyrim consumes |
 
 Layout rules:
 
@@ -74,11 +75,13 @@ Log lines: `collision: chunk (x,y) gen N try T: hits/1089 hit (terrain, static, 
 
 `VehicleState` (MSC → Skyrim, latest-value slot): vehicle id (`kVehicleHayosiko`), flags (`kVehicleValid` while it is on the current anchor's island, `kVehicleDriven` while the player sits in it), anchor `generation`, position of the vehicle's origin, rotation as a quaternion in Skyrim space (local +Y forward, +Z up), velocity, front wheel steer angle (radians, positive turns right) and each wheel's spin angle about its axle (radians in [-π, π], positive rolls forward), which Skyrim applies to the van mesh's `Wheel*` and `Wheel*:Spin` nodes. One vehicle for now.
 
-MSC side (`msc/src/Game/VehicleLink.cs`, one instance per vehicle): when the player is put down on a new anchor on foot, the van is parked to its right and the Jonnez moped to its left, each at the first spot on its own side (usual, 4 m ahead, 4 m back, 3 m further out) where the ground under its center and corners is within 0.4 m, dropped above the highest point (a rock under one corner used to throw it, sometimes into the player); a vehicle the player sits in is moved to the new anchor with the player in it and set down on its wheels at the ground there. Both get their key (`PlayerKeyHayosiko`, as MSC's debug "Keys" command does) and a full tank. A vehicle with no island ground under it is made kinematic and keeps its velocity until the ground arrives. Only the van has a wire id, so only it is sent.
+`VehicleParts` (MSC → Skyrim, latest-value slot, written right after `VehicleState`): vehicle id, anchor `generation`, `count` and up to `kVehiclePartCapacity` (48) `VehiclePart`s: rotation (quaternion) and pivot translation relative to the vehicle's body in Skyrim axes and units, and `kPartVisible` while MSC draws the part. Part `i` is entry `i` of the vehicle's fixed list, `kHayosikoParts` in the header: MSC hierarchy paths below the van's root (doors, steering wheel, key, gauge needles, pedals, levers, wipers, fuel hatch and cap, radio tuner, seatbelt, and the lit meshes: beams, brake, reverse, blinkers, gauge backlight and dashboard lamps). The C# mirror (`Wire.HayosikoParts`) and `tools/nif/hayosiko.json` list the same paths, and `msc/tests` checks all three agree. Changing the list bumps the version. A part's pose is relative to the body, not to its MSC parent, so nesting doesn't matter on the Skyrim side.
 
-Skyrim side (`skse/src/vehicle/VehicleView.cpp`): the van mesh converted from the player's own MSC install (`Meshes\PerkeleRim\Hayosiko.nif`, see [tools/README.md](../tools/README.md)), or a vanilla cart stand-in (`Furniture\Cart\CartFurnStatic01.nif`) when it wasn't converted, loaded through `BSModelDB` and hung under the player's parent node, posed every frame from a valid `VehicleState` of the current generation. While the player drives it (`skse/src/player/PlayerSync.cpp`), it is hung around Skyrim's camera instead of at MSC's pose: Skyrim builds the camera before the `PlayerCharacter::Update` hook from the previous frame's placement and smooths small moves, so the van jittered and fell behind at speed. The camera's spot in the van is learned while the van is below 0.5 m/s and kept for the session; the player's character controller isn't simulated while seated (like a rider). It has no reference and no Havok collision, so the collision sampler never sees it.
+MSC side (`msc/src/Game/VehicleLink.cs`, one instance per vehicle): when the player is put down on a new anchor on foot, the van is parked to its right and the Jonnez moped to its left, each at the first spot on its own side (usual, 4 m ahead, 4 m back, 3 m further out) where the ground under its center and corners is within 0.4 m, dropped above the highest point (a rock under one corner used to throw it, sometimes into the player); a vehicle the player sits in is moved to the new anchor with the player in it and set down on its wheels at the ground there. Both get their key (`PlayerKeyHayosiko`, as MSC's debug "Keys" command does) and a full tank. A vehicle with no island ground under it is made kinematic and keeps its velocity until the ground arrives. Only the van has a wire id, so only it is sent. Every frame it also reads each listed part's transform relative to the van's root and whether it is drawn (object active and renderer, if any, enabled): MSC switches lights and lamps by turning objects or renderers off.
 
-Log lines: `vehicle: found/wheel models/parked/got in/got out` and `surface: ...` (MSC's ground surfaces, once per game load) in MSC's log; `vehicle view: model ..., N of 4 wheel nodes, showing/hidden` and `player sync: ... seated=true van shift=D` (how far the van was moved off MSC's pose to stay around the camera) in `PerkeleRim.log`.
+Skyrim side (`skse/src/vehicle/VehicleView.cpp`): the van mesh converted from the player's own MSC install (`Meshes\PerkeleRim\Hayosiko.nif`, see [tools/README.md](../tools/README.md)), or a vanilla cart stand-in (`Furniture\Cart\CartFurnStatic01.nif`) when it wasn't converted, loaded through `BSModelDB` and hung under the player's parent node, posed every frame from a valid `VehicleState` of the current generation. While the player drives it (`skse/src/player/PlayerSync.cpp`), it is hung around Skyrim's camera instead of at MSC's pose: Skyrim builds the camera before the `PlayerCharacter::Update` hook from the previous frame's placement and smooths small moves, so the van jittered and fell behind at speed. The camera's spot in the van is learned while the van is below 0.5 m/s and kept for the session; the player's character controller isn't simulated while seated (like a rider). It has no reference and no Havok collision, so the collision sampler never sees it. The converted mesh has one node per listed part, named by its path; VehicleView sets each from `VehicleParts` (same vehicle and generation) and app-culls the ones MSC doesn't draw. Lit parts use Skyrim's glow shader, so they glow while shown.
+
+Log lines: `vehicle: found/wheel models/N/40 parts/parked/got in/got out` and `surface: ...` (MSC's ground surfaces, once per game load) in MSC's log; `vehicle view: model ..., N of 4 wheel nodes, N of 40 part nodes, showing/hidden` and `player sync: ... seated=true van shift=D` (how far the van was moved off MSC's pose to stay around the camera) in `PerkeleRim.log`.
 
 ## Input
 
