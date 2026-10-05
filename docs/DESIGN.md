@@ -83,7 +83,8 @@ Alternatives considered: Motor Town (best trucks/drift, but early access and har
 
 ### Coordinates
 
-- Skyrim: Z-up, game units (roughly 70 units ≈ 1 m; verify). Unity: Y-up, meters, left-handed.
+- Skyrim: Z-up, game units (1 unit = 0.0142875 m, Havok's scale; about 70 per meter). Unity: Y-up, meters, left-handed.
+- On the wire everything is in Skyrim world space; MSC converts and adds the island offset.
 - Keep one conversion function per direction, unit-tested.
 
 ### Running MSC hidden
@@ -97,7 +98,7 @@ Proven by the hidden-MSC spike ([SPIKE_HIDDEN_MSC.md](SPIKE_HIDDEN_MSC.md)):
 
 ## 6. Protocol
 
-Versioned C struct layout in a shared header, mirrored in C# with `StructLayout`. Message list, layout rules and input forwarding: see [PROTOCOL.md](PROTOCOL.md).
+One shared memory section: a versioned, packed layout in a C++ header, mirrored in C# with `StructLayout`. Latest-value slots for continuous state (input, player pose), one ring per direction for messages that must all arrive. Layout, handshake and input forwarding: see [PROTOCOL.md](PROTOCOL.md).
 
 ## 7. Feature mapping
 
@@ -168,7 +169,9 @@ PerkeleRim/
 │   ├── DESIGN.md
 │   └── PROTOCOL.md
 ├── protocol/
-│   └── ssc_protocol.h        # shared struct layout, versioned
+│   ├── perkelerim_protocol.h # shared struct layout, versioned
+│   ├── cpp/                  # C++ link + coordinate conversion
+│   └── tests/                # C++ tests, shared conversion vectors
 ├── skse/                     # C++ SKSE plugin (CommonLibSSE-NG)
 ├── msc/                      # C# MSCLoader mod
 ├── skyrim-data/              # ESP, garage, scripts
@@ -177,7 +180,6 @@ PerkeleRim/
 
 ## 14. Open questions
 
-- Exact Skyrim unit ↔ meter scale to use for MSC physics.
 - Best way to draw MSC arms and items in Skyrim's first-person view.
 - How to trigger MSC emotes from a cleaner input layer instead of raw keys.
 - Where exactly to place the garage so the tundra drive looks good on camera.

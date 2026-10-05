@@ -29,9 +29,12 @@ $clicked = $false
 $proc = Start-Process -PassThru -WorkingDirectory $msc (Join-Path $msc 'mysummercar.exe') `
     -ArgumentList '-screen-fullscreen', '0', '-screen-width', $Width, '-screen-height', $Height, '-screen-quality', 'Fastest'
 
-$deadline = (Get-Date).AddSeconds(10)
+# Watch for the dialog until the game window itself shows up; on a cold start it can take well
+# over 10 s to appear.
+$deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Milliseconds 500
+    if ([PerkeleRim.Win32]::FindWindowEx([IntPtr]::Zero, [IntPtr]::Zero, 'UnityWndClass', 'My Summer Car') -ne [IntPtr]::Zero) { break }
     # The dialog is a top-level #32770 window owned by the game process, with a "Play!" button.
     $hwnd = [IntPtr]::Zero
     while (($hwnd = [PerkeleRim.Win32]::FindWindowEx([IntPtr]::Zero, $hwnd, '#32770', $null)) -ne [IntPtr]::Zero) {

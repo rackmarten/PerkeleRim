@@ -1,0 +1,19 @@
+# Shared Skyrim <-> Unity conversion vectors, checked by both the C++ and the C# tests.
+# pos,skyrim_x,skyrim_y,skyrim_z,unity_x,unity_y,unity_z      (checked both ways)
+# angle,skyrim_radians,unity_degrees                          (both ways; radians in [0, 2*pi))
+# angle_wrap,skyrim_radians,unity_degrees                     (Skyrim -> Unity only)
+pos,0,0,0,0,0,0
+pos,70,0,0,1.000125,0,0
+pos,0,70,0,0,0,1.000125
+pos,0,0,70,0,1.000125,0
+pos,100,200,300,1.42875,4.28625,2.8575
+pos,-1000,50000,-12.5,-14.2875,-0.17859375,714.375
+pos,4096,-4096,4096,58.5216,58.5216,-58.5216
+angle,0,0
+angle,1.5707963,89.999998
+angle,3.1415927,180.000002
+angle,4.712389,270.000005
+angle_wrap,-1.5707963,270.000002
+angle_wrap,7,41.0704566
+angle_wrap,-6.2831853,0.0000005
+angle_wrap,-0.0000001,0

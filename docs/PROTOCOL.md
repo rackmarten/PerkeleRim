@@ -1,42 +1,79 @@
 # Protocol
 
-> Status: proposal. Nothing is implemented yet. The source of truth will be `protocol/ssc_protocol.h` once it exists; this doc explains it.
+> Status: v1 transport implemented (shared memory, handshake, slots, rings, coordinate conversion). Message contents beyond `InputState`, `PlayerState`, `CollisionChunk` and `WorldspaceChange` arrive with the milestones that need them.
 
-The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchange messages over shared memory. See [DESIGN.md](DESIGN.md) for the overall architecture and ownership rules.
+The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchange data over one shared memory section. See [DESIGN.md](DESIGN.md) for the overall architecture and ownership rules.
 
-## Messages
+| File | What it is |
+|---|---|
+| [`protocol/perkelerim_protocol.h`](../protocol/perkelerim_protocol.h) | Source of truth: every struct, offset and constant, with `static_assert`s |
+| [`protocol/cpp/link.h`](../protocol/cpp/link.h), `link.cpp` | C++ end of the link (used by `skse/`, tested standalone) |
+| [`protocol/cpp/coords.h`](../protocol/cpp/coords.h) | C++ coordinate conversion |
+| [`msc/src/Link/`](../msc/src/Link) | C# mirror: `Protocol.cs` (structs), `Link.cs`, `Coords.cs`. Unity-free |
+| `protocol/tests/`, `msc/tests/` | C++ (doctest) and C# (NUnit) tests, run by `scripts/test.ps1` and CI |
+
+## Section layout
+
+One section, `Local\PerkeleRim.Link`, 4,456,896 bytes. Whichever game starts first creates it; it disappears when both have closed.
+
+| Offset | Size | Part | Written by |
+|---|---|---|---|
+| 0 | 128 | `LinkHeader`: magic, sizes, creator version, one `PeerInfo` per side | creator, then each side its own `PeerInfo` |
+| 128 | 128 | `InputSlot` (latest `InputState`) | Skyrim |
+| 256 | 64 | `PlayerSlot` (latest `PlayerState`) | MSC |
+| 320 | 64 + 4 MiB | ring Skyrim → MSC (collision chunks, worldspace changes) | Skyrim produces, MSC consumes |
+| 4,194,688 | 64 + 256 KiB | ring MSC → Skyrim (events) | MSC produces, Skyrim consumes |
+
+Layout rules:
+
+- Everything is packed (`#pragma pack(1)` / `StructLayout(Sequential, Pack = 1)`), little-endian and fixed size. C# field names match the header.
+- `LinkHeader` is frozen across versions. Any other layout change bumps `kProtocolVersion`.
+- The C++ header `static_assert`s every size and offset. The C# tests parse those asserts and the `k*` constants out of the header and check the C# mirror against them, so the two can't drift silently.
+
+## Handshake and liveness
+
+Both sides run the same state machine (`Detached` → `Waiting` → `Up`, or `Disabled`), ticked 10+ times a second. Skyrim ticks it on its own thread at 20 Hz, so it also runs in menus. MSC ticks it from `Update`, so the heartbeat stops whenever MSC's main loop stalls.
+
+1. Create or open the section. A fresh section gets its header filled in and the magic written last; a joining side waits while the magic is still 0.
+2. Unknown magic or header size: the link is disabled (`not a PerkeleRim link`).
+3. Each side publishes its `PeerInfo` (version, pid), even when the versions differ, so both sides can report a mismatch. If the creator's version, or the peer's, differs from ours, both log `protocol mismatch: ... speaks vN, this ... speaks vM` and stay disabled until restarted.
+4. On attach, a side throws away whatever is left in its inbound ring (sent to an earlier instance of itself).
+5. Each tick bumps our heartbeat. The link is **up** while the peer's heartbeat keeps moving. The first read only seeds the value, so a crashed peer never looks alive. It goes **down** after 2 s without a heartbeat change (e.g. MSC loading a scene) or at once when the peer detaches cleanly (pid set to 0).
+
+Log lines on both sides: `created shared memory` / `joined shared memory`, `link up: <peer> pid N, protocol vN`, `link down: ...`, `link disabled: ...`. The Skyrim side logs to `PerkeleRim.log` (prefixed `link:`), the MSC side to the MSCLoader console and `output_log.txt` (prefixed `PerkeleRim:`).
+
+## Latest-value slots
+
+Continuous state (`InputState`, `PlayerState`) goes through a seqlock slot, not a queue: the reader only ever wants the newest value, and a queue would add lag. The writer bumps `seq` to odd, writes, then bumps it back to even. The reader retries if `seq` changed or was odd. `seq == 0` means never written. Reads return nothing while the link is down.
+
+## Rings
+
+One single-producer, single-consumer byte ring per direction, for messages that must all arrive (collision chunks, events). `head` (producer) and `tail` (consumer) are monotonic byte counts on separate halves of the ring header. A record is an 8-byte `MessageHeader` (`type`, `size`) plus payload and may wrap around the end. `Send` refuses while the link is down, when the ring is full, or when the message can never fit.
 
 | Direction | Message | Contents |
 |---|---|---|
-| Skyrim → MSC | `InputState` | movement, look, action buttons (MSC has no focus, see [Input](#input)) |
-| Skyrim → MSC | `CollisionChunk` | chunk id, origin, vertex/index buffers |
-| Skyrim → MSC | `ActorList` | NPC ids, positions, capsule sizes, hostile flag |
-| Skyrim → MSC | `PlayerDamage` | amount, source, knockback |
-| Skyrim → MSC | `ConsumeEvent` | e.g. drank Nord mead → counts as beer |
-| Skyrim → MSC | `WorldspaceChange` | new worldspace/cell, spawn transform |
-| MSC → Skyrim | `PlayerState` | position, rotation, crouch, in-vehicle id, emote state, drunk level |
-| MSC → Skyrim | `VehicleState` | vehicle id, transform, wheel spin and steer angles |
-| MSC → Skyrim | `ItemState` | dynamic items (bottles, cases): id, transform |
-| MSC → Skyrim | `ImpactEvent` | target actor id, speed, direction (vehicle or thrown item) |
-| MSC → Skyrim | `PunchEvent` | target actor id, direction |
-| MSC → Skyrim | `UrineHit` | target actor id |
-| MSC → Skyrim | `Death` | cause |
+| Skyrim → MSC | `CollisionChunk` | `CollisionChunkHeader` (chunk x/y, worldspace, generation, origin, counts), vertices relative to origin, triangle indices |
+| Skyrim → MSC | `WorldspaceChange` | worldspace, interior cell, generation, spawn position and heading |
 
-Input pass-through keys (like SkyCraft's G/J/M): activate → Skyrim, shout → Skyrim, journal/map → Skyrim.
+Planned, added with their milestones (each one bumps the version): `ActorList`, `PlayerDamage`, `ConsumeEvent` (Skyrim → MSC); `VehicleState`, `ItemState`, `ImpactEvent`, `PunchEvent`, `UrineHit`, `Death` (MSC → Skyrim).
 
-## Layout rules
-
-- One versioned C header, `protocol/ssc_protocol.h`, mirrored in C# with `StructLayout(LayoutKind.Sequential, Pack = 1)`.
-- The header starts with a magic value and a protocol version. A version mismatch logs a clear error on both sides and disables the link.
-- Struct sizes and field offsets are asserted by tests on both sides, so the C++ and C# layouts can't drift silently.
-- One ring buffer per direction.
+Input pass-through keys (activate, shout, journal/map) stay with Skyrim.
 
 ## Input
 
-MSC runs hidden while Skyrim has focus, so MSC can't read the keyboard and mouse itself. Input is captured on the Skyrim side and forwarded to MSC (an `InputState` message). The MSC mod redirects every `UnityEngine.Input` call in the game's assemblies (cInput included) to a shim and answers from the latest `InputState`, so `InputState` carries raw key states (as Unity `KeyCode`s), the `Mouse X`/`Mouse Y` axes and the `Horizontal`/`Vertical` axes. Details and measurements: [SPIKE_HIDDEN_MSC.md](SPIKE_HIDDEN_MSC.md).
+MSC runs hidden while Skyrim has focus, so it can't read the keyboard and mouse itself. Skyrim captures input and writes `InputState`. The MSC mod redirects every `UnityEngine.Input` call in the game's assemblies (cInput included) to a shim and answers from the latest `InputState`. Details and measurements: [SPIKE_HIDDEN_MSC.md](SPIKE_HIDDEN_MSC.md).
+
+- `keys`: 512-bit set of held Unity `KeyCode`s (mouse buttons are `Mouse0`..`Mouse6`). The shim derives Down/Up edges per MSC frame.
+- `mouseX`, `mouseY`: the `Mouse X`/`Mouse Y` axes **accumulated** since Skyrim started. The two games run at different frame rates, so MSC applies the difference since its last frame; a per-frame delta would be lost or doubled.
+- `horizontal`, `vertical`: the Unity axes, -1..1.
+- `flags & kInputOwnsPlayer`: MSC should apply this input at all.
 
 ## Coordinates
 
-- Skyrim: Z-up, game units (roughly 70 units per meter; exact Havok scale to be confirmed).
-- Unity: Y-up, meters, left-handed.
-- One conversion function per direction on each side, unit-tested.
+On the wire everything is in **Skyrim world space**. MSC converts on its side and adds the collision island offset.
+
+- Skyrim: X east, Y north, Z up (right-handed), game units. Heading is the Z angle in radians, 0 = north, clockwise seen from above. Pitch positive looks down.
+- Unity: X east, Y up, Z north (left-handed), meters. Yaw is `eulerAngles.y` in degrees, same zero and direction.
+- Scale: 1 unit = 0.0142875 m, Havok's world scale in Skyrim (69.99 units per meter).
+- Positions map axis by axis (Y and Z swap, which also flips the handedness), so angles keep their sign. Results are normalized to [0, 360) degrees or [0, 2π) radians.
+- One function per direction on each side (`coords.h`, `Coords.cs`), both checked against the same vectors in `protocol/tests/coords_vectors.csv`.

@@ -20,8 +20,10 @@ add_commonlibsse_plugin(
     ${PROJECT_NAME}
     NAME "PerkeleRim"
     AUTHOR "Marek Uncik"
-    SOURCES src/main.cpp src/spike/PoseTest.cpp
+    SOURCES src/main.cpp src/link/LinkService.cpp src/spike/PoseTest.cpp ../protocol/cpp/link.cpp
 )
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
-target_include_directories(${PROJECT_NAME} PRIVATE src)
+target_include_directories(${PROJECT_NAME} PRIVATE src ../protocol/cpp)
+# The shared link code includes <Windows.h> itself and must not pick up CommonLib's PCH.
+set_source_files_properties(../protocol/cpp/link.cpp PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

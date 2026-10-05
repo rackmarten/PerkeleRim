@@ -1,0 +1,41 @@
+using System.Diagnostics;
+using MSCLoader;
+using PerkeleRim.Protocol;
+using UnityEngine;
+
+namespace PerkeleRim.Game
+{
+    // Keeps the link to the Skyrim plugin alive from MSC's game loop, on a DontDestroyOnLoad object
+    // created at the main menu. Ticking from Update (not a thread) means the heartbeat stops when
+    // MSC's main loop stalls, which is exactly what the Skyrim side should notice.
+    public class LinkHost : MonoBehaviour
+    {
+        static LinkHost instance;
+
+        readonly Stopwatch clock = Stopwatch.StartNew();
+        Link link;
+
+        public static Link Current => instance != null ? instance.link : null;
+
+        public static void Ensure()
+        {
+            if (instance != null) return;
+            var go = new GameObject("PerkeleRim.Link");
+            DontDestroyOnLoad(go);
+            instance = go.AddComponent<LinkHost>();
+        }
+
+        void Awake()
+        {
+            // MSC runs hidden behind Skyrim; without this Unity pauses it as soon as it loses focus.
+            Application.runInBackground = true;
+            link = new Link(Side.Msc, line => ModConsole.Print("PerkeleRim: " + line));
+        }
+
+        void Update() => link.Tick((ulong)clock.ElapsedMilliseconds);
+
+        void OnApplicationQuit() => link.Dispose();
+
+        void OnDestroy() => link.Dispose();
+    }
+}

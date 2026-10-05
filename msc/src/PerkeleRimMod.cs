@@ -18,6 +18,9 @@ namespace PerkeleRim
         private void Mod_OnMenuLoad()
         {
             ModConsole.Print("PerkeleRim loaded");
+#if PERKELERIM_GAME
+            Game.LinkHost.Ensure();
+#endif
 #if PERKELERIM_SPIKE
             Spike.SpikeHost.Ensure();
 #endif

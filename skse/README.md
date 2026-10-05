@@ -2,7 +2,7 @@
 
 SKSE plugin (C++, CommonLib) that runs inside Skyrim: collision sampling, NPC mirroring, rendering of the My Summer Car player and vehicles, crime and damage. See [docs/DESIGN.md](../docs/DESIGN.md).
 
-Currently a hello-world: it logs `PerkeleRim loaded` and the game runtime version to `Documents\My Games\Skyrim Special Edition\SKSE\PerkeleRim.log`.
+It logs `PerkeleRim loaded` and the game runtime version to `Documents\My Games\Skyrim Special Edition\SKSE\PerkeleRim.log`, and starts the link to the MSC mod (`src/link`, built on `protocol/cpp`). Link state is logged there too.
 
 - `src/` plugin source
 - `extern/CommonLibSSE-NG` git submodule ([alandtse/CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG), pinned to a release tag)

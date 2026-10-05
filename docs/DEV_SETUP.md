@@ -85,9 +85,10 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 scripts/build.ps1                  # both halves, Release
 scripts/build.ps1 -Target skse     # SKSE plugin only (-Configuration Debug for a debug build)
 scripts/build.ps1 -Target msc      # MSCLoader mod only
+scripts/test.ps1                   # unit tests: C++ protocol (doctest) and C# link (NUnit), no games needed
 scripts/deploy-local.ps1           # copy both DLLs into the games (close the games first)
 scripts/logs.ps1                   # tail of the plugin, SKSE and My Summer Car logs
-scripts/launch-msc.ps1             # start MSC windowed with no clicks (skips config dialog and news screen)
+scripts/launch-msc.ps1             # start MSC windowed with no clicks (clicks through the config dialog and news screen)
 scripts/msc-save.ps1 snapshot NAME  # save MSC save data outside the repo; "restore NAME" puts it back
 scripts/spike.ps1 -Command dump    # hidden-MSC spike tools, see docs/SPIKE_HIDDEN_MSC.md
 ```
@@ -135,7 +136,7 @@ The first SKSE build takes a while (often 15 to 25 minutes): vcpkg builds the de
 
 ### CI (`.github/workflows/build.yml`)
 
-Runs on GitHub-hosted `windows-latest` for every push and pull request. It uses the same `scripts/build.ps1` as local builds, caches vcpkg binaries, builds the C# mod against the stubs (the game's DLLs can't be redistributed), and uploads both DLLs as a build artifact.
+Runs on GitHub-hosted `windows-latest` for every push and pull request. It uses the same `scripts/build.ps1` as local builds, caches vcpkg binaries, builds the C# mod against the stubs (the game's DLLs can't be redistributed), runs `scripts/test.ps1`, and uploads both DLLs as a build artifact.
 
 ## Troubleshooting
 

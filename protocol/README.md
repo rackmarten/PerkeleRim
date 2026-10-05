@@ -1,5 +1,10 @@
 # protocol
 
-Shared, versioned message layout used by both sides (`ssc_protocol.h`, mirrored in C#). See [docs/PROTOCOL.md](../docs/PROTOCOL.md).
+The shared memory link between the two halves. Explained in [docs/PROTOCOL.md](../docs/PROTOCOL.md).
 
-Not implemented yet.
+- `perkelerim_protocol.h` layout source of truth (structs, offsets, constants), mirrored in `msc/src/Link/Protocol.cs`
+- `cpp/link.h`, `cpp/link.cpp` C++ end of the link, compiled into the SKSE plugin
+- `cpp/coords.h` Skyrim <-> Unity coordinate conversion
+- `tests/` C++ unit tests (doctest) and `coords_vectors.csv`, shared with the C# tests in `msc/tests`
+
+Run all tests with `scripts/test.ps1` (`-Target cpp` for just these). The test project is standalone CMake + vcpkg (`CMakePresets.json` preset `tests`), so it builds in seconds without CommonLibSSE-NG.

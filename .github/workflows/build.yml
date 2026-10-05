@@ -21,7 +21,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ${{ env.LOCALAPPDATA }}\vcpkg\archives
-          key: vcpkg-${{ hashFiles('skse/vcpkg.json', 'skse/vcpkg-configuration.json') }}
+          key: vcpkg-${{ hashFiles('skse/vcpkg.json', 'skse/vcpkg-configuration.json', 'protocol/vcpkg.json') }}
           restore-keys: vcpkg-
 
       # CommonLibSSE-NG detects GITHUB_ACTIONS and links its prebuilt release bundle when the
@@ -36,6 +36,11 @@ jobs:
       - name: Build MSCLoader mod (stub references)
         shell: pwsh
         run: ./scripts/build.ps1 -Target msc -UseStubs
+
+      # Protocol unit tests: C++ (doctest via ctest) and C# (dotnet test). No game install needed.
+      - name: Unit tests
+        shell: pwsh
+        run: ./scripts/test.ps1
 
       - uses: actions/upload-artifact@v4
         with:

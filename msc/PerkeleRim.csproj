@@ -8,6 +8,7 @@
     <Authors>Marek Uncik</Authors>
     <Copyright>Copyright (c) Marek Uncik</Copyright>
     <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>disable</Nullable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <!-- Builds against stub assemblies instead of the game's DLLs. Used by CI. -->
@@ -18,6 +19,7 @@
 
   <ItemGroup>
     <Compile Remove="stubs\**" />
+    <Compile Remove="tests\**" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
 
@@ -30,13 +32,15 @@
     <Reference Include="cInput" HintPath="$(MscPath)\mysummercar_Data\Managed\cInput.dll" Private="false" />
   </ItemGroup>
 
-  <!-- Hidden-MSC spike code (src/Spike) needs Unity, PlayMaker, cInput and Harmony, which have no stubs. -->
+  <!-- Game code (src/Game) and the hidden-MSC spike (src/Spike) need Unity, PlayMaker, cInput and Harmony,
+       which have no stubs. src/Link is Unity-free, builds everywhere, and msc/tests compiles it too. -->
   <PropertyGroup Condition="'$(UseStubs)' != 'true'">
-    <DefineConstants>$(DefineConstants);PERKELERIM_SPIKE</DefineConstants>
+    <DefineConstants>$(DefineConstants);PERKELERIM_GAME;PERKELERIM_SPIKE</DefineConstants>
   </PropertyGroup>
 
   <!-- CI build: compile against hand-written stubs of the API surface we use (msc/stubs). -->
   <ItemGroup Condition="'$(UseStubs)' == 'true'">
+    <Compile Remove="src\Game\**" />
     <Compile Remove="src\Spike\**" />
     <ProjectReference Include="stubs\MSCLoader\MSCLoader.csproj" Private="false" />
   </ItemGroup>
