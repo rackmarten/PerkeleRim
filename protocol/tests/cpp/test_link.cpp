@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "../../cpp/link.h"
+#include "../../cpp/look_at.h"
 
 using namespace PerkeleRim;
 using namespace PerkeleRim::Protocol;
@@ -133,6 +134,10 @@ TEST_CASE("input and player slots carry the latest value")
     player.position[2] = -12.5f;
     player.heading = 1.25f;
     player.stance = 2;
+    player.flags |= kPlayerCamera;
+    player.eye[2] = 59.5f;
+    player.roll = -0.3f;
+    player.fov = 42.0f;
     p.msc->WritePlayer(player);
     PlayerState out{};
     REQUIRE(p.skyrim->ReadPlayer(out));
@@ -177,6 +182,49 @@ TEST_CASE("van part paths are unique and well formed")
         CHECK(s.find("//") == std::string::npos);
     }
     CHECK(seen.size() == kHayosikoPartCount);
+}
+
+TEST_CASE("look-at text travels from MSC to Skyrim")
+{
+    Pair p;
+    p.Tick(3);
+    REQUIRE(p.msc->IsUp());
+
+    const std::pair<const char*, std::uint32_t> prompts[] = { { "IGNITION", 0 }, { "", kLookAtUse }, { "", 0 } };
+    for (const auto& [text, flags] : prompts) {
+        const auto payload = LookAt::Encode(text, flags);
+        REQUIRE(p.msc->Send(MessageType::LookAtText, payload.data(), (std::uint32_t)payload.size()));
+    }
+    std::vector<std::pair<std::string, std::uint32_t>> got;
+    p.skyrim->Receive([&](MessageType a_type, const std::uint8_t* a_data, std::uint32_t a_size) {
+        CHECK(a_type == MessageType::LookAtText);
+        const auto prompt = LookAt::Decode(a_data, a_size);
+        REQUIRE(prompt.has_value());
+        got.emplace_back(std::string(prompt->text), prompt->flags);
+    });
+    REQUIRE(got.size() == 3);
+    for (std::size_t i = 0; i < got.size(); i++) {
+        CHECK(got[i].first == prompts[i].first);
+        CHECK(got[i].second == prompts[i].second);
+    }
+}
+
+TEST_CASE("look-at text is cut at a character and malformed payloads are refused")
+{
+    std::string long_text(kLookAtTextMax - 1, 'a');
+    long_text += "\xC3\xA4\xC3\xA4";  // "ää": the first one straddles the limit
+    const auto payload = LookAt::Encode(long_text);
+    const auto prompt = LookAt::Decode(payload.data(), (std::uint32_t)payload.size());
+    REQUIRE(prompt.has_value());
+    CHECK(prompt->text.size() == kLookAtTextMax - 1);
+
+    const auto ok = LookAt::Encode("KEYS");
+    CHECK_FALSE(LookAt::Decode(ok.data(), 4).has_value());                            // no full header
+    CHECK_FALSE(LookAt::Decode(ok.data(), (std::uint32_t)ok.size() - 1).has_value());  // text cut short
+    auto huge = ok;
+    huge[0] = 0xFF;  // length 511: over the limit
+    huge[1] = 0x01;
+    CHECK_FALSE(LookAt::Decode(huge.data(), (std::uint32_t)huge.size()).has_value());
 }
 
 TEST_CASE("ring delivers messages in order, across the wrap point")

@@ -11,7 +11,9 @@ namespace PerkeleRim.Game
     //    CollisionChunk messages, one MeshCollider per chunk, dropping chunks the player left behind;
     //  - holds the player at a new anchor until the ground there has arrived, then puts it down;
     //  - writes PlayerState (Skyrim world space) every frame, valid only while Skyrim has handed
-    //    the player over and the player stands on the current anchor's island;
+    //    the player over and the player stands on the current anchor's island, with the camera's
+    //    pose (lean, reach, zoom) for Skyrim's first-person camera;
+    //  - sends MSC's interaction text (LookAtText) to Skyrim when it changes;
     //  - runs the vehicles (VehicleLink) on the same island: the van (drawn in Skyrim) on the
     //    player's right, or at the spot the anchor names (the garage), the Jonnez moped (MSC only
     //    so far) on the left.
@@ -48,6 +50,8 @@ namespace PerkeleRim.Game
 
         Transform player;
         Transform fpsCamera;
+        Camera viewCamera;  // the camera MSC renders with, below fpsCamera
+        string lookAtSent;  // interaction prompt Skyrim last got (flags:text); null = send it again
         CharacterController controller;
         PlayMakerFSM crouch;
 
@@ -137,6 +141,7 @@ namespace PerkeleRim.Game
             if (playing) FillPose(ref state);
             state.generation = island.Generation;
             link.WritePlayer(ref state);
+            SendLookAt(link, playing);
             foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero);
         }
 
@@ -197,13 +202,14 @@ namespace PerkeleRim.Game
             player = go.transform;
             controller = go.GetComponent<CharacterController>();
             fpsCamera = player.Find("Pivot/AnimPivot/Camera/FPSCamera");
+            viewCamera = fpsCamera != null ? fpsCamera.GetComponentInChildren<Camera>() : null;
             crouch = null;
             foreach (var f in go.GetComponents<PlayMakerFSM>())
                 if (f.FsmName == "Crouch") crouch = f;
             haveLastFeet = false;
             motor = go.GetComponent("CharacterMotor") as Behaviour;
             motorDisabled = false;
-            log($"player: found PLAYER (controller {(controller != null)}, camera {(fpsCamera != null)}, crouch fsm {(crouch != null)})");
+            log($"player: found PLAYER (controller {(controller != null)}, camera {(fpsCamera != null)}, view camera {(viewCamera != null ? viewCamera.name : "none")}, crouch fsm {(crouch != null)})");
             LogSurfaces();
             MotorBoost.Install(go, log);
         }
@@ -430,6 +436,28 @@ namespace PerkeleRim.Game
                 s.pitch = pitch * Mathf.Deg2Rad;
             }
             s.stance = Stance.FromCrouchState(crouch != null ? crouch.ActiveStateName : null);
+            if (viewCamera != null)
+            {
+                var cam = viewCamera.transform;
+                CameraPose.Fill(ref s, ToVec3(cam.position - Feet()), ToVec3(cam.right), ToVec3(cam.up), viewCamera.fieldOfView);
+            }
+        }
+
+        // MSC's interaction prompt (globals GUIinteraction: "IGNITION", item names; GUIuse: the hand
+        // icon on doors and hatches), sent to Skyrim when it changes, and again from scratch each time
+        // MSC gets the player. A full ring retries next frame.
+        void SendLookAt(Link link, bool playing)
+        {
+            if (!playing) { lookAtSent = null; return; }
+            var globals = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
+            var global = globals.FindFsmString("GUIinteraction");
+            var use = globals.FindFsmBool("GUIuse");
+            var text = global != null && global.Value != null ? global.Value : "";
+            uint flags = use != null && use.Value ? Wire.LookAtUse : 0;
+            var key = flags + ":" + text;
+            if (key == lookAtSent) return;
+            var payload = LookAt.Encode(text, flags);
+            if (link.Send(MessageType.LookAtText, payload, payload.Length)) lookAtSent = key;
         }
 
         // Bottom of the player's capsule, which is what Skyrim's position means.

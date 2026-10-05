@@ -1,6 +1,6 @@
 # Protocol
 
-> Status: protocol v5. Transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a); collision chunks streamed (milestone 1b); one vehicle pose (milestone 2a); the van parked at a given spot (milestone 2c); the van's doors, controls and lights (milestone 2d). Message contents beyond `InputState`, `PlayerState`, `VehicleState`, `VehicleParts`, `CollisionChunk` and `WorldspaceChange` arrive with the milestones that need them.
+> Status: protocol v7. Transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a); collision chunks streamed (milestone 1b); one vehicle pose (milestone 2a); the van parked at a given spot (milestone 2c); the van's doors, controls and lights (milestone 2d); MSC's camera pose and look-at prompt (v6, v7). Message contents beyond `InputState`, `PlayerState`, `VehicleState`, `VehicleParts`, `CollisionChunk`, `WorldspaceChange` and `LookAtText` arrive with the milestones that need them.
 
 The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchange data over one shared memory section. See [DESIGN.md](DESIGN.md) for the overall architecture and ownership rules.
 
@@ -14,17 +14,17 @@ The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchang
 
 ## Section layout
 
-One section, `Local\PerkeleRim.Link`, 4,458,624 bytes. Whichever game starts first creates it; it disappears when both have closed.
+One section, `Local\PerkeleRim.Link`, 4,458,688 bytes. Whichever game starts first creates it; it disappears when both have closed.
 
 | Offset | Size | Part | Written by |
 |---|---|---|---|
 | 0 | 128 | `LinkHeader`: magic, sizes, creator version, one `PeerInfo` per side | creator, then each side its own `PeerInfo` |
 | 128 | 128 | `InputSlot` (latest `InputState`) | Skyrim |
-| 256 | 64 | `PlayerSlot` (latest `PlayerState`) | MSC |
-| 320 | 128 | `VehicleSlot` (latest `VehicleState`) | MSC |
-| 448 | 1600 | `VehiclePartsSlot` (latest `VehicleParts`) | MSC |
-| 2048 | 64 + 4 MiB | ring Skyrim → MSC (collision chunks, worldspace changes) | Skyrim produces, MSC consumes |
-| 4,196,416 | 64 + 256 KiB | ring MSC → Skyrim (events) | MSC produces, Skyrim consumes |
+| 256 | 128 | `PlayerSlot` (latest `PlayerState`) | MSC |
+| 384 | 128 | `VehicleSlot` (latest `VehicleState`) | MSC |
+| 512 | 1600 | `VehiclePartsSlot` (latest `VehicleParts`) | MSC |
+| 2112 | 64 + 4 MiB | ring Skyrim → MSC (collision chunks, worldspace changes) | Skyrim produces, MSC consumes |
+| 4,196,480 | 64 + 256 KiB | ring MSC → Skyrim (look-at text, later events) | MSC produces, Skyrim consumes |
 
 Layout rules:
 
@@ -56,10 +56,11 @@ One single-producer, single-consumer byte ring per direction, for messages that 
 |---|---|---|
 | Skyrim → MSC | `CollisionChunk` | `CollisionChunkHeader` (chunk x/y, worldspace, generation, origin, counts), vertices relative to origin, triangle indices |
 | Skyrim → MSC | `WorldspaceChange` | worldspace, interior cell, generation, spawn position and heading; sent on every handover and whenever the game moves the player (load door, fast travel), as the island anchor. With `flags & kAnchorVehicleSpot`, `vehicleSpot` and `vehicleHeading` say where the van parks for this anchor (the garage on the first handover of a save) instead of next to the player |
+| MSC → Skyrim | `LookAtText` | MSC's interaction prompt for what its crosshair is on: its text (global `GUIinteraction`: "IGNITION", item names) and, with `flags & kLookAtUse`, its hand icon for things to use (global `GUIuse`: doors, hatches). `LookAtText` header (`length`, at most `kLookAtTextMax` = 255, `flags`) then UTF-8 bytes; no text and no flags clears it. Sent only when it changes, and from scratch each time MSC gets the player. Encoded by `msc/src/Link/LookAt.cs`, decoded by `protocol/cpp/look_at.h` |
 
 Planned, added with their milestones (each one bumps the version): `ActorList`, `PlayerDamage`, `ConsumeEvent` (Skyrim → MSC); `ItemState`, `ImpactEvent`, `PunchEvent`, `UrineHit`, `Death` (MSC → Skyrim).
 
-Input pass-through keys (activate, shout, journal/map) stay with Skyrim.
+Input pass-through keys (activate, shout, journal/map) stay with Skyrim. E is also MSC's lean right, so it does both for now. Q (MSC's lean left) would open Skyrim's favorites and pause the game, so `FavoritesHandler::CanProcess` refuses while MSC owns the player. Ctrl (MSC's zoom) is Skyrim's sneak, which is off while handed over anyway.
 
 ## Collision chunks
 
@@ -100,9 +101,10 @@ F10 in Skyrim toggles who owns the player. The first F10 of a save (when `Perkel
 
 1. Skyrim sends `WorldspaceChange` with the player's position and heading as `spawn` (a new `generation` each time), then publishes `InputState` with `kInputOwnsPlayer` and turns off its own movement, look, sneak, jump, attack and POV controls.
 2. MSC drains its ring before writing a pose, so the anchor is always applied first. The anchor maps to `Island.Base` on a collision island far from MSC's map, built from `CollisionChunk`s (see above). MSC holds the player's feet at the anchor until the ground there arrives, then puts it down.
-3. Every frame MSC writes `PlayerState` (feet position in Skyrim world space, velocity, heading, camera pitch, stance from the `Crouch` FSM, and the anchor `generation`). `kPlayerValid` is set only while MSC owns the player and stands on the current anchor's island.
-4. Skyrim's `PlayerCharacter::Update` hook places the player at every valid pose whose `generation` is the current one (position, heading, pitch, zeroed controller velocity) and sets sneak while the stance is crouch or prone.
-5. If the game moves the player itself while MSC owns it (another worldspace or interior cell, or a jump of more than 2048 units: load doors, fast travel, scripts), Skyrim sends a new anchor and the island is rebuilt there.
+3. Every frame MSC writes `PlayerState` (feet position in Skyrim world space, velocity, heading, camera pitch, stance from the `Crouch` FSM, and the anchor `generation`). `kPlayerValid` is set only while MSC owns the player and stands on the current anchor's island. With `kPlayerCamera` it also carries MSC's rendering camera: `eye` (camera minus feet, Skyrim axes and units), `roll` (positive tilts the view right) and `fov` (vertical degrees), so leaning (Q/E), reaching for the door while seated, crouching and the Ctrl zoom all show.
+4. Skyrim's `PlayerCharacter::Update` hook places the player at every valid pose whose `generation` is the current one (position, heading, pitch, zeroed controller velocity) and sets sneak while the stance is crouch or prone. Skyrim has already built its first-person camera by then (from the previous frame's placement, pivoting around the head), so the hook then overrides the camera node: placed feet plus `eye`, turned to the pose's heading, pitch and `roll` (`protocol/cpp/camera.h` keeps whatever axes Skyrim's node has on top), and sets `worldFOV` from `fov` (converted to Skyrim's horizontal-for-4:3 value; the old value comes back on release). A driven van is hung around the camera minus `eye`, and its seat is only learned while the view is level against the van (MSC moves the seated player when it leans), so leaning moves the view inside the van.
+5. Skyrim draws its own HUD layer while MSC owns the player (`skse/src/hud`): a small dot at the screen center (Skyrim's crosshair is hidden then) and the latest `LookAtText` below it: a hand icon with `kLookAtUse`, the text on a dark box.
+6. If the game moves the player itself while MSC owns it (another worldspace or interior cell, or a jump of more than 2048 units: load doors, fast travel, scripts), Skyrim sends a new anchor and the island is rebuilt there.
 
 F10 again, or the link going down, hands the player back to Skyrim and turns its controls back on.
 

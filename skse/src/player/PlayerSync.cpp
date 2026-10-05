@@ -1,10 +1,13 @@
 #include "player/PlayerSync.h"
 
+#include "camera.h"
 #include "collision/CollisionSampler.h"
 #include "coords.h"
 #include "garage/Garage.h"
+#include "hud/Hud.h"
 #include "input.h"
 #include "link/LinkService.h"
+#include "look_at.h"
 #include "vehicle/VehicleView.h"
 
 namespace PerkeleRim::PlayerSync
@@ -46,8 +49,12 @@ namespace PerkeleRim::PlayerSync
             bool           sneak = false;  // what we last told Skyrim; its own flag can drop on its own
             std::uint32_t  inputFrame = 0;
             Input::Builder input;
-            float          eyeHeight = 0.0f;  // Skyrim camera above the player's feet on foot, units (0 until seen)
             bool           seated = false;
+            RE::NiPoint3   eye;               // Skyrim's camera relative to the placed feet (MSC's eye), 0 when not posed
+            float          savedFov = 0.0f;   // Skyrim's worldFOV before MSC's took over, 0 = untouched
+            std::string    lookAt;            // MSC's interaction text
+            bool           lookAtUse = false; // MSC shows its hand icon
+            bool           cameraParentLogged = false;
 
             // Per-second stats while owned.
             float         statTime = 0.0f;
@@ -67,6 +74,9 @@ namespace PerkeleRim::PlayerSync
         // speed never ends up in it.
         constexpr float kCameraSeatLearnSpeed = 0.5f;
         constexpr float kCameraSeatBlend = 0.1f;
+        // ...and while the view is level: MSC moves the seated player when it leans (Q/E), and a lean
+        // learned into the seat would shift the van under the camera and stay there once driving.
+        constexpr float kCameraSeatLearnRoll = 0.03f;  // radians against the van, about 2 degrees
 
         bool GamePaused()
         {
@@ -140,6 +150,16 @@ namespace PerkeleRim::PlayerSync
                 SetSimulated(player, true);
             }
             state.seated = false;
+            state.eye = {};
+            if (state.savedFov > 0.0f) {
+                if (auto* camera = RE::PlayerCamera::GetSingleton()) {
+                    camera->GetRuntimeData2().worldFOV = state.savedFov;
+                }
+                state.savedFov = 0.0f;
+            }
+            state.lookAt.clear();
+            state.lookAtUse = false;
+            Hud::Set(false, state.lookAt, false);
             CollisionSampler::Stop();
             VehicleView::Hide();
             Publish();
@@ -277,21 +297,8 @@ namespace PerkeleRim::PlayerSync
             return nullptr;
         }
 
-        // MSC's camera sits this far above the feet it sends, standing and seated alike (measured;
-        // sitting moves its whole capsule down). Skyrim's eyes are higher above the feet, which is
-        // harmless on foot but puts them over the van's roof when seated.
-        constexpr float kMscEyeHeight = static_cast<float>(0.85 * Coords::kUnitsPerMeter);
-
-        void MeasureEye(RE::PlayerCharacter* a_player)
-        {
-            auto* camera = RE::PlayerCamera::GetSingleton();
-            if (camera && camera->cameraRoot && camera->IsInFirstPerson()) {
-                state.eyeHeight = camera->cameraRoot->world.translate.z - a_player->GetPosition().z;
-            }
-        }
-
-        // Seated, the lowered capsule sits in the ground, so Havok would push it out against the
-        // placement. Like a rider's, it isn't simulated while seated; the player is placed every
+        // Seated, the capsule sits in the van's floor and the ground, so Havok would push it out
+        // against the placement. Like a rider's, it isn't simulated while seated; the player is placed every
         // frame anyway.
         void SetSimulated(RE::PlayerCharacter* a_player, bool a_simulated)
         {
@@ -301,14 +308,6 @@ namespace PerkeleRim::PlayerSync
                 } else {
                     controller->flags.set(RE::CHARACTER_FLAGS::kNoSim);
                 }
-            }
-        }
-
-        // Seated, put Skyrim's camera where MSC's is.
-        void LowerIntoSeat(Protocol::PlayerState& a_pose)
-        {
-            if (state.eyeHeight > kMscEyeHeight) {
-                a_pose.position[2] -= state.eyeHeight - kMscEyeHeight;
             }
         }
 
@@ -338,18 +337,75 @@ namespace PerkeleRim::PlayerSync
             }
         }
 
+        // Puts Skyrim's first-person camera at MSC's: the placed feet plus MSC's eye, turned to MSC's
+        // heading, pitch and roll, so leaning, reaching to the door and crouching show. Skyrim
+        // builds its camera before this hook (from the previous frame's placement, pivoting around
+        // the head, smoothed), so this overrides the finished camera node; a_fromHeading and
+        // a_fromPitch are the angles Skyrim built it for. MSC's zoom becomes Skyrim's field of view.
+        void PoseCamera(const Protocol::PlayerState& a_pose, float a_fromHeading, float a_fromPitch)
+        {
+            auto* camera = RE::PlayerCamera::GetSingleton();
+            auto* root = camera ? camera->cameraRoot.get() : nullptr;
+            if (!root || !camera->IsInFirstPerson()) {
+                state.eye = {};
+                return;
+            }
+
+            Camera::Matrix built, posed;
+            for (int r = 0; r < 3; r++) {
+                for (int c = 0; c < 3; c++) {
+                    built[r][c] = root->world.rotate.entry[r][c];
+                }
+            }
+            Camera::Retarget(built, a_fromHeading, a_fromPitch, a_pose.heading, a_pose.pitch, a_pose.roll, posed);
+            RE::NiMatrix3 rotate;
+            for (int r = 0; r < 3; r++) {
+                for (int c = 0; c < 3; c++) {
+                    rotate.entry[r][c] = posed[r][c];
+                }
+            }
+            state.eye = RE::NiPoint3(a_pose.eye[0], a_pose.eye[1], a_pose.eye[2]);
+            const auto at = state.lastPlaced + state.eye;
+
+            // Update keeps the node's local transform, so give it the wanted world one in its
+            // parent's frame (scale 1).
+            if (auto* parent = root->parent) {
+                const auto toParent = parent->world.rotate.Transpose();
+                root->local.rotate = toParent * rotate;
+                root->local.translate = toParent * (at - parent->world.translate);
+                if (!state.cameraParentLogged) {
+                    state.cameraParentLogged = true;
+                    SKSE::log::info("player sync: camera root hangs under {}", parent->name.c_str());
+                }
+            } else {
+                root->local.rotate = rotate;
+                root->local.translate = at;
+            }
+            RE::NiUpdateData update{};
+            root->Update(update);
+
+            if (a_pose.fov > 1.0f) {
+                auto& data = camera->GetRuntimeData2();
+                if (state.savedFov <= 0.0f) {
+                    state.savedFov = data.worldFOV;
+                }
+                data.worldFOV = Camera::SkyrimFov(a_pose.fov);
+            }
+        }
+
         // Skyrim builds its camera before this hook, from where the player was put the frame before,
         // and smooths small moves on top, so a driven van drawn at MSC's pose jittered around it and
         // fell behind at speed. Instead the van is hung around the camera, at the camera's spot in
         // the van learned while it is nearly stopped: like a rider on a horse, the camera can't move
-        // inside it.
-        void LockVanToCamera(Protocol::VehicleState& a_vehicle)
+        // inside it. What is learned is the camera minus MSC's eye (PoseCamera), never while leaning, so
+        // leaning moves the camera inside the van instead of dragging the van along.
+        void LockVanToCamera(Protocol::VehicleState& a_vehicle, float a_roll)
         {
             auto* camera = RE::PlayerCamera::GetSingleton();
             if (!camera || !camera->cameraRoot) {
                 return;
             }
-            const auto         at = camera->cameraRoot->world.translate;
+            const auto         at = camera->cameraRoot->world.translate - state.eye;
             const RE::NiPoint3 van(a_vehicle.position[0], a_vehicle.position[1], a_vehicle.position[2]);
             float              m[3][3];
             Coords::ToMatrix({ a_vehicle.rotation[0], a_vehicle.rotation[1], a_vehicle.rotation[2], a_vehicle.rotation[3] }, m);
@@ -362,7 +418,10 @@ namespace PerkeleRim::PlayerSync
 
             const float speed = std::hypot(a_vehicle.velocity[0], a_vehicle.velocity[1], a_vehicle.velocity[2]) *
                                 static_cast<float>(Coords::kMetersPerUnit);
-            if (speed < kCameraSeatLearnSpeed) {
+            // Leaning = the view tilted against the van (the van may stand on a slope): its right side
+            // dropping is a tilt to the right, like PlayerState roll.
+            const float vanRoll = std::asin(std::clamp(-m[2][0], -1.0f, 1.0f));
+            if (speed < kCameraSeatLearnSpeed && std::abs(a_roll - vanRoll) < kCameraSeatLearnRoll) {
                 const auto local = rotate.Transpose() * (at - van);
                 state.cameraSeat = state.cameraSeatKnown ? state.cameraSeat + (local - state.cameraSeat) * kCameraSeatBlend : local;
                 state.cameraSeatKnown = true;
@@ -402,16 +461,29 @@ namespace PerkeleRim::PlayerSync
             if (seated != state.seated) {
                 state.seated = seated;
                 SetSimulated(a_player, !seated);
-                SKSE::log::info("player sync: {} (Skyrim eye {:.0f} units, MSC eye {:.0f})", seated ? "seated, lowering the player" : "out of the seat",
-                    state.eyeHeight, kMscEyeHeight);
+                SKSE::log::info("player sync: {}", seated ? "seated" : "out of the seat");
             }
-            if (valid) {
-                if (seated) {
-                    LowerIntoSeat(pose);
-                } else if (pose.stance == 0) {
-                    MeasureEye(a_player);
+            link.Receive([](Protocol::MessageType a_type, const std::uint8_t* a_data, std::uint32_t a_size) {
+                if (a_type != Protocol::MessageType::LookAtText) {
+                    return;
                 }
+                if (const auto text = LookAt::Decode(a_data, a_size)) {
+                    state.lookAt.assign(text->text);
+                    state.lookAtUse = (text->flags & Protocol::kLookAtUse) != 0;
+                } else {
+                    SKSE::log::warn("player sync: bad look-at message ({} bytes)", a_size);
+                }
+            });
+            if (valid) {
+                // The angles Skyrim built this frame's camera for, before Place changes them.
+                const float fromHeading = a_player->GetAngleZ();
+                const float fromPitch = a_player->data.angle.x;
                 Place(a_player, pose);
+                if ((pose.flags & Protocol::kPlayerCamera) != 0) {
+                    PoseCamera(pose, fromHeading, fromPitch);
+                } else {
+                    state.eye = {};
+                }
                 state.placed++;
                 if (pose.frame != state.lastPoseFrame) {
                     state.newPoses++;
@@ -419,7 +491,7 @@ namespace PerkeleRim::PlayerSync
                 }
             }
             if (seated) {
-                LockVanToCamera(vehicle);
+                LockVanToCamera(vehicle, pose.roll);
             }
             Protocol::VehicleParts parts{};
             const bool             hasParts = hasVehicle && link.ReadVehicleParts(parts);
@@ -430,12 +502,14 @@ namespace PerkeleRim::PlayerSync
 
             state.frames++;
             state.statTime += a_delta;
-            if (state.statTime >= 1.0f) {
+            const bool second = state.statTime >= 1.0f;
+            Hud::Set(true, state.lookAt, state.lookAtUse, second);  // refreshed once a second in case the HUD movie was rebuilt
+            if (second) {
                 SKSE::log::info(
-                    "player sync: frames={} placed={} new poses={} pos=({:.0f},{:.0f},{:.0f}) speed={:.1f} m/s heading={:.2f} pitch={:.2f} stance={} seated={} van shift={:.1f}",
+                    "player sync: frames={} placed={} new poses={} pos=({:.0f},{:.0f},{:.0f}) speed={:.1f} m/s heading={:.2f} pitch={:.2f} stance={} seated={} van shift={:.1f} eye=({:.0f},{:.0f},{:.0f}) roll={:.2f} fov={:.0f}",
                     state.frames, state.placed, state.newPoses, pose.position[0], pose.position[1], pose.position[2],
                     std::hypot(pose.velocity[0], pose.velocity[1]) * Coords::kMetersPerUnit, pose.heading, pose.pitch, pose.stance,
-                    state.seated, state.vanShift);
+                    state.seated, state.vanShift, pose.eye[0], pose.eye[1], pose.eye[2], pose.roll, pose.fov);
                 state.vanShift = 0.0f;
                 state.statTime = 0.0f;
                 state.frames = state.placed = state.newPoses = 0;
@@ -453,6 +527,16 @@ namespace PerkeleRim::PlayerSync
                 } else if (state.owned && a_delta > 0.0f) {
                     Drive(a_player, a_delta);
                 }
+            }
+            static inline REL::Relocation<decltype(thunk)> original;
+        };
+
+        // Q (MSC's lean left) would open Skyrim's favorites, which pauses the game and with it MSC's input.
+        struct FavoritesHook
+        {
+            static bool thunk(RE::FavoritesHandler* a_handler, RE::InputEvent* a_event)
+            {
+                return !state.owned && original(a_handler, a_event);
             }
             static inline REL::Relocation<decltype(thunk)> original;
         };
@@ -539,7 +623,9 @@ namespace PerkeleRim::PlayerSync
     {
         REL::Relocation<std::uintptr_t> vtable{ RE::VTABLE_PlayerCharacter[0] };
         UpdateHook::original = vtable.write_vfunc(0xAD, UpdateHook::thunk);
-        SKSE::log::info("player sync: PlayerCharacter::Update hooked, F10 hands the player to MSC");
+        REL::Relocation<std::uintptr_t> favorites{ RE::VTABLE_FavoritesHandler[0] };
+        FavoritesHook::original = favorites.write_vfunc(0x1, FavoritesHook::thunk);
+        SKSE::log::info("player sync: PlayerCharacter::Update and FavoritesHandler::CanProcess hooked, F10 hands the player to MSC");
     }
 
     void OnDataLoaded()

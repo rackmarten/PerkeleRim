@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 5;
+        public const uint ProtocolVersion = 7;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -16,16 +16,17 @@ namespace PerkeleRim.Protocol
         public const uint OffsetHeader = 0;
         public const uint OffsetInputSlot = 128;
         public const uint OffsetPlayerSlot = 256;
-        public const uint OffsetVehicleSlot = 320;
-        public const uint OffsetVehiclePartsSlot = 448;
-        public const uint OffsetRingToMsc = 2048;
+        public const uint OffsetVehicleSlot = 384;
+        public const uint OffsetVehiclePartsSlot = 512;
+        public const uint OffsetRingToMsc = 2112;
         public const uint RingToMscCapacity = 4194304;
-        public const uint OffsetRingToSkyrim = 4196416;
+        public const uint OffsetRingToSkyrim = 4196480;
         public const uint RingToSkyrimCapacity = 262144;
-        public const uint MappingSize = 4458624;
+        public const uint MappingSize = 4458688;
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint PlayerValid = 0x1;
+        public const uint PlayerCamera = 0x2;
         public const uint VehicleValid = 0x1;
         public const uint VehicleDriven = 0x2;
         public const uint VehicleHayosiko = 1;
@@ -33,6 +34,8 @@ namespace PerkeleRim.Protocol
         public const uint VehiclePartCapacity = 48;
         public const uint PartVisible = 0x1;
         public const uint HayosikoPartCount = 40;
+        public const uint LookAtTextMax = 255;
+        public const uint LookAtUse = 0x1;
 
         // VehicleParts.parts order for the van; msc/tests checks it against the header's list.
         public static readonly string[] HayosikoParts =
@@ -93,6 +96,7 @@ namespace PerkeleRim.Protocol
     {
         CollisionChunk = 1,
         WorldspaceChange = 2,
+        LookAtText = 3,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -166,6 +170,9 @@ namespace PerkeleRim.Protocol
         public byte stance;
         public fixed byte reserved[3];
         public uint generation;
+        public fixed float eye[3];
+        public float roll;
+        public float fov;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -174,7 +181,7 @@ namespace PerkeleRim.Protocol
         public uint seq;
         public uint reserved;
         public PlayerState value;
-        public fixed byte pad[8];
+        public fixed byte pad[52];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -284,5 +291,12 @@ namespace PerkeleRim.Protocol
         public float spawnHeading;
         public fixed float vehicleSpot[3];
         public float vehicleHeading;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct LookAtText
+    {
+        public uint length;
+        public uint flags;
     }
 }

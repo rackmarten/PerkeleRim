@@ -117,6 +117,25 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void LookAtTextTravelsToSkyrim()
+        {
+            using var p = new Pair();
+            p.Tick(3);
+            foreach (var text in new[] { "IGNITION", "" })
+            {
+                var payload = LookAt.Encode(text);
+                Assert.That(p.Msc.Send(MessageType.LookAtText, payload, payload.Length), Is.True);
+            }
+            var got = new List<string>();
+            p.Skyrim.Receive((type, data, size) =>
+            {
+                Assert.That(type, Is.EqualTo(MessageType.LookAtText));
+                got.Add(LookAt.Decode(data, size));
+            });
+            Assert.That(got, Is.EqualTo(new[] { "IGNITION", "" }));
+        }
+
+        [Test]
         public void RingDeliversInOrderAcrossTheWrapPoint()
         {
             using var p = new Pair();

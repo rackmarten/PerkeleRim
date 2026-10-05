@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 5;
+    inline constexpr std::uint32_t kProtocolVersion = 7;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -33,13 +33,13 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kOffsetHeader = 0;
     inline constexpr std::uint32_t kOffsetInputSlot = 128;
     inline constexpr std::uint32_t kOffsetPlayerSlot = 256;
-    inline constexpr std::uint32_t kOffsetVehicleSlot = 320;
-    inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 448;
-    inline constexpr std::uint32_t kOffsetRingToMsc = 2048;         // RingHeader, data follows
+    inline constexpr std::uint32_t kOffsetVehicleSlot = 384;
+    inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 512;
+    inline constexpr std::uint32_t kOffsetRingToMsc = 2112;         // RingHeader, data follows
     inline constexpr std::uint32_t kRingToMscCapacity = 4194304;    // 4 MiB: collision chunks
-    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4196416;   // 2048 + 64 + 4 MiB
+    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4196480;   // 2112 + 64 + 4 MiB
     inline constexpr std::uint32_t kRingToSkyrimCapacity = 262144;  // 256 KiB: events
-    inline constexpr std::uint32_t kMappingSize = 4458624;         // 4196416 + 64 + 256 KiB
+    inline constexpr std::uint32_t kMappingSize = 4458688;         // 4196480 + 64 + 256 KiB
 
     enum class Side : std::uint32_t
     {
@@ -98,7 +98,8 @@ namespace PerkeleRim::Protocol
         std::uint8_t  pad[24];
     };
 
-    inline constexpr std::uint32_t kPlayerValid = 0x1;  // PlayerState.flags: MSC is simulating the player
+    inline constexpr std::uint32_t kPlayerValid = 0x1;   // PlayerState.flags: MSC is simulating the player
+    inline constexpr std::uint32_t kPlayerCamera = 0x2;  // PlayerState.flags: eye, roll and fov are set
 
     // MSC -> Skyrim. Skyrim world space: game units, Z up, heading 0 = north, clockwise.
     struct PlayerState
@@ -112,6 +113,11 @@ namespace PerkeleRim::Protocol
         std::uint8_t  stance;       // 0 standing, 1 crouching, 2 prone
         std::uint8_t  reserved[3];
         std::uint32_t generation;   // WorldspaceChange.generation this pose belongs to
+        // MSC's camera, with kPlayerCamera. Leaning, reaching, sitting and crouching move it, and
+        // Skyrim puts its first-person camera there.
+        float eye[3];  // camera position relative to position (the feet), Skyrim axes and units
+        float roll;    // radians about the view direction, positive tilts the view right (right ear down)
+        float fov;     // vertical field of view, degrees (MSC's Ctrl zoom narrows it)
     };
 
     struct PlayerSlot
@@ -119,7 +125,7 @@ namespace PerkeleRim::Protocol
         std::uint32_t seq;
         std::uint32_t reserved;
         PlayerState   value;
-        std::uint8_t  pad[8];
+        std::uint8_t  pad[52];
     };
 
     inline constexpr std::uint32_t kVehicleValid = 0x1;   // VehicleState.flags: the vehicle is on the current island
@@ -254,6 +260,7 @@ namespace PerkeleRim::Protocol
     {
         CollisionChunk = 1,    // Skyrim -> MSC
         WorldspaceChange = 2,  // Skyrim -> MSC
+        LookAtText = 3,        // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -293,6 +300,19 @@ namespace PerkeleRim::Protocol
         float         vehicleHeading;  // the way the van faces there
     };
 
+    // MSC's interaction prompt for what its crosshair is on: the text ("IGNITION", an item name) and
+    // the hand icon it shows for things to use (doors, hatches). Sent when either changes and once
+    // more each time MSC takes the player. Payload: this header, then length bytes of UTF-8 text (no
+    // terminator). length 0 and no flags clears the prompt.
+    inline constexpr std::uint32_t kLookAtTextMax = 255;
+    inline constexpr std::uint32_t kLookAtUse = 0x1;  // LookAtText.flags: MSC shows its hand icon (global GUIuse)
+
+    struct LookAtText
+    {
+        std::uint32_t length;  // <= kLookAtTextMax
+        std::uint32_t flags;   // kLookAt*
+    };
+
 #pragma pack(pop)
 
     static_assert(sizeof(PeerInfo) == 32);
@@ -308,14 +328,17 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(InputState, keys) == 32);
     static_assert(sizeof(InputSlot) == 128);
     static_assert(offsetof(InputSlot, value) == 8);
-    static_assert(sizeof(PlayerState) == 48);
+    static_assert(sizeof(PlayerState) == 68);
     static_assert(offsetof(PlayerState, position) == 8);
     static_assert(offsetof(PlayerState, velocity) == 20);
     static_assert(offsetof(PlayerState, heading) == 32);
     static_assert(offsetof(PlayerState, pitch) == 36);
     static_assert(offsetof(PlayerState, stance) == 40);
     static_assert(offsetof(PlayerState, generation) == 44);
-    static_assert(sizeof(PlayerSlot) == 64);
+    static_assert(offsetof(PlayerState, eye) == 48);
+    static_assert(offsetof(PlayerState, roll) == 60);
+    static_assert(offsetof(PlayerState, fov) == 64);
+    static_assert(sizeof(PlayerSlot) == 128);
     static_assert(offsetof(PlayerSlot, value) == 8);
     static_assert(sizeof(VehicleState) == 80);
     static_assert(offsetof(VehicleState, generation) == 12);
@@ -349,6 +372,7 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(WorldspaceChange, spawnHeading) == 28);
     static_assert(offsetof(WorldspaceChange, vehicleSpot) == 32);
     static_assert(offsetof(WorldspaceChange, vehicleHeading) == 44);
+    static_assert(sizeof(LookAtText) == 8);
 
     // Section layout follows from the struct sizes.
     static_assert(kOffsetInputSlot == kOffsetHeader + sizeof(LinkHeader));
