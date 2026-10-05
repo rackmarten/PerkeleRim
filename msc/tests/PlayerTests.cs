@@ -102,6 +102,21 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void WheelIsADeltaOfTheTotal()
+        {
+            var f = new InputFrame();
+            var s = State(0.0, 0.0);
+            s.mouseWheel = 3.0;
+            f.Update(ref s);
+            Assert.That(f.MouseWheel, Is.EqualTo(0f));  // first state only seeds
+            s.mouseWheel = 2.9;
+            f.Update(ref s);
+            Assert.That(f.MouseWheel, Is.EqualTo(-0.1f).Within(1e-6));
+            f.Update(ref s);
+            Assert.That(f.MouseWheel, Is.EqualTo(0f));
+        }
+
+        [Test]
         public void ResetSeedsAgain()
         {
             var f = new InputFrame();

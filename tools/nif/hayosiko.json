@@ -30,7 +30,7 @@
     { "path": "LOD/Wipers/Pivot/WiperRightPivot" },
     { "path": "LOD/FuelFiller/Pivot" },
     { "path": "LOD/FuelFiller/OpenCap" },
-    { "path": "RadioPivot/Radio/TunerPivot" },
+    { "path": "RadioPivot/Radio/TunerPivot/needle" },
     { "path": "LOD/seatbelts/HandleUpPivot/SeatbeltHandle" },
     { "path": "LOD/seatbelts/Fastened_mesh" },
     { "path": "LOD/Electricity/PowerON/Driving/BeamsShort/drive", "lit": true },

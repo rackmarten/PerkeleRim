@@ -86,6 +86,19 @@ TEST_CASE("mouse movement accumulates with the axis scale and Unity's direction"
     CHECK(s.mouseY == doctest::Approx(20 * kMouseAxisPerCount));  // moving the mouse up (negative dy) looks up
 }
 
+TEST_CASE("wheel buttons become notches that accumulate on the scroll axis")
+{
+    CHECK(WheelNotches(8) == 1);
+    CHECK(WheelNotches(9) == -1);
+    CHECK(WheelNotches(0) == 0);
+    Builder b;
+    b.AddWheel(WheelNotches(8));
+    b.AddWheel(WheelNotches(8));
+    b.AddWheel(WheelNotches(9));
+    CHECK(b.Build(0, true, true).mouseWheel == doctest::Approx(kWheelAxisPerNotch));
+    CHECK(b.Build(0, true, false).mouseWheel == doctest::Approx(kWheelAxisPerNotch));  // totals kept while paused
+}
+
 TEST_CASE("a paused game sends no keys or axes but keeps the mouse totals")
 {
     Builder b;

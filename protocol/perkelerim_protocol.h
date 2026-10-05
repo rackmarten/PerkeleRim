@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 7;
+    inline constexpr std::uint32_t kProtocolVersion = 8;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -88,6 +88,7 @@ namespace PerkeleRim::Protocol
         float         horizontal;  // "Horizontal" axis, -1..1
         float         vertical;    // "Vertical" axis, -1..1
         std::uint64_t keys[8];     // bit n set = KeyCode n held (n < 512)
+        double        mouseWheel;  // accumulated "Mouse ScrollWheel" axis; MSC applies the delta
     };
 
     struct InputSlot
@@ -95,11 +96,23 @@ namespace PerkeleRim::Protocol
         std::uint32_t seq;
         std::uint32_t reserved;
         InputState    value;
-        std::uint8_t  pad[24];
+        std::uint8_t  pad[16];
     };
 
     inline constexpr std::uint32_t kPlayerValid = 0x1;   // PlayerState.flags: MSC is simulating the player
     inline constexpr std::uint32_t kPlayerCamera = 0x2;  // PlayerState.flags: eye, roll and fov are set
+    inline constexpr std::uint32_t kPlayerNeeds = 0x4;   // PlayerState.flags: needs are set
+
+    // PlayerState.needs order, MSC's globals: PlayerThirst, PlayerHunger, PlayerStress, PlayerUrine,
+    // PlayerFatigue, PlayerDirtiness (0..100, stress can go past it) and PlayerDrunk (0..8).
+    inline constexpr std::uint32_t kNeedThirst = 0;
+    inline constexpr std::uint32_t kNeedHunger = 1;
+    inline constexpr std::uint32_t kNeedStress = 2;
+    inline constexpr std::uint32_t kNeedUrine = 3;
+    inline constexpr std::uint32_t kNeedFatigue = 4;
+    inline constexpr std::uint32_t kNeedDirtiness = 5;
+    inline constexpr std::uint32_t kNeedDrunk = 6;
+    inline constexpr std::uint32_t kNeedCount = 7;
 
     // MSC -> Skyrim. Skyrim world space: game units, Z up, heading 0 = north, clockwise.
     struct PlayerState
@@ -118,6 +131,7 @@ namespace PerkeleRim::Protocol
         float eye[3];  // camera position relative to position (the feet), Skyrim axes and units
         float roll;    // radians about the view direction, positive tilts the view right (right ear down)
         float fov;     // vertical field of view, degrees (MSC's Ctrl zoom narrows it)
+        float needs[7];  // kNeedCount values in kNeed* order, with kPlayerNeeds
     };
 
     struct PlayerSlot
@@ -125,7 +139,7 @@ namespace PerkeleRim::Protocol
         std::uint32_t seq;
         std::uint32_t reserved;
         PlayerState   value;
-        std::uint8_t  pad[52];
+        std::uint8_t  pad[24];
     };
 
     inline constexpr std::uint32_t kVehicleValid = 0x1;   // VehicleState.flags: the vehicle is on the current island
@@ -187,7 +201,7 @@ namespace PerkeleRim::Protocol
         "LOD/Wipers/Pivot/WiperRightPivot",
         "LOD/FuelFiller/Pivot",
         "LOD/FuelFiller/OpenCap",
-        "RadioPivot/Radio/TunerPivot",
+        "RadioPivot/Radio/TunerPivot/needle",
         "LOD/seatbelts/HandleUpPivot/SeatbeltHandle",
         "LOD/seatbelts/Fastened_mesh",
         // Lights (lit meshes, shown while on)
@@ -261,6 +275,7 @@ namespace PerkeleRim::Protocol
         CollisionChunk = 1,    // Skyrim -> MSC
         WorldspaceChange = 2,  // Skyrim -> MSC
         LookAtText = 3,        // MSC -> Skyrim
+        Subtitle = 4,          // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -313,6 +328,10 @@ namespace PerkeleRim::Protocol
         std::uint32_t flags;   // kLookAt*
     };
 
+    // Subtitle: MSC's subtitle line (global GUIsubtitle: the player's swearing and other speech),
+    // sent when it changes and once more each time MSC takes the player. Same payload as LookAtText
+    // with flags 0; no text clears it.
+
 #pragma pack(pop)
 
     static_assert(sizeof(PeerInfo) == 32);
@@ -320,15 +339,16 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(LinkHeader) == 128);
     static_assert(offsetof(LinkHeader, creatorVersion) == 12);
     static_assert(offsetof(LinkHeader, peers) == 16);
-    static_assert(sizeof(InputState) == 96);
+    static_assert(sizeof(InputState) == 104);
     static_assert(offsetof(InputState, mouseX) == 8);
     static_assert(offsetof(InputState, mouseY) == 16);
     static_assert(offsetof(InputState, horizontal) == 24);
     static_assert(offsetof(InputState, vertical) == 28);
     static_assert(offsetof(InputState, keys) == 32);
+    static_assert(offsetof(InputState, mouseWheel) == 96);
     static_assert(sizeof(InputSlot) == 128);
     static_assert(offsetof(InputSlot, value) == 8);
-    static_assert(sizeof(PlayerState) == 68);
+    static_assert(sizeof(PlayerState) == 96);
     static_assert(offsetof(PlayerState, position) == 8);
     static_assert(offsetof(PlayerState, velocity) == 20);
     static_assert(offsetof(PlayerState, heading) == 32);
@@ -338,6 +358,7 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(PlayerState, eye) == 48);
     static_assert(offsetof(PlayerState, roll) == 60);
     static_assert(offsetof(PlayerState, fov) == 64);
+    static_assert(offsetof(PlayerState, needs) == 68);
     static_assert(sizeof(PlayerSlot) == 128);
     static_assert(offsetof(PlayerSlot, value) == 8);
     static_assert(sizeof(VehicleState) == 80);

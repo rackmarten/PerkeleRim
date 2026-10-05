@@ -9,11 +9,12 @@ namespace PerkeleRim
     public sealed class InputFrame
     {
         bool seeded;
-        double lastMouseX, lastMouseY;
+        double lastMouseX, lastMouseY, lastMouseWheel;
 
         public bool OwnsPlayer { get; private set; }
         public float MouseX { get; private set; }
         public float MouseY { get; private set; }
+        public float MouseWheel { get; private set; }
         public float Horizontal { get; private set; }
         public float Vertical { get; private set; }
         public readonly List<int> Keys = new List<int>();
@@ -29,8 +30,10 @@ namespace PerkeleRim
             bool fresh = seeded && wasOwned && OwnsPlayer;
             MouseX = fresh ? (float)(s.mouseX - lastMouseX) : 0f;
             MouseY = fresh ? (float)(s.mouseY - lastMouseY) : 0f;
+            MouseWheel = fresh ? (float)(s.mouseWheel - lastMouseWheel) : 0f;
             lastMouseX = s.mouseX;
             lastMouseY = s.mouseY;
+            lastMouseWheel = s.mouseWheel;
             seeded = true;
             Horizontal = s.horizontal;
             Vertical = s.vertical;
@@ -45,7 +48,7 @@ namespace PerkeleRim
         {
             seeded = false;
             OwnsPlayer = false;
-            MouseX = MouseY = Horizontal = Vertical = 0f;
+            MouseX = MouseY = MouseWheel = Horizontal = Vertical = 0f;
             Keys.Clear();
         }
     }

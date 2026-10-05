@@ -108,9 +108,18 @@ namespace PerkeleRim::Input
         return a_button <= 6 ? static_cast<std::uint16_t>(KeyCode::Mouse0 + a_button) : KeyCode::None;
     }
 
+    // The wheel arrives as mouse buttons 8 (up) and 9 (down), one press per notch: +1, -1, else 0.
+    constexpr int WheelNotches(std::uint32_t a_button)
+    {
+        return a_button == 8 ? 1 : a_button == 9 ? -1 : 0;
+    }
+
     // Mouse counts to "Mouse X"/"Mouse Y" axis units. Unity's default is 0.1; on top of MSC's own
     // mouse look sensitivity that turned too fast in play, so it's lower.
     inline constexpr double kMouseAxisPerCount = 0.06;
+
+    // One wheel notch in "Mouse ScrollWheel" units, Unity's default.
+    inline constexpr double kWheelAxisPerNotch = 0.1;
 
     // Accumulates held keys and mouse movement and produces the InputState to publish.
     class Builder
@@ -141,6 +150,12 @@ namespace PerkeleRim::Input
             _mouseY -= a_dy * kMouseAxisPerCount;
         }
 
+        // Wheel notches, positive away from the user (WheelNotches).
+        void AddWheel(int a_notches)
+        {
+            _mouseWheel += a_notches * kWheelAxisPerNotch;
+        }
+
         // Everything released, e.g. when ownership ends. Mouse totals keep accumulating.
         void ReleaseAll()
         {
@@ -157,6 +172,7 @@ namespace PerkeleRim::Input
             s.flags = a_ownsPlayer ? Protocol::kInputOwnsPlayer : 0;
             s.mouseX = _mouseX;
             s.mouseY = _mouseY;
+            s.mouseWheel = _mouseWheel;
             if (a_live) {
                 for (int i = 0; i < 8; ++i) {
                     s.keys[i] = _keys[i];
@@ -179,5 +195,6 @@ namespace PerkeleRim::Input
         std::uint64_t _keys[8]{};
         double        _mouseX = 0.0;
         double        _mouseY = 0.0;
+        double        _mouseWheel = 0.0;
     };
 }

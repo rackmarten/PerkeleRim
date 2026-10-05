@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 7;
+        public const uint ProtocolVersion = 8;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -27,6 +27,15 @@ namespace PerkeleRim.Protocol
         public const uint InputOwnsPlayer = 0x1;
         public const uint PlayerValid = 0x1;
         public const uint PlayerCamera = 0x2;
+        public const uint PlayerNeeds = 0x4;
+        public const uint NeedThirst = 0;
+        public const uint NeedHunger = 1;
+        public const uint NeedStress = 2;
+        public const uint NeedUrine = 3;
+        public const uint NeedFatigue = 4;
+        public const uint NeedDirtiness = 5;
+        public const uint NeedDrunk = 6;
+        public const uint NeedCount = 7;
         public const uint VehicleValid = 0x1;
         public const uint VehicleDriven = 0x2;
         public const uint VehicleHayosiko = 1;
@@ -62,7 +71,7 @@ namespace PerkeleRim.Protocol
             "LOD/Wipers/Pivot/WiperRightPivot",
             "LOD/FuelFiller/Pivot",
             "LOD/FuelFiller/OpenCap",
-            "RadioPivot/Radio/TunerPivot",
+            "RadioPivot/Radio/TunerPivot/needle",
             "LOD/seatbelts/HandleUpPivot/SeatbeltHandle",
             "LOD/seatbelts/Fastened_mesh",
             // Lights (lit meshes, shown while on)
@@ -97,6 +106,7 @@ namespace PerkeleRim.Protocol
         CollisionChunk = 1,
         WorldspaceChange = 2,
         LookAtText = 3,
+        Subtitle = 4,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -131,6 +141,7 @@ namespace PerkeleRim.Protocol
         public float horizontal;
         public float vertical;
         public fixed ulong keys[8];
+        public double mouseWheel;
 
         public bool IsKeyDown(int keyCode)
         {
@@ -155,7 +166,7 @@ namespace PerkeleRim.Protocol
         public uint seq;
         public uint reserved;
         public InputState value;
-        public fixed byte pad[24];
+        public fixed byte pad[16];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -173,6 +184,7 @@ namespace PerkeleRim.Protocol
         public fixed float eye[3];
         public float roll;
         public float fov;
+        public fixed float needs[7];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -181,7 +193,7 @@ namespace PerkeleRim.Protocol
         public uint seq;
         public uint reserved;
         public PlayerState value;
-        public fixed byte pad[52];
+        public fixed byte pad[24];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

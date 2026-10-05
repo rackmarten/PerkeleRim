@@ -13,7 +13,8 @@ namespace PerkeleRim.Game
     //  - writes PlayerState (Skyrim world space) every frame, valid only while Skyrim has handed
     //    the player over and the player stands on the current anchor's island, with the camera's
     //    pose (lean, reach, zoom) for Skyrim's first-person camera;
-    //  - sends MSC's interaction text (LookAtText) to Skyrim when it changes;
+    //  - sends MSC's interaction text (LookAtText) and subtitle line (Subtitle) to Skyrim when they
+    //    change, and its needs with every pose;
     //  - runs the vehicles (VehicleLink) on the same island: the van (drawn in Skyrim) on the
     //    player's right, or at the spot the anchor names (the garage), the Jonnez moped (MSC only
     //    so far) on the left.
@@ -52,6 +53,13 @@ namespace PerkeleRim.Game
         Transform fpsCamera;
         Camera viewCamera;  // the camera MSC renders with, below fpsCamera
         string lookAtSent;  // interaction prompt Skyrim last got (flags:text); null = send it again
+        string subtitleSent;  // subtitle Skyrim last got; null = send it again
+        HutongGames.PlayMaker.FsmFloat[] needs;  // PlayerState.needs globals, in Wire.Need* order
+
+        static readonly string[] NeedGlobals =
+        {
+            "PlayerThirst", "PlayerHunger", "PlayerStress", "PlayerUrine", "PlayerFatigue", "PlayerDirtiness", "PlayerDrunk",
+        };
         CharacterController controller;
         PlayMakerFSM crouch;
 
@@ -93,6 +101,7 @@ namespace PerkeleRim.Game
             foreach (var k in input.Keys) InputShim.Keys.Add((KeyCode)k);
             InputShim.Axes["Mouse X"] = input.MouseX;
             InputShim.Axes["Mouse Y"] = input.MouseY;
+            InputShim.Axes["Mouse ScrollWheel"] = input.MouseWheel;  // radio tuning, among others
             InputShim.Axes["Horizontal"] = input.Horizontal;
             InputShim.Axes["Vertical"] = input.Vertical;
         }
@@ -142,6 +151,7 @@ namespace PerkeleRim.Game
             state.generation = island.Generation;
             link.WritePlayer(ref state);
             SendLookAt(link, playing);
+            SendSubtitle(link, playing);
             foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero);
         }
 
@@ -441,6 +451,25 @@ namespace PerkeleRim.Game
                 var cam = viewCamera.transform;
                 CameraPose.Fill(ref s, ToVec3(cam.position - Feet()), ToVec3(cam.right), ToVec3(cam.up), viewCamera.fieldOfView);
             }
+            FillNeeds(ref s);
+        }
+
+        // MSC's needs bars (and drunk level) for Skyrim's HUD.
+        void FillNeeds(ref PlayerState s)
+        {
+            if (needs == null)
+            {
+                var globals = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
+                needs = new HutongGames.PlayMaker.FsmFloat[NeedGlobals.Length];
+                for (int i = 0; i < needs.Length; i++)
+                {
+                    needs[i] = globals.FindFsmFloat(NeedGlobals[i]);
+                    if (needs[i] == null) log($"player: global {NeedGlobals[i]} not found");
+                }
+            }
+            for (int i = 0; i < needs.Length; i++)
+                s.needs[i] = needs[i] != null ? needs[i].Value : 0f;
+            s.flags |= Wire.PlayerNeeds;
         }
 
         // MSC's interaction prompt (globals GUIinteraction: "IGNITION", item names; GUIuse: the hand
@@ -458,6 +487,17 @@ namespace PerkeleRim.Game
             if (key == lookAtSent) return;
             var payload = LookAt.Encode(text, flags);
             if (link.Send(MessageType.LookAtText, payload, payload.Length)) lookAtSent = key;
+        }
+
+        // MSC's subtitle line (global GUIsubtitle: the player's swearing), same rules as SendLookAt.
+        void SendSubtitle(Link link, bool playing)
+        {
+            if (!playing) { subtitleSent = null; return; }
+            var global = HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmString("GUIsubtitle");
+            var text = global != null && global.Value != null ? global.Value : "";
+            if (text == subtitleSent) return;
+            var payload = LookAt.Encode(text);
+            if (link.Send(MessageType.Subtitle, payload, payload.Length)) subtitleSent = text;
         }
 
         // Bottom of the player's capsule, which is what Skyrim's position means.

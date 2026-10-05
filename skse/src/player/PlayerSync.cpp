@@ -54,6 +54,9 @@ namespace PerkeleRim::PlayerSync
             float          savedFov = 0.0f;   // Skyrim's worldFOV before MSC's took over, 0 = untouched
             std::string    lookAt;            // MSC's interaction text
             bool           lookAtUse = false; // MSC shows its hand icon
+            std::string    subtitle;          // MSC's subtitle line
+            bool           hasNeeds = false;  // needs below came from MSC since the handover
+            std::array<float, 7> needs{};     // PlayerState.needs
             bool           cameraParentLogged = false;
 
             // Per-second stats while owned.
@@ -159,7 +162,9 @@ namespace PerkeleRim::PlayerSync
             }
             state.lookAt.clear();
             state.lookAtUse = false;
-            Hud::Set(false, state.lookAt, false);
+            state.subtitle.clear();
+            state.hasNeeds = false;
+            Hud::Set({});
             CollisionSampler::Stop();
             VehicleView::Hide();
             Publish();
@@ -464,14 +469,17 @@ namespace PerkeleRim::PlayerSync
                 SKSE::log::info("player sync: {}", seated ? "seated" : "out of the seat");
             }
             link.Receive([](Protocol::MessageType a_type, const std::uint8_t* a_data, std::uint32_t a_size) {
-                if (a_type != Protocol::MessageType::LookAtText) {
+                if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle) {
                     return;
                 }
-                if (const auto text = LookAt::Decode(a_data, a_size)) {
+                const auto text = LookAt::Decode(a_data, a_size);  // a Subtitle has the same payload
+                if (!text) {
+                    SKSE::log::warn("player sync: bad text message type {} ({} bytes)", static_cast<int>(a_type), a_size);
+                } else if (a_type == Protocol::MessageType::Subtitle) {
+                    state.subtitle.assign(text->text);
+                } else {
                     state.lookAt.assign(text->text);
                     state.lookAtUse = (text->flags & Protocol::kLookAtUse) != 0;
-                } else {
-                    SKSE::log::warn("player sync: bad look-at message ({} bytes)", a_size);
                 }
             });
             if (valid) {
@@ -479,6 +487,10 @@ namespace PerkeleRim::PlayerSync
                 const float fromHeading = a_player->GetAngleZ();
                 const float fromPitch = a_player->data.angle.x;
                 Place(a_player, pose);
+                if ((pose.flags & Protocol::kPlayerNeeds) != 0) {
+                    std::copy(std::begin(pose.needs), std::end(pose.needs), state.needs.begin());
+                    state.hasNeeds = true;
+                }
                 if ((pose.flags & Protocol::kPlayerCamera) != 0) {
                     PoseCamera(pose, fromHeading, fromPitch);
                 } else {
@@ -503,7 +515,14 @@ namespace PerkeleRim::PlayerSync
             state.frames++;
             state.statTime += a_delta;
             const bool second = state.statTime >= 1.0f;
-            Hud::Set(true, state.lookAt, state.lookAtUse, second);  // refreshed once a second in case the HUD movie was rebuilt
+            Hud::View hud;
+            hud.show = true;
+            hud.label = state.lookAt;
+            hud.hand = state.lookAtUse;
+            hud.subtitle = state.subtitle;
+            hud.hasNeeds = state.hasNeeds;
+            hud.needs = state.needs;
+            Hud::Set(hud, second);  // refreshed once a second in case the HUD movie was rebuilt
             if (second) {
                 SKSE::log::info(
                     "player sync: frames={} placed={} new poses={} pos=({:.0f},{:.0f},{:.0f}) speed={:.1f} m/s heading={:.2f} pitch={:.2f} stance={} seated={} van shift={:.1f} eye=({:.0f},{:.0f},{:.0f}) roll={:.2f} fov={:.0f}",
@@ -570,7 +589,13 @@ namespace PerkeleRim::PlayerSync
                         changed = true;
                         break;
                     case RE::INPUT_DEVICE::kMouse:
-                        state.input.SetKey(Input::KeyFromMouseButton(code), button->IsPressed());
+                        if (const int notches = Input::WheelNotches(code)) {
+                            if (button->IsDown()) {
+                                state.input.AddWheel(notches);
+                            }
+                        } else {
+                            state.input.SetKey(Input::KeyFromMouseButton(code), button->IsPressed());
+                        }
                         changed = true;
                         break;
                     default:
