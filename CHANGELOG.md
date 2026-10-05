@@ -40,3 +40,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - MSC's look-at interactions (door handles, handbrake, ignition) aimed about 100 px off while handed over: `Input.mousePosition` now answers with the screen center.
 - Skyrim could stay in sneak after MSC stood up again; the plugin now tracks the sneak state it sent instead of trusting Skyrim's flag.
 - Keys or mouse buttons whose release event got lost no longer stay held for MSC: Skyrim checks the devices every frame and releases them.
+- The van jittered around the camera while driving and fell behind it at speed: Skyrim builds its camera from the previous frame's placement and smooths small moves. While driving, the van is now hung around Skyrim's camera at the camera's spot in the van, learned while nearly stopped.
+- Handing the player back with F10 while seated sank the van into the ground at the new anchor and threw it, killing the player; it is now set down on its wheels. Parking checks the ground under the whole vehicle and picks another spot on its own side when it is uneven, so a rock no longer launches the van.

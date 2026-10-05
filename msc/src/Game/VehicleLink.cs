@@ -16,6 +16,10 @@ namespace PerkeleRim.Game
         // Drop the vehicle from this high above the ground so its wheels settle on it.
         const float ParkClearance = 0.6f;
         const float GroundCheckEvery = 0.25f;
+        // Half width and half length (meters) of the ground that must be flat where a vehicle parks
+        // (van sized; generous for the moped), and how uneven it may be.
+        static readonly Vector2 ParkHalfSize = new Vector2(1f, 2.3f);
+        const float MaxParkStep = 0.4f;
         // The parts MSC turns and spins per wheel, in VehicleState.wheelSpin order (the van's names).
         static readonly string[] WheelModels = { "wheelFL/tire", "wheelFR/tire", "wheelRL/tire", "wheelRR/tire" };
 
@@ -140,6 +144,17 @@ namespace PerkeleRim.Game
             if (body != null) body.position = car.position;
         }
 
+        // Brings the vehicle the player sits in to a new anchor: across so the feet land over it, and
+        // down onto its wheels at the ground there. Putting the seated feet on the ground sank the
+        // vehicle into it, and the physics threw it, killing the player.
+        public void CarryTo(Vector3 feet, Vector3 anchorGround)
+        {
+            if (car == null) return;
+            var delta = anchorGround - feet;
+            delta.y = anchorGround.y + ParkClearance - car.position.y;
+            Shift(delta);
+        }
+
         // Call every LateUpdate. playing: MSC owns the player and it stands on the current island.
         public void Update(bool playing, Transform player, Vector3 playerFeet)
         {
@@ -183,7 +198,7 @@ namespace PerkeleRim.Game
                 log($"vehicle: {driverName} was standing on {below.name} (layer {below.gameObject.layer}, tag {below.tag}, material {(below.sharedMaterial != null ? below.sharedMaterial.name : "none")})");
             var yaw = Quaternion.Euler(0f, player.eulerAngles.y, 0f);
             var spot = feet + yaw * parkOffset;
-            var ground = findGround(spot);
+            var ground = FlatSpot(feet, yaw) ?? findGround(spot);
             spot = (ground ?? spot) + Vector3.up * ParkClearance;
             car.position = spot;
             car.rotation = yaw;
@@ -199,6 +214,44 @@ namespace PerkeleRim.Game
             }
             heldVelocity = heldAngular = Vector3.zero;
             log($"vehicle: parked the {driverName} for gen {island.Generation} at ({spot.x:0.00},{spot.y:0.00},{spot.z:0.00}){(ground.HasValue ? "" : ", no ground yet, holding it")}");
+        }
+
+        // A spot next to the player whose ground is flat under the whole vehicle: the usual one, then
+        // further ahead, further back, further out, all on the vehicle's own side so the van and the
+        // moped never pick the same one. Parked over a rock, the vehicle spawned inside it and was
+        // thrown, sometimes into the player. Returns the highest ground point there, or null.
+        Vector3? FlatSpot(Vector3 feet, Quaternion yaw)
+        {
+            var outward = new Vector3(Mathf.Sign(parkOffset.x) * 3f, 0f, 0f);
+            var offsets = new[]
+            {
+                parkOffset,
+                parkOffset + Vector3.forward * 4f,
+                parkOffset - Vector3.forward * 4f,
+                parkOffset + outward,
+            };
+            foreach (var offset in offsets)
+            {
+                var center = feet + yaw * offset;
+                float low = float.MaxValue, high = float.MinValue;
+                bool ok = true;
+                // The center, then the four corners.
+                for (int i = 0; i < 5 && ok; i++)
+                {
+                    var local = i == 0 ? Vector3.zero : new Vector3((i & 1) != 0 ? ParkHalfSize.x : -ParkHalfSize.x, 0f, (i & 2) != 0 ? ParkHalfSize.y : -ParkHalfSize.y);
+                    var g = findGround(center + yaw * local);
+                    if (!g.HasValue) { ok = false; break; }
+                    low = Mathf.Min(low, g.Value.y);
+                    high = Mathf.Max(high, g.Value.y);
+                }
+                if (ok && high - low <= MaxParkStep)
+                {
+                    if (offset != parkOffset) log($"vehicle: ground uneven where the {driverName} parks, parking it at offset {offset}");
+                    return new Vector3(center.x, high, center.z);
+                }
+            }
+            log($"vehicle: no flat spot for the {driverName} around the player");
+            return null;
         }
 
         void Hold(bool hold)

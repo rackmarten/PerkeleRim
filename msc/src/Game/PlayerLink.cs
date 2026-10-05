@@ -343,7 +343,7 @@ namespace PerkeleRim.Game
             var target = (ready ? ground : anchor) + Vector3.up * SpawnClearance;
             var carrier = Array.Find(vehicles, v => v.Carries(player));
             if (carrier != null)
-                carrier.Shift(target - Feet());  // the player sits in it and comes along
+                carrier.CarryTo(Feet(), ready ? ground : anchor);  // the player sits in it and comes along
             else
             {
                 player.position += target - Feet();

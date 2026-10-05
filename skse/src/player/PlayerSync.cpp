@@ -44,7 +44,18 @@ namespace PerkeleRim::PlayerSync
             int           placed = 0;
             int           newPoses = 0;
             std::uint32_t lastPoseFrame = 0;
+            float         vanShift = 0.0f;  // most the van was moved off MSC's pose to stay around the camera, units
+
+            bool         cameraSeatKnown = false;
+            // Skyrim's camera in the driven van's local frame, units. Kept across seatings and
+            // handovers: it is the same seat, and a van carried to a new anchor may still be rolling.
+            RE::NiPoint3 cameraSeat;
         } state;
+
+        // The camera seat is learned only while the van is this slow (m/s), so the camera's lag at
+        // speed never ends up in it.
+        constexpr float kCameraSeatLearnSpeed = 0.5f;
+        constexpr float kCameraSeatBlend = 0.1f;
 
         bool GamePaused()
         {
@@ -99,6 +110,8 @@ namespace PerkeleRim::PlayerSync
             }
         }
 
+        void SetSimulated(RE::PlayerCharacter* a_player, bool a_simulated);
+
         void Release(const char* a_reason)
         {
             if (!state.owned) {
@@ -112,6 +125,10 @@ namespace PerkeleRim::PlayerSync
                 player->NotifyAnimationGraph("SneakStop"sv);
             }
             state.sneak = false;
+            if (auto* player = RE::PlayerCharacter::GetSingleton(); player && state.seated) {
+                SetSimulated(player, true);
+            }
+            state.seated = false;
             CollisionSampler::Stop();
             VehicleView::Hide();
             Publish();
@@ -210,6 +227,20 @@ namespace PerkeleRim::PlayerSync
             }
         }
 
+        // Seated, the lowered capsule sits in the ground, so Havok would push it out against the
+        // placement. Like a rider's, it isn't simulated while seated; the player is placed every
+        // frame anyway.
+        void SetSimulated(RE::PlayerCharacter* a_player, bool a_simulated)
+        {
+            if (auto* controller = a_player->GetCharController()) {
+                if (a_simulated) {
+                    controller->flags.reset(RE::CHARACTER_FLAGS::kNoSim);
+                } else {
+                    controller->flags.set(RE::CHARACTER_FLAGS::kNoSim);
+                }
+            }
+        }
+
         // Seated, put Skyrim's camera where MSC's is.
         void LowerIntoSeat(Protocol::PlayerState& a_pose)
         {
@@ -244,6 +275,45 @@ namespace PerkeleRim::PlayerSync
             }
         }
 
+        // Skyrim builds its camera before this hook, from where the player was put the frame before,
+        // and smooths small moves on top, so a driven van drawn at MSC's pose jittered around it and
+        // fell behind at speed. Instead the van is hung around the camera, at the camera's spot in
+        // the van learned while it is nearly stopped: like a rider on a horse, the camera can't move
+        // inside it.
+        void LockVanToCamera(Protocol::VehicleState& a_vehicle)
+        {
+            auto* camera = RE::PlayerCamera::GetSingleton();
+            if (!camera || !camera->cameraRoot) {
+                return;
+            }
+            const auto         at = camera->cameraRoot->world.translate;
+            const RE::NiPoint3 van(a_vehicle.position[0], a_vehicle.position[1], a_vehicle.position[2]);
+            float              m[3][3];
+            Coords::ToMatrix({ a_vehicle.rotation[0], a_vehicle.rotation[1], a_vehicle.rotation[2], a_vehicle.rotation[3] }, m);
+            RE::NiMatrix3 rotate;
+            for (int r = 0; r < 3; r++) {
+                for (int c = 0; c < 3; c++) {
+                    rotate.entry[r][c] = m[r][c];
+                }
+            }
+
+            const float speed = std::hypot(a_vehicle.velocity[0], a_vehicle.velocity[1], a_vehicle.velocity[2]) *
+                                static_cast<float>(Coords::kMetersPerUnit);
+            if (speed < kCameraSeatLearnSpeed) {
+                const auto local = rotate.Transpose() * (at - van);
+                state.cameraSeat = state.cameraSeatKnown ? state.cameraSeat + (local - state.cameraSeat) * kCameraSeatBlend : local;
+                state.cameraSeatKnown = true;
+            }
+            if (!state.cameraSeatKnown) {
+                return;
+            }
+            const auto locked = at - rotate * state.cameraSeat;
+            state.vanShift = (std::max)(state.vanShift, locked.GetDistance(van));
+            a_vehicle.position[0] = locked.x;
+            a_vehicle.position[1] = locked.y;
+            a_vehicle.position[2] = locked.z;
+        }
+
         void Drive(RE::PlayerCharacter* a_player, float a_delta)
         {
             auto& link = LinkService::Get();
@@ -268,6 +338,7 @@ namespace PerkeleRim::PlayerSync
                                 vehicle.generation == state.generation;
             if (seated != state.seated) {
                 state.seated = seated;
+                SetSimulated(a_player, !seated);
                 SKSE::log::info("player sync: {} (Skyrim eye {:.0f} units, MSC eye {:.0f})", seated ? "seated, lowering the player" : "out of the seat",
                     state.eyeHeight, kMscEyeHeight);
             }
@@ -284,6 +355,9 @@ namespace PerkeleRim::PlayerSync
                     state.lastPoseFrame = pose.frame;
                 }
             }
+            if (seated) {
+                LockVanToCamera(vehicle);
+            }
             VehicleView::Update(hasVehicle ? &vehicle : nullptr, state.generation);
             // Stream ahead of the player while it moves fast (driving).
             const RE::NiPoint3 velocity = valid ? RE::NiPoint3(pose.velocity[0], pose.velocity[1], pose.velocity[2]) : RE::NiPoint3();
@@ -293,9 +367,11 @@ namespace PerkeleRim::PlayerSync
             state.statTime += a_delta;
             if (state.statTime >= 1.0f) {
                 SKSE::log::info(
-                    "player sync: frames={} placed={} new poses={} pos=({:.0f},{:.0f},{:.0f}) speed={:.1f} m/s heading={:.2f} pitch={:.2f} stance={}",
+                    "player sync: frames={} placed={} new poses={} pos=({:.0f},{:.0f},{:.0f}) speed={:.1f} m/s heading={:.2f} pitch={:.2f} stance={} seated={} van shift={:.1f}",
                     state.frames, state.placed, state.newPoses, pose.position[0], pose.position[1], pose.position[2],
-                    std::hypot(pose.velocity[0], pose.velocity[1]) * Coords::kMetersPerUnit, pose.heading, pose.pitch, pose.stance);
+                    std::hypot(pose.velocity[0], pose.velocity[1]) * Coords::kMetersPerUnit, pose.heading, pose.pitch, pose.stance,
+                    state.seated, state.vanShift);
+                state.vanShift = 0.0f;
                 state.statTime = 0.0f;
                 state.frames = state.placed = state.newPoses = 0;
             }
