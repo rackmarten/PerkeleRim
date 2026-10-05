@@ -35,6 +35,8 @@ namespace PerkeleRim::PlayerSync
             bool           sneak = false;  // what we last told Skyrim; its own flag can drop on its own
             std::uint32_t  inputFrame = 0;
             Input::Builder input;
+            float          eyeHeight = 0.0f;  // Skyrim camera above the player's feet on foot, units (0 until seen)
+            bool           seated = false;
 
             // Per-second stats while owned.
             float         statTime = 0.0f;
@@ -195,6 +197,27 @@ namespace PerkeleRim::PlayerSync
             return nullptr;
         }
 
+        // MSC's camera sits this far above the feet it sends, standing and seated alike (measured;
+        // sitting moves its whole capsule down). Skyrim's eyes are higher above the feet, which is
+        // harmless on foot but puts them over the van's roof when seated.
+        constexpr float kMscEyeHeight = static_cast<float>(0.85 * Coords::kUnitsPerMeter);
+
+        void MeasureEye(RE::PlayerCharacter* a_player)
+        {
+            auto* camera = RE::PlayerCamera::GetSingleton();
+            if (camera && camera->cameraRoot && camera->IsInFirstPerson()) {
+                state.eyeHeight = camera->cameraRoot->world.translate.z - a_player->GetPosition().z;
+            }
+        }
+
+        // Seated, put Skyrim's camera where MSC's is.
+        void LowerIntoSeat(Protocol::PlayerState& a_pose)
+        {
+            if (state.eyeHeight > kMscEyeHeight) {
+                a_pose.position[2] -= state.eyeHeight - kMscEyeHeight;
+            }
+        }
+
         void Place(RE::PlayerCharacter* a_player, const Protocol::PlayerState& a_pose)
         {
             state.lastPlaced = RE::NiPoint3(a_pose.position[0], a_pose.position[1], a_pose.position[2]);
@@ -239,7 +262,21 @@ namespace PerkeleRim::PlayerSync
             Protocol::PlayerState pose{};
             const bool            valid = link.ReadPlayer(pose) && (pose.flags & Protocol::kPlayerValid) != 0 &&
                                pose.generation == state.generation;
+            Protocol::VehicleState vehicle{};
+            const bool             hasVehicle = link.ReadVehicle(vehicle);
+            const bool             seated = valid && hasVehicle && (vehicle.flags & Protocol::kVehicleDriven) != 0 &&
+                                vehicle.generation == state.generation;
+            if (seated != state.seated) {
+                state.seated = seated;
+                SKSE::log::info("player sync: {} (Skyrim eye {:.0f} units, MSC eye {:.0f})", seated ? "seated, lowering the player" : "out of the seat",
+                    state.eyeHeight, kMscEyeHeight);
+            }
             if (valid) {
+                if (seated) {
+                    LowerIntoSeat(pose);
+                } else if (pose.stance == 0) {
+                    MeasureEye(a_player);
+                }
                 Place(a_player, pose);
                 state.placed++;
                 if (pose.frame != state.lastPoseFrame) {
@@ -247,8 +284,7 @@ namespace PerkeleRim::PlayerSync
                     state.lastPoseFrame = pose.frame;
                 }
             }
-            Protocol::VehicleState vehicle{};
-            VehicleView::Update(link.ReadVehicle(vehicle) ? &vehicle : nullptr, state.generation);
+            VehicleView::Update(hasVehicle ? &vehicle : nullptr, state.generation);
             // Stream ahead of the player while it moves fast (driving).
             const RE::NiPoint3 velocity = valid ? RE::NiPoint3(pose.velocity[0], pose.velocity[1], pose.velocity[2]) : RE::NiPoint3();
             CollisionSampler::Update(a_player, velocity);

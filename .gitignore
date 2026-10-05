@@ -55,3 +55,7 @@ Desktop.ini
 
 # --- Local machine config ---
 local.props
+
+# --- tools/ output and downloaded tools (tools/README.md) ---
+tools/.deps/
+tools/out/

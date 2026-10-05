@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Exports one scene GameObject (with its children, materials and textures) from a Unity game's data
+       folder to FBX, through AssetStudioMod's libraries in tools/.deps (run tools/setup.ps1 first). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net472</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>UnityExport</AssemblyName>
+    <Copyright>Copyright (c) Marek Uncik</Copyright>
+    <AssetStudioDir>$(MSBuildThisFileDirectory)..\.deps\AssetStudioModCLI\</AssetStudioDir>
+    <!-- Runs from the AssetStudio folder, which has every dependency and the native FBX/texture wrappers. -->
+    <OutputPath>$(AssetStudioDir)</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <Reference Include="AssetStudio" HintPath="$(AssetStudioDir)AssetStudio.dll" Private="false" />
+    <Reference Include="AssetStudioUtility" HintPath="$(AssetStudioDir)AssetStudioUtility.dll" Private="false" />
+    <Reference Include="AssetStudioFBXWrapper" HintPath="$(AssetStudioDir)AssetStudioFBXWrapper.dll" Private="false" />
+    <Reference Include="Newtonsoft.Json" HintPath="$(AssetStudioDir)Newtonsoft.Json.dll" Private="false" />
+  </ItemGroup>
+
+</Project>

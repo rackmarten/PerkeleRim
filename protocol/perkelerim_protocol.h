@@ -138,7 +138,8 @@ namespace PerkeleRim::Protocol
         float         rotation[4];   // x, y, z, w
         float         velocity[3];   // units per second
         float         steer;         // front wheel angle, radians, positive turns right
-        float         wheelSpin[4];  // radians: front left, front right, rear left, rear right
+        float         wheelSpin[4];  // radians about the axle, in [-pi, pi], positive rolls forward:
+                                     // front left, front right, rear left, rear right
         std::uint32_t reserved;
     };
 

@@ -16,6 +16,8 @@ namespace PerkeleRim.Game
         // Drop the vehicle from this high above the ground so its wheels settle on it.
         const float ParkClearance = 0.6f;
         const float GroundCheckEvery = 0.25f;
+        // The parts MSC turns and spins per wheel, in VehicleState.wheelSpin order (the van's names).
+        static readonly string[] WheelModels = { "wheelFL/tire", "wheelFR/tire", "wheelRL/tire", "wheelRR/tire" };
 
         readonly string objectName;
         readonly string driverName;   // PlayerCurrentVehicle while driving it
@@ -27,6 +29,7 @@ namespace PerkeleRim.Game
         readonly Func<Vector3, Vector3?> findGround;
 
         Transform car;
+        Transform[] wheels;
         Rigidbody body;
         uint placedGeneration;
         bool held;
@@ -72,6 +75,11 @@ namespace PerkeleRim.Game
             placedGeneration = 0;
             held = false;
             Ground = ColliderBelow(car);
+            wheels = new Transform[WheelModels.Length];
+            int found = 0;
+            for (int i = 0; i < wheels.Length; i++)
+                if ((wheels[i] = car.Find(WheelModels[i])) != null) found++;
+            if (wireId != 0) log($"vehicle: {driverName} has {found}/{wheels.Length} wheel models");
             // The pose goes out every rendered frame; without this it only moves on 50 Hz physics steps.
             if (body != null && body.interpolation == RigidbodyInterpolation.None)
             {
@@ -230,6 +238,26 @@ namespace PerkeleRim.Game
             s.velocity[0] = sv.x;
             s.velocity[1] = sv.y;
             s.velocity[2] = sv.z;
+            FillWheels(ref s);
+        }
+
+        // Steer and spin from where MSC turned the wheel models, relative to the car (their rest pose
+        // is unrotated). Unity: +X right, +Y up, +Z forward, left-handed.
+        void FillWheels(ref VehicleState s)
+        {
+            var toCar = Quaternion.Inverse(car.rotation);
+            for (int i = 0; i < wheels.Length; i++)
+            {
+                if (wheels[i] == null) continue;
+                var q = toCar * wheels[i].rotation;
+                // Spinning keeps the axle; steering (about up) turns it: axle = (cos a, 0, -sin a).
+                var axle = q * Vector3.right;
+                float steer = Mathf.Atan2(-axle.z, axle.x);
+                if (i < 2) s.steer = steer;  // front wheels; the protocol carries one angle
+                // Undo the steer; what is left turns about the axle. Rolling forward tips up toward +Z.
+                var up = Quaternion.AngleAxis(-steer * Mathf.Rad2Deg, Vector3.up) * q * Vector3.up;
+                s.wheelSpin[i] = Mathf.Atan2(up.z, up.y);
+            }
         }
 
         // The first collider straight below t that isn't part of t itself.

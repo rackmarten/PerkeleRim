@@ -23,6 +23,16 @@ function Get-RequiredSetting($config, $name) {
     return $config[$name]
 }
 
+# blender.exe: BlenderPath from local.props, else the newest install under Program Files.
+function Get-Blender {
+    $config = if (Test-Path (Join-Path $RepoRoot 'local.props')) { Get-LocalConfig } else { @{} }
+    if ($config['BlenderPath']) { return $config['BlenderPath'] }
+    $found = Get-ChildItem (Join-Path $env:ProgramFiles 'Blender Foundation') -Filter blender.exe -Recurse -Depth 1 -ErrorAction SilentlyContinue |
+        Sort-Object { $_.Directory.Name } | Select-Object -Last 1
+    if (-not $found) { throw "Blender not found. Install it (winget install BlenderFoundation.Blender) or set BlenderPath in local.props." }
+    return $found.FullName
+}
+
 # Enters the x64 MSVC developer environment of the newest VS / Build Tools install with the C++ tools.
 function Enter-DevShell {
     if ($env:VSCMD_ARG_TGT_ARCH -eq 'x64') { return }

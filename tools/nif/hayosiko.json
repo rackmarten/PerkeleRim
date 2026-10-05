@@ -1,0 +1,22 @@
+{
+  "root_name": "Hayosiko",
+  "unity_object": "HAYOSIKO(1500kg, 250)",
+  "nif": "Meshes/PerkeleRim/Hayosiko.nif",
+  "textures": "Textures/PerkeleRim/Hayosiko",
+  "wheels": [
+    { "name": "WheelFL", "node": "wheelFL", "spin": "tire", "steers": true },
+    { "name": "WheelFR", "node": "wheelFR", "spin": "tire", "steers": true },
+    { "name": "WheelRL", "node": "wheelRL", "spin": "tire" },
+    { "name": "WheelRR", "node": "wheelRR", "spin": "tire" }
+  ],
+  "skip": [
+    "(^|/)coll",
+    "broken windshield",
+    "^DeadBody",
+    "Electricity/PowerON",
+    "GaugesLights",
+    "Dashboard/Indicators/"
+  ],
+  "skip_materials": ["Default-Material", "windows_broken"],
+  "alpha_blend_materials": ["WINDOWS", "glass", "_alpha$"]
+}

@@ -72,13 +72,13 @@ Log lines: `collision: chunk (x,y) gen N try T: hits/1089 hit (terrain, static, 
 
 ## Vehicles
 
-`VehicleState` (MSC → Skyrim, latest-value slot): vehicle id (`kVehicleHayosiko`), flags (`kVehicleValid` while it is on the current anchor's island, `kVehicleDriven` while the player sits in it), anchor `generation`, position of the vehicle's origin, rotation as a quaternion in Skyrim space (local +Y forward, +Z up), velocity, and front wheel steer and wheel spin angles (zero until the real mesh needs them). One vehicle for now.
+`VehicleState` (MSC → Skyrim, latest-value slot): vehicle id (`kVehicleHayosiko`), flags (`kVehicleValid` while it is on the current anchor's island, `kVehicleDriven` while the player sits in it), anchor `generation`, position of the vehicle's origin, rotation as a quaternion in Skyrim space (local +Y forward, +Z up), velocity, front wheel steer angle (radians, positive turns right) and each wheel's spin angle about its axle (radians in [-π, π], positive rolls forward), which Skyrim applies to the van mesh's `Wheel*` and `Wheel*:Spin` nodes. One vehicle for now.
 
 MSC side (`msc/src/Game/VehicleLink.cs`, one instance per vehicle): when the player is put down on a new anchor on foot, the van is parked to its right and the Jonnez moped to its left; a vehicle the player sits in is moved to the new anchor with the player in it. Both get their key (`PlayerKeyHayosiko`, as MSC's debug "Keys" command does) and a full tank. A vehicle with no island ground under it is made kinematic and keeps its velocity until the ground arrives. Only the van has a wire id, so only it is sent.
 
-Skyrim side (`skse/src/vehicle/VehicleView.cpp`): a vanilla cart mesh (`Furniture\Cart\CartFurnStatic01.nif`) loaded through `BSModelDB` and hung under the player's parent node, posed every frame from a valid `VehicleState` of the current generation. It has no reference and no Havok collision, so the collision sampler never sees it.
+Skyrim side (`skse/src/vehicle/VehicleView.cpp`): the van mesh converted from the player's own MSC install (`Meshes\PerkeleRim\Hayosiko.nif`, see [tools/README.md](../tools/README.md)), or a vanilla cart stand-in (`Furniture\Cart\CartFurnStatic01.nif`) when it wasn't converted, loaded through `BSModelDB` and hung under the player's parent node, posed every frame from a valid `VehicleState` of the current generation. It has no reference and no Havok collision, so the collision sampler never sees it.
 
-Log lines: `vehicle: found/parked/got in/got out` and `surface: ...` (MSC's ground surfaces, once per game load) in MSC's log; `vehicle view: stand-in ..., showing/hidden` in `PerkeleRim.log`.
+Log lines: `vehicle: found/wheel models/parked/got in/got out` and `surface: ...` (MSC's ground surfaces, once per game load) in MSC's log; `vehicle view: model ..., N of 4 wheel nodes, showing/hidden` in `PerkeleRim.log`.
 
 ## Input
 
