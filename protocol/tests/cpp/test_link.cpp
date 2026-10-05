@@ -136,6 +136,18 @@ TEST_CASE("input and player slots carry the latest value")
     PlayerState out{};
     REQUIRE(p.skyrim->ReadPlayer(out));
     CHECK(std::memcmp(&out, &player, sizeof(player)) == 0);
+
+    VehicleState vehicle{};
+    CHECK_FALSE(p.skyrim->ReadVehicle(vehicle));  // never written
+    vehicle.frame = 9;
+    vehicle.flags = kVehicleValid | kVehicleDriven;
+    vehicle.vehicle = kVehicleHayosiko;
+    vehicle.rotation[3] = 1.0f;
+    vehicle.wheelSpin[3] = 2.5f;
+    p.msc->WriteVehicle(vehicle);
+    VehicleState vehicleOut{};
+    REQUIRE(p.skyrim->ReadVehicle(vehicleOut));
+    CHECK(std::memcmp(&vehicleOut, &vehicle, sizeof(vehicle)) == 0);
 }
 
 TEST_CASE("ring delivers messages in order, across the wrap point")

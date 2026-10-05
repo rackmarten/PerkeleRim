@@ -2,6 +2,7 @@
 # pos,skyrim_x,skyrim_y,skyrim_z,unity_x,unity_y,unity_z      (checked both ways)
 # angle,skyrim_radians,unity_degrees                          (both ways; radians in [0, 2*pi))
 # angle_wrap,skyrim_radians,unity_degrees                     (Skyrim -> Unity only)
+# rot,unity_x,unity_y,unity_z,unity_w,skyrim_x,skyrim_y,skyrim_z,skyrim_w   (quaternions, both ways)
 pos,0,0,0,0,0,0
 pos,70,0,0,1.000125,0,0
 pos,0,70,0,0,0,1.000125
@@ -17,3 +18,7 @@ angle_wrap,-1.5707963,270.000002
 angle_wrap,7,41.0704566
 angle_wrap,-6.2831853,0.0000005
 angle_wrap,-0.0000001,0
+rot,0,0,0,1,0,0,0,1
+rot,0,0.70710678,0,0.70710678,0,0,-0.70710678,0.70710678
+rot,0.70710678,0,0,0.70710678,-0.70710678,0,0,0.70710678
+rot,0.1,0.2,0.3,0.92736185,-0.1,-0.3,-0.2,0.92736185

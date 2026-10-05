@@ -1,6 +1,6 @@
 # Protocol
 
-> Status: protocol v2. Transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a); collision chunks streamed (milestone 1b). Message contents beyond `InputState`, `PlayerState`, `CollisionChunk` and `WorldspaceChange` arrive with the milestones that need them.
+> Status: protocol v3. Transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a); collision chunks streamed (milestone 1b); one vehicle pose (milestone 2a). Message contents beyond `InputState`, `PlayerState`, `VehicleState`, `CollisionChunk` and `WorldspaceChange` arrive with the milestones that need them.
 
 The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchange data over one shared memory section. See [DESIGN.md](DESIGN.md) for the overall architecture and ownership rules.
 
@@ -14,15 +14,16 @@ The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchang
 
 ## Section layout
 
-One section, `Local\PerkeleRim.Link`, 4,456,896 bytes. Whichever game starts first creates it; it disappears when both have closed.
+One section, `Local\PerkeleRim.Link`, 4,457,024 bytes. Whichever game starts first creates it; it disappears when both have closed.
 
 | Offset | Size | Part | Written by |
 |---|---|---|---|
 | 0 | 128 | `LinkHeader`: magic, sizes, creator version, one `PeerInfo` per side | creator, then each side its own `PeerInfo` |
 | 128 | 128 | `InputSlot` (latest `InputState`) | Skyrim |
 | 256 | 64 | `PlayerSlot` (latest `PlayerState`) | MSC |
-| 320 | 64 + 4 MiB | ring Skyrim → MSC (collision chunks, worldspace changes) | Skyrim produces, MSC consumes |
-| 4,194,688 | 64 + 256 KiB | ring MSC → Skyrim (events) | MSC produces, Skyrim consumes |
+| 320 | 128 | `VehicleSlot` (latest `VehicleState`) | MSC |
+| 448 | 64 + 4 MiB | ring Skyrim → MSC (collision chunks, worldspace changes) | Skyrim produces, MSC consumes |
+| 4,194,816 | 64 + 256 KiB | ring MSC → Skyrim (events) | MSC produces, Skyrim consumes |
 
 Layout rules:
 
@@ -44,7 +45,7 @@ Log lines on both sides: `created shared memory` / `joined shared memory`, `link
 
 ## Latest-value slots
 
-Continuous state (`InputState`, `PlayerState`) goes through a seqlock slot, not a queue: the reader only ever wants the newest value, and a queue would add lag. The writer bumps `seq` to odd, writes, then bumps it back to even. The reader retries if `seq` changed or was odd. `seq == 0` means never written. Reads return nothing while the link is down.
+Continuous state (`InputState`, `PlayerState`, `VehicleState`) goes through a seqlock slot, not a queue: the reader only ever wants the newest value, and a queue would add lag. The writer bumps `seq` to odd, writes, then bumps it back to even. The reader retries if `seq` changed or was odd. `seq == 0` means never written. Reads return nothing while the link is down.
 
 ## Rings
 
@@ -55,7 +56,7 @@ One single-producer, single-consumer byte ring per direction, for messages that 
 | Skyrim → MSC | `CollisionChunk` | `CollisionChunkHeader` (chunk x/y, worldspace, generation, origin, counts), vertices relative to origin, triangle indices |
 | Skyrim → MSC | `WorldspaceChange` | worldspace, interior cell, generation, spawn position and heading; sent on every handover and whenever the game moves the player (load door, fast travel), as the island anchor |
 
-Planned, added with their milestones (each one bumps the version): `ActorList`, `PlayerDamage`, `ConsumeEvent` (Skyrim → MSC); `VehicleState`, `ItemState`, `ImpactEvent`, `PunchEvent`, `UrineHit`, `Death` (MSC → Skyrim).
+Planned, added with their milestones (each one bumps the version): `ActorList`, `PlayerDamage`, `ConsumeEvent` (Skyrim → MSC); `ItemState`, `ImpactEvent`, `PunchEvent`, `UrineHit`, `Death` (MSC → Skyrim).
 
 Input pass-through keys (activate, shout, journal/map) stay with Skyrim.
 
@@ -63,22 +64,32 @@ Input pass-through keys (activate, shout, journal/map) stay with Skyrim.
 
 Chunks are `kCollisionChunkUnits` (2048 units, about 29 m) squares on a grid anchored at world (0, 0); chunk `(x, y)` starts at `(x * 2048, y * 2048)`. A payload is the header, `vertexCount` vertices (`float[3]`, Skyrim units relative to `origin`) and `indexCount` triangle indices. Triangles wind counterclockwise seen from above in Skyrim; MSC swaps two corners per triangle because the Y/Z swap flips the handedness. A chunk with the same x/y and generation replaces the older one; chunks for another generation are dropped.
 
-Skyrim side (`skse/src/collision/CollisionSampler.cpp`, geometry in `protocol/cpp/collision.h`): while MSC owns the player, a heightfield of 33 x 33 samples (64 units apart) per chunk, from top-down Havok raycasts that keep terrain, statics, animated statics, stair helpers and tree trunks and pass through everything else (clutter, actors, debris, water). So it is the top surface only: no overhangs, walls become steep slopes. A miss leaves a hole (no triangles touching it). The 5 x 5 chunks around the player are sampled nearest first, about 2 ms per frame; a chunk with holes is sampled again every 2 s (up to 5 tries) and resent when it improves. Skyrim forgets chunks more than 3 away and MSC drops them more than 4 away, so a chunk MSC dropped is always resent.
+Skyrim side (`skse/src/collision/CollisionSampler.cpp`, geometry in `protocol/cpp/collision.h`): while MSC owns the player, a heightfield of 33 x 33 samples (64 units apart) per chunk, from top-down Havok raycasts that keep terrain, statics, animated statics, stair helpers and tree trunks and pass through everything else (clutter, actors, debris, water). So it is the top surface only: no overhangs, walls become steep slopes. A miss leaves a hole (no triangles touching it). The 5 x 5 chunks around the player are sampled nearest first, then the 5 x 5 around a point 2 s of travel ahead of it (at most 2 chunks ahead, so it only matters while driving), about 2 ms per frame; a chunk with holes is sampled again every 2 s (up to 5 tries) and resent when it improves. Skyrim forgets chunks more than 3 away from both centers and MSC drops them more than 6 away from the player, so a chunk MSC dropped is always resent.
 
-MSC side (`msc/src/Link/CollisionChunk.cs`, `msc/src/Game/PlayerLink.cs`): one `MeshCollider` per chunk under `PerkeleRim.Island`. A new anchor clears them; the player is held at the anchor with its motor off until a chunk under it has arrived, then put down on it.
+MSC side (`msc/src/Link/CollisionChunk.cs`, `msc/src/Game/PlayerLink.cs`): one `MeshCollider` per chunk under `PerkeleRim.Island`. Chunks copy the layer, surface tag and physics material of MSC's asphalt (`Terrain` layer, tag `Concrete`, material `Track`): vehicle wheels only see some layers and take their grip from the surface. A new anchor clears them; the player is held at the anchor with its motor off until a chunk under it has arrived, then put down on it.
 
 Log lines: `collision: chunk (x,y) gen N try T: hits/1089 hit (terrain, static, trees, passed through), ms over frames` in `PerkeleRim.log`; `player: chunk (x,y) gen N: ... new|rebuilt`, `player: dropped N far chunks`, `player: placed on the island for gen N after S s` in MSC's log.
 
+## Vehicles
+
+`VehicleState` (MSC → Skyrim, latest-value slot): vehicle id (`kVehicleHayosiko`), flags (`kVehicleValid` while it is on the current anchor's island, `kVehicleDriven` while the player sits in it), anchor `generation`, position of the vehicle's origin, rotation as a quaternion in Skyrim space (local +Y forward, +Z up), velocity, and front wheel steer and wheel spin angles (zero until the real mesh needs them). One vehicle for now.
+
+MSC side (`msc/src/Game/VehicleLink.cs`, one instance per vehicle): when the player is put down on a new anchor on foot, the van is parked to its right and the Jonnez moped to its left; a vehicle the player sits in is moved to the new anchor with the player in it. Both get their key (`PlayerKeyHayosiko`, as MSC's debug "Keys" command does) and a full tank. A vehicle with no island ground under it is made kinematic and keeps its velocity until the ground arrives. Only the van has a wire id, so only it is sent.
+
+Skyrim side (`skse/src/vehicle/VehicleView.cpp`): a vanilla cart mesh (`Furniture\Cart\CartFurnStatic01.nif`) loaded through `BSModelDB` and hung under the player's parent node, posed every frame from a valid `VehicleState` of the current generation. It has no reference and no Havok collision, so the collision sampler never sees it.
+
+Log lines: `vehicle: found/parked/got in/got out` and `surface: ...` (MSC's ground surfaces, once per game load) in MSC's log; `vehicle view: stand-in ..., showing/hidden` in `PerkeleRim.log`.
+
 ## Input
 
-MSC runs hidden while Skyrim has focus, so it can't read the keyboard and mouse itself. Skyrim captures input and writes `InputState`. The MSC mod redirects every `UnityEngine.Input` call in the game's assemblies (cInput included) to a shim and answers from the latest `InputState`. Details and measurements: [SPIKE_HIDDEN_MSC.md](SPIKE_HIDDEN_MSC.md).
+MSC runs hidden while Skyrim has focus, so it can't read the keyboard and mouse itself. Skyrim captures input and writes `InputState`. The MSC mod redirects every `UnityEngine.Input` call in the game's assemblies (cInput included) to a shim and answers from the latest `InputState`. `Input.mousePosition` answers with the screen center (MSC aims its look-at raycasts through the cursor, which isn't locked while its window has no focus). Details and measurements: [SPIKE_HIDDEN_MSC.md](SPIKE_HIDDEN_MSC.md).
 
 - `keys`: 512-bit set of held Unity `KeyCode`s (mouse buttons are `Mouse0`..`Mouse6`). The shim derives Down/Up edges per MSC frame.
 - `mouseX`, `mouseY`: the `Mouse X`/`Mouse Y` axes **accumulated** since Skyrim started. The two games run at different frame rates, so MSC applies the difference since its last frame; a per-frame delta would be lost or doubled.
 - `horizontal`, `vertical`: the Unity axes, -1..1.
 - `flags & kInputOwnsPlayer`: MSC should apply this input at all.
 
-Skyrim side (`protocol/cpp/input.h`, `skse/src/player/PlayerSync.cpp`): DirectInput scan codes and mouse buttons map to Unity `KeyCode`s; Escape, Tab, `~` and F10 never reach MSC. Mouse counts become axis units (`kMouseAxisPerCount`, 0.06 per count, Y flipped). While a menu pauses the game, keys and axes are sent empty so MSC stands still. MSC side (`msc/src/Link/InputFrame.cs`, `msc/src/Game/PlayerLink.cs`): the shim pulls the newest `InputState` before the first `Input` call of each MSC frame; the first state after a handover only seeds the mouse totals.
+Skyrim side (`protocol/cpp/input.h`, `skse/src/player/PlayerSync.cpp`): DirectInput scan codes and mouse buttons map to Unity `KeyCode`s; Escape, Tab, `~` and F10 never reach MSC. Mouse counts become axis units (`kMouseAxisPerCount`, 0.06 per count, Y flipped). While a menu pauses the game, keys and axes are sent empty so MSC stands still. Every frame, keys and mouse buttons the devices no longer report as down are released, in case a release event got lost. MSC side (`msc/src/Link/InputFrame.cs`, `msc/src/Game/PlayerLink.cs`): the shim pulls the newest `InputState` before the first `Input` call of each MSC frame; the first state after a handover only seeds the mouse totals.
 
 ## Handing over the player
 

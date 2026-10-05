@@ -78,7 +78,8 @@ Alternatives considered: Motor Town (best trucks/drift, but early access and har
 
 - The SKSE side samples terrain **and static object collision** (rocks, bridges, walls, the 7,000 Steps) in a radius around the player.
 - The MSC side builds `MeshCollider` chunks on an island far away from MSC's own map and moves the player, vehicles and items there.
-- Chunks rebuild as the player moves; filter out small clutter (grass, small rocks, fences) to keep driving smooth.
+- Chunks rebuild as the player moves; filter out small clutter (grass, small rocks, fences) to keep driving smooth. While driving, chunks ahead of the player are streamed too.
+- Chunks copy MSC's asphalt surface (layer, tag, physics material), which is where vehicle wheels take their grip from.
 - On worldspace or interior change (load doors), the island is rebuilt for the new space.
 
 ### Coordinates
@@ -128,6 +129,7 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 ## 9. Known limitations
 
 - Vehicles can't go through load doors: park at city gates; the player walks in on foot.
+- The island is a top-down heightfield: overhangs (cliffs over a road, arches) become walls, and tall trees and rocks become spikes, which can stop or flip a vehicle.
 - Skyrim inventory, barter and magic menus are unavailable while MSC controls the player.
 - MSC is first-person only; third-person would need a body model and animation.
 - MSC vehicles are fragile and can kill the player in crashes; may need patching for Skyrim terrain.

@@ -13,7 +13,9 @@ namespace PerkeleRim::CollisionSampler
         constexpr std::uint32_t kCells = 32;          // 64 units (about 0.9 m) between samples
         constexpr std::uint32_t kSamples = (kCells + 1) * (kCells + 1);
         constexpr int           kRadius = 2;          // chunks around the player's chunk: 5 x 5, about 70 m each way
-        constexpr int           kForgetRadius = kRadius + 1;  // MSC keeps chunks one further, so a forgotten chunk is always resent
+        constexpr int           kForgetRadius = kRadius + 1;  // from both centers; MSC keeps chunks within 6 of the player, so a forgotten chunk is always resent
+        constexpr float         kLookAhead = 2.0f;            // seconds of travel the second center sits ahead of the player
+        constexpr float         kMaxAhead = 2.0f * Protocol::kCollisionChunkUnits;  // ... but at most 2 chunks
         constexpr float         kRayAbove = 10000.0f;  // rays run from this far above the player...
         constexpr float         kRayBelow = 10000.0f;  // ...to this far below
         constexpr int           kMaxPassThrough = 8;   // unwanted surfaces a ray may pass through
@@ -92,22 +94,25 @@ namespace PerkeleRim::CollisionSampler
             return (std::max)(std::abs(a_a.first - a_b.first), std::abs(a_a.second - a_b.second));
         }
 
-        bool Pick(const Key& a_center, const RE::NiPoint3& a_player)
+        // The player's chunks first, then those around the point ahead of it; nearest first in each.
+        bool Pick(const Key& a_center, const Key& a_ahead, const RE::NiPoint3& a_player)
         {
             const auto now = Clock::now();
-            for (const auto& [dx, dy] : Order()) {
-                const Key key{ a_center.first + dx, a_center.second + dy };
-                const auto it = state.known.find(key);
-                if (it != state.known.end() && (it->second.sentHits >= kSamples || it->second.tries >= kMaxTries || now < it->second.retryAt)) {
-                    continue;
+            for (const Key& center : { a_center, a_ahead }) {
+                for (const auto& [dx, dy] : Order()) {
+                    const Key  key{ center.first + dx, center.second + dy };
+                    const auto it = state.known.find(key);
+                    if (it != state.known.end() && (it->second.sentHits >= kSamples || it->second.tries >= kMaxTries || now < it->second.retryAt)) {
+                        continue;
+                    }
+                    state.field.Reset(key.first, key.second, kCells);
+                    state.next = 0;
+                    state.rayTop = a_player.z + kRayAbove;
+                    state.rayBottom = a_player.z - kRayBelow;
+                    state.stats = {};
+                    state.sampling = true;
+                    return true;
                 }
-                state.field.Reset(key.first, key.second, kCells);
-                state.next = 0;
-                state.rayTop = a_player.z + kRayAbove;
-                state.rayBottom = a_player.z - kRayBelow;
-                state.stats = {};
-                state.sampling = true;
-                return true;
             }
             return false;
         }
@@ -197,22 +202,30 @@ namespace PerkeleRim::CollisionSampler
         state.known.clear();
     }
 
-    void Update(RE::PlayerCharacter* a_player)
+    void Update(RE::PlayerCharacter* a_player, const RE::NiPoint3& a_velocity)
     {
         if (!state.active) {
             return;
         }
         const auto pos = a_player->GetPosition();
         const Key  center{ Collision::ChunkIndex(pos.x), Collision::ChunkIndex(pos.y) };
-        std::erase_if(state.known, [&](const auto& a_entry) { return Distance(a_entry.first, center) > kForgetRadius; });
+        RE::NiPoint3 ahead(a_velocity.x * kLookAhead, a_velocity.y * kLookAhead, 0.0f);
+        if (const float length = ahead.Length(); length > kMaxAhead) {
+            ahead *= kMaxAhead / length;
+        }
+        const Key aheadKey{ Collision::ChunkIndex(pos.x + ahead.x), Collision::ChunkIndex(pos.y + ahead.y) };
+        const auto inRange = [&](const Key& a_key, int a_radius) {
+            return Distance(a_key, center) <= a_radius || Distance(a_key, aheadKey) <= a_radius;
+        };
+        std::erase_if(state.known, [&](const auto& a_entry) { return !inRange(a_entry.first, kForgetRadius); });
 
         if (!state.pending.empty() && !TrySend()) {
             return;  // ring full, MSC is behind
         }
-        if (state.sampling && Distance({ state.field.chunkX, state.field.chunkY }, center) > kRadius) {
-            state.sampling = false;  // walked away from it
+        if (state.sampling && !inRange({ state.field.chunkX, state.field.chunkY }, kRadius)) {
+            state.sampling = false;  // moved away from it
         }
-        if (!state.sampling && !Pick(center, pos)) {
+        if (!state.sampling && !Pick(center, aheadKey, pos)) {
             return;
         }
 

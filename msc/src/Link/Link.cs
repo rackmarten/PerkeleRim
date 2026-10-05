@@ -251,6 +251,32 @@ namespace PerkeleRim
             return false;
         }
 
+        public void WriteVehicle(ref VehicleState value)
+        {
+            if (basePtr == null || !attached) return;
+            var slot = (VehicleSlot*)(basePtr + Wire.OffsetVehicleSlot);
+            BeginWrite(&slot->seq, out uint n);
+            slot->value = value;
+            EndWrite(&slot->seq, n);
+        }
+
+        public bool ReadVehicle(out VehicleState value)
+        {
+            value = default(VehicleState);
+            if (!IsUp) return false;
+            var slot = (VehicleSlot*)(basePtr + Wire.OffsetVehicleSlot);
+            for (int attempt = 0; attempt < 64; attempt++)
+            {
+                uint before = (uint)Thread.VolatileRead(ref *(int*)&slot->seq);
+                if (before == 0) return false;
+                if ((before & 1) != 0) continue;
+                value = slot->value;
+                Thread.MemoryBarrier();
+                if ((uint)Thread.VolatileRead(ref *(int*)&slot->seq) == before) return true;
+            }
+            return false;
+        }
+
         static void BeginWrite(uint* seq, out uint n)
         {
             n = *seq;

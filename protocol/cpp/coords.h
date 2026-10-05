@@ -7,6 +7,9 @@
 //         increasing clockwise seen from above. Pitch (eulerAngles.x) positive looks down.
 //
 // Swapping Y and Z flips the handedness, so positions map axis by axis and angles keep their sign.
+// Rotations as quaternions (x, y, z, w) swap the same axes and negate the vector part: the
+// reflection reverses the turning direction, which the change of handedness then cancels out on
+// screen. So a vehicle's local +Z forward in Unity becomes local +Y forward in Skyrim.
 
 #pragma once
 
@@ -25,6 +28,14 @@ namespace PerkeleRim::Coords
         float z;
     };
 
+    struct Quat
+    {
+        float x;
+        float y;
+        float z;
+        float w;
+    };
+
     inline Vec3 SkyrimToUnity(const Vec3& a_skyrim)
     {
         return {
@@ -41,6 +52,28 @@ namespace PerkeleRim::Coords
             static_cast<float>(a_unity.z * kUnitsPerMeter),
             static_cast<float>(a_unity.y * kUnitsPerMeter)
         };
+    }
+
+    // The mapping is its own inverse.
+    inline Quat UnityToSkyrim(const Quat& a_unity) { return { -a_unity.x, -a_unity.z, -a_unity.y, a_unity.w }; }
+    inline Quat SkyrimToUnity(const Quat& a_skyrim) { return UnityToSkyrim(a_skyrim); }
+
+    // Rotation matrix of a unit quaternion, m[row][column], for column vectors (v' = m * v), which
+    // is how NiMatrix3 is applied.
+    inline void ToMatrix(const Quat& q, float (&m)[3][3])
+    {
+        const float xx = q.x * q.x, yy = q.y * q.y, zz = q.z * q.z;
+        const float xy = q.x * q.y, xz = q.x * q.z, yz = q.y * q.z;
+        const float wx = q.w * q.x, wy = q.w * q.y, wz = q.w * q.z;
+        m[0][0] = 1.0f - 2.0f * (yy + zz);
+        m[0][1] = 2.0f * (xy - wz);
+        m[0][2] = 2.0f * (xz + wy);
+        m[1][0] = 2.0f * (xy + wz);
+        m[1][1] = 1.0f - 2.0f * (xx + zz);
+        m[1][2] = 2.0f * (yz - wx);
+        m[2][0] = 2.0f * (xz - wy);
+        m[2][1] = 2.0f * (yz + wx);
+        m[2][2] = 1.0f - 2.0f * (xx + yy);
     }
 
     // Radians (any range) -> degrees in [0, 360).

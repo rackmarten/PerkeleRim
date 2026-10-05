@@ -17,6 +17,19 @@ namespace PerkeleRim
         }
     }
 
+    public struct Quat
+    {
+        public float x, y, z, w;
+
+        public Quat(float x, float y, float z, float w)
+        {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.w = w;
+        }
+    }
+
     public static class Coords
     {
         public const double MetersPerUnit = 0.0142875;
@@ -31,6 +44,10 @@ namespace PerkeleRim
             (float)(unity.x * UnitsPerMeter),
             (float)(unity.z * UnitsPerMeter),
             (float)(unity.y * UnitsPerMeter));
+
+        // Quaternions swap the same axes and negate the vector part (see coords.h). Its own inverse.
+        public static Quat UnityToSkyrim(Quat unity) => new Quat(-unity.x, -unity.z, -unity.y, unity.w);
+        public static Quat SkyrimToUnity(Quat skyrim) => UnityToSkyrim(skyrim);
 
         // Radians (any range) -> degrees in [0, 360).
         public static float SkyrimAngleToUnity(float radians)

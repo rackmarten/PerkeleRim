@@ -35,6 +35,11 @@ namespace PerkeleRim.Tests
                         if (row[0] == "angle")
                             Assert.That(Coords.UnityAngleToSkyrim(v[1]), Is.EqualTo(v[0]).Within(1e-5), string.Join(",", row));
                         break;
+                    case "rot":
+                        var label = string.Join(",", row);
+                        AssertClose(Coords.UnityToSkyrim(new Quat(v[0], v[1], v[2], v[3])), new Quat(v[4], v[5], v[6], v[7]), label);
+                        AssertClose(Coords.SkyrimToUnity(new Quat(v[4], v[5], v[6], v[7])), new Quat(v[0], v[1], v[2], v[3]), label);
+                        break;
                     default:
                         Assert.Fail("unknown row kind " + row[0]);
                         break;
@@ -45,6 +50,14 @@ namespace PerkeleRim.Tests
         [Test]
         public void OneMeterIsAboutSeventyUnits() =>
             Assert.That(Coords.UnitsPerMeter, Is.EqualTo(69.99125).Within(1e-4));
+
+        static void AssertClose(Quat actual, Quat expected, string label)
+        {
+            Assert.That(actual.x, Is.EqualTo(expected.x).Within(1e-6), label + " x");
+            Assert.That(actual.y, Is.EqualTo(expected.y).Within(1e-6), label + " y");
+            Assert.That(actual.z, Is.EqualTo(expected.z).Within(1e-6), label + " z");
+            Assert.That(actual.w, Is.EqualTo(expected.w).Within(1e-6), label + " w");
+        }
 
         static void AssertClose(Vec3 actual, Vec3 expected, string label)
         {

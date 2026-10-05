@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 2;
+    inline constexpr std::uint32_t kProtocolVersion = 3;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -33,11 +33,12 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kOffsetHeader = 0;
     inline constexpr std::uint32_t kOffsetInputSlot = 128;
     inline constexpr std::uint32_t kOffsetPlayerSlot = 256;
-    inline constexpr std::uint32_t kOffsetRingToMsc = 320;          // RingHeader, data follows
+    inline constexpr std::uint32_t kOffsetVehicleSlot = 320;
+    inline constexpr std::uint32_t kOffsetRingToMsc = 448;          // RingHeader, data follows
     inline constexpr std::uint32_t kRingToMscCapacity = 4194304;    // 4 MiB: collision chunks
-    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4194688;   // 320 + 64 + 4 MiB
+    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4194816;   // 448 + 64 + 4 MiB
     inline constexpr std::uint32_t kRingToSkyrimCapacity = 262144;  // 256 KiB: events
-    inline constexpr std::uint32_t kMappingSize = 4456896;         // 4194688 + 64 + 256 KiB
+    inline constexpr std::uint32_t kMappingSize = 4457024;         // 4194816 + 64 + 256 KiB
 
     enum class Side : std::uint32_t
     {
@@ -120,6 +121,35 @@ namespace PerkeleRim::Protocol
         std::uint8_t  pad[8];
     };
 
+    inline constexpr std::uint32_t kVehicleValid = 0x1;   // VehicleState.flags: the vehicle is on the current island
+    inline constexpr std::uint32_t kVehicleDriven = 0x2;  // VehicleState.flags: the player sits in it
+
+    inline constexpr std::uint32_t kVehicleHayosiko = 1;  // VehicleState.vehicle: the Hayosiko van
+
+    // MSC -> Skyrim. One vehicle for now. Skyrim world space like PlayerState; the rotation is a
+    // quaternion in Skyrim space, so the vehicle's local +Y is forward and +Z is up.
+    struct VehicleState
+    {
+        std::uint32_t frame;         // MSC FixedUpdate counter
+        std::uint32_t flags;         // kVehicle*
+        std::uint32_t vehicle;       // kVehicle* id
+        std::uint32_t generation;    // WorldspaceChange.generation this pose belongs to
+        float         position[3];   // origin of the vehicle's body
+        float         rotation[4];   // x, y, z, w
+        float         velocity[3];   // units per second
+        float         steer;         // front wheel angle, radians, positive turns right
+        float         wheelSpin[4];  // radians: front left, front right, rear left, rear right
+        std::uint32_t reserved;
+    };
+
+    struct VehicleSlot
+    {
+        std::uint32_t seq;
+        std::uint32_t reserved;
+        VehicleState  value;
+        std::uint8_t  pad[40];
+    };
+
     // ---- Rings (single producer, single consumer) ----
     //
     // head and tail are monotonic byte counts; position = count % capacity. The producer owns head,
@@ -200,6 +230,15 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(PlayerState, generation) == 44);
     static_assert(sizeof(PlayerSlot) == 64);
     static_assert(offsetof(PlayerSlot, value) == 8);
+    static_assert(sizeof(VehicleState) == 80);
+    static_assert(offsetof(VehicleState, generation) == 12);
+    static_assert(offsetof(VehicleState, position) == 16);
+    static_assert(offsetof(VehicleState, rotation) == 28);
+    static_assert(offsetof(VehicleState, velocity) == 44);
+    static_assert(offsetof(VehicleState, steer) == 56);
+    static_assert(offsetof(VehicleState, wheelSpin) == 60);
+    static_assert(sizeof(VehicleSlot) == 128);
+    static_assert(offsetof(VehicleSlot, value) == 8);
     static_assert(sizeof(RingHeader) == 64);
     static_assert(offsetof(RingHeader, head) == 8);
     static_assert(offsetof(RingHeader, tail) == 32);
@@ -216,7 +255,8 @@ namespace PerkeleRim::Protocol
     // Section layout follows from the struct sizes.
     static_assert(kOffsetInputSlot == kOffsetHeader + sizeof(LinkHeader));
     static_assert(kOffsetPlayerSlot == kOffsetInputSlot + sizeof(InputSlot));
-    static_assert(kOffsetRingToMsc == kOffsetPlayerSlot + sizeof(PlayerSlot));
+    static_assert(kOffsetVehicleSlot == kOffsetPlayerSlot + sizeof(PlayerSlot));
+    static_assert(kOffsetRingToMsc == kOffsetVehicleSlot + sizeof(VehicleSlot));
     static_assert(kOffsetRingToSkyrim == kOffsetRingToMsc + sizeof(RingHeader) + kRingToMscCapacity);
     static_assert(kMappingSize == kOffsetRingToSkyrim + sizeof(RingHeader) + kRingToSkyrimCapacity);
     static_assert((kRingToMscCapacity & (kRingToMscCapacity - 1)) == 0);

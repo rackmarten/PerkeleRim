@@ -4,6 +4,7 @@
 #include "coords.h"
 #include "input.h"
 #include "link/LinkService.h"
+#include "vehicle/VehicleView.h"
 
 namespace PerkeleRim::PlayerSync
 {
@@ -31,6 +32,7 @@ namespace PerkeleRim::PlayerSync
             std::uint32_t  anchorWorldspace = 0;
             std::uint32_t  anchorCell = 0;
             RE::NiPoint3   lastPlaced;  // where the player was last put (anchor or MSC pose)
+            bool           sneak = false;  // what we last told Skyrim; its own flag can drop on its own
             std::uint32_t  inputFrame = 0;
             Input::Builder input;
 
@@ -57,6 +59,37 @@ namespace PerkeleRim::PlayerSync
             link.WriteInput(state.input.Build(++state.inputFrame, state.owned, !a_paused));
         }
 
+        // Releases keys the devices no longer hold. A release event can get lost (a crash or menu at
+        // the wrong moment), and MSC would then see the key held forever and never a new press, so
+        // clicks on door handles and the like stop working until Skyrim loses focus.
+        void ReleaseStuckKeys()
+        {
+            auto* devices = RE::BSInputDeviceManager::GetSingleton();
+            if (!devices) {
+                return;
+            }
+            if (auto* keyboard = devices->GetKeyboard()) {
+                const auto& down = keyboard->GetRuntimeData().curState;
+                for (std::uint32_t dik = 0; dik < 0x100; dik++) {
+                    const auto key = Input::KeyFromScanCode(dik);
+                    if ((down[dik] & 0x80) == 0 && state.input.IsKeyDown(key)) {
+                        state.input.SetKey(key, false);
+                        SKSE::log::info("player sync: released stuck key {} (scan code {:02X})", key, dik);
+                    }
+                }
+            }
+            if (auto* mouse = devices->GetMouse()) {
+                const auto& buttons = mouse->GetRuntimeData().dInputNextState.rgbButtons;
+                for (std::uint32_t b = 0; b < 7; b++) {
+                    const auto key = Input::KeyFromMouseButton(b);
+                    if ((buttons[b] & 0x80) == 0 && state.input.IsKeyDown(key)) {
+                        state.input.SetKey(key, false);
+                        SKSE::log::info("player sync: released stuck mouse button {}", b);
+                    }
+                }
+            }
+        }
+
         void SetControls(bool a_enable)
         {
             if (auto* controls = RE::ControlMap::GetSingleton()) {
@@ -72,11 +105,13 @@ namespace PerkeleRim::PlayerSync
             state.owned = false;
             state.input.ReleaseAll();
             SetControls(true);
-            if (auto* player = RE::PlayerCharacter::GetSingleton(); player && player->IsSneaking()) {
+            if (auto* player = RE::PlayerCharacter::GetSingleton(); player && (state.sneak || player->IsSneaking())) {
                 player->AsActorState()->actorState1.sneaking = false;
                 player->NotifyAnimationGraph("SneakStop"sv);
             }
+            state.sneak = false;
             CollisionSampler::Stop();
+            VehicleView::Hide();
             Publish();
             SKSE::log::info("player sync: Skyrim owns the player ({})", a_reason);
         }
@@ -172,10 +207,17 @@ namespace PerkeleRim::PlayerSync
             }
 
             // MSC crouch and prone both mean sneak; Skyrim's own sneak control is off, so set it here.
+            // Compared against what we sent last, not IsSneaking(): Skyrim can clear its flag while
+            // the animation graph stays in sneak, and then the stop would never be sent.
             const bool sneak = a_pose.stance != 0;
-            if (auto* actorState = a_player->AsActorState(); actorState && actorState->IsSneaking() != sneak) {
-                actorState->actorState1.sneaking = sneak;
+            auto*      actorState = a_player->AsActorState();
+            if (actorState && sneak != state.sneak) {
+                state.sneak = sneak;
                 a_player->NotifyAnimationGraph(sneak ? "SneakStart"sv : "SneakStop"sv);
+                SKSE::log::info("player sync: sneak {}", sneak ? "on" : "off");
+            }
+            if (actorState && actorState->IsSneaking() != sneak) {
+                actorState->actorState1.sneaking = sneak;
             }
         }
 
@@ -186,6 +228,7 @@ namespace PerkeleRim::PlayerSync
                 Release("link down");
                 return;
             }
+            ReleaseStuckKeys();
             Publish();
 
             if (const char* reason = MovedByGame(a_player)) {
@@ -204,7 +247,11 @@ namespace PerkeleRim::PlayerSync
                     state.lastPoseFrame = pose.frame;
                 }
             }
-            CollisionSampler::Update(a_player);
+            Protocol::VehicleState vehicle{};
+            VehicleView::Update(link.ReadVehicle(vehicle) ? &vehicle : nullptr, state.generation);
+            // Stream ahead of the player while it moves fast (driving).
+            const RE::NiPoint3 velocity = valid ? RE::NiPoint3(pose.velocity[0], pose.velocity[1], pose.velocity[2]) : RE::NiPoint3();
+            CollisionSampler::Update(a_player, velocity);
 
             state.frames++;
             state.statTime += a_delta;

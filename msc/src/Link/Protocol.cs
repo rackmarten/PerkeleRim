@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 2;
+        public const uint ProtocolVersion = 3;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -16,14 +16,18 @@ namespace PerkeleRim.Protocol
         public const uint OffsetHeader = 0;
         public const uint OffsetInputSlot = 128;
         public const uint OffsetPlayerSlot = 256;
-        public const uint OffsetRingToMsc = 320;
+        public const uint OffsetVehicleSlot = 320;
+        public const uint OffsetRingToMsc = 448;
         public const uint RingToMscCapacity = 4194304;
-        public const uint OffsetRingToSkyrim = 4194688;
+        public const uint OffsetRingToSkyrim = 4194816;
         public const uint RingToSkyrimCapacity = 262144;
-        public const uint MappingSize = 4456896;
+        public const uint MappingSize = 4457024;
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint PlayerValid = 0x1;
+        public const uint VehicleValid = 0x1;
+        public const uint VehicleDriven = 0x2;
+        public const uint VehicleHayosiko = 1;
     }
 
     public enum Side : uint
@@ -118,6 +122,30 @@ namespace PerkeleRim.Protocol
         public uint reserved;
         public PlayerState value;
         public fixed byte pad[8];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct VehicleState
+    {
+        public uint frame;
+        public uint flags;
+        public uint vehicle;
+        public uint generation;
+        public fixed float position[3];
+        public fixed float rotation[4];
+        public fixed float velocity[3];
+        public float steer;
+        public fixed float wheelSpin[4];
+        public uint reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct VehicleSlot
+    {
+        public uint seq;
+        public uint reserved;
+        public VehicleState value;
+        public fixed byte pad[40];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

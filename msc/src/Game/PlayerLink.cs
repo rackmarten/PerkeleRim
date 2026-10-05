@@ -11,20 +11,27 @@ namespace PerkeleRim.Game
     //    CollisionChunk messages, one MeshCollider per chunk, dropping chunks the player left behind;
     //  - holds the player at a new anchor until the ground there has arrived, then puts it down;
     //  - writes PlayerState (Skyrim world space) every frame, valid only while Skyrim has handed
-    //    the player over and the player stands on the current anchor's island.
+    //    the player over and the player stands on the current anchor's island;
+    //  - runs the vehicles (VehicleLink) on the same island: the van (drawn in Skyrim) on the
+    //    player's right, the Jonnez moped (MSC only so far) on the left.
     public unsafe class PlayerLink : MonoBehaviour
     {
         // Drop the player this far above the ground so it never starts inside the collider.
         const float SpawnClearance = 0.05f;
         // Chunks further than this (in chunks, either axis) from the player's are dropped. Skyrim
-        // streams 2 around the player and forgets at 3, so it always resends what's dropped here.
-        const int KeepRadius = 4;
+        // streams 2 around the player and 2 around a point up to 2 ahead of it while driving, and
+        // forgets a chunk once it is more than 3 from both, so it always resends what's dropped here.
+        const int KeepRadius = 6;
         // Rays looking for the ground under a new anchor start this far above it.
         const float GroundSearch = 50f;
 
         readonly Island island = new Island();
         readonly InputFrame input = new InputFrame();
         Action<string> log;
+        VehicleLink van, moped;
+        VehicleLink[] vehicles;
+        Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
+        Collider groundTemplate;  // MSC ground the island chunks copy layer, tag and material from
 
         GameObject islandObject;
         readonly Dictionary<long, GameObject> chunks = new Dictionary<long, GameObject>();
@@ -52,6 +59,10 @@ namespace PerkeleRim.Game
         {
             this.log = log;
             InputShim.Feed = FeedInput;
+            Func<Vector3, Vector3?> ground = p => { Vector3 g; return FindGround(p, out g) ? g : (Vector3?)null; };
+            van = new VehicleLink("HAYOSIKO(1500kg, 250)", "Hayosiko", new Vector3(3.5f, 0f, 2f), Wire.VehicleHayosiko, "PlayerKeyHayosiko", island, ground, log);
+            moped = new VehicleLink("JONNEZ ES(Clone)", "Jonnez", new Vector3(-2.5f, 0f, 1.5f), 0, null, island, ground, log);
+            vehicles = new[] { van, moped };
         }
 
         // ---- Input (runs inside the first Input call of each frame) ----
@@ -103,6 +114,8 @@ namespace PerkeleRim.Game
             if (link == null) return;
             link.Receive(OnMessage);
             FindPlayer();
+            foreach (var v in vehicles) v.Find();
+            UseGround();
 
             bool owned = link.IsUp && input.OwnsPlayer;
             if (owned != lastOwned)
@@ -123,6 +136,7 @@ namespace PerkeleRim.Game
             if (playing) FillPose(ref state);
             state.generation = island.Generation;
             link.WritePlayer(ref state);
+            foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero);
         }
 
         // Getting the mouse out of MSC's window takes Escape, which opens MSC's menu
@@ -183,7 +197,29 @@ namespace PerkeleRim.Game
             motor = go.GetComponent("CharacterMotor") as Behaviour;
             motorDisabled = false;
             log($"player: found PLAYER (controller {(controller != null)}, camera {(fpsCamera != null)}, crouch fsm {(crouch != null)})");
+            LogSurfaces();
             MotorBoost.Install(go, log);
+        }
+
+        // Every ground surface MSC's map uses (tag + physics material, with friction), once, to pick
+        // the one the island copies: the wheels take their grip from it.
+        void LogSurfaces()
+        {
+            var seen = new Dictionary<string, int>();
+            var sample = new Dictionary<string, string>();
+            foreach (var c in FindObjectsOfType<Collider>())
+            {
+                if (c.isTrigger || c.attachedRigidbody != null) continue;
+                var m = c.sharedMaterial;
+                string key = $"tag {c.tag} material {(m != null ? $"{m.name} (dyn {m.dynamicFriction:0.##}, static {m.staticFriction:0.##})" : "none")} layer {LayerMask.LayerToName(c.gameObject.layer)}";
+                int n;
+                seen.TryGetValue(key, out n);
+                seen[key] = n + 1;
+                if (n == 0) sample[key] = c.name;
+                if (asphalt == null && c.CompareTag("Concrete") && c.gameObject.layer == LayerMask.NameToLayer("Terrain")) asphalt = c;
+            }
+            foreach (var kv in seen)
+                if (kv.Value >= 3) log($"surface: {kv.Key} x{kv.Value} (e.g. {sample[kv.Key]})");
         }
 
         // ---- Island ----
@@ -224,7 +260,31 @@ namespace PerkeleRim.Game
             var old = collider.sharedMesh;
             collider.sharedMesh = mesh;
             if (old != null) Destroy(old);
+            CopyGround(go);
             log($"player: chunk ({chunk.ChunkX},{chunk.ChunkY}) gen {chunk.Generation}: {vertices.Length} vertices, {chunk.Triangles.Length / 3} triangles, {(rebuilt ? "rebuilt" : "new")}");
+        }
+
+        // Makes the island look like MSC's own ground to the vehicles, once a vehicle has shown which
+        // ground that is: the player walks on anything, but the wheels may only see some layers and
+        // take their grip from the surface's material or tag.
+        void UseGround()
+        {
+            // Asphalt grips best: on gravel the van couldn't climb Skyrim's hills. Otherwise whatever
+            // the vehicles stand on.
+            var ground = asphalt ?? moped.Ground ?? van.Ground;
+            if (ground == null || ground == groundTemplate) return;
+            groundTemplate = ground;
+            foreach (var go in chunks.Values) CopyGround(go);
+            log($"player: island chunks now copy {groundTemplate.name} (layer {groundTemplate.gameObject.layer}, tag {groundTemplate.tag}, material {(groundTemplate.sharedMaterial != null ? groundTemplate.sharedMaterial.name : "none")})");
+        }
+
+        void CopyGround(GameObject go)
+        {
+            if (groundTemplate == null) return;
+            go.layer = groundTemplate.gameObject.layer;
+            go.tag = groundTemplate.tag;
+            var collider = go.GetComponent<MeshCollider>();
+            if (collider != null) collider.sharedMaterial = groundTemplate.sharedMaterial;
         }
 
         void ClearChunks()
@@ -281,8 +341,14 @@ namespace PerkeleRim.Game
             Vector3 ground;
             bool ready = FindGround(anchor, out ground);
             var target = (ready ? ground : anchor) + Vector3.up * SpawnClearance;
-            player.position += target - Feet();
-            player.rotation = Quaternion.Euler(0f, Coords.SkyrimAngleToUnity(island.AnchorHeading), 0f);
+            var carrier = Array.Find(vehicles, v => v.Carries(player));
+            if (carrier != null)
+                carrier.Shift(target - Feet());  // the player sits in it and comes along
+            else
+            {
+                player.position += target - Feet();
+                player.rotation = Quaternion.Euler(0f, Coords.SkyrimAngleToUnity(island.AnchorHeading), 0f);
+            }
             var body = player.GetComponent<Rigidbody>();
             if (body != null && !body.isKinematic) body.velocity = Vector3.zero;
             haveLastFeet = false;

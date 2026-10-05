@@ -95,6 +95,10 @@ namespace PerkeleRim.Game
         public static bool GetMouseButtonDown(int button) => On ? Down(KeyCode.Mouse0 + button) : Input.GetMouseButtonDown(button);
         public static bool GetMouseButtonUp(int button) => On ? Up(KeyCode.Mouse0 + button) : Input.GetMouseButtonUp(button);
 
+        // MSC aims its look-at raycasts (doors, handbrake, ignition) through the cursor. Its window
+        // has no focus, so the cursor isn't locked to the center; answer with the center instead.
+        public static Vector3 get_mousePosition() => On ? new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f) : Input.mousePosition;
+
         public static bool get_anyKey() { if (!On) return Input.anyKey; Sync(); return curKeys.Count > 0 || curButtons.Count > 0; }
         public static bool get_anyKeyDown()
         {
