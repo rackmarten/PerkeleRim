@@ -51,3 +51,32 @@ Takes about 15 seconds. Output lands in `tools/out/hayosiko/Data/` (`Meshes/Perk
 converted mesh the SKSE plugin falls back to the cart stand-in.
 
 `tools/out/hayosiko/raw/` keeps the intermediate `model.json` and PNGs for debugging.
+
+## Garage ESP
+
+`esp-gen/` (C#, .NET 8, [Mutagen](https://github.com/Mutagen-Modding/Mutagen) 0.53) writes
+`PerkeleRim.esp`: the garage near Whiterun built from vanilla pieces, a spawn marker in front of it
+and a marker where the van parks. It reads only your own `Skyrim.esm` (base objects, the Tamriel cell
+to add to, terrain height there) and writes the same bytes every time. **This folder is GPL-3.0**
+(Mutagen is), unlike the rest of the repository; see `esp-gen/LICENSE`.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build-esp.ps1 -Deploy
+```
+
+Output goes to `tools/out/esp/PerkeleRim.esp`; `-Deploy` copies it into Skyrim's `Data` folder and
+adds `*PerkeleRim.esp` to `%LOCALAPPDATA%/Skyrim Special Edition/plugins.txt`. Close Skyrim first.
+
+What it places (layout constants at the top of `esp-gen/Program.cs`):
+
+- `SFarmShed01` (Solitude farm pole shed, 720 x 496 units) centered at (15170, -14516) in Tamriel
+  cell (3, -4), open end facing 31.7 degrees east of north, raised 10 units above the highest
+  ground under it so the van clears the beams.
+- Eight `ShackWall01/02/05` plank walls closing the back and both long sides.
+- Two persistent `XMarkerHeading`s in Tamriel's persistent cell at fixed local form ids the SKSE
+  plugin looks up: `0x800` the spawn point 620 units in front of the opening, facing in, and
+  `0x801` the van's spot in the middle, nose out.
+
+To move or change the garage, edit those constants and rebuild. The pieces were picked by rendering
+the vanilla meshes in Blender; the spot comes from the terrain heights (flat to about 50 units) and
+from keeping clear of roads, fences and farms.

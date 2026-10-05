@@ -1,6 +1,6 @@
 # Protocol
 
-> Status: protocol v3. Transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a); collision chunks streamed (milestone 1b); one vehicle pose (milestone 2a). Message contents beyond `InputState`, `PlayerState`, `VehicleState`, `CollisionChunk` and `WorldspaceChange` arrive with the milestones that need them.
+> Status: protocol v4. Transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a); collision chunks streamed (milestone 1b); one vehicle pose (milestone 2a); the van parked at a given spot (milestone 2c). Message contents beyond `InputState`, `PlayerState`, `VehicleState`, `CollisionChunk` and `WorldspaceChange` arrive with the milestones that need them.
 
 The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchange data over one shared memory section. See [DESIGN.md](DESIGN.md) for the overall architecture and ownership rules.
 
@@ -54,7 +54,7 @@ One single-producer, single-consumer byte ring per direction, for messages that 
 | Direction | Message | Contents |
 |---|---|---|
 | Skyrim → MSC | `CollisionChunk` | `CollisionChunkHeader` (chunk x/y, worldspace, generation, origin, counts), vertices relative to origin, triangle indices |
-| Skyrim → MSC | `WorldspaceChange` | worldspace, interior cell, generation, spawn position and heading; sent on every handover and whenever the game moves the player (load door, fast travel), as the island anchor |
+| Skyrim → MSC | `WorldspaceChange` | worldspace, interior cell, generation, spawn position and heading; sent on every handover and whenever the game moves the player (load door, fast travel), as the island anchor. With `flags & kAnchorVehicleSpot`, `vehicleSpot` and `vehicleHeading` say where the van parks for this anchor (the garage on the first handover of a save) instead of next to the player |
 
 Planned, added with their milestones (each one bumps the version): `ActorList`, `PlayerDamage`, `ConsumeEvent` (Skyrim → MSC); `ItemState`, `ImpactEvent`, `PunchEvent`, `UrineHit`, `Death` (MSC → Skyrim).
 
@@ -93,7 +93,7 @@ Skyrim side (`protocol/cpp/input.h`, `skse/src/player/PlayerSync.cpp`): DirectIn
 
 ## Handing over the player
 
-F10 in Skyrim toggles who owns the player. Taking over:
+F10 in Skyrim toggles who owns the player. The first F10 of a save (when `PerkeleRim.esp` is loaded) first moves the player to the garage spawn marker; once its cell is attached and the player stands there, the handover below runs with `kAnchorVehicleSpot` and the van marker as `vehicleSpot`, so MSC parks the van inside the garage instead of next to the player. The SKSE cosave remembers this per save. Taking over:
 
 1. Skyrim sends `WorldspaceChange` with the player's position and heading as `spawn` (a new `generation` each time), then publishes `InputState` with `kInputOwnsPlayer` and turns off its own movement, look, sneak, jump, attack and POV controls.
 2. MSC drains its ring before writing a pose, so the anchor is always applied first. The anchor maps to `Island.Base` on a collision island far from MSC's map, built from `CollisionChunk`s (see above). MSC holds the player's feet at the anchor until the ground there arrives, then puts it down.

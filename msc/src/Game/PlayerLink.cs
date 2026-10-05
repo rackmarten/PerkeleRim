@@ -13,7 +13,8 @@ namespace PerkeleRim.Game
     //  - writes PlayerState (Skyrim world space) every frame, valid only while Skyrim has handed
     //    the player over and the player stands on the current anchor's island;
     //  - runs the vehicles (VehicleLink) on the same island: the van (drawn in Skyrim) on the
-    //    player's right, the Jonnez moped (MSC only so far) on the left.
+    //    player's right, or at the spot the anchor names (the garage), the Jonnez moped (MSC only
+    //    so far) on the left.
     public unsafe class PlayerLink : MonoBehaviour
     {
         // Drop the player this far above the ground so it never starts inside the collider.
@@ -176,6 +177,12 @@ namespace PerkeleRim.Game
                 var anchor = new Vec3(c.spawn[0], c.spawn[1], c.spawn[2]);
                 island.SetAnchor(c.generation, c.worldspace, c.cell, anchor, c.spawnHeading);
                 log($"player: anchor gen {c.generation} worldspace {c.worldspace:X8} cell {c.cell:X8} at ({anchor.x:0},{anchor.y:0},{anchor.z:0}), rebuilding the island");
+                if ((c.flags & Wire.AnchorVehicleSpot) != 0)
+                {
+                    var spot = new Vec3(c.vehicleSpot[0], c.vehicleSpot[1], c.vehicleSpot[2]);
+                    van.ParkAt(c.generation, spot, c.vehicleHeading);
+                    log($"player: the van parks at ({spot.x:0},{spot.y:0},{spot.z:0}) heading {c.vehicleHeading:0.00} for gen {c.generation}");
+                }
                 ClearChunks();
             }
             else if (type == MessageType.CollisionChunk)

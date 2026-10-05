@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 3;
+    inline constexpr std::uint32_t kProtocolVersion = 4;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -197,14 +197,18 @@ namespace PerkeleRim::Protocol
         std::uint32_t reserved;
     };
 
+    inline constexpr std::uint32_t kAnchorVehicleSpot = 0x1;  // WorldspaceChange.flags: park the van at vehicleSpot
+
     struct WorldspaceChange
     {
-        std::uint32_t worldspace;  // form id
-        std::uint32_t cell;        // interior cell form id, 0 in an exterior
-        std::uint32_t generation;  // bumped on every change; older chunks are dropped
-        std::uint32_t reserved;
+        std::uint32_t worldspace;      // form id
+        std::uint32_t cell;            // interior cell form id, 0 in an exterior
+        std::uint32_t generation;      // bumped on every change; older chunks are dropped
+        std::uint32_t flags;           // kAnchorVehicleSpot
         float         spawn[3];
         float         spawnHeading;
+        float         vehicleSpot[3];  // ground under the van's middle, with kAnchorVehicleSpot
+        float         vehicleHeading;  // the way the van faces there
     };
 
 #pragma pack(pop)
@@ -249,9 +253,12 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(CollisionChunkHeader, origin) == 16);
     static_assert(offsetof(CollisionChunkHeader, vertexCount) == 28);
     static_assert(offsetof(CollisionChunkHeader, indexCount) == 32);
-    static_assert(sizeof(WorldspaceChange) == 32);
+    static_assert(sizeof(WorldspaceChange) == 48);
+    static_assert(offsetof(WorldspaceChange, flags) == 12);
     static_assert(offsetof(WorldspaceChange, spawn) == 16);
     static_assert(offsetof(WorldspaceChange, spawnHeading) == 28);
+    static_assert(offsetof(WorldspaceChange, vehicleSpot) == 32);
+    static_assert(offsetof(WorldspaceChange, vehicleHeading) == 44);
 
     // Section layout follows from the struct sizes.
     static_assert(kOffsetInputSlot == kOffsetHeader + sizeof(LinkHeader));

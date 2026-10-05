@@ -105,7 +105,7 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 
 | Feature | Implementation |
 |---|---|
-| Garage near Whiterun | Skyrim-side ESP with a garage building (custom NIF or vanilla pieces), spawn point in front. |
+| Garage near Whiterun | Generated ESP (`tools/esp-gen`, Mutagen) with an open shed and plank walls from vanilla pieces, spawn point in front, van marker inside. The first handover of a save moves the player there. |
 | Pre-built car | Save with a finished Satsuma, or start with Hayosiko van / Gifu / Kekmet, which are drivable from the start. |
 | Beer and emotes | MSC simulates; Skyrim draws arms/particles; drunk level drives Skyrim image-space effects (Skooma-style blur). |
 | Crouch = sneak | MSC crouch → Skyrim player sneak state. |
@@ -184,7 +184,7 @@ PerkeleRim/
 
 - Best way to draw MSC arms and items in Skyrim's first-person view.
 - How to trigger MSC emotes from a cleaner input layer instead of raw keys.
-- Where exactly to place the garage so the tundra drive looks good on camera.
+- Garage spot: (15170, -14516), flat tundra south-west of the Whiterun stables, open toward 31.7 degrees east of north; picked in game (the first pick at the carriage stop sat on the road). See tools/README.md to move it.
 - Whether to sync MSC money with Skyrim gold.
 
 ## 15. References

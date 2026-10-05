@@ -49,6 +49,6 @@ Contributions are welcome once the first prototype is up. Read [CONTRIBUTING.md]
 
 ## License
 
-[MIT](LICENSE) © Marek Uncik ([rackmarten](https://github.com/rackmarten))
+[MIT](LICENSE) © Marek Uncik ([rackmarten](https://github.com/rackmarten)), except [`tools/esp-gen/`](tools/esp-gen/), a build-time tool that uses the GPL-3.0 Mutagen library and is GPL-3.0 itself ([its LICENSE](tools/esp-gen/LICENSE)). The ESP it generates contains no code from it.
 
 Not affiliated with or endorsed by Amistech Games or Bethesda Softworks. My Summer Car and Skyrim are trademarks of their respective owners.

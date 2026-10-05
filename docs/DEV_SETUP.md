@@ -86,7 +86,8 @@ scripts/build.ps1                  # both halves, Release
 scripts/build.ps1 -Target skse     # SKSE plugin only (-Configuration Debug for a debug build)
 scripts/build.ps1 -Target msc      # MSCLoader mod only
 scripts/test.ps1                   # unit tests: C++ protocol (doctest) and C# link (NUnit), no games needed
-scripts/deploy-local.ps1           # copy both DLLs into the games (close the games first)
+scripts/deploy-local.ps1           # copy both DLLs (and PerkeleRim.esp once built) into the games (close the games first)
+scripts/build-esp.ps1 -Deploy       # generate PerkeleRim.esp (garage) from your Skyrim.esm, copy and enable it (close Skyrim first)
 scripts/logs.ps1                   # tail of the plugin, SKSE and My Summer Car logs
 scripts/launch-msc.ps1             # start MSC windowed with no clicks (clicks through the config dialog and news screen)
 scripts/restart-games.ps1 -Build    # close both games, build, deploy, start MSC and Skyrim (SKSE), wait for "link up"

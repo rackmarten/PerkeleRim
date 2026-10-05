@@ -5,7 +5,8 @@ using UnityEngine;
 namespace PerkeleRim.Game
 {
     // One MSC vehicle on the collision island, driven by PlayerLink (one instance per vehicle):
-    //  - when the player is put down on a new anchor on foot, the vehicle is parked next to it;
+    //  - when the player is put down on a new anchor on foot, the vehicle is parked next to it, or
+    //    at the spot the anchor names for it (ParkAt);
     //  - when the player sits in it, the vehicle carries the player to the new anchor instead;
     //  - while there is no island ground under it, it is held (kinematic) and keeps its speed for
     //    when the ground arrives, so it never falls off the edge of the streamed area;
@@ -41,6 +42,9 @@ namespace PerkeleRim.Game
         float nextGroundCheck;
         bool lastDriven;
         float nextFind;
+        uint spotGeneration;  // anchor generation the spot below is for, 0 = none
+        Vec3 spot;            // Skyrim units, the ground under the vehicle's middle
+        float spotHeading;    // Skyrim radians
 
         public VehicleLink(string objectName, string driverName, Vector3 parkOffset, uint wireId, string keyVariable,
             Island island, Func<Vector3, Vector3?> findGround, Action<string> log)
@@ -133,6 +137,15 @@ namespace PerkeleRim.Game
             log($"vehicle: gave the player the {driverName} key");
         }
 
+        // Parks the vehicle at spot (Skyrim world space, on the ground) facing heading for that
+        // anchor generation, instead of next to the player.
+        public void ParkAt(uint generation, Vec3 spot, float heading)
+        {
+            spotGeneration = generation;
+            this.spot = spot;
+            spotHeading = heading;
+        }
+
         // True when moving the vehicle also moves the player (sitting in it, parented to it).
         public bool Carries(Transform player) => car != null && PlayerDriving && player.IsChildOf(car);
 
@@ -196,9 +209,22 @@ namespace PerkeleRim.Game
             var below = ColliderBelow(car);
             if (below != null)
                 log($"vehicle: {driverName} was standing on {below.name} (layer {below.gameObject.layer}, tag {below.tag}, material {(below.sharedMaterial != null ? below.sharedMaterial.name : "none")})");
-            var yaw = Quaternion.Euler(0f, player.eulerAngles.y, 0f);
-            var spot = feet + yaw * parkOffset;
-            var ground = FlatSpot(feet, yaw) ?? findGround(spot);
+            Quaternion yaw;
+            Vector3 spot;
+            Vector3? ground;
+            if (spotGeneration == island.Generation)
+            {
+                var at = island.SkyrimToIsland(this.spot);
+                spot = new Vector3(at.x, at.y, at.z);
+                yaw = Quaternion.Euler(0f, Coords.SkyrimAngleToUnity(spotHeading), 0f);
+                ground = findGround(spot);
+            }
+            else
+            {
+                yaw = Quaternion.Euler(0f, player.eulerAngles.y, 0f);
+                spot = feet + yaw * parkOffset;
+                ground = FlatSpot(feet, yaw) ?? findGround(spot);
+            }
             spot = (ground ?? spot) + Vector3.up * ParkClearance;
             car.position = spot;
             car.rotation = yaw;

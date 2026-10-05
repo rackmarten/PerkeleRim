@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 3;
+        public const uint ProtocolVersion = 4;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -28,6 +28,7 @@ namespace PerkeleRim.Protocol
         public const uint VehicleValid = 0x1;
         public const uint VehicleDriven = 0x2;
         public const uint VehicleHayosiko = 1;
+        public const uint AnchorVehicleSpot = 0x1;
     }
 
     public enum Side : uint
@@ -186,8 +187,10 @@ namespace PerkeleRim.Protocol
         public uint worldspace;
         public uint cell;
         public uint generation;
-        public uint reserved;
+        public uint flags;
         public fixed float spawn[3];
         public float spawnHeading;
+        public fixed float vehicleSpot[3];
+        public float vehicleHeading;
     }
 }

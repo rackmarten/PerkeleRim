@@ -1,6 +1,7 @@
 #include "collision/CollisionSampler.h"
 
 #include "collision.h"
+#include "garage/Garage.h"
 #include "link/LinkService.h"
 
 namespace PerkeleRim::CollisionSampler
@@ -134,7 +135,7 @@ namespace PerkeleRim::CollisionSampler
                 }
                 const float z = top + (state.rayBottom - top) * output.hitFraction;
                 const auto  layer = output.rootCollidable->GetCollisionLayer();
-                if (Wanted(layer)) {
+                if (Wanted(layer) && !Garage::Owns(RE::TESHavokUtilities::FindCollidableRef(*output.rootCollidable))) {
                     a_z = z;
                     (layer == Layer::kTerrain ? state.stats.terrain : layer == Layer::kTrees ? state.stats.trees : state.stats.statics)++;
                     return true;

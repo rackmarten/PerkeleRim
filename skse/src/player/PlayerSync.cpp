@@ -2,6 +2,7 @@
 
 #include "collision/CollisionSampler.h"
 #include "coords.h"
+#include "garage/Garage.h"
 #include "input.h"
 #include "link/LinkService.h"
 #include "vehicle/VehicleView.h"
@@ -24,10 +25,20 @@ namespace PerkeleRim::PlayerSync
         // script), so MSC needs a new anchor.
         constexpr float kTeleportUnits = 2048.0f;
 
+        // The trip to the garage on a save's first handover: arrived once the player is this close to
+        // the spawn marker with its cell attached, then a few more frames so the cell's collision is
+        // in the world before the sampler looks at it. Given up after the timeout (seconds).
+        constexpr float kGarageArrivedUnits = 256.0f;
+        constexpr int   kGarageSettleFrames = 30;
+        constexpr float kGarageTimeout = 60.0f;
+
         // Main thread only: the input and menu sinks and the Update hook all run there.
         struct State
         {
             bool           owned = false;
+            RE::TESObjectREFR* garage = nullptr;  // spawn marker while the player travels there for the first handover
+            float              garageTime = 0.0f;
+            int                garageFrames = 0;
             std::uint32_t  generation = 0;
             std::uint32_t  anchorWorldspace = 0;
             std::uint32_t  anchorCell = 0;
@@ -148,8 +159,9 @@ namespace PerkeleRim::PlayerSync
 
         // Sends the player's spot as a new anchor (WorldspaceChange). MSC rebuilds its island
         // around it and holds the player until the ground there has arrived; poses for older
-        // anchors are ignored from here on.
-        bool SendAnchor(RE::PlayerCharacter* a_player, const char* a_reason)
+        // anchors are ignored from here on. With a_van, MSC parks the van there instead of next to
+        // the player.
+        bool SendAnchor(RE::PlayerCharacter* a_player, const char* a_reason, const Garage::Spot* a_van = nullptr)
         {
             auto* cell = a_player->GetParentCell();
             if (!cell) {
@@ -164,6 +176,13 @@ namespace PerkeleRim::PlayerSync
             change.spawn[1] = pos.y;
             change.spawn[2] = pos.z;
             change.spawnHeading = a_player->GetAngleZ();
+            if (a_van) {
+                change.flags |= Protocol::kAnchorVehicleSpot;
+                change.vehicleSpot[0] = a_van->position.x;
+                change.vehicleSpot[1] = a_van->position.y;
+                change.vehicleSpot[2] = a_van->position.z;
+                change.vehicleHeading = a_van->heading;
+            }
             if (!LinkService::Get().Send(Protocol::MessageType::WorldspaceChange, &change, sizeof(change))) {
                 SKSE::log::warn("player sync: could not send the anchor to MSC");
                 return false;
@@ -180,13 +199,13 @@ namespace PerkeleRim::PlayerSync
             return true;
         }
 
-        void TakeOver(RE::PlayerCharacter* a_player)
+        void TakeOver(RE::PlayerCharacter* a_player, const Garage::Spot* a_van = nullptr)
         {
             if (!LinkService::Get().IsUp()) {
                 SKSE::log::info("player sync: link is down, can't hand the player to MSC");
                 return;
             }
-            if (!SendAnchor(a_player, "handover")) {
+            if (!SendAnchor(a_player, a_van ? "garage" : "handover", a_van)) {
                 return;
             }
 
@@ -196,6 +215,50 @@ namespace PerkeleRim::PlayerSync
             SetControls(false);
             Publish();
             SKSE::log::info("player sync: MSC owns the player");
+        }
+
+        // A save's first handover starts at the garage: move the player to its spawn marker, and
+        // hand over once it has arrived (TravelToGarage).
+        void HandOver(RE::PlayerCharacter* a_player)
+        {
+            auto* marker = Garage::FirstVisit();
+            if (!marker) {
+                TakeOver(a_player);
+                return;
+            }
+            if (!LinkService::Get().IsUp()) {
+                SKSE::log::info("player sync: link is down, can't hand the player to MSC");
+                return;
+            }
+            state.garage = marker;
+            state.garageTime = 0.0f;
+            state.garageFrames = 0;
+            a_player->MoveTo(marker);
+            SKSE::log::info("player sync: first handover of this save, moving the player to the garage");
+        }
+
+        void TravelToGarage(RE::PlayerCharacter* a_player, float a_delta)
+        {
+            state.garageTime += a_delta;
+            if (!LinkService::Get().IsUp() || state.garageTime > kGarageTimeout) {
+                SKSE::log::warn("player sync: gave up on the garage ({})", LinkService::Get().IsUp() ? "timed out" : "link down");
+                state.garage = nullptr;
+                return;
+            }
+            auto*      cell = a_player->GetParentCell();
+            const bool there = cell && cell->IsAttached() && a_player->Is3DLoaded() &&
+                               a_player->GetPosition().GetDistance(state.garage->GetPosition()) < kGarageArrivedUnits;
+            if (!there || ++state.garageFrames < kGarageSettleFrames) {
+                return;
+            }
+
+            a_player->SetHeading(state.garage->GetAngleZ());
+            state.garage = nullptr;
+            const auto van = Garage::Van();
+            TakeOver(a_player, van ? &*van : nullptr);
+            if (state.owned) {
+                Garage::Visited();
+            }
         }
 
         // A load door, fast travel or a script moved the player somewhere MSC's island doesn't cover.
@@ -383,7 +446,9 @@ namespace PerkeleRim::PlayerSync
             static void thunk(RE::PlayerCharacter* a_player, float a_delta)
             {
                 original(a_player, a_delta);
-                if (state.owned && a_delta > 0.0f) {
+                if (state.garage && a_delta > 0.0f) {
+                    TravelToGarage(a_player, a_delta);
+                } else if (state.owned && a_delta > 0.0f) {
                     Drive(a_player, a_delta);
                 }
             }
@@ -437,8 +502,11 @@ namespace PerkeleRim::PlayerSync
             {
                 if (state.owned) {
                     Release("F10");
+                } else if (state.garage) {
+                    state.garage = nullptr;
+                    SKSE::log::info("player sync: F10 again on the way to the garage, not handing over");
                 } else if (auto* player = RE::PlayerCharacter::GetSingleton()) {
-                    TakeOver(player);
+                    HandOver(player);
                 }
             }
         };
