@@ -20,7 +20,7 @@ add_commonlibsse_plugin(
     ${PROJECT_NAME}
     NAME "PerkeleRim"
     AUTHOR "Marek Uncik"
-    SOURCES src/main.cpp src/link/LinkService.cpp src/spike/PoseTest.cpp ../protocol/cpp/link.cpp
+    SOURCES src/main.cpp src/link/LinkService.cpp src/player/PlayerSync.cpp ../protocol/cpp/link.cpp
 )
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)

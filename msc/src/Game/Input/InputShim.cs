@@ -1,7 +1,8 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace PerkeleRim.Spike
+namespace PerkeleRim.Game
 {
     // Stand-in for UnityEngine.Input. InputRedirect rewrites every Input.* call in the game's
     // assemblies (cInput included) to the method with the same name and signature here.
@@ -11,10 +12,34 @@ namespace PerkeleRim.Spike
     {
         public static bool Active;
 
-        // Desired state, written by whatever drives the input (spike script, later the protocol).
+        // Called once per frame, before the first Input call of that frame, to refresh Active, Keys
+        // and Axes (LinkInput, from Skyrim's InputState). Pulling instead of pushing means the
+        // state is fresh no matter which script asks first.
+        public static Action Feed;
+
+        // True while something else drives the shim by hand (the spike's input scripts); Feed is skipped.
+        public static bool Manual;
+
+        // Desired state, written by Feed or by hand.
         public static readonly HashSet<KeyCode> Keys = new HashSet<KeyCode>();
         public static readonly HashSet<string> Buttons = new HashSet<string>();
         public static readonly Dictionary<string, float> Axes = new Dictionary<string, float>();
+
+        static int fedFrame = -1;
+
+        static bool On
+        {
+            get
+            {
+                int f = Time.frameCount;
+                if (f != fedFrame)
+                {
+                    fedFrame = f;
+                    if (!Manual && Feed != null) Feed();
+                }
+                return Active;
+            }
+        }
 
         // Per-frame snapshots, so Down/Up edges are stable within a frame.
         static int frame = -1;
@@ -51,29 +76,29 @@ namespace PerkeleRim.Spike
         static bool Down(KeyCode k) { Sync(); return curKeys.Contains(k) && !prevKeys.Contains(k); }
         static bool Up(KeyCode k) { Sync(); return !curKeys.Contains(k) && prevKeys.Contains(k); }
 
-        public static float GetAxis(string axisName) => Active ? Axis(axisName) : Input.GetAxis(axisName);
-        public static float GetAxisRaw(string axisName) => Active ? Axis(axisName) : Input.GetAxisRaw(axisName);
+        public static float GetAxis(string axisName) => On ? Axis(axisName) : Input.GetAxis(axisName);
+        public static float GetAxisRaw(string axisName) => On ? Axis(axisName) : Input.GetAxisRaw(axisName);
 
-        public static bool GetButton(string buttonName) { if (!Active) return Input.GetButton(buttonName); Sync(); return curButtons.Contains(buttonName); }
-        public static bool GetButtonDown(string buttonName) { if (!Active) return Input.GetButtonDown(buttonName); Sync(); return curButtons.Contains(buttonName) && !prevButtons.Contains(buttonName); }
-        public static bool GetButtonUp(string buttonName) { if (!Active) return Input.GetButtonUp(buttonName); Sync(); return !curButtons.Contains(buttonName) && prevButtons.Contains(buttonName); }
+        public static bool GetButton(string buttonName) { if (!On) return Input.GetButton(buttonName); Sync(); return curButtons.Contains(buttonName); }
+        public static bool GetButtonDown(string buttonName) { if (!On) return Input.GetButtonDown(buttonName); Sync(); return curButtons.Contains(buttonName) && !prevButtons.Contains(buttonName); }
+        public static bool GetButtonUp(string buttonName) { if (!On) return Input.GetButtonUp(buttonName); Sync(); return !curButtons.Contains(buttonName) && prevButtons.Contains(buttonName); }
 
-        public static bool GetKey(KeyCode key) => Active ? Held(key) : Input.GetKey(key);
-        public static bool GetKeyDown(KeyCode key) => Active ? Down(key) : Input.GetKeyDown(key);
-        public static bool GetKeyUp(KeyCode key) => Active ? Up(key) : Input.GetKeyUp(key);
+        public static bool GetKey(KeyCode key) => On ? Held(key) : Input.GetKey(key);
+        public static bool GetKeyDown(KeyCode key) => On ? Down(key) : Input.GetKeyDown(key);
+        public static bool GetKeyUp(KeyCode key) => On ? Up(key) : Input.GetKeyUp(key);
 
-        public static bool GetKey(string name) => Active ? Held(ParseKey(name)) : Input.GetKey(name);
-        public static bool GetKeyDown(string name) => Active ? Down(ParseKey(name)) : Input.GetKeyDown(name);
-        public static bool GetKeyUp(string name) => Active ? Up(ParseKey(name)) : Input.GetKeyUp(name);
+        public static bool GetKey(string name) => On ? Held(ParseKey(name)) : Input.GetKey(name);
+        public static bool GetKeyDown(string name) => On ? Down(ParseKey(name)) : Input.GetKeyDown(name);
+        public static bool GetKeyUp(string name) => On ? Up(ParseKey(name)) : Input.GetKeyUp(name);
 
-        public static bool GetMouseButton(int button) => Active ? Held(KeyCode.Mouse0 + button) : Input.GetMouseButton(button);
-        public static bool GetMouseButtonDown(int button) => Active ? Down(KeyCode.Mouse0 + button) : Input.GetMouseButtonDown(button);
-        public static bool GetMouseButtonUp(int button) => Active ? Up(KeyCode.Mouse0 + button) : Input.GetMouseButtonUp(button);
+        public static bool GetMouseButton(int button) => On ? Held(KeyCode.Mouse0 + button) : Input.GetMouseButton(button);
+        public static bool GetMouseButtonDown(int button) => On ? Down(KeyCode.Mouse0 + button) : Input.GetMouseButtonDown(button);
+        public static bool GetMouseButtonUp(int button) => On ? Up(KeyCode.Mouse0 + button) : Input.GetMouseButtonUp(button);
 
-        public static bool get_anyKey() { if (!Active) return Input.anyKey; Sync(); return curKeys.Count > 0 || curButtons.Count > 0; }
+        public static bool get_anyKey() { if (!On) return Input.anyKey; Sync(); return curKeys.Count > 0 || curButtons.Count > 0; }
         public static bool get_anyKeyDown()
         {
-            if (!Active) return Input.anyKeyDown;
+            if (!On) return Input.anyKeyDown;
             Sync();
             foreach (var k in curKeys) if (!prevKeys.Contains(k)) return true;
             return false;

@@ -13,6 +13,7 @@ add_executable(protocol_tests
     cpp/link.cpp
     tests/cpp/main.cpp
     tests/cpp/test_coords.cpp
+    tests/cpp/test_input.cpp
     tests/cpp/test_link.cpp
 )
 target_link_libraries(protocol_tests PRIVATE doctest::doctest)

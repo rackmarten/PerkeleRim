@@ -31,7 +31,7 @@
 **Approach that works:** redirect `UnityEngine.Input` at the call sites.
 
 - MSC reads input in two ways: cInput (rebindable actions, used by the PlayMaker `CInput*` actions) and plain `UnityEngine.Input` (MouseLook, Standard Assets controllers, PlayMaker `GetKey`/`GetMouseButton` actions). cInput itself reads `UnityEngine.Input` underneath.
-- `UnityEngine.Input` methods are engine internal calls, so Harmony can't patch them directly. Instead, at startup the mod scans the game assemblies (`Assembly-CSharp*`, `Assembly-UnityScript*`, `cInput`, `PlayMaker`) for methods that call `Input.*` and transpiles those calls to a shim with the same signatures (`msc/src/Spike/InputShim.cs`, `InputRedirect.cs`).
+- `UnityEngine.Input` methods are engine internal calls, so Harmony can't patch them directly. Instead, at startup the mod scans the game assemblies (`Assembly-CSharp*`, `Assembly-UnityScript*`, `cInput`, `PlayMaker`) for methods that call `Input.*` and transpiles those calls to a shim with the same signatures (now `msc/src/Game/Input/InputShim.cs`, `InputRedirect.cs`).
 - Result: 8768 methods scanned, 90 patched, 252 call sites redirected, about 3 s at startup. Left alone: mouse position, touch, accelerometer, joystick names and `ResetInputAxes`, none of which matter here.
 - While the shim is active, the game only sees a virtual keyboard, virtual axes and virtual mouse buttons, with per-frame Down/Up edges. While it's inactive, everything passes through, so normal play is unaffected.
 - Verified while MSC was unfocused or minimized, by scripted input:
@@ -50,7 +50,7 @@
 
 ## 4. Skyrim player positioning
 
-- Test (`skse/src/spike/PoseTest.cpp`): hook `PlayerCharacter::Update` (vfunc 0xAD), run the native update, then place the player on a scripted 4 m circle. F10 cycles Off, `Place` (`Actor::SetPosition(pos, true)`) and `PlaceStill` (adds heading and zeroes the character controller's linear velocity).
+- Test (`skse/src/spike/PoseTest.cpp`, removed after the spike; superseded by `skse/src/player/PlayerSync.cpp`): hook `PlayerCharacter::Update` (vfunc 0xAD), run the native update, then place the player on a scripted 4 m circle. F10 cycles Off, `Place` (`Actor::SetPosition(pos, true)`) and `PlaceStill` (adds heading and zeroes the character controller's linear velocity).
 - Measured drift (how far the native update moved the player away from our pose between frames), 60 fps:
   - flat ground: 0.1-0.5 units average (a few mm; about 70 units per metre)
   - slopes: spikes of 2-6 units, because the test keeps Skyrim's own height without terrain sampling. In the real design the height comes from MSC standing on the collision island.

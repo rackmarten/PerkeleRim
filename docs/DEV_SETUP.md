@@ -89,6 +89,7 @@ scripts/test.ps1                   # unit tests: C++ protocol (doctest) and C# l
 scripts/deploy-local.ps1           # copy both DLLs into the games (close the games first)
 scripts/logs.ps1                   # tail of the plugin, SKSE and My Summer Car logs
 scripts/launch-msc.ps1             # start MSC windowed with no clicks (clicks through the config dialog and news screen)
+scripts/restart-games.ps1 -Build    # close both games, build, deploy, start MSC and Skyrim (SKSE), wait for "link up"
 scripts/msc-save.ps1 snapshot NAME  # save MSC save data outside the repo; "restore NAME" puts it back
 scripts/spike.ps1 -Command dump    # hidden-MSC spike tools, see docs/SPIKE_HIDDEN_MSC.md
 ```

@@ -5,7 +5,7 @@ using System.Reflection.Emit;
 using Harmony;
 using UnityEngine;
 
-namespace PerkeleRim.Spike
+namespace PerkeleRim.Game
 {
     // UnityEngine.Input's methods are engine internal calls, which Harmony can't patch. Instead,
     // find every method in the game's assemblies that calls Input.* and transpile those call
@@ -22,13 +22,16 @@ namespace PerkeleRim.Spike
         static readonly Dictionary<string, int> unshimmed = new Dictionary<string, int>();
 
         static bool applied;
+        static Action<string> Log;
 
-        public static void Apply()
+        // Called once at the main menu, before the game scene loads (takes about 3 s).
+        public static void Apply(Action<string> log)
         {
-            // The spike host can be recreated when MSC returns to the menu; patch only once per process.
+            // Patch only once per process, even if the host object gets recreated.
             if (applied) return;
             applied = true;
-            var harmony = HarmonyInstance.Create("PerkeleRim.Spike.InputRedirect");
+            Log = log;
+            var harmony = HarmonyInstance.Create("PerkeleRim.InputRedirect");
             var transpiler = new HarmonyMethod(typeof(InputRedirect).GetMethod(nameof(Transpiler), BindingFlags.Static | BindingFlags.NonPublic));
             int scanned = 0, patched = 0, failed = 0;
             var start = DateTime.Now;
@@ -54,14 +57,14 @@ namespace PerkeleRim.Spike
                         catch (Exception e)
                         {
                             failed++;
-                            SpikeLog.Write($"redirect: failed {type.FullName}.{m.Name}: {e.Message}");
+                            Log($"redirect: failed {type.FullName}.{m.Name}: {e.Message}");
                         }
                     }
                 }
             }
 
-            SpikeLog.Write($"redirect: scanned {scanned} methods, patched {patched}, failed {failed}, call sites {callSitesReplaced}, {(DateTime.Now - start).TotalMilliseconds:0} ms");
-            foreach (var kv in unshimmed) SpikeLog.Write($"redirect: left unshimmed Input.{kv.Key} x{kv.Value}");
+            Log($"redirect: scanned {scanned} methods, patched {patched}, failed {failed}, call sites {callSitesReplaced}, {(DateTime.Now - start).TotalMilliseconds:0} ms");
+            foreach (var kv in unshimmed) Log($"redirect: left unshimmed Input.{kv.Key} x{kv.Value}");
         }
 
         // Cheap pre-filter: look for call/callvirt opcodes whose token resolves to UnityEngine.Input.

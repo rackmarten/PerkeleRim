@@ -2,7 +2,7 @@
 // Documents/My Games/Skyrim Special Edition/SKSE/PerkeleRim.log.
 
 #include "link/LinkService.h"
-#include "spike/PoseTest.h"
+#include "player/PlayerSync.h"
 
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
@@ -14,10 +14,10 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
         a_skse->RuntimeVersion().string("."));
 
     PerkeleRim::LinkService::Start();
-    PerkeleRim::Spike::PoseTest::Install();
+    PerkeleRim::PlayerSync::Install();
     SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
         if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
-            PerkeleRim::Spike::PoseTest::OnDataLoaded();
+            PerkeleRim::PlayerSync::OnDataLoaded();
         }
     });
 

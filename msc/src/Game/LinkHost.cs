@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using MSCLoader;
 using PerkeleRim.Protocol;
@@ -29,7 +30,12 @@ namespace PerkeleRim.Game
         {
             // MSC runs hidden behind Skyrim; without this Unity pauses it as soon as it loses focus.
             Application.runInBackground = true;
-            link = new Link(Side.Msc, line => ModConsole.Print("PerkeleRim: " + line));
+            Action<string> log = line => ModConsole.Print("PerkeleRim: " + line);
+            link = new Link(Side.Msc, log);
+            // Redirect the game's Input calls to InputShim before the game scene loads.
+            try { InputRedirect.Apply(log); }
+            catch (Exception e) { log("input redirect FAILED: " + e); }
+            gameObject.AddComponent<PlayerLink>().Init(log);
         }
 
         void Update() => link.Tick((ulong)clock.ElapsedMilliseconds);

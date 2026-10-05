@@ -1,0 +1,13 @@
+#pragma once
+
+// Hands the Skyrim player to MSC and back (F10). While MSC owns the player:
+//  - keyboard and mouse go to MSC as InputState, and Skyrim's own movement, look, sneak, jump,
+//    attack and POV controls are off;
+//  - every frame, the PlayerCharacter::Update hook places the player at the pose MSC reports.
+// Taking over sends a WorldspaceChange with the player's spot, which MSC uses as the anchor of its
+// collision island. Ownership ends on F10 again or when the link goes down.
+namespace PerkeleRim::PlayerSync
+{
+    void Install();       // hook; call at SKSE load
+    void OnDataLoaded();  // input and menu sinks; call on kDataLoaded
+}

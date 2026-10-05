@@ -3,18 +3,19 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
+using PerkeleRim.Game;
 using UnityEngine;
 
 namespace PerkeleRim.Spike
 {
-    // Hidden-MSC spike driver. Lives on a DontDestroyOnLoad object and:
+    // Hidden-MSC spike driver, kept as a debug tool. Lives on a DontDestroyOnLoad object and:
     //  - forces runInBackground and logs tick rate, focus, minimized state and player pose every second
     //  - polls <MSC>/PerkeleRim_cmd.txt (written by scripts/spike.ps1), runs it, then deletes it
     //
     // Commands (first line):
     //   dump [keyword ...]   FSM index + detail files (FsmDump)
     //   continue             main menu only: load the saved game as the Continue button would
-    //   override on|off      InputShim on/off with nothing pressed
+    //   override on|off      InputShim on/off with nothing pressed (on: the link no longer feeds it)
     //   script               following lines are steps: "<seconds>; <token>; <token>..."
     //                        token = KeyCode name (W, LeftShift, Mouse0), axis "Mouse X=3",
     //                        or virtual button "button:Fire1"
@@ -55,8 +56,6 @@ namespace PerkeleRim.Spike
             cmdPath = Path.Combine(SpikeLog.GameDir, "PerkeleRim_cmd.txt");
             Application.runInBackground = true;
             SpikeLog.Write("spike host started");
-            try { InputRedirect.Apply(); }
-            catch (Exception e) { SpikeLog.Write("redirect: FAILED " + e); }
         }
 
         void FixedUpdate() => fixedUpdates++;
@@ -145,7 +144,7 @@ namespace PerkeleRim.Spike
                         break;
                     case "override":
                         InputShim.Clear();
-                        InputShim.Active = words.Length > 1 && words[1].ToLower() == "on";
+                        InputShim.Active = InputShim.Manual = words.Length > 1 && words[1].ToLower() == "on";
                         break;
                     case "script":
                         StartScript(lines);
@@ -183,7 +182,7 @@ namespace PerkeleRim.Spike
             script = steps;
             stepIndex = -1;
             stepEnds = 0;
-            InputShim.Active = true;
+            InputShim.Active = InputShim.Manual = true;
             SpikeLog.Write($"script: {steps.Count} steps");
         }
 
@@ -198,7 +197,7 @@ namespace PerkeleRim.Spike
             if (stepIndex >= script.Count)
             {
                 script = null;
-                InputShim.Active = false;
+                InputShim.Active = InputShim.Manual = false;
                 SpikeLog.Write("script: done");
                 LogProbe();
                 return;

@@ -1,6 +1,6 @@
 # Protocol
 
-> Status: v1 transport implemented (shared memory, handshake, slots, rings, coordinate conversion). Message contents beyond `InputState`, `PlayerState`, `CollisionChunk` and `WorldspaceChange` arrive with the milestones that need them.
+> Status: v1 transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a). Message contents beyond `InputState`, `PlayerState`, `CollisionChunk` and `WorldspaceChange` arrive with the milestones that need them.
 
 The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchange data over one shared memory section. See [DESIGN.md](DESIGN.md) for the overall architecture and ownership rules.
 
@@ -53,7 +53,7 @@ One single-producer, single-consumer byte ring per direction, for messages that 
 | Direction | Message | Contents |
 |---|---|---|
 | Skyrim → MSC | `CollisionChunk` | `CollisionChunkHeader` (chunk x/y, worldspace, generation, origin, counts), vertices relative to origin, triangle indices |
-| Skyrim → MSC | `WorldspaceChange` | worldspace, interior cell, generation, spawn position and heading |
+| Skyrim → MSC | `WorldspaceChange` | worldspace, interior cell, generation, spawn position and heading; also sent on every handover as the island anchor |
 
 Planned, added with their milestones (each one bumps the version): `ActorList`, `PlayerDamage`, `ConsumeEvent` (Skyrim → MSC); `VehicleState`, `ItemState`, `ImpactEvent`, `PunchEvent`, `UrineHit`, `Death` (MSC → Skyrim).
 
@@ -67,6 +67,19 @@ MSC runs hidden while Skyrim has focus, so it can't read the keyboard and mouse 
 - `mouseX`, `mouseY`: the `Mouse X`/`Mouse Y` axes **accumulated** since Skyrim started. The two games run at different frame rates, so MSC applies the difference since its last frame; a per-frame delta would be lost or doubled.
 - `horizontal`, `vertical`: the Unity axes, -1..1.
 - `flags & kInputOwnsPlayer`: MSC should apply this input at all.
+
+Skyrim side (`protocol/cpp/input.h`, `skse/src/player/PlayerSync.cpp`): DirectInput scan codes and mouse buttons map to Unity `KeyCode`s; Escape, Tab, `~` and F10 never reach MSC. Mouse counts become axis units (`kMouseAxisPerCount`, 0.06 per count, Y flipped). While a menu pauses the game, keys and axes are sent empty so MSC stands still. MSC side (`msc/src/Link/InputFrame.cs`, `msc/src/Game/PlayerLink.cs`): the shim pulls the newest `InputState` before the first `Input` call of each MSC frame; the first state after a handover only seeds the mouse totals.
+
+## Handing over the player
+
+F10 in Skyrim toggles who owns the player. Taking over:
+
+1. Skyrim sends `WorldspaceChange` with the player's position and heading as `spawn` (a new `generation` each time), then publishes `InputState` with `kInputOwnsPlayer` and turns off its own movement, look, sneak, jump, attack and POV controls.
+2. MSC drains its ring before writing a pose, so the anchor is always applied first. The anchor maps to `Island.Base` on a collision island far from MSC's map (milestone 1a: a flat 2 km placeholder MeshCollider), and MSC teleports the player's feet there.
+3. Every frame MSC writes `PlayerState` (feet position in Skyrim world space, velocity, heading, camera pitch, stance from the `Crouch` FSM). `kPlayerValid` is set only while MSC owns the player and stands on the current anchor's island, so Skyrim never applies a pose from an earlier handover.
+4. Skyrim's `PlayerCharacter::Update` hook places the player at every valid pose (position, heading, pitch, zeroed controller velocity) and sets sneak while the stance is crouch or prone.
+
+F10 again, or the link going down, hands the player back to Skyrim and turns its controls back on.
 
 ## Coordinates
 
