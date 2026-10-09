@@ -1,6 +1,8 @@
 // SKSE entry point. SKSE::Init sets up logging to
 // Documents/My Games/Skyrim Special Edition/SKSE/PerkeleRim.log.
 
+#include "autoload/Autoload.h"
+#include "drink/Drink.h"
 #include "garage/Garage.h"
 #include "link/LinkService.h"
 #include "player/PlayerSync.h"
@@ -21,6 +23,10 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
         if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
             PerkeleRim::PlayerSync::OnDataLoaded();
             PerkeleRim::Garage::OnDataLoaded();
+            PerkeleRim::Drink::OnDataLoaded();
+            PerkeleRim::Autoload::OnDataLoaded();
+        } else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame) {
+            PerkeleRim::Autoload::OnGameLoaded();
         }
     });
 

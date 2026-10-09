@@ -61,7 +61,7 @@
 
 ## Dev loop (also an outcome of the spike)
 
-- `scripts/launch-msc.ps1`: starts MSC windowed, so the `-screen-*` arguments skip Unity's config dialog, then presses Space past the news screen.
+- `scripts/launch-msc.ps1`: starts MSC windowed at 640x480, clicks "Play!" on Unity's config dialog, then presses Space past the news screen.
 - `<MSC>/PerkeleRim_autoload.txt`: the mod continues the saved game from the main menu (it switches the Continue button's FSM into its click state).
 - `scripts/msc-save.ps1 snapshot|restore <name>`: known save states outside the repo.
 - `scripts/spike.ps1`: sends `dump`, `continue`, `override on|off` or an input script (`scripts/spike/*.txt`) to the running game and tails the spike log.

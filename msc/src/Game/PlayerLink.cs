@@ -17,7 +17,8 @@ namespace PerkeleRim.Game
     //    change, and its needs with every pose;
     //  - runs the vehicles (VehicleLink) on the same island: the van (drawn in Skyrim) on the
     //    player's right, or at the spot the anchor names (the garage), the Jonnez moped (MSC only
-    //    so far) on the left.
+    //    so far) on the left;
+    //  - hands out the beer Skyrim sends (GiveBeer) through BeerGift.
     public unsafe class PlayerLink : MonoBehaviour
     {
         // Drop the player this far above the ground so it never starts inside the collider.
@@ -34,6 +35,7 @@ namespace PerkeleRim.Game
         Action<string> log;
         VehicleLink van, moped;
         VehicleLink[] vehicles;
+        BeerGift beer;
         Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
         Collider groundTemplate;  // MSC ground the island chunks copy layer, tag and material from
 
@@ -76,7 +78,11 @@ namespace PerkeleRim.Game
             van = new VehicleLink("HAYOSIKO(1500kg, 250)", "Hayosiko", new Vector3(3.5f, 0f, 2f), Wire.VehicleHayosiko, "PlayerKeyHayosiko", island, ground, log);
             moped = new VehicleLink("JONNEZ ES(Clone)", "Jonnez", new Vector3(-2.5f, 0f, 1.5f), 0, null, island, ground, log);
             vehicles = new[] { van, moped };
+            beer = new BeerGift(log);
         }
+
+        // Beer as if Skyrim sent GiveBeer (spike command "beer").
+        public void GiveBeer(int count) => beer.Give(count);
 
         // ---- Input (runs inside the first Input call of each frame) ----
 
@@ -153,6 +159,7 @@ namespace PerkeleRim.Game
             SendLookAt(link, playing);
             SendSubtitle(link, playing);
             foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero);
+            if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
         }
 
         // Getting the mouse out of MSC's window takes Escape, which opens MSC's menu
@@ -202,6 +209,12 @@ namespace PerkeleRim.Game
             }
             else if (type == MessageType.CollisionChunk)
                 OnChunk(payload, size);
+            else if (type == MessageType.GiveBeer && size >= sizeof(GiveBeer))
+            {
+                GiveBeer g;
+                fixed (byte* p = payload) g = *(GiveBeer*)p;
+                beer.Give((int)g.count);
+            }
         }
 
         void FindPlayer()

@@ -15,6 +15,7 @@ namespace PerkeleRim.Spike
     // Commands (first line):
     //   dump [keyword ...]   FSM index + detail files (FsmDump)
     //   continue             main menu only: load the saved game as the Continue button would
+    //   beer <count>         hand out beer as if Skyrim sent GiveBeer (BeerGift)
     //   override on|off      InputShim on/off with nothing pressed (on: the link no longer feeds it)
     //   script               following lines are steps: "<seconds>; <token>; <token>..."
     //                        token = KeyCode name (W, LeftShift, Mouse0), axis "Mouse X=3",
@@ -151,6 +152,11 @@ namespace PerkeleRim.Spike
                         break;
                     case "continue":
                         Continue();
+                        break;
+                    case "beer":
+                        var link = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (link != null) link.GiveBeer(words.Length > 1 ? int.Parse(words[1]) : 1);
+                        else SpikeLog.Write("cmd: no PlayerLink");
                         break;
                     default:
                         SpikeLog.Write("cmd: unknown command");

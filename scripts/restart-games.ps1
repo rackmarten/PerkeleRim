@@ -2,7 +2,8 @@
 .SYNOPSIS
     The whole in-game test loop in one command: closes both games, optionally builds, deploys,
     starts My Summer Car (launch-msc.ps1, continues the save if <MSC>/PerkeleRim_autoload.txt
-    exists), then starts Skyrim through SKSE and waits until both sides log "link up".
+    exists), then starts Skyrim through SKSE (continues the most recent save if
+    <Skyrim>/PerkeleRim_autoload.txt exists) and waits until both sides log "link up".
     Killing the games discards anything unsaved in them.
 .EXAMPLE
     scripts/restart-games.ps1           # deploy what's built and restart
@@ -43,6 +44,9 @@ $started = Get-Date
 
 if (-not (Test-Path (Join-Path $msc 'PerkeleRim_autoload.txt'))) {
     Write-Host 'No PerkeleRim_autoload.txt: MSC will stay at its main menu.' -ForegroundColor Yellow
+}
+if (-not (Test-Path (Join-Path $skyrim 'PerkeleRim_autoload.txt'))) {
+    Write-Host 'No PerkeleRim_autoload.txt in Skyrim: it will stay at its main menu.' -ForegroundColor Yellow
 }
 & "$PSScriptRoot/launch-msc.ps1"
 

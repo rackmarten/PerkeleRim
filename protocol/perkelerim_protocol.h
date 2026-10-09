@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 8;
+    inline constexpr std::uint32_t kProtocolVersion = 9;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -276,6 +276,7 @@ namespace PerkeleRim::Protocol
         WorldspaceChange = 2,  // Skyrim -> MSC
         LookAtText = 3,        // MSC -> Skyrim
         Subtitle = 4,          // MSC -> Skyrim
+        GiveBeer = 5,          // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -331,6 +332,15 @@ namespace PerkeleRim::Protocol
     // Subtitle: MSC's subtitle line (global GUIsubtitle: the player's swearing and other speech),
     // sent when it changes and once more each time MSC takes the player. Same payload as LookAtText
     // with flags 0; no text clears it.
+
+    // GiveBeer: the player picked up mead or ale in Skyrim, which is gone from Skyrim's inventory
+    // once this is sent. MSC adds that many bottles of beer to a case near its player (a new case
+    // when none has room).
+    struct GiveBeer
+    {
+        std::uint32_t count;
+        std::uint32_t reserved;
+    };
 
 #pragma pack(pop)
 
@@ -394,6 +404,7 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(WorldspaceChange, vehicleSpot) == 32);
     static_assert(offsetof(WorldspaceChange, vehicleHeading) == 44);
     static_assert(sizeof(LookAtText) == 8);
+    static_assert(sizeof(GiveBeer) == 8);
 
     // Section layout follows from the struct sizes.
     static_assert(kOffsetInputSlot == kOffsetHeader + sizeof(LinkHeader));

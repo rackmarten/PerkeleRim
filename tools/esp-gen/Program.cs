@@ -1,5 +1,6 @@
 // Writes PerkeleRim.esp: the garage near Whiterun (vanilla pieces) with the player's spawn marker in
-// front of it and a marker where the van parks inside. Reads only the player's own Skyrim.esm (for
+// front of it and a marker where the van parks inside, the mead and ale that become MSC beer, and
+// the drunk blur. Reads only the player's own Skyrim.esm (for
 // the vanilla base objects, the Tamriel cells to add to and the terrain height there).
 //
 //   EspGen --data "<Skyrim>/Data" --out <dir>/PerkeleRim.esp
@@ -158,6 +159,35 @@ foreach (var p in markers.Concat(pieces))
     var name = cache.Resolve<IPlaceableObjectGetter>(p.Base.FormKey).EditorID;
     Console.WriteLine($"  {p.FormKey.ID:X3} {name,-16} ({at.Position.X:0},{at.Position.Y:0},{at.Position.Z:0}) rot {at.Rotation.Z:0.000}");
 }
+
+// ---- Drinks ----
+//
+// Fixed ids the SKSE plugin looks up (skse/src/drink/Drink.cpp), clear of the garage's.
+//
+// The mead and ale that turn into MSC beer when the player picks them up. Quest drinks
+// (MQ101JuniperMead, FreeformDragonBridgeMead) stay out: taking them away would break their quests.
+var drinks = new FormList(new FormKey(mod.ModKey, 0x900), SkyrimRelease.SkyrimSE) { EditorID = "PerkeleRimBeerDrinks" };
+foreach (var id in new[] { "FoodMead", "Ale", "FoodHonningbrewMead", "FoodBlackBriarMead", "FoodBlackBriarMeadPrivateReserve" })
+    drinks.Items.Add(new FormLink<ISkyrimMajorRecordGetter>(Base(skyrim.Ingestibles, id)));
+mod.FormLists.Add(drinks);
+
+// MSC's drunk level as a blur with wobbling double vision. A 4 s loop the plugin retriggers, its
+// strength the drunk level; copied from a vanilla static blur so every other track stays neutral.
+var vanillaBlur = skyrim.ImageSpaceAdapters.First(a => a.EditorID == "ISMDinCloudBlurStatic");
+var drunk = (ImageSpaceAdapter)vanillaBlur.Duplicate(new FormKey(mod.ModKey, 0x901));
+drunk.EditorID = "PerkeleRimDrunkIMAD";
+drunk.Duration = 4f;
+drunk.Animatable = true;
+ExtendedList<KeyFrame> Track(params (float Time, float Value)[] keys) =>
+    new(keys.Select(k => new KeyFrame { Time = k.Time, Value = k.Value }));
+drunk.BlurRadius = Track((0f, 2f), (0.5f, 3.5f), (1f, 2f));
+drunk.DoubleVisionStrength = Track((0f, 0.01f), (0.25f, 0.025f), (0.5f, 0.008f), (0.75f, 0.022f), (1f, 0.01f));
+var clear = System.Drawing.Color.FromArgb(0, 255, 255, 255);
+drunk.FadeColor = new ExtendedList<ColorFrame> { new ColorFrame { Time = 0f, Color = clear }, new ColorFrame { Time = 1f, Color = clear } };
+mod.ImageSpaceAdapters.Add(drunk);
+mod.ModHeader.Stats.NextFormID = 0x902;
+Console.WriteLine($"  900 {drinks.EditorID} ({drinks.Items.Count} drinks)");
+Console.WriteLine($"  901 {drunk.EditorID}");
 
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
 mod.WriteToBinary(output);

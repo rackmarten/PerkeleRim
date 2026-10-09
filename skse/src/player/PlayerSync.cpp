@@ -3,6 +3,7 @@
 #include "camera.h"
 #include "collision/CollisionSampler.h"
 #include "coords.h"
+#include "drink/Drink.h"
 #include "garage/Garage.h"
 #include "hud/Hud.h"
 #include "input.h"
@@ -47,6 +48,7 @@ namespace PerkeleRim::PlayerSync
             std::uint32_t  anchorCell = 0;
             RE::NiPoint3   lastPlaced;  // where the player was last put (anchor or MSC pose)
             bool           sneak = false;  // what we last told Skyrim; its own flag can drop on its own
+            int            sneakResend = 0;  // frames until a sneak event the graph ignored is sent again
             std::uint32_t  inputFrame = 0;
             Input::Builder input;
             bool           seated = false;
@@ -165,6 +167,7 @@ namespace PerkeleRim::PlayerSync
             state.subtitle.clear();
             state.hasNeeds = false;
             Hud::Set({});
+            Drink::SetDrunk(0.0f, 0.0f);
             CollisionSampler::Stop();
             VehicleView::Hide();
             Publish();
@@ -339,6 +342,18 @@ namespace PerkeleRim::PlayerSync
             }
             if (actorState && actorState->IsSneaking() != sneak) {
                 actorState->actorState1.sneaking = sneak;
+            }
+            // The graph drops a sneak event that comes while it is still blending the previous one
+            // (crouch and stand up quickly), and then stays crouched; send it again until it agrees.
+            bool graphSneak = sneak;
+            if (a_player->GetGraphVariableBool("IsSneaking"sv, graphSneak) && graphSneak != sneak) {
+                if (--state.sneakResend <= 0) {
+                    state.sneakResend = 15;
+                    a_player->NotifyAnimationGraph(sneak ? "SneakStart"sv : "SneakStop"sv);
+                    SKSE::log::info("player sync: animation still {} sneaking, sneak {} sent again", graphSneak ? "" : "not", sneak ? "on" : "off");
+                }
+            } else {
+                state.sneakResend = 0;
             }
         }
 
@@ -523,6 +538,7 @@ namespace PerkeleRim::PlayerSync
             hud.hasNeeds = state.hasNeeds;
             hud.needs = state.needs;
             Hud::Set(hud, second);  // refreshed once a second in case the HUD movie was rebuilt
+            Drink::SetDrunk(state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, a_delta);
             if (second) {
                 SKSE::log::info(
                     "player sync: frames={} placed={} new poses={} pos=({:.0f},{:.0f},{:.0f}) speed={:.1f} m/s heading={:.2f} pitch={:.2f} stance={} seated={} van shift={:.1f} eye=({:.0f},{:.0f},{:.0f}) roll={:.2f} fov={:.0f}",
