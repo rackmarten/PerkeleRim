@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 9;
+    inline constexpr std::uint32_t kProtocolVersion = 10;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -277,6 +277,7 @@ namespace PerkeleRim::Protocol
         LookAtText = 3,        // MSC -> Skyrim
         Subtitle = 4,          // MSC -> Skyrim
         GiveBeer = 5,          // Skyrim -> MSC
+        ModelChunk = 6,        // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -342,6 +343,66 @@ namespace PerkeleRim::Protocol
         std::uint32_t reserved;
     };
 
+    // ---- Models (MSC -> Skyrim) ----
+    //
+    // MSC sends its own meshes and textures, read from the running game, and Skyrim builds them in
+    // memory. A model is one blob (layout below) cut into ModelChunk messages, so a model of any size
+    // fits through the ring. Chunks of one model arrive in order, offset 0 first; a chunk that doesn't
+    // continue the model being received drops it.
+
+    inline constexpr std::uint32_t kModelChunkMax = 49152;     // ModelChunk.size limit
+    inline constexpr std::uint32_t kModelSizeMax = 67108864;   // ModelChunk.totalSize limit (64 MiB)
+    inline constexpr std::uint32_t kModelNameMax = 48;         // name bytes, UTF-8, zero padded
+    inline constexpr std::uint32_t kModelTextureRgba8 = 1;     // ModelTexture.format
+    inline constexpr std::uint32_t kModelTextureSizeMax = 2048;  // width and height limit
+    inline constexpr std::uint32_t kModelMeshVertexMax = 65535;  // 16-bit indices
+
+    // Payload: this header, then size bytes of the blob, starting at offset.
+    struct ModelChunk
+    {
+        std::uint32_t model;      // picked by MSC, new for every model it sends
+        std::uint32_t totalSize;  // blob bytes
+        std::uint32_t offset;
+        std::uint32_t size;       // <= kModelChunkMax
+    };
+
+    // The blob: this header, textureCount textures (ModelTexture, then width * height RGBA8 pixels,
+    // top row first), then meshCount meshes (ModelMesh, then vertexCount ModelVertex, then indexCount
+    // uint16 triangle indices). Positions and normals are relative to the model's root, in Skyrim axes
+    // and units. Front faces wind counterclockwise seen from the front (cross(b - a, c - a) points out),
+    // like CollisionChunk. UV (0, 0) is the texture's top left corner.
+    struct ModelHeader
+    {
+        char          name[48];  // kModelNameMax
+        std::uint32_t textureCount;
+        std::uint32_t meshCount;
+        std::uint32_t reserved[2];
+    };
+
+    struct ModelTexture
+    {
+        std::uint32_t width;   // <= kModelTextureSizeMax
+        std::uint32_t height;  // <= kModelTextureSizeMax
+        std::uint32_t format;  // kModelTexture*
+        std::uint32_t reserved;
+    };
+
+    struct ModelMesh
+    {
+        char          name[48];     // kModelNameMax: the MSC object's path below the model's root
+        std::int32_t  texture;      // diffuse texture index, -1 = none
+        std::uint32_t vertexCount;  // <= kModelMeshVertexMax
+        std::uint32_t indexCount;   // 3 per triangle
+        std::uint32_t reserved;
+    };
+
+    struct ModelVertex
+    {
+        float position[3];
+        float normal[3];
+        float uv[2];
+    };
+
 #pragma pack(pop)
 
     static_assert(sizeof(PeerInfo) == 32);
@@ -405,6 +466,21 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(WorldspaceChange, vehicleHeading) == 44);
     static_assert(sizeof(LookAtText) == 8);
     static_assert(sizeof(GiveBeer) == 8);
+    static_assert(sizeof(ModelChunk) == 16);
+    static_assert(offsetof(ModelChunk, offset) == 8);
+    static_assert(sizeof(ModelHeader) == 64);
+    static_assert(offsetof(ModelHeader, textureCount) == 48);
+    static_assert(offsetof(ModelHeader, meshCount) == 52);
+    static_assert(sizeof(ModelTexture) == 16);
+    static_assert(offsetof(ModelTexture, format) == 8);
+    static_assert(sizeof(ModelMesh) == 64);
+    static_assert(offsetof(ModelMesh, texture) == 48);
+    static_assert(offsetof(ModelMesh, vertexCount) == 52);
+    static_assert(offsetof(ModelMesh, indexCount) == 56);
+    static_assert(sizeof(ModelVertex) == 32);
+    static_assert(offsetof(ModelVertex, normal) == 12);
+    static_assert(offsetof(ModelVertex, uv) == 24);
+    static_assert(kModelChunkMax + sizeof(ModelChunk) + sizeof(MessageHeader) < kRingToSkyrimCapacity / 4);
 
     // Section layout follows from the struct sizes.
     static_assert(kOffsetInputSlot == kOffsetHeader + sizeof(LinkHeader));

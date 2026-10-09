@@ -36,6 +36,7 @@ namespace PerkeleRim.Game
         VehicleLink van, moped;
         VehicleLink[] vehicles;
         BeerGift beer;
+        ModelSender models;
         Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
         Collider groundTemplate;  // MSC ground the island chunks copy layer, tag and material from
 
@@ -79,10 +80,15 @@ namespace PerkeleRim.Game
             moped = new VehicleLink("JONNEZ ES(Clone)", "Jonnez", new Vector3(-2.5f, 0f, 1.5f), 0, null, island, ground, log);
             vehicles = new[] { van, moped };
             beer = new BeerGift(log);
+            models = new ModelSender(this, log);
         }
 
         // Beer as if Skyrim sent GiveBeer (spike command "beer").
         public void GiveBeer(int count) => beer.Give(count);
+
+        // Sends the model of an MSC object to Skyrim (spike command "model").
+        public void SendModel(string name) => models.Request(name);
+        public void InspectModel(string name) => models.Inspect(name);
 
         // ---- Input (runs inside the first Input call of each frame) ----
 
@@ -160,6 +166,7 @@ namespace PerkeleRim.Game
             SendSubtitle(link, playing);
             foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero);
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
+            models.Update(link, playing);
         }
 
         // Getting the mouse out of MSC's window takes Escape, which opens MSC's menu

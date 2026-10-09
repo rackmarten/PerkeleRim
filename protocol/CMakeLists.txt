@@ -17,6 +17,7 @@ add_executable(protocol_tests
     tests/cpp/test_coords.cpp
     tests/cpp/test_input.cpp
     tests/cpp/test_link.cpp
+    tests/cpp/test_model.cpp
 )
 target_link_libraries(protocol_tests PRIVATE doctest::doctest)
 target_compile_definitions(protocol_tests PRIVATE PROTOCOL_DIR="${CMAKE_CURRENT_SOURCE_DIR}")

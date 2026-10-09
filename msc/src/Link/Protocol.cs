@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 9;
+        public const uint ProtocolVersion = 10;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -45,6 +45,12 @@ namespace PerkeleRim.Protocol
         public const uint HayosikoPartCount = 40;
         public const uint LookAtTextMax = 255;
         public const uint LookAtUse = 0x1;
+        public const uint ModelChunkMax = 49152;
+        public const uint ModelSizeMax = 67108864;
+        public const uint ModelNameMax = 48;
+        public const uint ModelTextureRgba8 = 1;
+        public const uint ModelTextureSizeMax = 2048;
+        public const uint ModelMeshVertexMax = 65535;
 
         // VehicleParts.parts order for the van; msc/tests checks it against the header's list.
         public static readonly string[] HayosikoParts =
@@ -108,6 +114,7 @@ namespace PerkeleRim.Protocol
         LookAtText = 3,
         Subtitle = 4,
         GiveBeer = 5,
+        ModelChunk = 6,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -318,5 +325,50 @@ namespace PerkeleRim.Protocol
     {
         public uint count;
         public uint reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct ModelChunk
+    {
+        public uint model;
+        public uint totalSize;
+        public uint offset;
+        public uint size;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ModelHeader
+    {
+        public fixed byte name[48];
+        public uint textureCount;
+        public uint meshCount;
+        public fixed uint reserved[2];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct ModelTexture
+    {
+        public uint width;
+        public uint height;
+        public uint format;
+        public uint reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ModelMesh
+    {
+        public fixed byte name[48];
+        public int texture;
+        public uint vertexCount;
+        public uint indexCount;
+        public uint reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ModelVertex
+    {
+        public fixed float position[3];
+        public fixed float normal[3];
+        public fixed float uv[2];
     }
 }

@@ -9,6 +9,7 @@
 #include "input.h"
 #include "link/LinkService.h"
 #include "look_at.h"
+#include "model/ModelView.h"
 #include "vehicle/VehicleView.h"
 
 namespace PerkeleRim::PlayerSync
@@ -465,6 +466,7 @@ namespace PerkeleRim::PlayerSync
             }
             ReleaseStuckKeys();
             Publish();
+            ModelView::Tick(a_delta);
 
             if (const char* reason = MovedByGame(a_player)) {
                 SendAnchor(a_player, reason);  // retried next frame if the ring is full
@@ -484,6 +486,10 @@ namespace PerkeleRim::PlayerSync
                 SKSE::log::info("player sync: {}", seated ? "seated" : "out of the seat");
             }
             link.Receive([](Protocol::MessageType a_type, const std::uint8_t* a_data, std::uint32_t a_size) {
+                if (a_type == Protocol::MessageType::ModelChunk) {
+                    ModelView::OnChunk(a_data, a_size);
+                    return;
+                }
                 if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle) {
                     return;
                 }
