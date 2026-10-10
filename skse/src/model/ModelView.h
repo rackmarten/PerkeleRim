@@ -19,4 +19,10 @@ namespace PerkeleRim::ModelView
     std::uint32_t Find(std::string_view a_name);
 
     void Tick(float a_delta);  // every frame the player is handed over; logs the frame cost around a build
+
+    // A GPU texture and its view wrapped in a NiSourceTexture the game's shaders and Scaleform can
+    // use. Put together by hand (vtable, renderer texture) since the game only makes them while
+    // loading a file; never freed (the game's destructor expects its own).
+    RE::NiSourceTexture* Wrap(REX::W32::ID3D11Texture2D* a_texture, REX::W32::ID3D11ShaderResourceView* a_view, std::uint32_t a_width,
+        std::uint32_t a_height, std::uint32_t a_mips, const std::string& a_name);
 }

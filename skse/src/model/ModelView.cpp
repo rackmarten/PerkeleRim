@@ -116,9 +116,7 @@ namespace PerkeleRim::ModelView
             return levels;
         }
 
-        // A GPU texture with mips, wrapped in a NiSourceTexture the lighting shader can bind. The
-        // NiSourceTexture is put together by hand (vtable, renderer texture) since the game only makes
-        // them while loading a file.
+        // A GPU texture with mips, wrapped (Wrap) so the lighting shader can bind it.
         RE::NiSourceTexture* MakeTexture(const Model::Texture& a_texture, const std::string& a_name)
         {
             auto* device = RE::BSGraphics::Renderer::GetDevice();
@@ -153,21 +151,7 @@ namespace PerkeleRim::ModelView
                 return nullptr;
             }
 
-            auto* renderer = static_cast<RE::BSGraphics::Texture*>(RE::malloc(sizeof(RE::BSGraphics::Texture)));
-            std::memset(renderer, 0, sizeof(*renderer));
-            renderer->texture = texture;
-            renderer->resourceView = view;
-            renderer->width = static_cast<std::uint16_t>(a_texture.width);
-            renderer->height = static_cast<std::uint16_t>(a_texture.height);
-            renderer->mips = static_cast<std::uint8_t>(levels.size());
-            renderer->refCount = 1;
-
-            static REL::Relocation<std::uintptr_t> vtable{ RE::NiSourceTexture::VTABLE[0] };
-            auto* source = static_cast<RE::NiSourceTexture*>(RE::malloc(sizeof(RE::NiSourceTexture)));
-            std::memset(source, 0, sizeof(*source));
-            *reinterpret_cast<std::uintptr_t*>(source) = vtable.address();
-            source->name = a_name.c_str();
-            source->rendererTexture = renderer;
+            auto* source = Wrap(texture, view, a_texture.width, a_texture.height, static_cast<std::uint32_t>(levels.size()), a_name);
             state.textures.emplace_back(source);
             return source;
         }
@@ -459,6 +443,27 @@ namespace PerkeleRim::ModelView
             state.models[a_id] = std::move(cached);
             MarkBuild();
         }
+    }
+
+    RE::NiSourceTexture* Wrap(REX::W32::ID3D11Texture2D* a_texture, REX::W32::ID3D11ShaderResourceView* a_view, std::uint32_t a_width,
+        std::uint32_t a_height, std::uint32_t a_mips, const std::string& a_name)
+    {
+        auto* renderer = static_cast<RE::BSGraphics::Texture*>(RE::malloc(sizeof(RE::BSGraphics::Texture)));
+        std::memset(renderer, 0, sizeof(*renderer));
+        renderer->texture = a_texture;
+        renderer->resourceView = a_view;
+        renderer->width = static_cast<std::uint16_t>(a_width);
+        renderer->height = static_cast<std::uint16_t>(a_height);
+        renderer->mips = static_cast<std::uint8_t>(a_mips);
+        renderer->refCount = 1;
+
+        static REL::Relocation<std::uintptr_t> vtable{ RE::NiSourceTexture::VTABLE[0] };
+        auto* source = static_cast<RE::NiSourceTexture*>(RE::malloc(sizeof(RE::NiSourceTexture)));
+        std::memset(source, 0, sizeof(*source));
+        *reinterpret_cast<std::uintptr_t*>(source) = vtable.address();
+        source->name = a_name.c_str();
+        source->rendererTexture = renderer;
+        return source;
     }
 
     void OnChunk(const std::uint8_t* a_payload, std::uint32_t a_size)

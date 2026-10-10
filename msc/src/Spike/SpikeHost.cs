@@ -17,6 +17,11 @@ namespace PerkeleRim.Spike
     //   continue             main menu only: load the saved game as the Continue button would
     //   beer <count>         hand out beer as if Skyrim sent GiveBeer (BeerGift)
     //   items                log the items Skyrim gets (ItemLink): id, path, model id
+    //   hands                cameras, layers and first-person renderers to PerkeleRim_hands.txt
+    //   handlayer on|off|tint|save  share MSC's first-person layer with Skyrim or not (HandLayerSender); tint toggles a
+    //                        red background, save writes the layer to PerkeleRim_handlayer.png
+    //   global <name> <v>    set a global PlayMaker float (global PlayerUrine 100)
+    //   event <NAME>         broadcast a global PlayMaker event (DRINKBEER: the beer drinking animation)
     //   textures <name>      read an object's model (GameObject.Find) without sending it and log it
     //   override on|off      InputShim on/off with nothing pressed (on: the link no longer feeds it)
     //   script               following lines are steps: "<seconds>; <token>; <token>..."
@@ -165,6 +170,16 @@ namespace PerkeleRim.Spike
                         if (lister != null) lister.DumpItems();
                         else SpikeLog.Write("cmd: no PlayerLink");
                         break;
+                    case "hands":
+                        HandsDump.Run();
+                        break;
+                    case "handlayer":
+                        string mode = words.Length > 1 ? words[1].ToLower() : "on";
+                        if (mode == "tint") PerkeleRim.Game.HandLayerSender.Tint = !PerkeleRim.Game.HandLayerSender.Tint;
+                        else if (mode == "save") PerkeleRim.Game.HandLayerSender.SaveRequested = true;
+                        else PerkeleRim.Game.HandLayerSender.Enabled = mode != "off";
+                        SpikeLog.Write($"cmd: hand layer {(PerkeleRim.Game.HandLayerSender.Enabled ? "on" : "off")}, tint {PerkeleRim.Game.HandLayerSender.Tint}");
+                        break;
                     case "textures":
                         var reader = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
                         if (reader != null) reader.InspectModel(lines[0].Trim().Substring(8).Trim());
@@ -174,6 +189,14 @@ namespace PerkeleRim.Spike
                         var shot = Path.Combine(Path.GetDirectoryName(Application.dataPath), "PerkeleRim_shot.png");
                         Application.CaptureScreenshot(shot);
                         SpikeLog.Write("cmd: screenshot to " + shot);
+                        break;
+                    case "event":  // a global PlayMaker event, e.g. "event DRINKBEER" plays the beer drinking animation
+                        if (words.Length > 1) PlayMakerFSM.BroadcastEvent(words[1]);
+                        break;
+                    case "global":  // set a global PlayMaker float, e.g. "global PlayerUrine 100"
+                        var global = words.Length > 2 ? HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmFloat(words[1]) : null;
+                        if (global != null) global.Value = float.Parse(words[2], CultureInfo.InvariantCulture);
+                        SpikeLog.Write(global != null ? $"cmd: {words[1]} = {global.Value}" : "cmd: no such global float");
                         break;
                     case "death":  // what a fatal crash sends; caught by DeathGuard while handed over
                         PlayMakerFSM.BroadcastEvent("DEATH");

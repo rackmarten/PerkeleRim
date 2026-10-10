@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-    Starts My Summer Car windowed at its lowest resolution and quality (640x480, "Fastest") and clicks "Play!" on Unity's
+    Starts My Summer Car windowed at its lowest resolution and quality (640x480, "Fastest") with single-threaded
+    rendering (-force-gfx-direct, which the hand layer needs) and clicks "Play!" on Unity's
     configuration dialog if it appears, then presses Space past the news screen, so a test run needs no clicks. Combine with the spike's auto-load
     (<MSC>/PerkeleRim_autoload.txt) to go straight into the saved game.
 .EXAMPLE
@@ -22,21 +23,23 @@ Add-Type -Namespace PerkeleRim -Name Win32 -MemberDefinition @'
 [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);
 [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
 [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
-[DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
 [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+[DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
 '@
 
 $log = Join-Path $msc 'PerkeleRim_spike.log'
 $launched = Get-Date
 Start-Process -WorkingDirectory $msc (Join-Path $msc 'mysummercar.exe') `
-    -ArgumentList '-screen-fullscreen', '0', '-screen-width', $Width, '-screen-height', $Height, '-screen-quality', 'Fastest'
+    -ArgumentList '-force-gfx-direct', '-screen-fullscreen', '0', '-screen-width', $Width, '-screen-height', $Height, '-screen-quality', 'Fastest'
 
 # Until the spike log says the mod has started (main menu reached):
 #  - click "Play!" on Unity's configuration dialog. The -screen-* arguments don't skip it in MSC's
 #    Unity version, and on a cold start it can take over a minute to appear. Found by class and title:
 #    PowerShell passes $null to a string parameter as "", which would match nothing.
 #  - press Space on the game window once it's visible (Unity creates it hidden before the dialog):
-#    the Amistech news screen waits for "press any key" before the menu (and MSCLoader) loads.
+#    the Amistech news screen waits for "press any key" before the menu (and MSCLoader) loads. A real
+#    key press on the focused window: with -force-gfx-direct, Unity ignores posted key messages.
 $clicked = $false
 $deadline = $launched.AddSeconds($TimeoutSeconds * 3)
 while ((Get-Date) -lt $deadline) {
@@ -59,9 +62,11 @@ while ((Get-Date) -lt $deadline) {
     }
     $game = [PerkeleRim.Win32]::FindWindowEx([IntPtr]::Zero, [IntPtr]::Zero, 'UnityWndClass', 'My Summer Car')
     if ($game -ne [IntPtr]::Zero -and [PerkeleRim.Win32]::IsWindowVisible($game)) {
-        [PerkeleRim.Win32]::PostMessage($game, 0x0100, [IntPtr]0x20, [IntPtr]0x00390001) | Out-Null  # WM_KEYDOWN Space
+        [PerkeleRim.Win32]::SetForegroundWindow($game) | Out-Null
+        Start-Sleep -Milliseconds 200
+        [PerkeleRim.Win32]::keybd_event(0x20, 0x39, 0, [UIntPtr]::Zero)  # Space down
         Start-Sleep -Milliseconds 100
-        [PerkeleRim.Win32]::PostMessage($game, 0x0101, [IntPtr]0x20, [IntPtr]0xC0390001) | Out-Null  # WM_KEYUP Space
+        [PerkeleRim.Win32]::keybd_event(0x20, 0x39, 2, [UIntPtr]::Zero)  # KEYEVENTF_KEYUP
         Start-Sleep -Milliseconds 1400
     }
 }

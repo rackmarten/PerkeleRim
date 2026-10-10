@@ -60,7 +60,7 @@ namespace PerkeleRim.Spike
             return false;
         }
 
-        static string PathOf(Transform t)
+        internal static string PathOf(Transform t)
         {
             string path = t.name;
             for (var p = t.parent; p != null; p = p.parent) path = p.name + "/" + path;

@@ -315,6 +315,18 @@ namespace PerkeleRim
         return IsUp() && SeqRead(At<ItemSlot>(Base(), kOffsetItemSlot), a_out);
     }
 
+    void Link::WriteHandLayer(const HandLayer& a_value)
+    {
+        if (std::uint8_t* base = Base(); base && _attached.load(std::memory_order_acquire)) {
+            SeqWrite(At<HandLayerSlot>(base, kOffsetHandLayerSlot), a_value);
+        }
+    }
+
+    bool Link::ReadHandLayer(HandLayer& a_out) const
+    {
+        return IsUp() && SeqRead(At<HandLayerSlot>(Base(), kOffsetHandLayerSlot), a_out);
+    }
+
     bool Link::Send(MessageType a_type, const void* a_payload, std::uint32_t a_size)
     {
         if (!IsUp()) {

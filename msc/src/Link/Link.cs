@@ -342,6 +342,32 @@ namespace PerkeleRim
             return false;
         }
 
+        public void WriteHandLayer(ref HandLayer value)
+        {
+            if (basePtr == null || !attached) return;
+            var slot = (HandLayerSlot*)(basePtr + Wire.OffsetHandLayerSlot);
+            BeginWrite(&slot->seq, out uint n);
+            slot->value = value;
+            EndWrite(&slot->seq, n);
+        }
+
+        public bool ReadHandLayer(out HandLayer value)
+        {
+            value = default(HandLayer);
+            if (!IsUp) return false;
+            var slot = (HandLayerSlot*)(basePtr + Wire.OffsetHandLayerSlot);
+            for (int attempt = 0; attempt < 64; attempt++)
+            {
+                uint before = (uint)Thread.VolatileRead(ref *(int*)&slot->seq);
+                if (before == 0) return false;
+                if ((before & 1) != 0) continue;
+                value = slot->value;
+                Thread.MemoryBarrier();
+                if ((uint)Thread.VolatileRead(ref *(int*)&slot->seq) == before) return true;
+            }
+            return false;
+        }
+
         // ---- Rings ----
 
         // Outbound ring (MSC -> Skyrim here). False when the link is down, the ring is full or the

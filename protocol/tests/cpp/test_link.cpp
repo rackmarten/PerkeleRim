@@ -179,6 +179,14 @@ TEST_CASE("input and player slots carry the latest value")
     ItemState itemsOut{};
     REQUIRE(p.skyrim->ReadItems(itemsOut));
     CHECK(std::memcmp(&itemsOut, &items, sizeof(items)) == 0);
+
+    HandLayer hands{};
+    CHECK_FALSE(p.skyrim->ReadHandLayer(hands));  // never written
+    hands = { 12, kHandLayerValid, 0x40000A42ull, 1920, 1080, 28, 350 };
+    p.msc->WriteHandLayer(hands);
+    HandLayer handsOut{};
+    REQUIRE(p.skyrim->ReadHandLayer(handsOut));
+    CHECK(std::memcmp(&handsOut, &hands, sizeof(hands)) == 0);
 }
 
 TEST_CASE("van part paths are unique and well formed")

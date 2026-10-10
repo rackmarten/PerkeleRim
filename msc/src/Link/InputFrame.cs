@@ -17,6 +17,8 @@ namespace PerkeleRim
         public float MouseWheel { get; private set; }
         public float Horizontal { get; private set; }
         public float Vertical { get; private set; }
+        public uint ScreenWidth { get; private set; }  // Skyrim back buffer, 0 = unknown
+        public uint ScreenHeight { get; private set; }
         public readonly List<int> Keys = new List<int>();
 
         // Call once per MSC frame with the newest state.
@@ -37,6 +39,8 @@ namespace PerkeleRim
             seeded = true;
             Horizontal = s.horizontal;
             Vertical = s.vertical;
+            ScreenWidth = s.screenWidth;
+            ScreenHeight = s.screenHeight;
 
             Keys.Clear();
             for (int i = 0; i < 512; i++)
@@ -49,6 +53,7 @@ namespace PerkeleRim
             seeded = false;
             OwnsPlayer = false;
             MouseX = MouseY = MouseWheel = Horizontal = Vertical = 0f;
+            ScreenWidth = ScreenHeight = 0;
             Keys.Clear();
         }
     }

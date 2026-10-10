@@ -131,6 +131,17 @@ namespace PerkeleRim.Tests
             Assert.That(lastItem.position[2], Is.EqualTo(3f));
             Assert.That(lastItem.rotation[3], Is.EqualTo(1f));
             Assert.That(iback.Get(0).id, Is.EqualTo(0u));
+
+            Assert.That(p.Skyrim.ReadHandLayer(out _), Is.False);  // never written
+            var hands = new HandLayer { frame = 12, flags = Wire.HandLayerValid, texture = 0x40000A42UL, width = 1920, height = 1080, format = 28, costMicros = 350 };
+            p.Msc.WriteHandLayer(ref hands);
+            Assert.That(p.Skyrim.ReadHandLayer(out var hback), Is.True);
+            Assert.That(hback.texture, Is.EqualTo(0x40000A42UL));
+            Assert.That(hback.width, Is.EqualTo(1920u));
+            Assert.That(hback.height, Is.EqualTo(1080u));
+            Assert.That(hback.format, Is.EqualTo(28u));
+            Assert.That(hback.costMicros, Is.EqualTo(350u));
+            Assert.That(hback.flags, Is.EqualTo(Wire.HandLayerValid));
         }
 
         [Test]

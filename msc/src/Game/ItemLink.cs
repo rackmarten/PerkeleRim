@@ -87,7 +87,8 @@ namespace PerkeleRim.Game
             log($"items: {entries.Count} entries from {items.Count} items");
             foreach (var e in entries)
                 if (e.Transform != null)
-                    log($"items: {e.Id:X8} {Path(e.Transform)} model {e.Model:X8} renderers {e.Renderers.Length}");
+                    log($"items: {e.Id:X8} {Path(e.Transform)} model {e.Model:X8} renderers {e.Renderers.Length} " +
+                        $"layer {(e.Renderers.Length > 0 && e.Renderers[0] != null ? LayerMask.LayerToName(e.Renderers[0].gameObject.layer) : "-")}");
         }
 
         // A new anchor moved the island under the player: move the items along so each stays where it

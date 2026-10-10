@@ -34,6 +34,11 @@ namespace PerkeleRim::Hud
         constexpr double kSubtitleSize = 24.0;
         constexpr double kSubtitleAbove = 200.0;  // text top, up from the visible frame's bottom edge
 
+        // MSC's hands: their own clip on the movie's root, below every vanilla HUD element (those
+        // sit at the timeline's negative depths) and below our layer.
+        constexpr const char*  kHandsClipName = "perkeleRimHands";
+        constexpr std::int32_t kHandsDepth = -16384;
+
         View                       current;
         std::array<int, kRows>     drawnNeeds{};  // current.needs in 0.5 % steps of a full bar
 
@@ -193,6 +198,69 @@ namespace PerkeleRim::Hud
             }
         }
 
+        // The image fills the visible frame. Scaleform gives an image from the game's loader its own
+        // size (64 x 64 stage units for ours, whatever the texture), and only once it has loaded,
+        // which takes a frame: until then Set keeps coming back here (handsSized).
+        std::atomic<bool> handsSized{ false };
+
+        void ApplyHands(RE::GFxMovieView* a_movie, RE::GFxValue& a_root, const View& a_view)
+        {
+            const bool   show = a_view.show && !a_view.handsImage.empty() && a_view.handsWidth > 0 && a_view.handsHeight > 0;
+            RE::GFxValue hands;
+            a_root.GetMember(kHandsClipName, &hands);
+            if (!hands.IsDisplayObject()) {
+                if (!show) {
+                    return;
+                }
+                // Through ActionScript: GFxValue::CreateEmptyMovieClip takes a negative depth as "next
+                // highest", which put the hands over everything.
+                Call(a_root, "createEmptyMovieClip", { RE::GFxValue(kHandsClipName), RE::GFxValue(static_cast<double>(kHandsDepth)) });
+                if (!a_root.GetMember(kHandsClipName, &hands) || !hands.IsDisplayObject()) {
+                    SKSE::log::warn("hud: could not create the hands clip");
+                    return;
+                }
+                RE::GFxValue depth;
+                hands.Invoke("getDepth", &depth);
+                SKSE::log::info("hud: hands clip created at depth {}", depth.IsNumber() ? depth.GetNumber() : 0.0);
+            }
+            hands.SetMember("_visible", RE::GFxValue(show));
+            if (!show) {
+                return;
+            }
+            RE::GFxValue loaded, image;
+            hands.GetMember("image", &loaded);
+            if (!loaded.IsString() || a_view.handsImage != loaded.GetString()) {
+                if (!hands.CreateEmptyMovieClip(&image, "img", 1)) {
+                    return;
+                }
+                const std::string url = "img://" + a_view.handsImage;
+                Call(image, "loadMovie", { RE::GFxValue(url.c_str()) });
+                hands.SetMember("image", RE::GFxValue(a_view.handsImage.c_str()));
+                handsSized = false;
+                SKSE::log::info("hud: hands image {}", url);
+            }
+            const auto rect = a_movie->GetVisibleFrameRect();
+            hands.SetMember("_x", RE::GFxValue(static_cast<double>(rect.left)));
+            hands.SetMember("_y", RE::GFxValue(static_cast<double>(rect.top)));
+            RE::GFxValue width, height, xscale, yscale;
+            if (!hands.GetMember("img", &image) || !image.IsDisplayObject() || !image.GetMember("_width", &width) ||
+                !image.GetMember("_height", &height) || !image.GetMember("_xscale", &xscale) || !image.GetMember("_yscale", &yscale) ||
+                !width.IsNumber() || !height.IsNumber() || !xscale.IsNumber() || !yscale.IsNumber() || width.GetNumber() <= 0.0 ||
+                height.GetNumber() <= 0.0 || xscale.GetNumber() == 0.0 || yscale.GetNumber() == 0.0) {
+                return;  // not loaded yet
+            }
+            const double naturalWidth = width.GetNumber() * 100.0 / std::abs(xscale.GetNumber());
+            const double naturalHeight = height.GetNumber() * 100.0 / std::abs(yscale.GetNumber());
+            // Unity draws into a render texture bottom row first on D3D, so the image is flipped back.
+            image.SetMember("_xscale", RE::GFxValue(100.0 * (rect.right - rect.left) / naturalWidth));
+            image.SetMember("_yscale", RE::GFxValue(-100.0 * (rect.bottom - rect.top) / naturalHeight));
+            image.SetMember("_y", RE::GFxValue(static_cast<double>(rect.bottom - rect.top)));
+            if (!handsSized.exchange(true)) {
+                SKSE::log::info("hud: hands image is {:.0f} x {:.0f} units, scaled to the visible frame {} x {}", naturalWidth, naturalHeight,
+                    rect.right - rect.left, rect.bottom - rect.top);
+            }
+        }
+
         void Apply(const View& a_view)
         {
             auto* ui = RE::UI::GetSingleton();
@@ -202,6 +270,7 @@ namespace PerkeleRim::Hud
             if (!movie || !movie->GetVariable(&root, "_root")) {
                 return;
             }
+            ApplyHands(movie, root, a_view);
             RE::GFxValue clip;
             root.GetMember(kClipName, &clip);
             if (!clip.IsDisplayObject()) {
@@ -284,7 +353,11 @@ namespace PerkeleRim::Hud
         const auto needs = Quantize(view);
         const bool textChanged = view.show != current.show || view.label != current.label || view.hand != current.hand ||
                                  view.subtitle != current.subtitle;
-        const bool changed = textChanged || view.hasNeeds != current.hasNeeds || (view.hasNeeds && needs != drawnNeeds);
+        const bool handsChanged = view.handsImage != current.handsImage || view.handsWidth != current.handsWidth ||
+                                  view.handsHeight != current.handsHeight;
+        const bool handsLoading = !view.handsImage.empty() && !handsSized;
+        const bool changed = textChanged || handsChanged || handsLoading || view.hasNeeds != current.hasNeeds ||
+                             (view.hasNeeds && needs != drawnNeeds);
         if (!a_refresh && !changed) {
             return;
         }

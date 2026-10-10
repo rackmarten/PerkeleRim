@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 12;
+        public const uint ProtocolVersion = 13;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -19,11 +19,12 @@ namespace PerkeleRim.Protocol
         public const uint OffsetVehicleSlot = 384;
         public const uint OffsetVehiclePartsSlot = 512;
         public const uint OffsetItemSlot = 2112;
-        public const uint OffsetRingToMsc = 7296;
+        public const uint OffsetHandLayerSlot = 7296;
+        public const uint OffsetRingToMsc = 7360;
         public const uint RingToMscCapacity = 4194304;
-        public const uint OffsetRingToSkyrim = 4201664;
+        public const uint OffsetRingToSkyrim = 4201728;
         public const uint RingToSkyrimCapacity = 262144;
-        public const uint MappingSize = 4463872;
+        public const uint MappingSize = 4463936;
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint PlayerValid = 0x1;
@@ -48,6 +49,7 @@ namespace PerkeleRim.Protocol
         public const uint ItemCapacity = 128;
         public const uint ItemVisible = 0x1;
         public const uint ItemHeld = 0x2;
+        public const uint HandLayerValid = 0x1;
         public const uint LookAtTextMax = 255;
         public const uint LookAtUse = 0x1;
         public const uint ModelChunkMax = 49152;
@@ -163,6 +165,8 @@ namespace PerkeleRim.Protocol
         public float vertical;
         public fixed ulong keys[8];
         public double mouseWheel;
+        public uint screenWidth;
+        public uint screenHeight;
 
         public bool IsKeyDown(int keyCode)
         {
@@ -187,7 +191,7 @@ namespace PerkeleRim.Protocol
         public uint seq;
         public uint reserved;
         public InputState value;
-        public fixed byte pad[16];
+        public fixed byte pad[8];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -321,6 +325,27 @@ namespace PerkeleRim.Protocol
         public uint reserved;
         public ItemState value;
         public fixed byte pad[40];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct HandLayer
+    {
+        public uint frame;
+        public uint flags;
+        public ulong texture;
+        public uint width;
+        public uint height;
+        public uint format;
+        public uint costMicros;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct HandLayerSlot
+    {
+        public uint seq;
+        public uint reserved;
+        public HandLayer value;
+        public fixed byte pad[24];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

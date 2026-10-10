@@ -20,6 +20,7 @@ namespace PerkeleRim.Game
     //    so far) on the left;
     //  - hands out the beer Skyrim sends (GiveBeer) through BeerGift;
     //  - reports the physics items around the player (ItemLink), whose models ModelSender sends;
+    //  - shares MSC's first-person layer (hands, drinks, tools in hand) with Skyrim (HandLayerSender);
     //  - keeps MSC's player alive while handed over and sends what it would have died of as
     //    PlayerDamage (DeathGuard), plays MSC's death sound on PlayerDeath, and sends MSC's blood
     //    overlay for Skyrim's death ahead of time.
@@ -42,6 +43,7 @@ namespace PerkeleRim.Game
         BeerGift beer;
         ModelSender models;
         ItemLink items;
+        HandLayerSender hands;
         Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
         Collider groundTemplate;  // MSC ground the island chunks copy layer, tag and material from
 
@@ -87,6 +89,7 @@ namespace PerkeleRim.Game
             beer = new BeerGift(log);
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
+            hands = new HandLayerSender(log);
             DeathGuard.Install(log);
         }
 
@@ -183,6 +186,7 @@ namespace PerkeleRim.Game
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
             models.Update(link);
+            hands.Update(link, playing, input.ScreenWidth, input.ScreenHeight);
         }
 
         // MSC's blood over the view when the player dies (Systems/Death/PlayerBlood's texture), sent as

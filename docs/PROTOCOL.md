@@ -1,6 +1,6 @@
 # Protocol
 
-> Status: protocol v12. Transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a); collision chunks streamed (milestone 1b); one vehicle pose (milestone 2a); the van parked at a given spot (milestone 2c); the van's doors, controls and lights (milestone 2d); MSC's camera pose and look-at prompt (v6, v7); the scroll wheel, MSC's needs and subtitles (v8); mead picked up in Skyrim as MSC beer (v9); MSC's own models built in Skyrim (v10); MSC's physics items drawn in Skyrim (v11); MSC's materials, damage and death (v12). Message contents beyond `InputState`, `PlayerState`, `VehicleState`, `VehicleParts`, `ItemState`, `CollisionChunk`, `WorldspaceChange`, `LookAtText`, `Subtitle`, `GiveBeer`, `ModelChunk`, `PlayerDamage` and `PlayerDeath` arrive with the milestones that need them.
+> Status: protocol v13. Transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a); collision chunks streamed (milestone 1b); one vehicle pose (milestone 2a); the van parked at a given spot (milestone 2c); the van's doors, controls and lights (milestone 2d); MSC's camera pose and look-at prompt (v6, v7); the scroll wheel, MSC's needs and subtitles (v8); mead picked up in Skyrim as MSC beer (v9); MSC's own models built in Skyrim (v10); MSC's physics items drawn in Skyrim (v11); MSC's materials, damage and death (v12); MSC's first-person hand layer shared on the GPU (v13). Message contents beyond `InputState`, `PlayerState`, `VehicleState`, `VehicleParts`, `ItemState`, `HandLayer`, `CollisionChunk`, `WorldspaceChange`, `LookAtText`, `Subtitle`, `GiveBeer`, `ModelChunk`, `PlayerDamage` and `PlayerDeath` arrive with the milestones that need them.
 
 The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchange data over one shared memory section. See [DESIGN.md](DESIGN.md) for the overall architecture and ownership rules.
 
@@ -14,7 +14,7 @@ The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchang
 
 ## Section layout
 
-One section, `Local\PerkeleRim.Link`, 4,463,872 bytes. Whichever game starts first creates it; it disappears when both have closed.
+One section, `Local\PerkeleRim.Link`, 4,463,936 bytes. Whichever game starts first creates it; it disappears when both have closed.
 
 | Offset | Size | Part | Written by |
 |---|---|---|---|
@@ -24,8 +24,9 @@ One section, `Local\PerkeleRim.Link`, 4,463,872 bytes. Whichever game starts fir
 | 384 | 128 | `VehicleSlot` (latest `VehicleState`) | MSC |
 | 512 | 1600 | `VehiclePartsSlot` (latest `VehicleParts`) | MSC |
 | 2112 | 5184 | `ItemSlot` (latest `ItemState`) | MSC |
-| 7296 | 64 + 4 MiB | ring Skyrim → MSC (collision chunks, worldspace changes) | Skyrim produces, MSC consumes |
-| 4,201,664 | 64 + 256 KiB | ring MSC → Skyrim (look-at text, later events) | MSC produces, Skyrim consumes |
+| 7296 | 64 | `HandLayerSlot` (latest `HandLayer`) | MSC |
+| 7360 | 64 + 4 MiB | ring Skyrim → MSC (collision chunks, worldspace changes) | Skyrim produces, MSC consumes |
+| 4,201,728 | 64 + 256 KiB | ring MSC → Skyrim (look-at text, later events) | MSC produces, Skyrim consumes |
 
 Layout rules:
 
@@ -47,7 +48,7 @@ Log lines on both sides: `created shared memory` / `joined shared memory`, `link
 
 ## Latest-value slots
 
-Continuous state (`InputState`, `PlayerState`, `VehicleState`) goes through a seqlock slot, not a queue: the reader only ever wants the newest value, and a queue would add lag. The writer bumps `seq` to odd, writes, then bumps it back to even. The reader retries if `seq` changed or was odd. `seq == 0` means never written. Reads return nothing while the link is down.
+Continuous state (`InputState`, `PlayerState`, `VehicleState`, `VehicleParts`, `ItemState`, `HandLayer`) goes through a seqlock slot, not a queue: the reader only ever wants the newest value, and a queue would add lag. The writer bumps `seq` to odd, writes, then bumps it back to even. The reader retries if `seq` changed or was odd. `seq == 0` means never written. Reads return nothing while the link is down.
 
 ## Rings
 
@@ -87,6 +88,18 @@ MSC side (`msc/src/Game/ItemLink.cs`): every 0.5 s it looks for `Rigidbody` obje
 
 Skyrim side (`skse/src/item/ItemView.cpp`): one node per item id, made by `ModelView::Instance` once its model has arrived, hung under the player's parent scene node like the van (no reference, no collision), posed every frame and app-culled while not visible. Items that go away, change model, or all of them on F10 or an anchor change go back to a per-model pool for reuse.
 
+## Hand layer
+
+MSC's first-person view (the hands, a bottle being drunk, tools in hand, gestures) is not rebuilt in Skyrim: MSC draws it and Skyrim lays the picture over its own frame. MSC already draws all of it with its own `HandCamera` (layer `Player`, over the world camera), so that camera's output is the layer.
+
+`HandLayer` (MSC → Skyrim, latest-value slot): MSC's copy counter (`frame`), `flags` (`kHandLayerValid` while MSC draws into the texture every frame), `texture` (a legacy DXGI shared handle, `IDXGIResource::GetSharedHandle`), `width`, `height`, `format` (`DXGI_FORMAT`) and `costMicros` (MSC's CPU time for the layer, last frame). The texture is transparent where nothing is drawn and lives on the GPU both games use; only the handle goes through shared memory. `InputState.screenWidth`/`screenHeight` (Skyrim's back buffer) tell MSC the size to render at.
+
+MSC side (`msc/src/Game/HandLayerSender.cs`, `SharedTexture.cs`): a hidden camera below `HandCamera` copies its settings every frame and renders into a render texture of Skyrim's screen size, cleared to transparent black. Right after it rendered, the texture is copied into a shared D3D11 texture and the context flushed (COM calls through vtable slots, no native DLL). That needs Unity's renderer on the main thread, so MSC must run with `-force-gfx-direct` (`scripts/launch-msc.ps1` passes it); without it the layer stays off and MSC logs why. A few first-person objects below `FPSCamera` sit on layer `Default` (the piss stream, sauna water, digging bar, tow rope) and are moved to `Player` while the layer is on; changing their layer only around the hidden camera's render doesn't work, Unity culls with the layer an object had when the frame started. Spike commands: `hands` (cameras, layers, first-person renderers), `handlayer on|off|tint|save`.
+
+Skyrim side (`skse/src/hands/HandView.cpp`, `skse/src/hud/Hud.cpp`): opens the handle with `OpenSharedResource`, wraps the texture in a hand-built `NiSourceTexture` (`ModelView::Wrap`) and registers it with Scaleform's image loader as `img://PerkeleRimHands<n>` (a new name per handle). A clip at the lowest depth of the HUD movie (created through ActionScript; `GFxValue::CreateEmptyMovieClip` takes a negative depth as "next highest") loads it and scales it over the visible frame, flipped vertically since Unity renders into textures bottom row first. So the hands sit under every HUD element and vanish with the HUD in menus. Nothing is copied per frame on Skyrim's side; the layer hides when MSC's copy counter stops for 0.25 s.
+
+Cost at 1920x1080 (2026-10-10): about 0.3 ms of MSC CPU per frame, MSC at 8.4 ms per frame, Skyrim unchanged at 16.5 ms (vsync). Known gaps: the hands are lit by MSC's sun and clock, and MSC's particle shaders write no alpha, so the piss stream is in the texture's colors but transparent in Skyrim.
+
 ## Damage and death
 
 Skyrim's health is the only one. While Skyrim has handed the player over, MSC never lets its player die: a Harmony prefix on PlayMaker's `Fsm.ProcessEvent` drops MSC's `DEATH` event (vehicle crashes send it), a watchdog switches `Systems/Death` off again if anything else turned it on, and each vehicle's `DriverHeadPivot` is put back in its seat when a crash throws the driver out through the windshield (otherwise the player fell through the world). Each such death goes to Skyrim as `PlayerDamage` and costs half of Skyrim's max health (`Damage::Crash`, `protocol/cpp/damage.h`). Skyrim's own fall damage doesn't run while MSC places the player, so Skyrim follows MSC's feet height and `kPlayerGrounded` (`PlayerState.flags`) and applies the vanilla formula (`((height - fJumpFallHeightMin) * fJumpFallHeightMult) ^ fJumpFallHeightExponent`) when the player lands. A hit that kills, or a death in Skyrim combat, makes Skyrim take the player back, send `PlayerDeath` (MSC plays one of its `Death` group clips on its listener), show MSC's blood (`player_blood_vision`, sent ahead as the overlay model `PlayerBlood`) in front of the camera, and kill the player the normal way, ragdoll and reload included. MSC's player stays alive. Known gap: only crashes MSC itself counts as fatal hurt Skyrim; hard but survivable hits do nothing yet.
@@ -122,8 +135,9 @@ MSC runs hidden while Skyrim has focus, so it can't read the keyboard and mouse 
 - `mouseWheel`: the `Mouse ScrollWheel` axis, accumulated the same way (`kWheelAxisPerNotch`, 0.1 per notch, Unity's default). MSC uses the wheel for the radio dial, among others.
 - `horizontal`, `vertical`: the Unity axes, -1..1.
 - `flags & kInputOwnsPlayer`: MSC should apply this input at all.
+- `screenWidth`, `screenHeight`: Skyrim's back buffer in pixels, the size MSC renders its hand layer at.
 
-Skyrim side (`protocol/cpp/input.h`, `skse/src/player/PlayerSync.cpp`): DirectInput scan codes and mouse buttons map to Unity `KeyCode`s; Escape, Tab, `~` and F10 never reach MSC. Mouse counts become axis units (`kMouseAxisPerCount`, 0.06 per count, Y flipped). The wheel arrives as mouse buttons 8 (up) and 9 (down), one press per notch; Skyrim's own wheel zoom is off while MSC owns the player. While a menu pauses the game, keys and axes are sent empty so MSC stands still. Every frame, keys and mouse buttons the devices no longer report as down are released, in case a release event got lost. MSC side (`msc/src/Link/InputFrame.cs`, `msc/src/Game/PlayerLink.cs`): the shim pulls the newest `InputState` before the first `Input` call of each MSC frame; the first state after a handover only seeds the mouse totals.
+Skyrim side (`protocol/cpp/input.h`, `skse/src/player/PlayerSync.cpp`): DirectInput scan codes and mouse buttons map to Unity `KeyCode`s; Escape, Tab, `~` and F10 never reach MSC. Mouse counts become axis units (`kMouseAxisPerCount`, 0.06 per count, Y flipped). The wheel arrives as mouse buttons 8 (up) and 9 (down), one press per notch; Skyrim's own wheel zoom is off while MSC owns the player, and so are the keyboard keys that open Skyrim's menus (M map, P magic, J journal, I inventory, T wait, Q favorites; MSC uses them all) except Escape and Tab. While a menu pauses the game, keys and axes are sent empty so MSC stands still. Every frame, keys and mouse buttons the devices no longer report as down are released, in case a release event got lost. MSC side (`msc/src/Link/InputFrame.cs`, `msc/src/Game/PlayerLink.cs`): the shim pulls the newest `InputState` before the first `Input` call of each MSC frame; the first state after a handover only seeds the mouse totals.
 
 ## Handing over the player
 

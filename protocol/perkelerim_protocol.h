@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 12;
+    inline constexpr std::uint32_t kProtocolVersion = 13;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -36,11 +36,12 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kOffsetVehicleSlot = 384;
     inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 512;
     inline constexpr std::uint32_t kOffsetItemSlot = 2112;
-    inline constexpr std::uint32_t kOffsetRingToMsc = 7296;         // RingHeader, data follows
+    inline constexpr std::uint32_t kOffsetHandLayerSlot = 7296;
+    inline constexpr std::uint32_t kOffsetRingToMsc = 7360;         // RingHeader, data follows
     inline constexpr std::uint32_t kRingToMscCapacity = 4194304;    // 4 MiB: collision chunks
-    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4201664;   // 7296 + 64 + 4 MiB
+    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4201728;   // 7360 + 64 + 4 MiB
     inline constexpr std::uint32_t kRingToSkyrimCapacity = 262144;  // 256 KiB: events
-    inline constexpr std::uint32_t kMappingSize = 4463872;         // 4201664 + 64 + 256 KiB
+    inline constexpr std::uint32_t kMappingSize = 4463936;         // 4201728 + 64 + 256 KiB
 
     enum class Side : std::uint32_t
     {
@@ -90,6 +91,8 @@ namespace PerkeleRim::Protocol
         float         vertical;    // "Vertical" axis, -1..1
         std::uint64_t keys[8];     // bit n set = KeyCode n held (n < 512)
         double        mouseWheel;  // accumulated "Mouse ScrollWheel" axis; MSC applies the delta
+        std::uint32_t screenWidth;   // Skyrim's back buffer in pixels; MSC renders its hand layer this size
+        std::uint32_t screenHeight;
     };
 
     struct InputSlot
@@ -97,7 +100,7 @@ namespace PerkeleRim::Protocol
         std::uint32_t seq;
         std::uint32_t reserved;
         InputState    value;
-        std::uint8_t  pad[16];
+        std::uint8_t  pad[8];
     };
 
     inline constexpr std::uint32_t kPlayerValid = 0x1;   // PlayerState.flags: MSC is simulating the player
@@ -287,6 +290,31 @@ namespace PerkeleRim::Protocol
         std::uint32_t reserved;
         ItemState     value;
         std::uint8_t  pad[40];
+    };
+
+    inline constexpr std::uint32_t kHandLayerValid = 0x1;  // HandLayer.flags: MSC draws into the texture every frame
+
+    // MSC -> Skyrim. MSC's first-person layer (what its HandCamera draws: hands, drinks, tools in
+    // hand) in a D3D11 texture both games share on the GPU: transparent where nothing is drawn,
+    // colors already multiplied by alpha, meant to go over Skyrim's world as is. MSC redraws it in
+    // place every frame.
+    struct HandLayer
+    {
+        std::uint32_t frame;       // MSC frame counter of the last copy into the texture
+        std::uint32_t flags;       // kHandLayer*
+        std::uint64_t texture;     // DXGI shared handle (IDXGIResource::GetSharedHandle), 0 = none
+        std::uint32_t width;       // pixels
+        std::uint32_t height;
+        std::uint32_t format;      // DXGI_FORMAT of the texture
+        std::uint32_t costMicros;  // MSC's time to render and copy the layer, last frame
+    };
+
+    struct HandLayerSlot
+    {
+        std::uint32_t seq;
+        std::uint32_t reserved;
+        HandLayer     value;
+        std::uint8_t  pad[24];
     };
 
     // ---- Rings (single producer, single consumer) ----
@@ -486,13 +514,14 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(LinkHeader) == 128);
     static_assert(offsetof(LinkHeader, creatorVersion) == 12);
     static_assert(offsetof(LinkHeader, peers) == 16);
-    static_assert(sizeof(InputState) == 104);
+    static_assert(sizeof(InputState) == 112);
     static_assert(offsetof(InputState, mouseX) == 8);
     static_assert(offsetof(InputState, mouseY) == 16);
     static_assert(offsetof(InputState, horizontal) == 24);
     static_assert(offsetof(InputState, vertical) == 28);
     static_assert(offsetof(InputState, keys) == 32);
     static_assert(offsetof(InputState, mouseWheel) == 96);
+    static_assert(offsetof(InputState, screenWidth) == 104);
     static_assert(sizeof(InputSlot) == 128);
     static_assert(offsetof(InputSlot, value) == 8);
     static_assert(sizeof(PlayerState) == 96);
@@ -534,6 +563,13 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ItemState, items) == 16);
     static_assert(sizeof(ItemSlot) == 5184);
     static_assert(offsetof(ItemSlot, value) == 8);
+    static_assert(sizeof(HandLayer) == 32);
+    static_assert(offsetof(HandLayer, texture) == 8);
+    static_assert(offsetof(HandLayer, width) == 16);
+    static_assert(offsetof(HandLayer, format) == 24);
+    static_assert(offsetof(HandLayer, costMicros) == 28);
+    static_assert(sizeof(HandLayerSlot) == 64);
+    static_assert(offsetof(HandLayerSlot, value) == 8);
     static_assert(sizeof(RingHeader) == 64);
     static_assert(offsetof(RingHeader, head) == 8);
     static_assert(offsetof(RingHeader, tail) == 32);
@@ -583,7 +619,8 @@ namespace PerkeleRim::Protocol
     static_assert(kOffsetVehicleSlot == kOffsetPlayerSlot + sizeof(PlayerSlot));
     static_assert(kOffsetVehiclePartsSlot == kOffsetVehicleSlot + sizeof(VehicleSlot));
     static_assert(kOffsetItemSlot == kOffsetVehiclePartsSlot + sizeof(VehiclePartsSlot));
-    static_assert(kOffsetRingToMsc == kOffsetItemSlot + sizeof(ItemSlot));
+    static_assert(kOffsetHandLayerSlot == kOffsetItemSlot + sizeof(ItemSlot));
+    static_assert(kOffsetRingToMsc == kOffsetHandLayerSlot + sizeof(HandLayerSlot));
     static_assert(sizeof(ItemState::items) / sizeof(ItemPose) == kItemCapacity);
     static_assert(kOffsetRingToSkyrim == kOffsetRingToMsc + sizeof(RingHeader) + kRingToMscCapacity);
     static_assert(kMappingSize == kOffsetRingToSkyrim + sizeof(RingHeader) + kRingToSkyrimCapacity);

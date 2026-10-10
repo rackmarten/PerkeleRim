@@ -8,6 +8,7 @@
 #include "garage/Garage.h"
 #include "hud/Hud.h"
 #include "input.h"
+#include "hands/HandView.h"
 #include "item/ItemView.h"
 #include "link/LinkService.h"
 #include "look_at.h"
@@ -98,7 +99,11 @@ namespace PerkeleRim::PlayerSync
             if (!link.IsUp()) {
                 return;
             }
-            link.WriteInput(state.input.Build(++state.inputFrame, state.owned, !a_paused));
+            auto       input = state.input.Build(++state.inputFrame, state.owned, !a_paused);
+            const auto screen = RE::BSGraphics::Renderer::GetScreenSize();
+            input.screenWidth = screen.width;  // MSC renders its hand layer this size
+            input.screenHeight = screen.height;
+            link.WriteInput(input);
         }
 
         // Releases keys the devices no longer hold. A release event can get lost (a crash or menu at
@@ -174,6 +179,7 @@ namespace PerkeleRim::PlayerSync
             CollisionSampler::Stop();
             VehicleView::Hide();
             ItemView::Clear();
+            HandView::Hide();
             Publish();
             SKSE::log::info("player sync: Skyrim owns the player ({})", a_reason);
         }
@@ -566,6 +572,8 @@ namespace PerkeleRim::PlayerSync
             if (link.ReadItems(items)) {  // a torn read keeps last frame's items; link down releases
                 ItemView::Update(&items, state.generation);
             }
+            Protocol::HandLayer hands{};
+            HandView::Update(link.ReadHandLayer(hands) ? &hands : nullptr, a_delta);
             // Stream ahead of the player while it moves fast (driving).
             const RE::NiPoint3 velocity = valid ? RE::NiPoint3(pose.velocity[0], pose.velocity[1], pose.velocity[2]) : RE::NiPoint3();
             CollisionSampler::Update(a_player, velocity);
@@ -580,6 +588,9 @@ namespace PerkeleRim::PlayerSync
             hud.subtitle = state.subtitle;
             hud.hasNeeds = state.hasNeeds;
             hud.needs = state.needs;
+            hud.handsImage = HandView::Image();
+            hud.handsWidth = HandView::Width();
+            hud.handsHeight = HandView::Height();
             if (auto* values = a_player->AsActorValueOwner()) {
                 const float max = values->GetPermanentActorValue(RE::ActorValue::kHealth);
                 hud.health = max > 0.0f ? values->GetActorValue(RE::ActorValue::kHealth) / max : 0.0f;
@@ -620,6 +631,26 @@ namespace PerkeleRim::PlayerSync
             static bool thunk(RE::FavoritesHandler* a_handler, RE::InputEvent* a_event)
             {
                 return !state.owned && original(a_handler, a_event);
+            }
+            static inline REL::Relocation<decltype(thunk)> original;
+        };
+
+        // MSC's own keys open Skyrim's menus too (M map, P magic, J journal, I inventory, T wait),
+        // and a menu pauses Skyrim and with it MSC's input. While MSC has the player only Escape
+        // (Skyrim's system menu) and Tab still open menus from the keyboard.
+        struct MenuOpenHook
+        {
+            static bool thunk(RE::MenuOpenHandler* a_handler, RE::InputEvent* a_event)
+            {
+                if (state.owned && a_event && a_event->GetDevice() == RE::INPUT_DEVICE::kKeyboard) {
+                    if (auto* button = a_event->AsButtonEvent()) {
+                        const auto key = button->GetIDCode();
+                        if (key != Input::kDikEscape && key != Input::kDikTab) {
+                            return false;
+                        }
+                    }
+                }
+                return original(a_handler, a_event);
             }
             static inline REL::Relocation<decltype(thunk)> original;
         };
@@ -714,7 +745,9 @@ namespace PerkeleRim::PlayerSync
         UpdateHook::original = vtable.write_vfunc(0xAD, UpdateHook::thunk);
         REL::Relocation<std::uintptr_t> favorites{ RE::VTABLE_FavoritesHandler[0] };
         FavoritesHook::original = favorites.write_vfunc(0x1, FavoritesHook::thunk);
-        SKSE::log::info("player sync: PlayerCharacter::Update and FavoritesHandler::CanProcess hooked, F10 hands the player to MSC");
+        REL::Relocation<std::uintptr_t> menuOpen{ RE::VTABLE_MenuOpenHandler[0] };
+        MenuOpenHook::original = menuOpen.write_vfunc(0x1, MenuOpenHook::thunk);
+        SKSE::log::info("player sync: PlayerCharacter::Update, FavoritesHandler and MenuOpenHandler::CanProcess hooked, F10 hands the player to MSC");
     }
 
     void OnDataLoaded()
