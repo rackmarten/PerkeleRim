@@ -7,6 +7,7 @@
 #include "garage/Garage.h"
 #include "hud/Hud.h"
 #include "input.h"
+#include "item/ItemView.h"
 #include "link/LinkService.h"
 #include "look_at.h"
 #include "model/ModelView.h"
@@ -171,6 +172,7 @@ namespace PerkeleRim::PlayerSync
             Drink::SetDrunk(0.0f, 0.0f);
             CollisionSampler::Stop();
             VehicleView::Hide();
+            ItemView::Clear();
             Publish();
             SKSE::log::info("player sync: Skyrim owns the player ({})", a_reason);
         }
@@ -529,6 +531,10 @@ namespace PerkeleRim::PlayerSync
             Protocol::VehicleParts parts{};
             const bool             hasParts = hasVehicle && link.ReadVehicleParts(parts);
             VehicleView::Update(hasVehicle ? &vehicle : nullptr, hasParts ? &parts : nullptr, state.generation);
+            Protocol::ItemState items{};
+            if (link.ReadItems(items)) {  // a torn read keeps last frame's items; link down releases
+                ItemView::Update(&items, state.generation);
+            }
             // Stream ahead of the player while it moves fast (driving).
             const RE::NiPoint3 velocity = valid ? RE::NiPoint3(pose.velocity[0], pose.velocity[1], pose.velocity[2]) : RE::NiPoint3();
             CollisionSampler::Update(a_player, velocity);

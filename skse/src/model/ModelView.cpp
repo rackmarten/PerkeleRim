@@ -15,9 +15,6 @@ namespace PerkeleRim::ModelView
         // shader and texture are all replaced.
         constexpr const char* kTemplateModel = "Meshes\\Furniture\\Cart\\CartFurnStatic01.nif";
 
-        // How far in front of the player a new model is put down.
-        constexpr float kAhead = 120.0f;
-
         // Frame cost is averaged over windows this long, before and after a build.
         constexpr float kFrameWindow = 5.0f;
 
@@ -28,6 +25,15 @@ namespace PerkeleRim::ModelView
         constexpr std::uint32_t kNormalOffset = 20;
         constexpr std::uint32_t kTangentOffset = 24;
 
+        // A received model: its blob (the parsed model points into it) and its textures, built once.
+        struct Cached
+        {
+            std::vector<std::uint8_t>         blob;
+            Model::Model                      model;
+            std::vector<RE::NiSourceTexture*> textures;  // per model texture, null when it failed
+            bool                              logged = false;  // first instance logged
+        };
+
         struct State
         {
             Model::Assembler                                   assembler;
@@ -35,10 +41,11 @@ namespace PerkeleRim::ModelView
             RE::NiPointer<RE::NiNode>                          templateModel;
             RE::BSTriShape*                                    templateShape = nullptr;
             bool                                               templateFailed = false;
-            std::map<std::string, RE::NiPointer<RE::NiNode>>  models;  // by name, the newest of each
+            std::map<std::uint32_t, std::unique_ptr<Cached>>  models;  // by MSC's model id
             // Textures built here are never destroyed: the game's NiSourceTexture destructor expects
-            // one it loaded itself.
+            // one it loaded itself. A model sent again keeps its old textures alive here.
             std::vector<RE::NiPointer<RE::NiSourceTexture>>    textures;
+            RE::NiSourceTexture*                               flatNormal = nullptr;
 
             float frameTime = 0.0f;
             int   frames = 0;
@@ -49,17 +56,6 @@ namespace PerkeleRim::ModelView
         std::uint8_t Byte(float a_unit) { return static_cast<std::uint8_t>(std::clamp(std::lround((a_unit + 1.0f) * 127.5f), 0L, 255L)); }
 
         RE::NiPoint3 Point(const float (&a_v)[3]) { return { a_v[0], a_v[1], a_v[2] }; }
-
-        // The same node VehicleView hangs the van in, so models are lit and culled like the world.
-        RE::NiNode* Scene()
-        {
-            auto* player = RE::PlayerCharacter::GetSingleton();
-            auto* root = player ? player->Get3D() : nullptr;
-            if (root && root->parent) {
-                return root->parent;
-            }
-            return RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
-        }
 
         bool LoadTemplate()
         {
@@ -251,12 +247,29 @@ namespace PerkeleRim::ModelView
             return data;
         }
 
+        // A normal map pointing straight out with alpha 0. Skyrim reads the specular mask from the
+        // normal map's alpha, and its default normal map has it at full, so everything shone white in
+        // the sun (the converted van got the same fix in tools/nif/build_nif.py).
+        RE::NiSourceTexture* FlatNormal()
+        {
+            if (!state.flatNormal) {
+                constexpr std::uint32_t   kSize = 16;
+                std::vector<std::uint8_t> pixels;
+                for (std::uint32_t i = 0; i < kSize * kSize; i++) {
+                    pixels.insert(pixels.end(), { 128, 128, 255, 0 });
+                }
+                state.flatNormal = MakeTexture({ kSize, kSize, pixels.data() }, "PerkeleRim\\FlatNormal");
+            }
+            return state.flatNormal;
+        }
+
         RE::BSLightingShaderProperty* MakeShader(RE::NiSourceTexture* a_diffuse)
         {
             auto&       shaderState = *RE::BSGraphics::State::GetSingleton();
             auto*       material = RE::BSLightingShaderMaterialBase::CreateMaterial<RE::BSLightingShaderMaterial>();
             material->diffuseTexture = RE::NiPointer<RE::NiSourceTexture>(a_diffuse ? a_diffuse : shaderState.GetRuntimeData().defaultTextureWhite.get());
-            material->normalTexture = shaderState.GetRuntimeData().defaultTextureNormalMap;
+            auto* flat = FlatNormal();
+            material->normalTexture = flat ? RE::NiPointer<RE::NiSourceTexture>(flat) : shaderState.GetRuntimeData().defaultTextureNormalMap;
             material->specularColorScale = 0.0f;
 
             auto* shader = RE::BSLightingShaderProperty::Create();
@@ -268,8 +281,10 @@ namespace PerkeleRim::ModelView
             auto* own = static_cast<RE::BSLightingShaderMaterialBase*>(shader->material);
             own->diffuseTexture = material->diffuseTexture;
             own->normalTexture = material->normalTexture;
+            own->specularColorScale = 0.0f;
+            // No kCastShadows: thin hand-built shapes shadowed themselves in flickering streaks.
             using F = RE::BSShaderProperty::EShaderPropertyFlag;
-            shader->flags.set(F::kReceiveShadows, F::kCastShadows, F::kZBufferTest, F::kZBufferWrite);
+            shader->flags.set(F::kReceiveShadows, F::kZBufferTest, F::kZBufferWrite);
             return shader;
         }
 
@@ -311,62 +326,35 @@ namespace PerkeleRim::ModelView
             return shape;
         }
 
-        void Build(const Model::Model& a_model)
+        void MarkBuild()
         {
-            const auto start = std::chrono::steady_clock::now();
-            if (!LoadTemplate()) {
-                return;
-            }
-            std::vector<RE::NiSourceTexture*> textures;
-            for (std::size_t i = 0; i < a_model.textures.size(); i++) {
-                textures.push_back(MakeTexture(a_model.textures[i], std::format("PerkeleRim\\{}\\{}", a_model.name, i)));
-            }
-            RE::NiPointer<RE::NiNode> node(RE::NiNode::Create(static_cast<std::uint16_t>(a_model.meshes.size())));
-            node->name = a_model.name.c_str();
-            std::uint32_t vertices = 0, triangles = 0;
-            float         lowest = FLT_MAX;
-            for (const auto& mesh : a_model.meshes) {
-                auto shape = MakeShape(mesh, mesh.texture >= 0 ? textures[mesh.texture] : nullptr);
-                if (!shape) {
-                    continue;
-                }
-                node->AttachChild(shape.get(), true);
-                vertices += mesh.vertexCount;
-                triangles += mesh.indexCount / 3;
-                for (std::uint32_t i = 0; i < mesh.vertexCount; i++) {
-                    lowest = (std::min)(lowest, mesh.Vertex(i).position[2]);
-                }
-            }
-
-            // Standing on the ground in front of the player, replacing an older copy.
-            auto* player = RE::PlayerCharacter::GetSingleton();
-            auto* scene = Scene();
-            if (!player || !scene) {
-                SKSE::log::warn("model view: no player or scene for {}", a_model.name);
-                return;
-            }
-            const float heading = player->GetAngleZ();
-            const auto  feet = player->GetPosition();
-            node->local.translate = { feet.x + std::sin(heading) * kAhead, feet.y + std::cos(heading) * kAhead,
-                feet.z - (lowest == FLT_MAX ? 0.0f : lowest) };
-            if (auto old = state.models.find(a_model.name); old != state.models.end() && old->second->parent) {
-                old->second->parent->DetachChild(old->second.get());
-            }
-            state.models[a_model.name] = node;
-            scene->AttachChild(node.get(), true);
-            RE::NiUpdateData update{};
-            node->Update(update);
-
-            const auto ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-            SKSE::log::info("model view: built {} in {:.1f} ms: {} meshes, {} vertices, {} triangles, {} textures, at ({:.0f},{:.0f},{:.0f})",
-                a_model.name, ms, a_model.meshes.size(), vertices, triangles, textures.size(), node->local.translate.x,
-                node->local.translate.y, node->local.translate.z);
-            if (state.lastFrameMs > 0.0f) {
+            if (state.lastFrameMs > 0.0f && !state.logNextWindow) {
                 SKSE::log::info("model view: frame before the build {:.2f} ms", state.lastFrameMs);
             }
             state.frameTime = 0.0f;
             state.frames = 0;
             state.logNextWindow = true;
+        }
+
+        void Store(std::uint32_t a_id, const std::vector<std::uint8_t>& a_blob)
+        {
+            const auto start = std::chrono::steady_clock::now();
+            auto       cached = std::make_unique<Cached>();
+            cached->blob = a_blob;
+            auto model = Model::Parse(cached->blob.data(), cached->blob.size());
+            if (!model) {
+                SKSE::log::warn("model view: model {:08X} is malformed ({} bytes)", a_id, a_blob.size());
+                return;
+            }
+            cached->model = std::move(*model);
+            for (std::size_t i = 0; i < cached->model.textures.size(); i++) {
+                cached->textures.push_back(MakeTexture(cached->model.textures[i], std::format("PerkeleRim\\{:08X}\\{}", a_id, i)));
+            }
+            const auto ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            SKSE::log::info("model view: {:08X} {} received ({} bytes, {} meshes, {} textures built in {:.1f} ms)", a_id,
+                cached->model.name, a_blob.size(), cached->model.meshes.size(), cached->textures.size(), ms);
+            state.models[a_id] = std::move(cached);
+            MarkBuild();
         }
     }
 
@@ -385,14 +373,37 @@ namespace PerkeleRim::ModelView
         case Model::Assembler::Result::Complete:
             break;
         }
-        const auto& blob = state.assembler.Blob();
-        const auto  model = Model::Parse(blob.data(), blob.size());
-        if (!model) {
-            SKSE::log::warn("model view: model {} is malformed ({} bytes)", state.assembler.Id(), blob.size());
-            return;
+        Store(state.assembler.Id(), state.assembler.Blob());
+    }
+
+    RE::NiPointer<RE::NiNode> Instance(std::uint32_t a_model)
+    {
+        const auto found = state.models.find(a_model);
+        if (found == state.models.end() || !LoadTemplate()) {
+            return nullptr;
         }
-        SKSE::log::info("model view: received {} ({} bytes)", model->name, blob.size());
-        Build(*model);
+        const auto  start = std::chrono::steady_clock::now();
+        auto&       cached = *found->second;
+        const auto& model = cached.model;
+        RE::NiPointer<RE::NiNode> node(RE::NiNode::Create(static_cast<std::uint16_t>(model.meshes.size())));
+        node->name = model.name.c_str();
+        std::uint32_t vertices = 0, triangles = 0;
+        for (const auto& mesh : model.meshes) {
+            auto shape = MakeShape(mesh, mesh.texture >= 0 ? cached.textures[mesh.texture] : nullptr);
+            if (!shape) {
+                continue;
+            }
+            node->AttachChild(shape.get(), true);
+            vertices += mesh.vertexCount;
+            triangles += mesh.indexCount / 3;
+        }
+        if (!cached.logged) {
+            cached.logged = true;
+            const auto ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            SKSE::log::info("model view: {:08X} {} first instance in {:.1f} ms: {} vertices, {} triangles", a_model, model.name, ms,
+                vertices, triangles);
+        }
+        return node;
     }
 
     void Tick(float a_delta)

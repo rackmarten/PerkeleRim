@@ -2,26 +2,42 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
 using PerkeleRim.Protocol;
 using UnityEngine;
 
 namespace PerkeleRim.Game
 {
-    // Sends MSC's own models to Skyrim (ModelChunk messages), read from the running game: every
-    // active MeshRenderer below an object, with its diffuse textures copied through a RenderTexture
-    // (MSC's have no CPU copy), at the end of a frame. Spike: the first beer case goes once the
-    // player is handed over, and spike command "model <name>" sends any object GameObject.Find finds.
+    // Sends MSC's own models to Skyrim (ModelChunk messages), read from the running game: the active
+    // MeshRenderers of an object a filter picks, with their diffuse textures copied through a
+    // RenderTexture (MSC's have no CPU copy), at the end of a frame. A model is known by what it is
+    // made of (meshes, textures, their placement), so identical items share one id and it goes out
+    // once per link session; everything is sent again after the link comes back up (Skyrim may have
+    // restarted). Ids start at a random base so a restarted MSC never reuses one Skyrim still has.
     public class ModelSender
     {
-        const string FirstModel = "beer case(itemx)";
         const int TextureMax = 1024;  // larger textures are scaled down to this
+
+        class Job
+        {
+            public Transform Root;
+            public Predicate<Transform> Include;
+            public uint Id;
+            public int Session;  // -1 = read and log only (spike command "textures")
+        }
 
         readonly Action<string> log;
         readonly MonoBehaviour host;  // runs the end-of-frame reads
-        bool reading;
+        readonly Dictionary<string, uint> ids = new Dictionary<string, uint>();  // model key -> id
+        readonly HashSet<uint> sent = new HashSet<uint>();    // this link session
+        readonly HashSet<uint> queued = new HashSet<uint>();  // waiting, being read or being sent
+        readonly Queue<Job> jobs = new Queue<Job>();
         readonly Queue<byte[]> pending = new Queue<byte[]>();
-        string requested = FirstModel;
-        uint nextId = 1;
+        uint pendingId;
+        bool reading;
+        bool wasUp;
+        int session;
+        uint nextId = ((uint)new System.Random().Next(1, 0x7FFF) << 16) | 1;
 
         public ModelSender(MonoBehaviour host, Action<string> log)
         {
@@ -29,68 +45,165 @@ namespace PerkeleRim.Game
             this.log = log;
         }
 
-        public void Request(string name) => requested = name;
-
         // Reads an object's model without sending it and logs what came out (spike command "textures").
         public void Inspect(string name)
         {
             var go = GameObject.Find(name);
             if (go == null) log("model: no " + name);
-            else if (!reading) host.StartCoroutine(ReadAtEndOfFrame(go, false));
+            else if (!reading) host.StartCoroutine(ReadAtEndOfFrame(new Job { Root = go.transform, Include = t => true, Session = -1 }));
         }
 
-        public void Update(Link link, bool playing)
+        // The id of the model made of root's renderers that include accepts (by their own transform),
+        // queued for sending if Skyrim doesn't have it yet. 0 when there is nothing to draw.
+        public uint IdFor(Transform root, Predicate<Transform> include)
         {
-            if (!playing) return;
-            if (requested != null && pending.Count == 0 && !reading)
+            var key = Key(root, include);
+            if (key == null) return 0;
+            uint id;
+            if (!ids.TryGetValue(key, out id))
             {
-                var go = GameObject.Find(requested);
-                if (go == null) log("model: no " + requested);
-                else host.StartCoroutine(ReadAtEndOfFrame(go, true));
-                requested = null;
+                id = nextId++;
+                ids[key] = id;
+            }
+            if (!sent.Contains(id) && !queued.Contains(id))
+            {
+                queued.Add(id);
+                jobs.Enqueue(new Job { Root = root, Include = include, Id = id, Session = session });
+            }
+            return id;
+        }
+
+        // Once a frame: reads one queued model at a time and sends its chunks as the ring has room.
+        public void Update(Link link)
+        {
+            if (link.IsUp != wasUp)
+            {
+                wasUp = link.IsUp;
+                if (!wasUp) Forget();
+            }
+            if (!wasUp) return;
+            if (pending.Count == 0 && !reading)
+            {
+                while (jobs.Count > 0)
+                {
+                    var job = jobs.Dequeue();
+                    if (job.Root == null) { queued.Remove(job.Id); continue; }  // destroyed; asked again when seen again
+                    host.StartCoroutine(ReadAtEndOfFrame(job));
+                    break;
+                }
             }
             while (pending.Count > 0)
             {
                 var payload = pending.Peek();
                 if (!link.Send(MessageType.ModelChunk, payload, payload.Length)) break;  // ring full, next frame
                 pending.Dequeue();
-                if (pending.Count == 0) log("model: sent");
+                if (pending.Count > 0) continue;
+                sent.Add(pendingId);
+                queued.Remove(pendingId);
             }
         }
 
-        IEnumerator ReadAtEndOfFrame(GameObject go, bool send)
+        // The link went down: Skyrim may come back without anything sent so far.
+        void Forget()
+        {
+            session++;
+            sent.Clear();
+            queued.Clear();
+            jobs.Clear();
+            pending.Clear();
+            log("model: link down, models go out again once it is back");
+        }
+
+        // What a model is made of, or null without renderers: two objects with the same key look the same.
+        // Meshes and textures go by content (name, size, bounds), not instance: MSC gives every spawned
+        // copy of an item (a thrown bottle) its own mesh instance.
+        static string Key(Transform root, Predicate<Transform> include)
+        {
+            StringBuilder key = null;
+            foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
+            {
+                var filter = renderer.GetComponent<MeshFilter>();
+                var mesh = filter != null ? filter.sharedMesh : null;
+                if (!renderer.enabled || mesh == null || !include(renderer.transform)) continue;
+                if (key == null) key = new StringBuilder();
+                var bounds = mesh.bounds;
+                key.Append(mesh.name).Append('/').Append(mesh.vertexCount).Append('/').Append(mesh.subMeshCount)
+                    .Append(Round(bounds.center)).Append(Round(bounds.size)).Append(':');
+                foreach (var material in renderer.sharedMaterials)
+                {
+                    var texture = material != null ? material.mainTexture : null;
+                    if (texture != null) key.Append(texture.name).Append('/').Append(texture.width).Append('x').Append(texture.height);
+                    if (material != null) key.Append(material.mainTextureScale).Append(material.mainTextureOffset);
+                    key.Append(',');
+                }
+                var m = RelativeTo(root, renderer.transform);
+                for (int i = 0; i < 16; i++) key.Append(Mathf.Round(m[i] * 1000f)).Append(',');  // rotation, scale and offset
+                key.Append(';');
+            }
+            return key != null ? key.ToString() : null;
+        }
+
+        static Vector3 Round(Vector3 v) => new Vector3(Mathf.Round(v.x * 1000f), Mathf.Round(v.y * 1000f), Mathf.Round(v.z * 1000f));
+
+        // t in the root's frame without the root's position and rotation (the model carries the scale, a
+        // pose only moves and turns it). Built from local transforms: going through world matrices out
+        // on the island (10 km from Unity's origin) left millimeters of noise, so equal items got
+        // different keys.
+        static Matrix4x4 RelativeTo(Transform root, Transform t)
+        {
+            var m = Matrix4x4.identity;
+            for (var p = t; p != null && p != root; p = p.parent) m = Matrix4x4.TRS(p.localPosition, p.localRotation, p.localScale) * m;
+            return Matrix4x4.Scale(root.lossyScale) * m;
+        }
+
+        IEnumerator ReadAtEndOfFrame(Job job)
         {
             reading = true;
             yield return new WaitForEndOfFrame();
             reading = false;
-            if (go == null) yield break;
+            bool send = job.Session >= 0;
+            if (send && job.Session != session) yield break;  // the link went down meanwhile
+            if (job.Root == null)
+            {
+                if (send) queued.Remove(job.Id);
+                yield break;
+            }
             var clock = Stopwatch.StartNew();
             ModelData model;
-            try { model = Read(go.transform); }
-            catch (Exception e) { log("model: reading " + go.name + " FAILED: " + e); yield break; }
+            try { model = Read(job.Root, job.Include); }
+            catch (Exception e)
+            {
+                log("model: reading " + job.Root.name + " FAILED: " + e);
+                yield break;  // stays queued, so it isn't retried on every scan
+            }
             if (!send)
             {
                 log($"model: {model.Name} has {model.Meshes.Count} meshes, {model.VertexCount} vertices, {model.Textures.Count} textures");
                 yield break;
             }
+            if (model.Meshes.Count == 0)
+            {
+                queued.Remove(job.Id);  // its renderers went off since the scan; asked again by the next one
+                yield break;
+            }
             var blob = model.Encode();
-            foreach (var payload in ModelData.Split(blob, nextId++)) pending.Enqueue(payload);
-            log($"model: {model.Name} has {model.Meshes.Count} meshes, {model.VertexCount} vertices, {model.Textures.Count} textures, " +
+            foreach (var payload in ModelData.Split(blob, job.Id)) pending.Enqueue(payload);
+            pendingId = job.Id;
+            log($"model: {job.Id:X8} {model.Name} has {model.Meshes.Count} meshes, {model.VertexCount} vertices, {model.Textures.Count} textures, " +
                 $"{blob.Length} bytes in {pending.Count} chunks, read in {clock.ElapsedMilliseconds} ms");
         }
 
-        ModelData Read(Transform root)
+        ModelData Read(Transform root, Predicate<Transform> include)
         {
             var model = new ModelData { Name = root.name };
             var textures = new Dictionary<int, int>();  // Texture instance id -> index in model
-            var toRoot = root.worldToLocalMatrix;
             foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
             {
                 var filter = renderer.GetComponent<MeshFilter>();
                 var mesh = filter != null ? filter.sharedMesh : null;
-                if (!renderer.enabled || mesh == null) continue;
+                if (!renderer.enabled || mesh == null || !include(renderer.transform)) continue;
 
-                var m = toRoot * renderer.transform.localToWorldMatrix;
+                var m = RelativeTo(root, renderer.transform);
                 var vertices = mesh.vertices;
                 var normals = mesh.normals;
                 var uvs = mesh.uv;

@@ -16,8 +16,8 @@ namespace PerkeleRim.Spike
     //   dump [keyword ...]   FSM index + detail files (FsmDump)
     //   continue             main menu only: load the saved game as the Continue button would
     //   beer <count>         hand out beer as if Skyrim sent GiveBeer (BeerGift)
-    //   model <name>         send an object's model to Skyrim (ModelSender), found by GameObject.Find
-    //   textures <name>      read that model without sending it and log its textures
+    //   items                log the items Skyrim gets (ItemLink): id, path, model id
+    //   textures <name>      read an object's model (GameObject.Find) without sending it and log it
     //   override on|off      InputShim on/off with nothing pressed (on: the link no longer feeds it)
     //   script               following lines are steps: "<seconds>; <token>; <token>..."
     //                        token = KeyCode name (W, LeftShift, Mouse0), axis "Mouse X=3",
@@ -160,9 +160,9 @@ namespace PerkeleRim.Spike
                         if (link != null) link.GiveBeer(words.Length > 1 ? int.Parse(words[1]) : 1);
                         else SpikeLog.Write("cmd: no PlayerLink");
                         break;
-                    case "model":
-                        var sender = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
-                        if (sender != null) sender.SendModel(lines[0].Trim().Substring(5).Trim());
+                    case "items":
+                        var lister = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (lister != null) lister.DumpItems();
                         else SpikeLog.Write("cmd: no PlayerLink");
                         break;
                     case "textures":

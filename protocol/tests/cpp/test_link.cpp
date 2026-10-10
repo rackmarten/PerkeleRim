@@ -167,6 +167,18 @@ TEST_CASE("input and player slots carry the latest value")
     VehicleParts partsOut{};
     REQUIRE(p.skyrim->ReadVehicleParts(partsOut));
     CHECK(std::memcmp(&partsOut, &parts, sizeof(parts)) == 0);
+
+    ItemState items{};
+    CHECK_FALSE(p.skyrim->ReadItems(items));  // never written
+    items.frame = 9;
+    items.generation = 3;
+    items.count = kItemCapacity;
+    items.items[0] = { 7, 2, kItemVisible | kItemHeld, { 1.0f, 2.0f, 3.0f }, { 0.0f, 0.0f, 0.0f, 1.0f } };
+    items.items[kItemCapacity - 1].id = 99;
+    p.msc->WriteItems(items);
+    ItemState itemsOut{};
+    REQUIRE(p.skyrim->ReadItems(itemsOut));
+    CHECK(std::memcmp(&itemsOut, &items, sizeof(items)) == 0);
 }
 
 TEST_CASE("van part paths are unique and well formed")

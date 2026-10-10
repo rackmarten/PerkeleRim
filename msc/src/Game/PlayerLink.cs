@@ -18,7 +18,8 @@ namespace PerkeleRim.Game
     //  - runs the vehicles (VehicleLink) on the same island: the van (drawn in Skyrim) on the
     //    player's right, or at the spot the anchor names (the garage), the Jonnez moped (MSC only
     //    so far) on the left;
-    //  - hands out the beer Skyrim sends (GiveBeer) through BeerGift.
+    //  - hands out the beer Skyrim sends (GiveBeer) through BeerGift;
+    //  - reports the physics items around the player (ItemLink), whose models ModelSender sends.
     public unsafe class PlayerLink : MonoBehaviour
     {
         // Drop the player this far above the ground so it never starts inside the collider.
@@ -37,6 +38,7 @@ namespace PerkeleRim.Game
         VehicleLink[] vehicles;
         BeerGift beer;
         ModelSender models;
+        ItemLink items;
         Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
         Collider groundTemplate;  // MSC ground the island chunks copy layer, tag and material from
 
@@ -81,14 +83,15 @@ namespace PerkeleRim.Game
             vehicles = new[] { van, moped };
             beer = new BeerGift(log);
             models = new ModelSender(this, log);
+            items = new ItemLink(island, models, ground, log);
         }
 
         // Beer as if Skyrim sent GiveBeer (spike command "beer").
         public void GiveBeer(int count) => beer.Give(count);
 
-        // Sends the model of an MSC object to Skyrim (spike command "model").
-        public void SendModel(string name) => models.Request(name);
+        // Spike commands "textures" (read an object's model and log it) and "items" (what Skyrim gets).
         public void InspectModel(string name) => models.Inspect(name);
+        public void DumpItems() => items.Dump();
 
         // ---- Input (runs inside the first Input call of each frame) ----
 
@@ -166,7 +169,8 @@ namespace PerkeleRim.Game
             SendSubtitle(link, playing);
             foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero);
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
-            models.Update(link, playing);
+            items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
+            models.Update(link);
         }
 
         // Getting the mouse out of MSC's window takes Escape, which opens MSC's menu

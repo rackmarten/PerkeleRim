@@ -316,6 +316,32 @@ namespace PerkeleRim
             Thread.VolatileWrite(ref *(int*)seq, unchecked((int)(n + 2)));
         }
 
+        public void WriteItems(ref ItemState value)
+        {
+            if (basePtr == null || !attached) return;
+            var slot = (ItemSlot*)(basePtr + Wire.OffsetItemSlot);
+            BeginWrite(&slot->seq, out uint n);
+            slot->value = value;
+            EndWrite(&slot->seq, n);
+        }
+
+        public bool ReadItems(out ItemState value)
+        {
+            value = default(ItemState);
+            if (!IsUp) return false;
+            var slot = (ItemSlot*)(basePtr + Wire.OffsetItemSlot);
+            for (int attempt = 0; attempt < 64; attempt++)
+            {
+                uint before = (uint)Thread.VolatileRead(ref *(int*)&slot->seq);
+                if (before == 0) return false;
+                if ((before & 1) != 0) continue;
+                value = slot->value;
+                Thread.MemoryBarrier();
+                if ((uint)Thread.VolatileRead(ref *(int*)&slot->seq) == before) return true;
+            }
+            return false;
+        }
+
         // ---- Rings ----
 
         // Outbound ring (MSC -> Skyrim here). False when the link is down, the ring is full or the

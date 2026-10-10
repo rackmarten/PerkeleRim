@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 10;
+    inline constexpr std::uint32_t kProtocolVersion = 11;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -35,11 +35,12 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kOffsetPlayerSlot = 256;
     inline constexpr std::uint32_t kOffsetVehicleSlot = 384;
     inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 512;
-    inline constexpr std::uint32_t kOffsetRingToMsc = 2112;         // RingHeader, data follows
+    inline constexpr std::uint32_t kOffsetItemSlot = 2112;
+    inline constexpr std::uint32_t kOffsetRingToMsc = 7296;         // RingHeader, data follows
     inline constexpr std::uint32_t kRingToMscCapacity = 4194304;    // 4 MiB: collision chunks
-    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4196480;   // 2112 + 64 + 4 MiB
+    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4201664;   // 7296 + 64 + 4 MiB
     inline constexpr std::uint32_t kRingToSkyrimCapacity = 262144;  // 256 KiB: events
-    inline constexpr std::uint32_t kMappingSize = 4458688;         // 4196480 + 64 + 256 KiB
+    inline constexpr std::uint32_t kMappingSize = 4463872;         // 4201664 + 64 + 256 KiB
 
     enum class Side : std::uint32_t
     {
@@ -253,6 +254,40 @@ namespace PerkeleRim::Protocol
         std::uint8_t  pad[40];
     };
 
+    inline constexpr std::uint32_t kItemCapacity = 128;  // ItemState.items
+    inline constexpr std::uint32_t kItemVisible = 0x1;   // ItemPose.flags: MSC draws it
+    inline constexpr std::uint32_t kItemHeld = 0x2;      // ItemPose.flags: in the player's hands
+
+    // One MSC physics item (or one piece of it: a bottle in a case is its own item). Skyrim world
+    // space like VehicleState: the model's root sits at position, turned by rotation (Skyrim space).
+    struct ItemPose
+    {
+        std::uint32_t id;           // MSC's, stable while the item exists, never 0
+        std::uint32_t model;        // ModelChunk.model of its look, 0 = nothing to draw
+        std::uint32_t flags;        // kItem*
+        float         position[3];
+        float         rotation[4];  // x, y, z, w
+    };
+
+    // MSC -> Skyrim. The items near MSC's player, closest first; count of them, the rest is zero.
+    // An item missing from one frame to the next is gone (destroyed, or too far away).
+    struct ItemState
+    {
+        std::uint32_t frame;       // MSC frame counter
+        std::uint32_t generation;  // WorldspaceChange.generation
+        std::uint32_t count;       // <= kItemCapacity
+        std::uint32_t reserved;
+        ItemPose      items[128];  // kItemCapacity
+    };
+
+    struct ItemSlot
+    {
+        std::uint32_t seq;
+        std::uint32_t reserved;
+        ItemState     value;
+        std::uint8_t  pad[40];
+    };
+
     // ---- Rings (single producer, single consumer) ----
     //
     // head and tail are monotonic byte counts; position = count % capacity. The producer owns head,
@@ -360,7 +395,7 @@ namespace PerkeleRim::Protocol
     // Payload: this header, then size bytes of the blob, starting at offset.
     struct ModelChunk
     {
-        std::uint32_t model;      // picked by MSC, new for every model it sends
+        std::uint32_t model;      // MSC's id for the model (ItemPose.model), never 0; a resend replaces it
         std::uint32_t totalSize;  // blob bytes
         std::uint32_t offset;
         std::uint32_t size;       // <= kModelChunkMax
@@ -449,6 +484,15 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(VehicleParts, parts) == 16);
     static_assert(sizeof(VehiclePartsSlot) == 1600);
     static_assert(offsetof(VehiclePartsSlot, value) == 8);
+    static_assert(sizeof(ItemPose) == 40);
+    static_assert(offsetof(ItemPose, flags) == 8);
+    static_assert(offsetof(ItemPose, position) == 12);
+    static_assert(offsetof(ItemPose, rotation) == 24);
+    static_assert(sizeof(ItemState) == 5136);
+    static_assert(offsetof(ItemState, count) == 8);
+    static_assert(offsetof(ItemState, items) == 16);
+    static_assert(sizeof(ItemSlot) == 5184);
+    static_assert(offsetof(ItemSlot, value) == 8);
     static_assert(sizeof(RingHeader) == 64);
     static_assert(offsetof(RingHeader, head) == 8);
     static_assert(offsetof(RingHeader, tail) == 32);
@@ -487,7 +531,9 @@ namespace PerkeleRim::Protocol
     static_assert(kOffsetPlayerSlot == kOffsetInputSlot + sizeof(InputSlot));
     static_assert(kOffsetVehicleSlot == kOffsetPlayerSlot + sizeof(PlayerSlot));
     static_assert(kOffsetVehiclePartsSlot == kOffsetVehicleSlot + sizeof(VehicleSlot));
-    static_assert(kOffsetRingToMsc == kOffsetVehiclePartsSlot + sizeof(VehiclePartsSlot));
+    static_assert(kOffsetItemSlot == kOffsetVehiclePartsSlot + sizeof(VehiclePartsSlot));
+    static_assert(kOffsetRingToMsc == kOffsetItemSlot + sizeof(ItemSlot));
+    static_assert(sizeof(ItemState::items) / sizeof(ItemPose) == kItemCapacity);
     static_assert(kOffsetRingToSkyrim == kOffsetRingToMsc + sizeof(RingHeader) + kRingToMscCapacity);
     static_assert(kMappingSize == kOffsetRingToSkyrim + sizeof(RingHeader) + kRingToSkyrimCapacity);
     static_assert(sizeof(kHayosikoParts) / sizeof(kHayosikoParts[0]) == kHayosikoPartCount);

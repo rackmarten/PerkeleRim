@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 10;
+        public const uint ProtocolVersion = 11;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -18,11 +18,12 @@ namespace PerkeleRim.Protocol
         public const uint OffsetPlayerSlot = 256;
         public const uint OffsetVehicleSlot = 384;
         public const uint OffsetVehiclePartsSlot = 512;
-        public const uint OffsetRingToMsc = 2112;
+        public const uint OffsetItemSlot = 2112;
+        public const uint OffsetRingToMsc = 7296;
         public const uint RingToMscCapacity = 4194304;
-        public const uint OffsetRingToSkyrim = 4196480;
+        public const uint OffsetRingToSkyrim = 4201664;
         public const uint RingToSkyrimCapacity = 262144;
-        public const uint MappingSize = 4458688;
+        public const uint MappingSize = 4463872;
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint PlayerValid = 0x1;
@@ -43,6 +44,9 @@ namespace PerkeleRim.Protocol
         public const uint VehiclePartCapacity = 48;
         public const uint PartVisible = 0x1;
         public const uint HayosikoPartCount = 40;
+        public const uint ItemCapacity = 128;
+        public const uint ItemVisible = 0x1;
+        public const uint ItemHeld = 0x2;
         public const uint LookAtTextMax = 255;
         public const uint LookAtUse = 0x1;
         public const uint ModelChunkMax = 49152;
@@ -265,6 +269,48 @@ namespace PerkeleRim.Protocol
         public uint seq;
         public uint reserved;
         public VehicleParts value;
+        public fixed byte pad[40];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ItemPose
+    {
+        public uint id;
+        public uint model;
+        public uint flags;
+        public fixed float position[3];
+        public fixed float rotation[4];
+    }
+
+    // items holds kItemCapacity ItemPoses.
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ItemState
+    {
+        public uint frame;
+        public uint generation;
+        public uint count;
+        public uint reserved;
+        public fixed byte items[5120];
+
+        public ItemPose Get(int i)
+        {
+            if ((uint)i >= Wire.ItemCapacity) throw new System.ArgumentOutOfRangeException(nameof(i));
+            fixed (byte* p = items) return ((ItemPose*)p)[i];
+        }
+
+        public void Set(int i, ItemPose item)
+        {
+            if ((uint)i >= Wire.ItemCapacity) throw new System.ArgumentOutOfRangeException(nameof(i));
+            fixed (byte* p = items) ((ItemPose*)p)[i] = item;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ItemSlot
+    {
+        public uint seq;
+        public uint reserved;
+        public ItemState value;
         public fixed byte pad[40];
     }
 

@@ -1,6 +1,6 @@
 # Protocol
 
-> Status: protocol v10. Transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a); collision chunks streamed (milestone 1b); one vehicle pose (milestone 2a); the van parked at a given spot (milestone 2c); the van's doors, controls and lights (milestone 2d); MSC's camera pose and look-at prompt (v6, v7); the scroll wheel, MSC's needs and subtitles (v8); mead picked up in Skyrim as MSC beer (v9); MSC's own models built in Skyrim (v10, spike). Message contents beyond `InputState`, `PlayerState`, `VehicleState`, `VehicleParts`, `CollisionChunk`, `WorldspaceChange`, `LookAtText`, `Subtitle`, `GiveBeer` and `ModelChunk` arrive with the milestones that need them.
+> Status: protocol v11. Transport implemented (shared memory, handshake, slots, rings, coordinate conversion); input and player pose live (milestone 1a); collision chunks streamed (milestone 1b); one vehicle pose (milestone 2a); the van parked at a given spot (milestone 2c); the van's doors, controls and lights (milestone 2d); MSC's camera pose and look-at prompt (v6, v7); the scroll wheel, MSC's needs and subtitles (v8); mead picked up in Skyrim as MSC beer (v9); MSC's own models built in Skyrim (v10); MSC's physics items drawn in Skyrim (v11). Message contents beyond `InputState`, `PlayerState`, `VehicleState`, `VehicleParts`, `ItemState`, `CollisionChunk`, `WorldspaceChange`, `LookAtText`, `Subtitle`, `GiveBeer` and `ModelChunk` arrive with the milestones that need them.
 
 The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchange data over one shared memory section. See [DESIGN.md](DESIGN.md) for the overall architecture and ownership rules.
 
@@ -14,7 +14,7 @@ The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchang
 
 ## Section layout
 
-One section, `Local\PerkeleRim.Link`, 4,458,688 bytes. Whichever game starts first creates it; it disappears when both have closed.
+One section, `Local\PerkeleRim.Link`, 4,463,872 bytes. Whichever game starts first creates it; it disappears when both have closed.
 
 | Offset | Size | Part | Written by |
 |---|---|---|---|
@@ -23,8 +23,9 @@ One section, `Local\PerkeleRim.Link`, 4,458,688 bytes. Whichever game starts fir
 | 256 | 128 | `PlayerSlot` (latest `PlayerState`) | MSC |
 | 384 | 128 | `VehicleSlot` (latest `VehicleState`) | MSC |
 | 512 | 1600 | `VehiclePartsSlot` (latest `VehicleParts`) | MSC |
-| 2112 | 64 + 4 MiB | ring Skyrim → MSC (collision chunks, worldspace changes) | Skyrim produces, MSC consumes |
-| 4,196,480 | 64 + 256 KiB | ring MSC → Skyrim (look-at text, later events) | MSC produces, Skyrim consumes |
+| 2112 | 5184 | `ItemSlot` (latest `ItemState`) | MSC |
+| 7296 | 64 + 4 MiB | ring Skyrim → MSC (collision chunks, worldspace changes) | Skyrim produces, MSC consumes |
+| 4,201,664 | 64 + 256 KiB | ring MSC → Skyrim (look-at text, later events) | MSC produces, Skyrim consumes |
 
 Layout rules:
 
@@ -61,17 +62,25 @@ One single-producer, single-consumer byte ring per direction, for messages that 
 | MSC → Skyrim | `ModelChunk` | Part of one of MSC's own models, read from the running game (see [Models](#models)): `ModelChunk` header (`model` id, `totalSize`, `offset`, `size` up to `kModelChunkMax` = 48 KiB) then that slice of the model blob. Chunks of a model arrive in order from offset 0 |
 | MSC → Skyrim | `Subtitle` | MSC's subtitle line (global `GUIsubtitle`: the player's swearing and other speech). Same payload as `LookAtText` with flags 0; no text clears it. Sent only when it changes, and from scratch each time MSC gets the player |
 
-Planned, added with their milestones (each one bumps the version): `ActorList`, `PlayerDamage`, `ConsumeEvent` (Skyrim → MSC); `ItemState`, `ImpactEvent`, `PunchEvent`, `UrineHit`, `Death` (MSC → Skyrim).
+Planned, added with their milestones (each one bumps the version): `ActorList`, `PlayerDamage`, `ConsumeEvent` (Skyrim → MSC); `ImpactEvent`, `PunchEvent`, `UrineHit`, `Death` (MSC → Skyrim).
 
 Input pass-through keys (activate, shout, journal/map) stay with Skyrim. E is also MSC's lean right, so it does both for now. Q (MSC's lean left) would open Skyrim's favorites and pause the game, so `FavoritesHandler::CanProcess` refuses while MSC owns the player. Ctrl (MSC's zoom) is Skyrim's sneak, which is off while handed over anyway.
 
 ## Models
 
-MSC sends its own meshes and textures and Skyrim builds them in memory: nothing is converted offline or written to disk, so the mod ships none of MSC's assets. A model is every active `MeshRenderer` below one MSC object, as one blob (`ModelHeader` with name and counts; per texture a `ModelTexture` header and RGBA8 pixels, top row first; per submesh a `ModelMesh` header with its path below the object, texture index, `ModelVertex` position/normal/UV and 16-bit triangle indices). Positions are in Skyrim axes and units relative to the object, front faces counterclockwise seen from the front, UV (0, 0) top left. The blob is cut into `ModelChunk` messages so it fits the 256 KiB ring whatever its size; Skyrim's `Model::Assembler` (`protocol/cpp/model.h`) puts it back together and `Model::Parse` checks every bound. Encoded by `msc/src/Link/Model.cs`.
+MSC sends its own meshes and textures and Skyrim builds them in memory: nothing is converted offline or written to disk, so the mod ships none of MSC's assets. A model is a set of active `MeshRenderer`s below one MSC object (for items: see [Items](#items)), as one blob (`ModelHeader` with name and counts; per texture a `ModelTexture` header and RGBA8 pixels, top row first; per submesh a `ModelMesh` header with its path below the object, texture index, `ModelVertex` position/normal/UV and 16-bit triangle indices). Positions are in Skyrim axes and units relative to the object's position and rotation, with its scale applied, front faces counterclockwise seen from the front, UV (0, 0) top left. The blob is cut into `ModelChunk` messages so it fits the 256 KiB ring whatever its size; Skyrim's `Model::Assembler` (`protocol/cpp/model.h`) puts it back together and `Model::Parse` checks every bound. Encoded by `msc/src/Link/Model.cs`.
 
 MSC (`msc/src/Game/ModelSender.cs`) reads textures by drawing them into a RenderTexture and reading that back at the end of a frame into an `ARGB32` texture (MSC's textures have no CPU copy, and Unity 5.0's `ReadPixels` refuses `RGBA32`); larger than 1024 is halved. Skyrim (`skse/src/model/ModelView.cpp`) makes D3D11 vertex and index buffers and a mipmapped texture itself, wraps them in a `BSTriShape` cloned from a vanilla mesh and a `BSLightingShaderProperty` with Skyrim's flat default normal map, under one `NiNode` in the player's scene node, so the world lights it. The beer case with its bottles (25 submeshes, 1794 vertices, two 512 x 512 textures) builds in about 5 ms with no measurable frame cost.
 
-Spike state: the first `beer case(itemx)` is sent once MSC gets the player and put down in front of the player, and spike command `model <name>` sends any object (`textures <name>` only reads it and logs its textures). Hand-built textures and the temporary materials are never freed. Item sync will place, move and remove models instead.
+A model's id (`ModelChunk.model`, never 0) stands for what it is made of: MSC keys it by the meshes and textures (by name, size and bounds, since every spawned copy of an item has its own mesh instance) and their placement, so identical items share one id and one model. MSC sends each model once per link session and everything again after the link comes back up; its ids start at a random base, so a restarted MSC never reuses an id a running Skyrim still has. Skyrim keeps every model it got by id (a resend replaces it) and builds a fresh node from it per item. Hand-built textures, the temporary materials and item nodes are never freed: the game's destructors expect objects it built itself, so item nodes are kept per model and reused. Spike command `textures <name>` reads any object's model and logs it without sending it.
+
+## Items
+
+`ItemState` (MSC → Skyrim, latest-value slot): MSC's frame, the anchor `generation`, `count` and up to `kItemCapacity` (128) `ItemPose`s, closest to the player first: MSC's item `id` (stable while the item exists, never 0), the `model` id of its look (0 = nothing to draw), `flags` (`kItemVisible` while MSC draws it, `kItemHeld` while it is in the player's hands) and its root's position and rotation (quaternion) in Skyrim space. An item missing from one frame to the next is gone. Only written with items while MSC has the player on the current island; otherwise `count` is 0.
+
+MSC side (`msc/src/Game/ItemLink.cs`): every 0.5 s it looks for `Rigidbody` objects within 15 m of the player's feet (kept until 20 m) that are MSC items: named `...(itemx)` or under `ITEMS`, or any non-kinematic loose rigidbody up to 30 kg that isn't part of the player or of something 100 kg or heavier (a thrown bottle; not the van's doors). Each item is split: its root's own renderers are one entry, and each direct child with renderers is an entry of its own, posed on its own. A beer case's bottles are its children, so a drunk bottle simply disappears, and all bottles share one model. Poses go out every frame; a destroyed piece drops out the same frame. When a new anchor moves the island under the player (the next handover, a load door), the items are moved by the same offset so each stays where it was in Skyrim's world, as long as that is within 20 m of the player; the rest stay behind. MSC itself does all the handling (picking up, carrying, dropping, throwing, drinking); mouse and keys already reach it. Spike command `items` logs every entry with its path and model id.
+
+Skyrim side (`skse/src/item/ItemView.cpp`): one node per item id, made by `ModelView::Instance` once its model has arrived, hung under the player's parent scene node like the van (no reference, no collision), posed every frame and app-culled while not visible. Items that go away, change model, or all of them on F10 or an anchor change go back to a per-model pool for reuse.
 
 ## Collision chunks
 

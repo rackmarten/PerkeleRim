@@ -114,6 +114,23 @@ namespace PerkeleRim.Tests
             Assert.That(last.rotation[3], Is.EqualTo(1f));
             Assert.That(last.translation[1], Is.EqualTo(42f));
             Assert.That(pback.Get(0).flags, Is.EqualTo(0u));
+
+            Assert.That(p.Skyrim.ReadItems(out _), Is.False);  // never written
+            var items = new ItemState { frame = 9, generation = 3, count = Wire.ItemCapacity };
+            var item = new ItemPose { id = 7, model = 2, flags = Wire.ItemVisible | Wire.ItemHeld };
+            item.position[2] = 3f;
+            item.rotation[3] = 1f;
+            items.Set((int)Wire.ItemCapacity - 1, item);
+            p.Msc.WriteItems(ref items);
+            Assert.That(p.Skyrim.ReadItems(out var iback), Is.True);
+            Assert.That(iback.count, Is.EqualTo(Wire.ItemCapacity));
+            var lastItem = iback.Get((int)Wire.ItemCapacity - 1);
+            Assert.That(lastItem.id, Is.EqualTo(7u));
+            Assert.That(lastItem.model, Is.EqualTo(2u));
+            Assert.That(lastItem.flags, Is.EqualTo(Wire.ItemVisible | Wire.ItemHeld));
+            Assert.That(lastItem.position[2], Is.EqualTo(3f));
+            Assert.That(lastItem.rotation[3], Is.EqualTo(1f));
+            Assert.That(iback.Get(0).id, Is.EqualTo(0u));
         }
 
         [Test]

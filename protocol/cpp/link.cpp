@@ -303,6 +303,18 @@ namespace PerkeleRim
         return IsUp() && SeqRead(At<VehiclePartsSlot>(Base(), kOffsetVehiclePartsSlot), a_out);
     }
 
+    void Link::WriteItems(const ItemState& a_value)
+    {
+        if (std::uint8_t* base = Base(); base && _attached.load(std::memory_order_acquire)) {
+            SeqWrite(At<ItemSlot>(base, kOffsetItemSlot), a_value);
+        }
+    }
+
+    bool Link::ReadItems(ItemState& a_out) const
+    {
+        return IsUp() && SeqRead(At<ItemSlot>(Base(), kOffsetItemSlot), a_out);
+    }
+
     bool Link::Send(MessageType a_type, const void* a_payload, std::uint32_t a_size)
     {
         if (!IsUp()) {
