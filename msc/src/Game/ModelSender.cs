@@ -22,6 +22,7 @@ namespace PerkeleRim.Game
         {
             public Transform Root;
             public Predicate<Transform> Include;
+            public Func<ModelData> Build;  // instead of Root: a model put together here (overlays)
             public uint Id;
             public int Session;  // -1 = read and log only (spike command "textures")
         }
@@ -73,6 +74,26 @@ namespace PerkeleRim.Game
             return id;
         }
 
+        // The id of a model build puts together (at the end of a frame, like a read one), known by
+        // key and queued for sending if Skyrim doesn't have it yet. build returns null while what it
+        // needs isn't there; the next call asks again.
+        public uint IdForBuilt(string key, Func<ModelData> build)
+        {
+            key = "built:" + key;
+            uint id;
+            if (!ids.TryGetValue(key, out id))
+            {
+                id = nextId++;
+                ids[key] = id;
+            }
+            if (!sent.Contains(id) && !queued.Contains(id))
+            {
+                queued.Add(id);
+                jobs.Enqueue(new Job { Build = build, Id = id, Session = session });
+            }
+            return id;
+        }
+
         // Once a frame: reads one queued model at a time and sends its chunks as the ring has room.
         public void Update(Link link)
         {
@@ -87,7 +108,7 @@ namespace PerkeleRim.Game
                 while (jobs.Count > 0)
                 {
                     var job = jobs.Dequeue();
-                    if (job.Root == null) { queued.Remove(job.Id); continue; }  // destroyed; asked again when seen again
+                    if (job.Root == null && job.Build == null) { queued.Remove(job.Id); continue; }  // destroyed; asked again when seen again
                     host.StartCoroutine(ReadAtEndOfFrame(job));
                     break;
                 }
@@ -133,7 +154,10 @@ namespace PerkeleRim.Game
                 {
                     var texture = material != null ? material.mainTexture : null;
                     if (texture != null) key.Append(texture.name).Append('/').Append(texture.width).Append('x').Append(texture.height);
-                    if (material != null) key.Append(material.mainTextureScale).Append(material.mainTextureOffset);
+                    if (material != null)
+                        key.Append(material.mainTextureScale).Append(material.mainTextureOffset).Append(material.shader != null ? material.shader.name : "")
+                            .Append(Color(material, "_Color")).Append(Float(material, "_Mode")).Append(Float(material, "_Metallic"))
+                            .Append(Float(material, "_Glossiness"));
                     key.Append(',');
                 }
                 var m = RelativeTo(root, renderer.transform);
@@ -163,22 +187,29 @@ namespace PerkeleRim.Game
             reading = false;
             bool send = job.Session >= 0;
             if (send && job.Session != session) yield break;  // the link went down meanwhile
-            if (job.Root == null)
+            if (job.Root == null && job.Build == null)
             {
                 if (send) queued.Remove(job.Id);
                 yield break;
             }
             var clock = Stopwatch.StartNew();
             ModelData model;
-            try { model = Read(job.Root, job.Include); }
+            try { model = job.Build != null ? job.Build() : Read(job.Root, job.Include); }
             catch (Exception e)
             {
-                log("model: reading " + job.Root.name + " FAILED: " + e);
+                log("model: reading " + (job.Root != null ? job.Root.name : "a built model") + " FAILED: " + e);
                 yield break;  // stays queued, so it isn't retried on every scan
+            }
+            if (model == null)
+            {
+                queued.Remove(job.Id);  // not there yet; the next IdForBuilt asks again
+                yield break;
             }
             if (!send)
             {
                 log($"model: {model.Name} has {model.Meshes.Count} meshes, {model.VertexCount} vertices, {model.Textures.Count} textures");
+                for (int i = 0; i < model.Textures.Count; i++) SavePng(model.Textures[i], $"PerkeleRim_texture_{i}.png");
+                foreach (var mesh in model.Meshes) log($"model: mesh {mesh.Name} {UvRange(mesh.Uvs)}");
                 yield break;
             }
             if (model.Meshes.Count == 0)
@@ -196,7 +227,8 @@ namespace PerkeleRim.Game
         ModelData Read(Transform root, Predicate<Transform> include)
         {
             var model = new ModelData { Name = root.name };
-            var textures = new Dictionary<int, int>();  // Texture instance id -> index in model
+            var materialIndex = new Dictionary<int, int>();  // Material instance id -> index in model
+            var pixels = new Dictionary<int, ModelTextureData>();  // Texture instance id -> as read
             foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
             {
                 var filter = renderer.GetComponent<MeshFilter>();
@@ -212,11 +244,12 @@ namespace PerkeleRim.Game
                 for (int sub = 0; sub < mesh.subMeshCount; sub++)
                 {
                     var material = sub < materials.Length ? materials[sub] : null;
-                    int texture = TextureIndex(model, textures, material);
+                    int index = MaterialIndex(model, materialIndex, pixels, material);
                     var scale = material != null ? material.mainTextureScale : Vector2.one;
                     var offset = material != null ? material.mainTextureOffset : Vector2.zero;
-                    model.Meshes.Add(Submesh(sub == 0 ? path : path + "#" + sub, texture, m, vertices, normals, uvs, scale, offset,
-                        mesh.GetTriangles(sub)));
+                    var data = Submesh(sub == 0 ? path : path + "#" + sub, index, m, vertices, normals, uvs, scale, offset, mesh.GetTriangles(sub));
+                    data.Material = index;
+                    model.Meshes.Add(data);
                 }
             }
             return model;
@@ -270,16 +303,113 @@ namespace PerkeleRim.Game
             return path;
         }
 
-        int TextureIndex(ModelData model, Dictionary<int, int> known, Material material)
+        // One material and one texture per MSC material (same index in both lists): the texture is
+        // the material's main texture with its color tint and metal baked in, so two materials
+        // sharing a texture (an atlas) may still look different. -1 without a material.
+        int MaterialIndex(ModelData model, Dictionary<int, int> known, Dictionary<int, ModelTextureData> pixels, Material material)
         {
-            var texture = material != null ? material.mainTexture : null;
-            if (texture == null) return -1;
+            if (material == null) return -1;
             int index;
-            if (known.TryGetValue(texture.GetInstanceID(), out index)) return index;
-            index = model.Textures.Count;
-            model.Textures.Add(Pixels(texture, log));
-            known[texture.GetInstanceID()] = index;
+            if (known.TryGetValue(material.GetInstanceID(), out index)) return index;
+
+            var main = ReadTexture(pixels, material.mainTexture);
+            var metalMap = material.HasProperty("_MetallicGlossMap") ? ReadTexture(pixels, material.GetTexture("_MetallicGlossMap")) : null;
+            var unity = new ModelMaterialData.Unity
+            {
+                Shader = material.shader != null ? material.shader.name : "",
+                RenderQueue = material.renderQueue,
+                Mode = Float(material, "_Mode"),
+                Cutoff = Float(material, "_Cutoff"),
+                Metallic = metalMap != null ? Average(metalMap.Rgba, 0) : Float(material, "_Metallic"),
+                Glossiness = metalMap != null ? Average(metalMap.Rgba, 3) : Float(material, "_Glossiness"),
+                SpecColor = Color(material, "_SpecColor"),
+                Shininess = Float(material, "_Shininess"),
+                Emission = Color(material, "_EmissionColor"),
+            };
+            var data = ModelMaterialData.FromUnity(unity);
+            bool standard = unity.Shader.StartsWith("Standard");
+            var tint = Color(material, "_Color") ?? new[] { 1f, 1f, 1f, 1f };
+            var baked = ModelTextureData.Baked(main, tint, standard ? metalMap : null, standard && metalMap == null ? (unity.Metallic ?? 0f) : 0f);
+
+            index = model.Materials.Count;
+            model.Materials.Add(data);
+            model.Textures.Add(baked);
+            known[material.GetInstanceID()] = index;
+            log($"model: material {material.name} shader \"{unity.Shader}\" queue {unity.RenderQueue} flags {data.Flags} cutoff {data.AlphaCutoff:0.##} " +
+                $"tint ({tint[0]:0.##},{tint[1]:0.##},{tint[2]:0.##},{tint[3]:0.##}) metal {unity.Metallic:0.##} gloss {data.Glossiness:0.##} " +
+                $"specular {data.Specular[0]:0.##} -> average {Average(baked.Rgba)}");
             return index;
+        }
+
+        ModelTextureData ReadTexture(Dictionary<int, ModelTextureData> pixels, Texture texture)
+        {
+            if (texture == null) return null;
+            ModelTextureData data;
+            if (!pixels.TryGetValue(texture.GetInstanceID(), out data))
+            {
+                data = Pixels(texture, log);
+                pixels[texture.GetInstanceID()] = data;
+            }
+            return data;
+        }
+
+        static string UvRange(float[] uvs)
+        {
+            float u0 = float.MaxValue, u1 = float.MinValue, v0 = float.MaxValue, v1 = float.MinValue;
+            for (int i = 0; i + 1 < uvs.Length; i += 2)
+            {
+                u0 = Math.Min(u0, uvs[i]); u1 = Math.Max(u1, uvs[i]);
+                v0 = Math.Min(v0, uvs[i + 1]); v1 = Math.Max(v1, uvs[i + 1]);
+            }
+            var first = new StringBuilder();
+            for (int i = 0; i + 1 < uvs.Length && i < 12; i += 2) first.Append($" ({uvs[i]:0.###},{uvs[i + 1]:0.###})");
+            return $"u {u0:0.###}..{u1:0.###} v {v0:0.###}..{v1:0.###} first{first}";
+        }
+
+        // A texture as it goes to Skyrim (top row first), saved next to the game for a look (spike
+        // command "textures").
+        void SavePng(ModelTextureData data, string file)
+        {
+            var bottomUp = new Color32[data.Width * data.Height];
+            for (int y = 0; y < data.Height; y++)
+                for (int x = 0; x < data.Width; x++)
+                {
+                    int i = ((data.Height - 1 - y) * data.Width + x) * 4;
+                    bottomUp[y * data.Width + x] = new Color32(data.Rgba[i], data.Rgba[i + 1], data.Rgba[i + 2], data.Rgba[i + 3]);
+                }
+            var texture = new Texture2D(data.Width, data.Height, TextureFormat.ARGB32, false);
+            texture.SetPixels32(bottomUp);
+            var path = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Application.dataPath), file);
+            System.IO.File.WriteAllBytes(path, texture.EncodeToPNG());
+            UnityEngine.Object.Destroy(texture);
+            log("model: saved " + path);
+        }
+
+        // A material property as Skyrim's material wants it, or null when the shader has none.
+        static float? Float(Material m, string name) => m.HasProperty(name) ? m.GetFloat(name) : (float?)null;
+
+        static float[] Color(Material m, string name)
+        {
+            if (!m.HasProperty(name)) return null;
+            var c = m.GetColor(name);
+            return new[] { c.r, c.g, c.b, c.a };
+        }
+
+        static float Average(byte[] rgba, int channel)
+        {
+            long sum = 0;
+            for (int i = channel; i < rgba.Length; i += 4) sum += rgba[i];
+            return sum / 255f / Math.Max(1, rgba.Length / 4);
+        }
+
+        // MSC's own texture as a screen overlay model (the blood over the view when the player dies):
+        // null while no loaded texture has that name.
+        public static ModelData Overlay(string modelName, string textureName, Action<string> log)
+        {
+            foreach (Texture texture in Resources.FindObjectsOfTypeAll(typeof(Texture)))
+                if (texture.name == textureName)
+                    return ModelData.Overlay(modelName, Pixels(texture, log));
+            return null;
         }
 
         // Straight from the texture when it is readable, else drawn into a RenderTexture and read back.

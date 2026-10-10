@@ -23,12 +23,94 @@ namespace PerkeleRim
                 Array.Copy(bottomUpRgba, y * row, rgba, (height - 1 - y) * row, row);
             return new ModelTextureData { Width = width, Height = height, Rgba = rgba };
         }
+
+        // A metal's diffuse is darkened by this much at metallic 1. Unity makes it nearly black and
+        // shows reflections instead, which Skyrim doesn't have for these, so only part of it.
+        public const float MetalDarkening = 0.35f;
+
+        // What MSC actually draws as diffuse: the texture (white when null) times the material's color
+        // tint, darkened where it is metal (metalMap's red channel, sampled nearest, or metallic for
+        // the whole texture when there is no map).
+        public static ModelTextureData Baked(ModelTextureData texture, float[] tint, ModelTextureData metalMap, float metallic)
+        {
+            var src = texture ?? new ModelTextureData { Width = 1, Height = 1, Rgba = new byte[] { 255, 255, 255, 255 } };
+            var rgba = new byte[src.Rgba.Length];
+            for (int y = 0; y < src.Height; y++)
+                for (int x = 0; x < src.Width; x++)
+                {
+                    int i = (y * src.Width + x) * 4;
+                    float metal = metallic;
+                    if (metalMap != null)
+                        metal = metalMap.Rgba[((y * metalMap.Height / src.Height) * metalMap.Width + x * metalMap.Width / src.Width) * 4] / 255f;
+                    float shade = 1f - MetalDarkening * Math.Max(0f, Math.Min(1f, metal));
+                    for (int c = 0; c < 3; c++) rgba[i + c] = Byte(src.Rgba[i + c] * tint[c] * shade);
+                    rgba[i + 3] = Byte(src.Rgba[i + 3] * tint[3]);
+                }
+            return new ModelTextureData { Width = src.Width, Height = src.Height, Rgba = rgba };
+        }
+
+        static byte Byte(float v) => (byte)Math.Max(0, Math.Min(255, (int)Math.Round(v)));
+    }
+
+    // How a mesh is drawn (ModelMaterial): kMaterial* flags, alpha cutoff, highlight, glow.
+    public sealed class ModelMaterialData
+    {
+        public uint Flags;
+        public float AlphaCutoff = 0.5f;
+        public float[] Specular = new float[3];  // r, g, b
+        public float Glossiness;
+        public float[] Emissive = new float[3];  // r, g, b
+
+        // What MSC's Unity material says, as far as Skyrim can follow it. Null fields weren't set.
+        public sealed class Unity
+        {
+            public string Shader = "";
+            public int RenderQueue;
+            public float? Mode;         // Standard: 0 opaque, 1 cutout, 2 fade, 3 transparent
+            public float? Cutoff;
+            public float? Metallic;     // Standard: the metallic map's average red, else _Metallic
+            public float? Glossiness;   // Standard: the metallic map's average alpha, else _Glossiness
+            public float[] SpecColor;   // legacy specular shaders
+            public float? Shininess;    // legacy specular shaders
+            public float[] Emission;    // Standard _EmissionColor
+        }
+
+        public static ModelMaterialData FromUnity(Unity u)
+        {
+            var m = new ModelMaterialData();
+            var shader = u.Shader ?? "";
+            bool standard = shader == "Standard" || shader.StartsWith("Standard ");
+            int mode = u.Mode.HasValue ? (int)Math.Round(u.Mode.Value) : 0;
+            if (shader.Contains("Cutout") || (standard && mode == 1)) m.Flags |= Wire.MaterialCutout;
+            else if (shader.Contains("Transparent") || (standard && mode >= 2) || u.RenderQueue >= 3000) m.Flags |= Wire.MaterialBlend;
+            if (shader.StartsWith("Unlit/") || shader.StartsWith("GUI/") || shader.StartsWith("Particles/")) m.Flags |= Wire.MaterialUnlit;
+            m.AlphaCutoff = u.Cutoff ?? 0.5f;
+            if (standard)
+            {
+                // Unity shows smooth surfaces mostly through reflections, which Skyrim has none of here,
+                // so only a soft highlight: metals more, dielectrics a little.
+                float gloss = Clamp01(u.Glossiness ?? 0.5f), metal = Clamp01(u.Metallic ?? 0f);
+                float strength = 0.3f * gloss * (0.3f + 0.7f * metal);
+                m.Specular = new[] { strength, strength, strength };
+                m.Glossiness = gloss;
+                if (u.Emission != null && u.Emission.Length >= 3) m.Emissive = new[] { u.Emission[0], u.Emission[1], u.Emission[2] };
+            }
+            else if (shader.Contains("Specular") && u.SpecColor != null && u.SpecColor.Length >= 3)
+            {
+                m.Specular = new[] { u.SpecColor[0], u.SpecColor[1], u.SpecColor[2] };
+                m.Glossiness = Clamp01(u.Shininess ?? 0.5f);
+            }
+            return m;
+        }
+
+        static float Clamp01(float v) => Math.Max(0f, Math.Min(1f, v));
     }
 
     public sealed class ModelMeshData
     {
         public string Name;
         public int Texture = -1;
+        public int Material = -1;
         public float[] Positions;  // x, y, z per vertex, Skyrim axes and units
         public float[] Normals;    // x, y, z per vertex, Skyrim axes
         public float[] Uvs;        // u, v per vertex, (0, 0) = top left
@@ -85,6 +167,7 @@ namespace PerkeleRim
     {
         public string Name;
         public readonly List<ModelTextureData> Textures = new List<ModelTextureData>();
+        public readonly List<ModelMaterialData> Materials = new List<ModelMaterialData>();
         public readonly List<ModelMeshData> Meshes = new List<ModelMeshData>();
 
         public int VertexCount
@@ -104,7 +187,7 @@ namespace PerkeleRim
             WriteName(w, Name);
             w.Write((uint)Textures.Count);
             w.Write((uint)Meshes.Count);
-            w.Write(0u);
+            w.Write((uint)Materials.Count);
             w.Write(0u);
             foreach (var t in Textures)
             {
@@ -117,13 +200,23 @@ namespace PerkeleRim
                 w.Write(0u);
                 w.Write(t.Rgba);
             }
+            foreach (var m in Materials)
+            {
+                w.Write(m.Flags);
+                w.Write(m.AlphaCutoff);
+                for (int k = 0; k < 3; k++) w.Write(m.Specular[k]);
+                w.Write(m.Glossiness);
+                for (int k = 0; k < 3; k++) w.Write(m.Emissive[k]);
+                w.Write(0u);
+            }
             foreach (var m in Meshes)
             {
+                if (m.Material < -1 || m.Material >= Materials.Count) throw new ArgumentException($"{Name}: mesh {m.Name} has material {m.Material}");
                 WriteName(w, m.Name);
                 w.Write(m.Texture);
                 w.Write((uint)m.VertexCount);
                 w.Write((uint)m.Indices.Length);
-                w.Write(0u);
+                w.Write(m.Material);
                 for (int i = 0; i < m.VertexCount; i++)
                 {
                     for (int k = 0; k < 3; k++) w.Write(m.Positions[i * 3 + k]);
@@ -136,6 +229,29 @@ namespace PerkeleRim
             w.Flush();
             if (stream.Length > Wire.ModelSizeMax) throw new ArgumentException($"{Name}: {stream.Length} bytes, at most {Wire.ModelSizeMax}");
             return stream.ToArray();
+        }
+
+        // A screen overlay: one quad showing texture over everything without lighting, 2 units wide
+        // (x -1..1, right), as tall as the texture's shape (z, up), at y 0 facing a viewer that
+        // looks along +Y. Skyrim puts it in front of its camera and scales it to cover the view.
+        public static ModelData Overlay(string name, ModelTextureData texture)
+        {
+            float h = (float)texture.Height / texture.Width;
+            var model = new ModelData { Name = name };
+            model.Textures.Add(texture);
+            model.Materials.Add(new ModelMaterialData { Flags = Wire.MaterialBlend | Wire.MaterialUnlit | Wire.MaterialOverlay });
+            model.Meshes.Add(new ModelMeshData
+            {
+                Name = name,
+                Texture = 0,
+                Material = 0,
+                // bottom left, bottom right, top right, top left
+                Positions = new[] { -1f, 0f, -h, 1f, 0f, -h, 1f, 0f, h, -1f, 0f, h },
+                Normals = new[] { 0f, -1f, 0f, 0f, -1f, 0f, 0f, -1f, 0f, 0f, -1f, 0f },
+                Uvs = new[] { 0f, 1f, 1f, 1f, 1f, 0f, 0f, 0f },
+                Indices = new ushort[] { 0, 1, 2, 0, 2, 3 },
+            });
+            return model;
         }
 
         // ModelChunk payloads for a blob, in sending order.

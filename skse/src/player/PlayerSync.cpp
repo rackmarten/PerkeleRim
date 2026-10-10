@@ -3,6 +3,7 @@
 #include "camera.h"
 #include "collision/CollisionSampler.h"
 #include "coords.h"
+#include "death/Death.h"
 #include "drink/Drink.h"
 #include "garage/Garage.h"
 #include "hud/Hud.h"
@@ -241,6 +242,7 @@ namespace PerkeleRim::PlayerSync
             }
 
             state.owned = true;
+            Death::Hide();
             state.statTime = 0.0f;
             state.frames = state.placed = state.newPoses = 0;
             SetControls(false);
@@ -459,11 +461,31 @@ namespace PerkeleRim::PlayerSync
             a_vehicle.position[2] = locked.z;
         }
 
+        // The player died while MSC had it (Skyrim combat, or a hit Death says kills): MSC plays its
+        // death sound, Skyrim takes the player back so its own death can ragdoll it and reload, and
+        // MSC's blood goes over the view. MSC's player stays alive.
+        void Die(RE::PlayerCharacter* a_player)
+        {
+            const Protocol::PlayerDeath death{};
+            if (!LinkService::Get().Send(Protocol::MessageType::PlayerDeath, &death, sizeof(death))) {
+                SKSE::log::warn("player sync: could not tell MSC the player died");
+            }
+            Release("the player died");
+            Death::Show();
+            if (Death::Lethal()) {
+                Death::Kill(a_player);
+            }
+        }
+
         void Drive(RE::PlayerCharacter* a_player, float a_delta)
         {
             auto& link = LinkService::Get();
             if (!link.IsUp()) {
                 Release("link down");
+                return;
+            }
+            if (a_player->IsDead()) {
+                Die(a_player);
                 return;
             }
             ReleaseStuckKeys();
@@ -487,9 +509,13 @@ namespace PerkeleRim::PlayerSync
                 SetSimulated(a_player, !seated);
                 SKSE::log::info("player sync: {}", seated ? "seated" : "out of the seat");
             }
-            link.Receive([](Protocol::MessageType a_type, const std::uint8_t* a_data, std::uint32_t a_size) {
+            link.Receive([a_player](Protocol::MessageType a_type, const std::uint8_t* a_data, std::uint32_t a_size) {
                 if (a_type == Protocol::MessageType::ModelChunk) {
                     ModelView::OnChunk(a_data, a_size);
+                    return;
+                }
+                if (a_type == Protocol::MessageType::PlayerDamage) {
+                    Death::OnDamage(a_player, a_data, a_size);
                     return;
                 }
                 if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle) {
@@ -525,6 +551,11 @@ namespace PerkeleRim::PlayerSync
                     state.lastPoseFrame = pose.frame;
                 }
             }
+            Death::OnPose(a_player, valid ? &pose : nullptr, seated);
+            if (Death::Lethal()) {
+                Die(a_player);
+                return;
+            }
             if (seated) {
                 LockVanToCamera(vehicle, pose.roll);
             }
@@ -549,6 +580,10 @@ namespace PerkeleRim::PlayerSync
             hud.subtitle = state.subtitle;
             hud.hasNeeds = state.hasNeeds;
             hud.needs = state.needs;
+            if (auto* values = a_player->AsActorValueOwner()) {
+                const float max = values->GetPermanentActorValue(RE::ActorValue::kHealth);
+                hud.health = max > 0.0f ? values->GetActorValue(RE::ActorValue::kHealth) / max : 0.0f;
+            }
             Hud::Set(hud, second);  // refreshed once a second in case the HUD movie was rebuilt
             Drink::SetDrunk(state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, a_delta);
             if (second) {
@@ -569,6 +604,7 @@ namespace PerkeleRim::PlayerSync
             static void thunk(RE::PlayerCharacter* a_player, float a_delta)
             {
                 original(a_player, a_delta);
+                Death::Tick();
                 if (state.garage && a_delta > 0.0f) {
                     TravelToGarage(a_player, a_delta);
                 } else if (state.owned && a_delta > 0.0f) {

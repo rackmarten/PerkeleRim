@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 11;
+        public const uint ProtocolVersion = 12;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -29,6 +29,7 @@ namespace PerkeleRim.Protocol
         public const uint PlayerValid = 0x1;
         public const uint PlayerCamera = 0x2;
         public const uint PlayerNeeds = 0x4;
+        public const uint PlayerGrounded = 0x8;
         public const uint NeedThirst = 0;
         public const uint NeedHunger = 1;
         public const uint NeedStress = 2;
@@ -55,6 +56,12 @@ namespace PerkeleRim.Protocol
         public const uint ModelTextureRgba8 = 1;
         public const uint ModelTextureSizeMax = 2048;
         public const uint ModelMeshVertexMax = 65535;
+        public const uint DamageCrash = 1;
+        public const uint DamageOther = 2;
+        public const uint MaterialCutout = 0x1;
+        public const uint MaterialBlend = 0x2;
+        public const uint MaterialUnlit = 0x4;
+        public const uint MaterialOverlay = 0x8;
 
         // VehicleParts.parts order for the van; msc/tests checks it against the header's list.
         public static readonly string[] HayosikoParts =
@@ -119,6 +126,8 @@ namespace PerkeleRim.Protocol
         Subtitle = 4,
         GiveBeer = 5,
         ModelChunk = 6,
+        PlayerDamage = 7,
+        PlayerDeath = 8,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -374,6 +383,19 @@ namespace PerkeleRim.Protocol
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct PlayerDamage
+    {
+        public uint cause;
+        public float severity;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct PlayerDeath
+    {
+        public fixed uint reserved[2];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct ModelChunk
     {
         public uint model;
@@ -388,7 +410,8 @@ namespace PerkeleRim.Protocol
         public fixed byte name[48];
         public uint textureCount;
         public uint meshCount;
-        public fixed uint reserved[2];
+        public uint materialCount;
+        public uint reserved;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -401,13 +424,24 @@ namespace PerkeleRim.Protocol
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ModelMaterial
+    {
+        public uint flags;
+        public float alphaCutoff;
+        public fixed float specular[3];
+        public float glossiness;
+        public fixed float emissive[3];
+        public uint reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct ModelMesh
     {
         public fixed byte name[48];
         public int texture;
         public uint vertexCount;
         public uint indexCount;
-        public uint reserved;
+        public int material;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

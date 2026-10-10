@@ -16,24 +16,28 @@ namespace
         a_out.insert(a_out.end(), p, p + sizeof(T));
     }
 
-    // One 2x1 texture and one triangle using it, the way msc/src/Link/Model.cs writes them.
-    std::vector<std::uint8_t> Blob(std::uint16_t a_lastIndex = 2, std::int32_t a_texture = 0)
+    // One 2x1 texture, one cutout material and one triangle using both, the way
+    // msc/src/Link/Model.cs writes them.
+    std::vector<std::uint8_t> Blob(std::uint16_t a_lastIndex = 2, std::int32_t a_texture = 0, std::int32_t a_material = 0)
     {
         std::vector<std::uint8_t> blob;
         Protocol::ModelHeader     header{};
         std::memcpy(header.name, "beer case", 9);
         header.textureCount = 1;
         header.meshCount = 1;
+        header.materialCount = 1;
         Put(blob, header);
 
         Put(blob, Protocol::ModelTexture{ 2, 1, Protocol::kModelTextureRgba8, 0 });
         for (std::uint8_t b : std::initializer_list<std::uint8_t>{ 255, 0, 0, 255, 0, 255, 0, 255 }) {
             blob.push_back(b);
         }
+        Put(blob, Protocol::ModelMaterial{ Protocol::kMaterialCutout, 0.5f, { 0.2f, 0.2f, 0.2f }, 0.7f, { 0, 0, 0 }, 0 });
 
         Protocol::ModelMesh mesh{};
         std::memcpy(mesh.name, "bottle", 6);
         mesh.texture = a_texture;
+        mesh.material = a_material;
         mesh.vertexCount = 3;
         mesh.indexCount = 3;
         Put(blob, mesh);
@@ -69,6 +73,10 @@ TEST_CASE("a model blob parses into textures and meshes")
     const auto& mesh = model->meshes[0];
     CHECK(mesh.name == "bottle");
     CHECK(mesh.texture == 0);
+    CHECK(mesh.material == 0);
+    REQUIRE(model->materials.size() == 1);
+    CHECK(model->materials[0].flags == Protocol::kMaterialCutout);
+    CHECK(model->materials[0].glossiness == doctest::Approx(0.7f));
     CHECK(mesh.vertexCount == 3);
     CHECK(mesh.Vertex(1).position[0] == 10.0f);
     CHECK(mesh.Vertex(2).uv[1] == 1.0f);
@@ -85,6 +93,10 @@ TEST_CASE("a malformed model blob is refused")
     CHECK_FALSE(Model::Parse(badIndex.data(), badIndex.size()));
     const auto badTexture = Blob(2, 1);
     CHECK_FALSE(Model::Parse(badTexture.data(), badTexture.size()));
+    const auto badMaterial = Blob(2, 0, 1);
+    CHECK_FALSE(Model::Parse(badMaterial.data(), badMaterial.size()));
+    const auto noMaterial = Blob(2, 0, -1);
+    CHECK(Model::Parse(noMaterial.data(), noMaterial.size()));
 }
 
 TEST_CASE("chunks put a model back together in order")

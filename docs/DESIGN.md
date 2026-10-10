@@ -69,7 +69,7 @@ Alternatives considered: Motor Town (best trucks/drift, but early access and har
 |---|---|
 | World, NPCs, quests, saves, weather, time | Skyrim |
 | Player movement, crouch, vehicle physics, physics items | MSC |
-| Player health | Skyrim (MSC death triggers at 0) |
+| Player health | Skyrim (MSC's player never dies while handed over; its deaths cost Skyrim health) |
 | Drunkenness, hunger, thirst, urine, fatigue | MSC |
 | Crime / bounty | Skyrim (native crime system) |
 | Rendering | Skyrim |
@@ -111,7 +111,7 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 | Crouch = sneak | MSC crouch → Skyrim player sneak state. |
 | Piss on Jarl → bounty | Skyrim traces the urine arc; on NPC hit, send an assault alarm credited to the player. |
 | Talking / quests | Activate key → Skyrim; dialogue, doors and quest pickups work natively. Quest items go into Skyrim's inventory through the activate pass-through. |
-| Damage to player | Skyrim health is authoritative; MSC death screen at 0. Car crashes and falls report damage to Skyrim. |
+| Damage to player | Skyrim health is authoritative. MSC's player can't die while handed over: a crash MSC would die of costs half of Skyrim's max health, falls cost Skyrim's vanilla fall damage. At 0, MSC's blood over the view and its death sound, then Skyrim's own death and reload. |
 | Punching | New input; Skyrim applies an unarmed melee hit with knockback. |
 | Thrown bottles | MSC physics item hits a mirrored capsule → `ImpactEvent` → Skyrim damage. |
 | Running people over | Capsule hit → impulse + damage on the real NPC; Skyrim ragdoll does the rest. |

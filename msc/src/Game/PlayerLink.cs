@@ -19,7 +19,10 @@ namespace PerkeleRim.Game
     //    player's right, or at the spot the anchor names (the garage), the Jonnez moped (MSC only
     //    so far) on the left;
     //  - hands out the beer Skyrim sends (GiveBeer) through BeerGift;
-    //  - reports the physics items around the player (ItemLink), whose models ModelSender sends.
+    //  - reports the physics items around the player (ItemLink), whose models ModelSender sends;
+    //  - keeps MSC's player alive while handed over and sends what it would have died of as
+    //    PlayerDamage (DeathGuard), plays MSC's death sound on PlayerDeath, and sends MSC's blood
+    //    overlay for Skyrim's death ahead of time.
     public unsafe class PlayerLink : MonoBehaviour
     {
         // Drop the player this far above the ground so it never starts inside the collider.
@@ -84,6 +87,7 @@ namespace PerkeleRim.Game
             beer = new BeerGift(log);
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
+            DeathGuard.Install(log);
         }
 
         // Beer as if Skyrim sent GiveBeer (spike command "beer").
@@ -151,6 +155,9 @@ namespace PerkeleRim.Game
             {
                 lastOwned = owned;
                 log(owned ? "player: Skyrim handed the player to MSC" : "player: Skyrim took the player back");
+                // Test loop: with this flag file next to the game, every handover hands out a case.
+                if (owned && System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Application.dataPath), TestBeerFlag)))
+                    beer.Give(TestBeerBottles);
             }
 
             if (player != null && island.HasAnchor && placedGeneration != island.Generation)
@@ -162,6 +169,11 @@ namespace PerkeleRim.Game
 
             bool playing = owned && player != null && island.HasAnchor && placedGeneration == island.Generation;
             MotorBoost.Active = playing;
+            DeathGuard.Active = owned;
+            DeathGuard.Update();
+            SendDamage(link);
+            // Skyrim has the blood ready before it is needed (shown when the player dies there).
+            if (playing) models.IdForBuilt(BloodModel, () => ModelSender.Overlay(BloodModel, BloodTexture, log));
             if (playing) FillPose(ref state);
             state.generation = island.Generation;
             link.WritePlayer(ref state);
@@ -171,6 +183,24 @@ namespace PerkeleRim.Game
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
             models.Update(link);
+        }
+
+        // MSC's blood over the view when the player dies (Systems/Death/PlayerBlood's texture), sent as
+        // an overlay model; Skyrim looks it up by this name.
+        const string TestBeerFlag = "PerkeleRim_testbeer.txt";
+        const int TestBeerBottles = 6;
+
+        const string BloodModel = "PlayerBlood";
+        const string BloodTexture = "player_blood_vision";
+
+        // What MSC would have died of goes to Skyrim's health (DeathGuard). A full ring retries next frame.
+        void SendDamage(Link link)
+        {
+            PlayerDamage damage;
+            if (!DeathGuard.TakeDamage(out damage)) return;
+            var payload = new byte[sizeof(PlayerDamage)];
+            fixed (byte* p = payload) *(PlayerDamage*)p = damage;
+            if (link.Send(MessageType.PlayerDamage, payload, payload.Length)) DeathGuard.DamageSent();
         }
 
         // Getting the mouse out of MSC's window takes Escape, which opens MSC's menu
@@ -226,6 +256,8 @@ namespace PerkeleRim.Game
                 fixed (byte* p = payload) g = *(GiveBeer*)p;
                 beer.Give((int)g.count);
             }
+            else if (type == MessageType.PlayerDeath)
+                DeathGuard.PlayDeathSound();
         }
 
         void FindPlayer()
@@ -455,6 +487,7 @@ namespace PerkeleRim.Game
         void FillPose(ref PlayerState s)
         {
             s.flags = Wire.PlayerValid;
+            if (controller != null && controller.enabled && controller.isGrounded) s.flags |= Wire.PlayerGrounded;  // Skyrim's fall damage
             var pos = island.IslandToSkyrim(ToVec3(Feet()));
             s.position[0] = pos.x;
             s.position[1] = pos.y;

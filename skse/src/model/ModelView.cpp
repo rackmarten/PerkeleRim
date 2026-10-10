@@ -42,10 +42,15 @@ namespace PerkeleRim::ModelView
             RE::BSTriShape*                                    templateShape = nullptr;
             bool                                               templateFailed = false;
             std::map<std::uint32_t, std::unique_ptr<Cached>>  models;  // by MSC's model id
+            std::map<std::string, std::uint32_t, std::less<>>  byName;  // the latest model id per name
             // Textures built here are never destroyed: the game's NiSourceTexture destructor expects
             // one it loaded itself. A model sent again keeps its old textures alive here.
             std::vector<RE::NiPointer<RE::NiSourceTexture>>    textures;
             RE::NiSourceTexture*                               flatNormal = nullptr;
+            RE::NiSourceTexture*                               shinyNormal = nullptr;
+            // Hand-built like the textures, so never destroyed either; shared by every shape.
+            RE::NiPointer<RE::NiAlphaProperty>                 cutoutAlpha[256];  // by alpha threshold
+            RE::NiPointer<RE::NiAlphaProperty>                 blendAlpha;
 
             float frameTime = 0.0f;
             int   frames = 0;
@@ -171,11 +176,21 @@ namespace PerkeleRim::ModelView
         {
             using V = RE::BSGraphics::Vertex;
             const std::uint64_t flags = V::VF_VERTEX | V::VF_UV | V::VF_NORMAL | V::VF_TANGENT | V::VF_FULLPREC;
-            const std::uint64_t raw = (kStride / 4) | (static_cast<std::uint64_t>(kUvOffset / 4) << 4) |
-                                      (static_cast<std::uint64_t>(kNormalOffset / 4) << 12) |
-                                      (static_cast<std::uint64_t>(kTangentOffset / 4) << 16) | (flags << 44);
+            // The vertex size in the low nibble; each attribute's offset goes where the game reads it
+            // (SetAttributeOffset). Hand-placed nibbles one slot too low once made Skyrim take the UVs
+            // from the position bytes, which striped every texture.
+            const std::uint64_t raw = (kStride / 4) | (flags << 44);
             RE::BSGraphics::VertexDesc desc;
             std::memcpy(&desc, &raw, sizeof(raw));
+            desc.SetAttributeOffset(V::VA_TEXCOORD0, kUvOffset);
+            desc.SetAttributeOffset(V::VA_NORMAL, kNormalOffset);
+            desc.SetAttributeOffset(V::VA_BINORMAL, kTangentOffset);
+            static bool logged = false;
+            if (!logged) {
+                logged = true;
+                SKSE::log::info("model view: vertex layout uv at {}, normal at {}, tangent at {}", desc.GetAttributeOffset(V::VA_TEXCOORD0),
+                    desc.GetAttributeOffset(V::VA_NORMAL), desc.GetAttributeOffset(V::VA_BINORMAL));
+            }
             return desc;
         }
 
@@ -263,14 +278,68 @@ namespace PerkeleRim::ModelView
             return state.flatNormal;
         }
 
-        RE::BSLightingShaderProperty* MakeShader(RE::NiSourceTexture* a_diffuse)
+        // The same with full alpha, for materials that shine: the specular strength then comes from
+        // the material alone.
+        RE::NiSourceTexture* ShinyNormal()
         {
+            if (!state.shinyNormal) {
+                constexpr std::uint32_t   kSize = 16;
+                std::vector<std::uint8_t> pixels;
+                for (std::uint32_t i = 0; i < kSize * kSize; i++) {
+                    pixels.insert(pixels.end(), { 128, 128, 255, 255 });
+                }
+                state.shinyNormal = MakeTexture({ kSize, kSize, pixels.data() }, "PerkeleRim\\ShinyNormal");
+            }
+            return state.shinyNormal;
+        }
+
+        // An NiAlphaProperty put together by hand like the textures (the game only makes them while
+        // loading a file). Flags as in vanilla NIFs: blending src alpha / inverse src alpha
+        // (0x00ED), or testing "greater than threshold" without blending (0x12EC).
+        RE::NiAlphaProperty* MakeAlpha(std::uint16_t a_flags, std::uint8_t a_threshold)
+        {
+            static REL::Relocation<std::uintptr_t> vtable{ RE::NiAlphaProperty::VTABLE[0] };
+            auto* alpha = static_cast<RE::NiAlphaProperty*>(RE::malloc(sizeof(RE::NiAlphaProperty)));
+            std::memset(alpha, 0, sizeof(*alpha));
+            *reinterpret_cast<std::uintptr_t*>(alpha) = vtable.address();
+            alpha->alphaFlags = a_flags;
+            alpha->alphaThreshold = a_threshold;
+            return alpha;
+        }
+
+        RE::NiAlphaProperty* AlphaFor(const Protocol::ModelMaterial& a_material)
+        {
+            if ((a_material.flags & Protocol::kMaterialBlend) != 0) {
+                if (!state.blendAlpha) {
+                    state.blendAlpha.reset(MakeAlpha(0x00ED, 0));
+                }
+                return state.blendAlpha.get();
+            }
+            if ((a_material.flags & Protocol::kMaterialCutout) != 0) {
+                const auto threshold = static_cast<std::uint8_t>(std::clamp(std::lround(a_material.alphaCutoff * 255.0f), 0L, 255L));
+                if (!state.cutoutAlpha[threshold]) {
+                    state.cutoutAlpha[threshold].reset(MakeAlpha(0x12EC, threshold));
+                }
+                return state.cutoutAlpha[threshold].get();
+            }
+            return nullptr;
+        }
+
+        // Unity's smoothness (0..1) as Skyrim's specular power (glossiness, about 4 to 200).
+        float SpecularPower(float a_glossiness)
+        {
+            const float g = std::clamp(a_glossiness, 0.0f, 1.0f);
+            return 4.0f + 196.0f * g * g;
+        }
+
+        RE::BSLightingShaderProperty* MakeShader(RE::NiSourceTexture* a_diffuse, const Protocol::ModelMaterial& a_material)
+        {
+            const bool  shiny = a_material.specular[0] + a_material.specular[1] + a_material.specular[2] > 0.0f;
             auto&       shaderState = *RE::BSGraphics::State::GetSingleton();
             auto*       material = RE::BSLightingShaderMaterialBase::CreateMaterial<RE::BSLightingShaderMaterial>();
             material->diffuseTexture = RE::NiPointer<RE::NiSourceTexture>(a_diffuse ? a_diffuse : shaderState.GetRuntimeData().defaultTextureWhite.get());
-            auto* flat = FlatNormal();
-            material->normalTexture = flat ? RE::NiPointer<RE::NiSourceTexture>(flat) : shaderState.GetRuntimeData().defaultTextureNormalMap;
-            material->specularColorScale = 0.0f;
+            auto* normal = shiny ? ShinyNormal() : FlatNormal();
+            material->normalTexture = normal ? RE::NiPointer<RE::NiSourceTexture>(normal) : shaderState.GetRuntimeData().defaultTextureNormalMap;
 
             auto* shader = RE::BSLightingShaderProperty::Create();
             // The material is left alive: destroying it here crashed the game, and it is a few bytes
@@ -281,14 +350,47 @@ namespace PerkeleRim::ModelView
             auto* own = static_cast<RE::BSLightingShaderMaterialBase*>(shader->material);
             own->diffuseTexture = material->diffuseTexture;
             own->normalTexture = material->normalTexture;
-            own->specularColorScale = 0.0f;
-            // No kCastShadows: thin hand-built shapes shadowed themselves in flickering streaks.
+            own->materialAlpha = 1.0f;
+            own->specularColorScale = shiny ? 1.0f : 0.0f;
+            own->specularColor = RE::NiColor(a_material.specular[0], a_material.specular[1], a_material.specular[2]);
+            own->specularPower = SpecularPower(a_material.glossiness);
+
             using F = RE::BSShaderProperty::EShaderPropertyFlag;
-            shader->flags.set(F::kReceiveShadows, F::kZBufferTest, F::kZBufferWrite);
+            const bool unlit = (a_material.flags & Protocol::kMaterialUnlit) != 0;
+            const bool glows = a_material.emissive[0] + a_material.emissive[1] + a_material.emissive[2] > 0.0f;
+            if (unlit || glows) {
+                // Lit by its own glow: white for unlit (the texture as is, give or take the scene's
+                // light on top), else the material's emissive color.
+                auto* color = static_cast<RE::NiColor*>(RE::malloc(sizeof(RE::NiColor)));
+                *color = unlit ? RE::NiColor(1.0f, 1.0f, 1.0f) : RE::NiColor(a_material.emissive[0], a_material.emissive[1], a_material.emissive[2]);
+                shader->emissiveColor = color;
+                shader->emissiveMult = 1.0f;
+                shader->flags.set(F::kOwnEmit);
+            }
+            if (shiny) {
+                shader->flags.set(F::kSpecular);
+            }
+            // No kCastShadows: thin hand-built shapes shadowed themselves in flickering streaks.
+            if ((a_material.flags & Protocol::kMaterialOverlay) != 0) {
+                // Hung just in front of the camera, so the depth test only hides it behind what is
+                // closer still; it writes no depth and takes no shadows.
+                shader->flags.set(F::kZBufferTest);
+                return shader;
+            }
+            if (!unlit) {
+                shader->flags.set(F::kReceiveShadows);
+            }
+            shader->flags.set(F::kZBufferTest);
+            if ((a_material.flags & Protocol::kMaterialBlend) == 0) {
+                shader->flags.set(F::kZBufferWrite);  // glass doesn't hide what's behind it
+            }
             return shader;
         }
 
-        RE::NiPointer<RE::BSTriShape> MakeShape(const Model::Mesh& a_mesh, RE::NiSourceTexture* a_diffuse)
+        // Opaque, lit, no highlight: meshes without a material.
+        constexpr Protocol::ModelMaterial kDefaultMaterial{};
+
+        RE::NiPointer<RE::BSTriShape> MakeShape(const Model::Mesh& a_mesh, RE::NiSourceTexture* a_diffuse, const Protocol::ModelMaterial& a_material)
         {
             auto* data = MakeBuffers(a_mesh);
             if (!data) {
@@ -304,7 +406,7 @@ namespace PerkeleRim::ModelView
             geometry.rendererData = data;
             geometry.vertexDesc = data->vertexDesc;
             geometry.skinInstance.reset();
-            geometry.alphaProperty.reset();
+            geometry.alphaProperty.reset(AlphaFor(a_material));
             auto& counts = shape->GetTrishapeRuntimeData();
             counts.vertexCount = static_cast<std::uint16_t>(a_mesh.vertexCount);
             counts.triangleCount = static_cast<std::uint16_t>(a_mesh.indexCount / 3);
@@ -319,7 +421,7 @@ namespace PerkeleRim::ModelView
             bound.center = (lo + hi) * 0.5f;
             bound.radius = (hi - lo).Length() * 0.5f;
 
-            auto* shader = MakeShader(a_diffuse);
+            auto* shader = MakeShader(a_diffuse, a_material);
             geometry.shaderProperty.reset(shader);
             shader->SetupGeometry(shape.get());
             shader->FinishSetupGeometry(shape.get());
@@ -353,6 +455,7 @@ namespace PerkeleRim::ModelView
             const auto ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
             SKSE::log::info("model view: {:08X} {} received ({} bytes, {} meshes, {} textures built in {:.1f} ms)", a_id,
                 cached->model.name, a_blob.size(), cached->model.meshes.size(), cached->textures.size(), ms);
+            state.byName[cached->model.name] = a_id;
             state.models[a_id] = std::move(cached);
             MarkBuild();
         }
@@ -389,7 +492,8 @@ namespace PerkeleRim::ModelView
         node->name = model.name.c_str();
         std::uint32_t vertices = 0, triangles = 0;
         for (const auto& mesh : model.meshes) {
-            auto shape = MakeShape(mesh, mesh.texture >= 0 ? cached.textures[mesh.texture] : nullptr);
+            auto shape = MakeShape(mesh, mesh.texture >= 0 ? cached.textures[mesh.texture] : nullptr,
+                mesh.material >= 0 ? model.materials[mesh.material] : kDefaultMaterial);
             if (!shape) {
                 continue;
             }
@@ -404,6 +508,12 @@ namespace PerkeleRim::ModelView
                 vertices, triangles);
         }
         return node;
+    }
+
+    std::uint32_t Find(std::string_view a_name)
+    {
+        const auto found = state.byName.find(a_name);
+        return found != state.byName.end() ? found->second : 0;
     }
 
     void Tick(float a_delta)

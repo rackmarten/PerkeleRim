@@ -19,9 +19,13 @@ namespace PerkeleRim::Hud
         constexpr double kNeedLabelWidth = 80.0;
         constexpr double kNeedBarWidth = 120.0, kNeedBarHeight = 8.0;
         constexpr double kNeedHigh = 0.8;       // a bar this full turns red
-        constexpr const char* kNeedNames[] = { "Thirst", "Hunger", "Stress", "Urine", "Fatigue", "Dirtiness", "Drunk" };
+        constexpr const char* kNeedNames[] = { "Thirst", "Hunger", "Stress", "Urine", "Fatigue", "Dirtiness", "Drunk", "Health" };
         // A full bar: needs run 0..100; MSC's drunk level 0..8, but 2.5 is already deadly in water.
         constexpr float kNeedFull[] = { 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 4.0f };
+        // Skyrim's health as the last row, in red: Skyrim's own meter stays hidden while MSC has the player.
+        constexpr std::size_t   kHealth = 7;
+        constexpr std::uint32_t kHealthColor = 0xC8282D;
+        constexpr std::size_t   kRows = 8;
         constexpr std::size_t kUrine = 3;
         constexpr std::uint32_t kUrineColor = 0xF2D21B, kUrineHighColor = 0xFF7A00;
         constexpr std::uint32_t kNeedColor = 0xFFFFFF, kNeedHighColor = 0xE03C3C;
@@ -31,7 +35,12 @@ namespace PerkeleRim::Hud
         constexpr double kSubtitleAbove = 200.0;  // text top, up from the visible frame's bottom edge
 
         View                       current;
-        std::array<int, 7>         drawnNeeds{};  // current.needs in 0.5 % steps of a full bar
+        std::array<int, kRows>     drawnNeeds{};  // current.needs in 0.5 % steps of a full bar
+
+        float Fraction(const View& a_view, std::size_t a_row)
+        {
+            return a_row == kHealth ? std::clamp(a_view.health, 0.0f, 1.0f) : std::clamp(a_view.needs[a_row] / kNeedFull[a_row], 0.0f, 1.0f);
+        }
 
         void Call(RE::GFxValue& a_target, const char* a_name, std::initializer_list<RE::GFxValue> a_args)
         {
@@ -172,9 +181,9 @@ namespace PerkeleRim::Hud
                 if (!a_needs.GetMember(barName.c_str(), &bar) || !bar.IsDisplayObject()) {
                     continue;
                 }
-                const double fraction = std::clamp(static_cast<double>(a_view.needs[i] / kNeedFull[i]), 0.0, 1.0);
+                const double fraction = Fraction(a_view, i);
                 const bool   high = fraction >= kNeedHigh;
-                const auto   color = i == kUrine ? (high ? kUrineHighColor : kUrineColor) : (high ? kNeedHighColor : kNeedColor);
+                const auto   color = i == kHealth ? kHealthColor : i == kUrine ? (high ? kUrineHighColor : kUrineColor) : (high ? kNeedHighColor : kNeedColor);
                 const double x0 = kNeedLabelWidth, y0 = static_cast<double>(i) * kNeedRow + 4.0;
                 Call(bar, "clear", {});
                 Fill(bar, 0x000000, 55.0, x0 - 1.0, y0 - 1.0, x0 + kNeedBarWidth + 1.0, y0 + kNeedBarHeight + 1.0);
@@ -256,11 +265,11 @@ namespace PerkeleRim::Hud
             }
         }
 
-        std::array<int, 7> Quantize(const View& a_view)
+        std::array<int, kRows> Quantize(const View& a_view)
         {
-            std::array<int, 7> q{};
+            std::array<int, kRows> q{};
             for (std::size_t i = 0; i < q.size(); i++) {
-                q[i] = static_cast<int>(std::lround(std::clamp(a_view.needs[i] / kNeedFull[i], 0.0f, 1.0f) * 200.0f));
+                q[i] = static_cast<int>(std::lround(Fraction(a_view, i) * 200.0f));
             }
             return q;
         }

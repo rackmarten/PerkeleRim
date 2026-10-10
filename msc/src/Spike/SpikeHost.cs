@@ -170,6 +170,17 @@ namespace PerkeleRim.Spike
                         if (reader != null) reader.InspectModel(lines[0].Trim().Substring(8).Trim());
                         else SpikeLog.Write("cmd: no PlayerLink");
                         break;
+                    case "shot":  // MSC's own view, next to the game
+                        var shot = Path.Combine(Path.GetDirectoryName(Application.dataPath), "PerkeleRim_shot.png");
+                        Application.CaptureScreenshot(shot);
+                        SpikeLog.Write("cmd: screenshot to " + shot);
+                        break;
+                    case "death":  // what a fatal crash sends; caught by DeathGuard while handed over
+                        PlayMakerFSM.BroadcastEvent("DEATH");
+                        break;
+                    case "grunt":  // what Skyrim's PlayerDeath plays
+                        PerkeleRim.Game.DeathGuard.PlayDeathSound();
+                        break;
                     default:
                         SpikeLog.Write("cmd: unknown command");
                         break;

@@ -5,7 +5,7 @@
 
 // Our own layer in Skyrim's HUD movie while MSC owns the player: a small dot at the screen center
 // (Skyrim hides its crosshair then), MSC's look-at prompt just below it (its hand icon for things
-// to use, and its text on a dark box so it reads in daylight), MSC's needs bars bottom left and its
+// to use, and its text on a dark box so it reads in daylight), MSC's needs bars (and Skyrim's health) bottom left and its
 // subtitle line above Skyrim's own subtitles. Main thread; the Scaleform work runs as an SKSE UI
 // task.
 namespace PerkeleRim::Hud
@@ -18,6 +18,7 @@ namespace PerkeleRim::Hud
         std::string          subtitle;          // empty = none
         bool                 hasNeeds = false;  // needs below are MSC's
         std::array<float, 7> needs{};           // PlayerState.needs, kNeed* order
+        float                health = 0.0f;     // Skyrim's health, 0..1 of its max, under the needs
     };
 
     // Only queues work when something visible changed, or with a_refresh (rebuilds the layer if

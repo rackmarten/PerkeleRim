@@ -196,6 +196,24 @@ namespace PerkeleRim.Game
             Shift(delta);
         }
 
+        // A vehicle this far (meters) below the island surface under it went through it (a hard
+        // crash into a thin streamed collider). Left there it sank on, the player in it dragged
+        // thousands of units under Skyrim's ground, and Skyrim took that for a teleport every frame.
+        const float FellThroughDepth = 1.5f;
+
+        void PutBackOnTop(Vector3 ground)
+        {
+            Shift(new Vector3(0f, ground.y + ParkClearance - car.position.y, 0f));
+            car.rotation = Quaternion.Euler(0f, car.eulerAngles.y, 0f);
+            if (body != null)
+            {
+                body.rotation = car.rotation;
+                body.velocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+            }
+            log($"vehicle: the {driverName} fell through the island, put back on its wheels on top");
+        }
+
         // Call every LateUpdate. playing: MSC owns the player and it stands on the current island.
         public void Update(bool playing, Transform player, Vector3 playerFeet)
         {
@@ -229,7 +247,9 @@ namespace PerkeleRim.Game
             if (Time.realtimeSinceStartup >= nextGroundCheck)
             {
                 nextGroundCheck = Time.realtimeSinceStartup + GroundCheckEvery;
-                Hold(!findGround(car.position).HasValue);
+                var ground = findGround(car.position);
+                Hold(!ground.HasValue);
+                if (ground.HasValue && ground.Value.y - car.position.y > FellThroughDepth) PutBackOnTop(ground.Value);
             }
 
             state.flags = Wire.VehicleValid | (driven ? Wire.VehicleDriven : 0);

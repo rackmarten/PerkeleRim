@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 11;
+    inline constexpr std::uint32_t kProtocolVersion = 12;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -103,6 +103,7 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPlayerValid = 0x1;   // PlayerState.flags: MSC is simulating the player
     inline constexpr std::uint32_t kPlayerCamera = 0x2;  // PlayerState.flags: eye, roll and fov are set
     inline constexpr std::uint32_t kPlayerNeeds = 0x4;   // PlayerState.flags: needs are set
+    inline constexpr std::uint32_t kPlayerGrounded = 0x8;  // PlayerState.flags: MSC's player stands on something
 
     // PlayerState.needs order, MSC's globals: PlayerThirst, PlayerHunger, PlayerStress, PlayerUrine,
     // PlayerFatigue, PlayerDirtiness (0..100, stress can go past it) and PlayerDrunk (0..8).
@@ -313,6 +314,8 @@ namespace PerkeleRim::Protocol
         Subtitle = 4,          // MSC -> Skyrim
         GiveBeer = 5,          // Skyrim -> MSC
         ModelChunk = 6,        // MSC -> Skyrim
+        PlayerDamage = 7,      // MSC -> Skyrim
+        PlayerDeath = 8,       // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -378,6 +381,25 @@ namespace PerkeleRim::Protocol
         std::uint32_t reserved;
     };
 
+    // PlayerDamage: something hit MSC's player that MSC would have died of (a crash, drowning). MSC
+    // never lets its player die while Skyrim has handed it over; Skyrim's health takes the hit
+    // instead, severity 1 being one such death.
+    inline constexpr std::uint32_t kDamageCrash = 1;  // PlayerDamage.cause: MSC's DEATH event (vehicle crashes)
+    inline constexpr std::uint32_t kDamageOther = 2;  // PlayerDamage.cause: MSC started its death screen some other way
+
+    struct PlayerDamage
+    {
+        std::uint32_t cause;  // kDamage*
+        float         severity;
+    };
+
+    // PlayerDeath: the player died in Skyrim while MSC had it (MSC plays its death sound). Skyrim
+    // takes the player back right before sending it. Payload: this struct, all zero.
+    struct PlayerDeath
+    {
+        std::uint32_t reserved[2];
+    };
+
     // ---- Models (MSC -> Skyrim) ----
     //
     // MSC sends its own meshes and textures, read from the running game, and Skyrim builds them in
@@ -402,16 +424,18 @@ namespace PerkeleRim::Protocol
     };
 
     // The blob: this header, textureCount textures (ModelTexture, then width * height RGBA8 pixels,
-    // top row first), then meshCount meshes (ModelMesh, then vertexCount ModelVertex, then indexCount
-    // uint16 triangle indices). Positions and normals are relative to the model's root, in Skyrim axes
-    // and units. Front faces wind counterclockwise seen from the front (cross(b - a, c - a) points out),
-    // like CollisionChunk. UV (0, 0) is the texture's top left corner.
+    // top row first), then materialCount ModelMaterial, then meshCount meshes (ModelMesh, then
+    // vertexCount ModelVertex, then indexCount uint16 triangle indices). Positions and normals are
+    // relative to the model's root, in Skyrim axes and units. Front faces wind counterclockwise seen
+    // from the front (cross(b - a, c - a) points out), like CollisionChunk. UV (0, 0) is the texture's
+    // top left corner.
     struct ModelHeader
     {
         char          name[48];  // kModelNameMax
         std::uint32_t textureCount;
         std::uint32_t meshCount;
-        std::uint32_t reserved[2];
+        std::uint32_t materialCount;
+        std::uint32_t reserved;
     };
 
     struct ModelTexture
@@ -422,13 +446,30 @@ namespace PerkeleRim::Protocol
         std::uint32_t reserved;
     };
 
+    // How a mesh is drawn, from MSC's material. MSC bakes its color tint (and a metal's darker
+    // diffuse) into the texture, so the texture is the final diffuse color and alpha.
+    inline constexpr std::uint32_t kMaterialCutout = 0x1;   // ModelMaterial.flags: alpha below alphaCutoff isn't drawn
+    inline constexpr std::uint32_t kMaterialBlend = 0x2;    // ModelMaterial.flags: alpha blended (glass, overlays)
+    inline constexpr std::uint32_t kMaterialUnlit = 0x4;    // ModelMaterial.flags: shows its texture as is, no lighting
+    inline constexpr std::uint32_t kMaterialOverlay = 0x8;  // ModelMaterial.flags: drawn over everything (no depth test)
+
+    struct ModelMaterial
+    {
+        std::uint32_t flags;        // kMaterial*
+        float         alphaCutoff;  // 0..1, with kMaterialCutout
+        float         specular[3];  // highlight color, 0 = none
+        float         glossiness;   // 0 (broad highlight) .. 1 (sharp)
+        float         emissive[3];  // glow color added to the lighting
+        std::uint32_t reserved;
+    };
+
     struct ModelMesh
     {
         char          name[48];     // kModelNameMax: the MSC object's path below the model's root
         std::int32_t  texture;      // diffuse texture index, -1 = none
         std::uint32_t vertexCount;  // <= kModelMeshVertexMax
         std::uint32_t indexCount;   // 3 per triangle
-        std::uint32_t reserved;
+        std::int32_t  material;     // material index, -1 = default (opaque, lit, no highlight)
     };
 
     struct ModelVertex
@@ -510,17 +551,27 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(WorldspaceChange, vehicleHeading) == 44);
     static_assert(sizeof(LookAtText) == 8);
     static_assert(sizeof(GiveBeer) == 8);
+    static_assert(sizeof(PlayerDamage) == 8);
+    static_assert(offsetof(PlayerDamage, severity) == 4);
+    static_assert(sizeof(PlayerDeath) == 8);
     static_assert(sizeof(ModelChunk) == 16);
     static_assert(offsetof(ModelChunk, offset) == 8);
     static_assert(sizeof(ModelHeader) == 64);
     static_assert(offsetof(ModelHeader, textureCount) == 48);
     static_assert(offsetof(ModelHeader, meshCount) == 52);
+    static_assert(offsetof(ModelHeader, materialCount) == 56);
     static_assert(sizeof(ModelTexture) == 16);
     static_assert(offsetof(ModelTexture, format) == 8);
+    static_assert(sizeof(ModelMaterial) == 40);
+    static_assert(offsetof(ModelMaterial, alphaCutoff) == 4);
+    static_assert(offsetof(ModelMaterial, specular) == 8);
+    static_assert(offsetof(ModelMaterial, glossiness) == 20);
+    static_assert(offsetof(ModelMaterial, emissive) == 24);
     static_assert(sizeof(ModelMesh) == 64);
     static_assert(offsetof(ModelMesh, texture) == 48);
     static_assert(offsetof(ModelMesh, vertexCount) == 52);
     static_assert(offsetof(ModelMesh, indexCount) == 56);
+    static_assert(offsetof(ModelMesh, material) == 60);
     static_assert(sizeof(ModelVertex) == 32);
     static_assert(offsetof(ModelVertex, normal) == 12);
     static_assert(offsetof(ModelVertex, uv) == 24);

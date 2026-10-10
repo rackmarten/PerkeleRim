@@ -26,6 +26,7 @@ namespace PerkeleRim::Model
     {
         std::string                   name;
         std::int32_t                  texture;  // index into Model::textures, -1 = none
+        std::int32_t                  material;  // index into Model::materials, -1 = default
         const Protocol::ModelVertex*  vertices;  // unaligned: copy before use where alignment matters
         std::uint32_t                 vertexCount;
         const std::uint8_t*           indices;   // indexCount little-endian uint16
@@ -47,8 +48,9 @@ namespace PerkeleRim::Model
     struct Model
     {
         std::string          name;
-        std::vector<Texture> textures;
-        std::vector<Mesh>    meshes;
+        std::vector<Texture>                 textures;
+        std::vector<Protocol::ModelMaterial> materials;
+        std::vector<Mesh>                    meshes;
     };
 
     inline std::string Name(const char (&a_field)[Protocol::kModelNameMax])
@@ -93,10 +95,18 @@ namespace PerkeleRim::Model
             model.textures.push_back({ texture.width, texture.height, a_blob + at });
             at += bytes;
         }
+        for (std::uint32_t i = 0; i < header.materialCount; i++) {
+            Protocol::ModelMaterial material{};
+            if (!take(&material, sizeof(material))) {
+                return std::nullopt;
+            }
+            model.materials.push_back(material);
+        }
         for (std::uint32_t i = 0; i < header.meshCount; i++) {
             Protocol::ModelMesh mesh{};
             if (!take(&mesh, sizeof(mesh)) || mesh.vertexCount > Protocol::kModelMeshVertexMax || mesh.indexCount % 3 != 0 ||
-                mesh.texture < -1 || mesh.texture >= static_cast<std::int32_t>(header.textureCount)) {
+                mesh.texture < -1 || mesh.texture >= static_cast<std::int32_t>(header.textureCount) || mesh.material < -1 ||
+                mesh.material >= static_cast<std::int32_t>(header.materialCount)) {
                 return std::nullopt;
             }
             const std::size_t vertexBytes = static_cast<std::size_t>(mesh.vertexCount) * sizeof(Protocol::ModelVertex);
@@ -104,7 +114,7 @@ namespace PerkeleRim::Model
             if (a_size - at < vertexBytes + indexBytes) {
                 return std::nullopt;
             }
-            Mesh out{ Name(mesh.name), mesh.texture, reinterpret_cast<const Protocol::ModelVertex*>(a_blob + at),
+            Mesh out{ Name(mesh.name), mesh.texture, mesh.material, reinterpret_cast<const Protocol::ModelVertex*>(a_blob + at),
                 mesh.vertexCount, a_blob + at + vertexBytes, mesh.indexCount };
             at += vertexBytes + indexBytes;
             for (std::uint32_t k = 0; k < out.indexCount; k++) {
