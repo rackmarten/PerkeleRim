@@ -29,6 +29,13 @@ namespace PerkeleRim.Game
         static float lastHit = -100f;
         static uint pendingCause;
         static float pendingSeverity;
+        // A crash MSC survives (CrashSensor), held back FatalWindow seconds: if MSC kills on the same hit,
+        // its death replaces it.
+        const float FatalWindow = 0.3f;
+        static float pendingCrash;
+        static float crashAt = -100f;
+        static float lastImpact, lastImpactAt = -100f;
+        static bool crashTaken;
         static GameObject death;  // Systems/Death, inactive until MSC kills the player
 
         public static void Install(Action<string> log)
@@ -77,7 +84,9 @@ namespace PerkeleRim.Game
             blockedLogged = 0;
             pendingCause = cause;
             pendingSeverity += 1f;
-            log($"death: MSC would have died ({what}), Skyrim takes the hit");
+            log($"death: MSC would have died ({what}), Skyrim takes the hit"
+                + (now - lastImpactAt < 2f ? $", last impact {lastImpact:0.0} m/s {now - lastImpactAt:0.00} s before" : ""));
+            if (now - crashAt < FatalWindow) pendingCrash = 0f;
         }
 
         // Where each vehicle's DriverHeadPivot (the driver's head and camera, PLAYER inside while
@@ -136,6 +145,7 @@ namespace PerkeleRim.Game
             if (!Active)
             {
                 pendingSeverity = 0f;  // Skyrim has the player back; an old hit must not land on the next handover
+                pendingCrash = 0f;
                 return;
             }
             PutDriversBack();
@@ -158,14 +168,34 @@ namespace PerkeleRim.Game
             Hit(Wire.DamageOther, "Systems/Death came on:" + (causes.Length > 0 ? causes : " no cause set"));
         }
 
-        // A hit for Skyrim, if MSC would have died since the last one went out.
-        public static bool TakeDamage(out PlayerDamage damage)
+        // CrashSensor measured an impact on the driven vehicle (m/s) and what it costs (0 = nothing).
+        public static void Impact(float impact, float severity)
         {
-            damage = new PlayerDamage { cause = pendingCause, severity = pendingSeverity };
-            return pendingSeverity > 0f;
+            if (!Active) return;
+            float now = Time.realtimeSinceStartup;
+            lastImpact = impact;
+            lastImpactAt = now;
+            if (severity <= 0f) return;
+            if (now - lastHit < HitCooldown) return;  // the hit MSC just died of, already counted
+            pendingCrash = Math.Max(pendingCrash, severity);
+            crashAt = now;
         }
 
-        public static void DamageSent() => pendingSeverity = 0f;
+        // A hit for Skyrim: what MSC would have died of since the last one went out, plus a crash it
+        // survived once MSC had its chance to call it fatal.
+        public static bool TakeDamage(out PlayerDamage damage)
+        {
+            crashTaken = pendingCrash > 0f && Time.realtimeSinceStartup - crashAt >= FatalWindow;
+            float severity = pendingSeverity + (crashTaken ? pendingCrash : 0f);
+            damage = new PlayerDamage { cause = pendingSeverity > 0f ? pendingCause : Wire.DamageCrash, severity = severity };
+            return severity > 0f;
+        }
+
+        public static void DamageSent()
+        {
+            pendingSeverity = 0f;
+            if (crashTaken) pendingCrash = 0f;
+        }
 
         static AudioSource voice;  // on MSC's listener, so the grunt is heard wherever the player is
 

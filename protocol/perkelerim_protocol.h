@@ -409,10 +409,11 @@ namespace PerkeleRim::Protocol
         std::uint32_t reserved;
     };
 
-    // PlayerDamage: something hit MSC's player that MSC would have died of (a crash, drowning). MSC
-    // never lets its player die while Skyrim has handed it over; Skyrim's health takes the hit
-    // instead, severity 1 being one such death.
-    inline constexpr std::uint32_t kDamageCrash = 1;  // PlayerDamage.cause: MSC's DEATH event (vehicle crashes)
+    // PlayerDamage: something hit MSC's player that MSC would have died of (a crash, drowning), or a
+    // crash it survives (a jump, a flip, a rock; severity below 1, scaled by the impact). MSC never
+    // lets its player die while Skyrim has handed it over; Skyrim's health takes the hit instead,
+    // severity 1 being one such death.
+    inline constexpr std::uint32_t kDamageCrash = 1;  // PlayerDamage.cause: a vehicle crash (MSC's DEATH event, or a survivable one)
     inline constexpr std::uint32_t kDamageOther = 2;  // PlayerDamage.cause: MSC started its death screen some other way
 
     struct PlayerDamage

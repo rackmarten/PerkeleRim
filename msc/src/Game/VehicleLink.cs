@@ -65,6 +65,12 @@ namespace PerkeleRim.Game
         // wheels may only see some layers, and grip may come from its material or tag. Null until known.
         public Collider Ground { get; private set; }
 
+        // For CrashSensor: the vehicle's body, its name, and a count of the times it was moved or held
+        // by hand (its velocity jumps then without a hit).
+        public Rigidbody Body => body;
+        public string Name => driverName;
+        public int Moves { get; private set; }
+
         bool PlayerDriving
         {
             get
@@ -82,6 +88,7 @@ namespace PerkeleRim.Game
             if (go == null) return;
             car = go.transform;
             body = go.GetComponent<Rigidbody>();
+            Moves++;
             placedGeneration = 0;
             held = false;
             Ground = ColliderBelow(car);
@@ -182,6 +189,7 @@ namespace PerkeleRim.Game
         {
             if (car == null) return;
             car.position += delta;
+            Moves++;
             if (body != null) body.position = car.position;
         }
 
@@ -284,6 +292,7 @@ namespace PerkeleRim.Game
                 ground = FlatSpot(feet, yaw) ?? findGround(spot);
             }
             spot = (ground ?? spot) + Vector3.up * ParkClearance;
+            Moves++;
             car.position = spot;
             car.rotation = yaw;
             if (body != null)
@@ -342,6 +351,7 @@ namespace PerkeleRim.Game
         {
             if (body == null || hold == held) return;
             held = hold;
+            Moves++;
             if (hold)
             {
                 heldVelocity = body.velocity;

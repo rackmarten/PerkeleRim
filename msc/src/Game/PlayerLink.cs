@@ -74,6 +74,8 @@ namespace PerkeleRim.Game
         PlayMakerFSM crouch;
 
         uint fixedFrame;
+        CrashSensor crash;
+        bool playing;  // as of the last LateUpdate: MSC owns the player and it stands on the current island
         bool haveLastFeet;
         Vector3 lastFeet;
         Vec3 velocity;  // Skyrim units per second
@@ -90,6 +92,7 @@ namespace PerkeleRim.Game
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
             hands = new HandLayerSender(log);
+            crash = new CrashSensor(log);
             DeathGuard.Install(log);
         }
 
@@ -133,12 +136,19 @@ namespace PerkeleRim.Game
         void FixedUpdate()
         {
             fixedFrame++;
+            crash.Step(playing && player != null ? Driven() : null);
             if (player == null) { haveLastFeet = false; return; }
             var feet = Feet();
             if (haveLastFeet)
                 velocity = Coords.UnityToSkyrim(ToVec3((feet - lastFeet) / Time.fixedDeltaTime));
             lastFeet = feet;
             haveLastFeet = true;
+        }
+
+        VehicleLink Driven()
+        {
+            foreach (var v in vehicles) if (v.Carries(player)) return v;
+            return null;
         }
 
         // LateUpdate: after MSC's scripts moved and turned the player this frame. Messages are
@@ -170,7 +180,7 @@ namespace PerkeleRim.Game
             var state = new PlayerState { frame = fixedFrame };
             if (owned) CloseMenu();
 
-            bool playing = owned && player != null && island.HasAnchor && placedGeneration == island.Generation;
+            playing = owned && player != null && island.HasAnchor && placedGeneration == island.Generation;
             MotorBoost.Active = playing;
             DeathGuard.Active = owned;
             DeathGuard.Update();
