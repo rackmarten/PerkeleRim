@@ -82,9 +82,4 @@ namespace PerkeleRim::Garage
         }
         return Spot{ state.van->GetPosition(), state.van->GetAngleZ() };
     }
-
-    bool Owns(const RE::TESObjectREFR* a_ref)
-    {
-        return state.file && a_ref && a_ref->GetFile(0) == state.file;
-    }
 }

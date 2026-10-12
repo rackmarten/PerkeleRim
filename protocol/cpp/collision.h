@@ -1,13 +1,15 @@
-// Collision chunk geometry: the chunk grid and turning a sampled heightfield into a
-// CollisionChunk payload. Used by the SKSE sampler, tested standalone. The MSC side parses the
-// payload in msc/src/Link/CollisionChunk.cs.
+// Collision chunk geometry: the chunk grid and turning a sampled terrain heightfield plus the
+// statics' own collision triangles into a CollisionChunk payload. Used by the SKSE sampler, tested
+// standalone. The MSC side parses the payload in msc/src/Link/CollisionChunk.cs.
 
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <map>
 #include <vector>
 
 #include "../perkelerim_protocol.h"
@@ -52,11 +54,18 @@ namespace PerkeleRim::Collision
         }
     };
 
-    // CollisionChunk payload for a heightfield: a vertex per hit sample, two triangles per grid
-    // cell, and a triangle only where all three corners were hit, so misses leave holes instead
-    // of spikes. The origin is the chunk's corner at the lowest hit height, which keeps the
-    // relative vertices small.
-    inline std::vector<std::uint8_t> BuildChunkPayload(const Heightfield& a_field, std::uint32_t a_worldspace, std::uint32_t a_generation)
+    // Unity 5's meshes index vertices with 16 bits, so MSC can't build a chunk with more.
+    constexpr std::uint32_t kMaxChunkVertices = 65000;
+
+    // CollisionChunk payload for a heightfield and a triangle soup. The heightfield gives a vertex
+    // per hit sample, two triangles per grid cell, and a triangle only where all three corners
+    // were hit, so misses leave holes instead of spikes. The statics are 9 floats per triangle
+    // (three Skyrim world positions, counterclockwise seen from outside), appended with
+    // identical vertices shared; triangles that would go past kMaxChunkVertices are left out and
+    // counted in a_dropped. The origin is the chunk's corner at the lowest height, which keeps
+    // the relative vertices small.
+    inline std::vector<std::uint8_t> BuildChunkPayload(const Heightfield& a_field, std::uint32_t a_worldspace, std::uint32_t a_generation,
+        const std::vector<float>& a_statics = {}, std::uint32_t* a_dropped = nullptr)
     {
         const std::uint32_t side = a_field.Side();
         float               minZ = 0.0f;
@@ -64,6 +73,12 @@ namespace PerkeleRim::Collision
         for (std::uint32_t k = 0; k < a_field.Samples(); k++) {
             if (a_field.hit[k] && (!any || a_field.heights[k] < minZ)) {
                 minZ = a_field.heights[k];
+                any = true;
+            }
+        }
+        for (std::size_t v = 2; v < a_statics.size(); v += 3) {
+            if (!any || a_statics[v] < minZ) {
+                minZ = a_statics[v];
                 any = true;
             }
         }
@@ -108,6 +123,26 @@ namespace PerkeleRim::Collision
                 triangle(a, b, c);
                 triangle(b, d, c);
             }
+        }
+
+        std::map<std::array<float, 3>, std::uint32_t> shared;
+        std::uint32_t                                 dropped = 0;
+        for (std::size_t t = 0; t + 9 <= a_statics.size(); t += 9) {
+            if (vertices.size() / 3 + 3 > kMaxChunkVertices) {
+                dropped++;
+                continue;
+            }
+            for (int c = 0; c < 3; c++) {
+                const std::array<float, 3> p{ a_statics[t + c * 3] - header.origin[0], a_statics[t + c * 3 + 1] - header.origin[1], a_statics[t + c * 3 + 2] - minZ };
+                const auto [it, fresh] = shared.try_emplace(p, static_cast<std::uint32_t>(vertices.size() / 3));
+                if (fresh) {
+                    vertices.insert(vertices.end(), p.begin(), p.end());
+                }
+                indices.push_back(it->second);
+            }
+        }
+        if (a_dropped) {
+            *a_dropped = dropped;
         }
 
         header.vertexCount = static_cast<std::uint32_t>(vertices.size() / 3);

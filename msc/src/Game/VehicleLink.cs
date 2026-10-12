@@ -70,6 +70,7 @@ namespace PerkeleRim.Game
         public Rigidbody Body => body;
         public string Name => driverName;
         public string ObjectName => objectName;
+        public Vector3 Position => car != null ? car.position : Vector3.zero;
         public int Moves { get; private set; }
 
         bool PlayerDriving

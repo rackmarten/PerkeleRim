@@ -2,6 +2,7 @@
 // Documents/My Games/Skyrim Special Edition/SKSE/PerkeleRim.log.
 
 #include "autoload/Autoload.h"
+#include "collision/CollisionSampler.h"
 #include "death/Death.h"
 #include "drink/Drink.h"
 #include "garage/Garage.h"
@@ -27,6 +28,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::PlayerSync::OnDataLoaded();
             PerkeleRim::Garage::OnDataLoaded();
             PerkeleRim::Drink::OnDataLoaded();
+            PerkeleRim::CollisionSampler::OnDataLoaded();
             PerkeleRim::Autoload::OnDataLoaded();
         } else if (a_msg->type == SKSE::MessagingInterface::kPreLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
             PerkeleRim::Death::Hide();  // the reload after a death

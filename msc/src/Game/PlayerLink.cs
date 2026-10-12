@@ -35,6 +35,11 @@ namespace PerkeleRim.Game
         const int KeepRadius = 6;
         // Rays looking for the ground under a new anchor start this far above it.
         const float GroundSearch = 50f;
+        // How often CatchFall looks, and how far above the feet a surface may be and still count
+        // as the one the player stands on.
+        const float FallCheckEvery = 0.25f;
+        const float FallSlack = 0.3f;
+        const float ThrownDistance = 6f;
 
         readonly Island island = new Island();
         readonly InputFrame input = new InputFrame();
@@ -55,6 +60,8 @@ namespace PerkeleRim.Game
         uint placedGeneration;  // island generation the player was put down for; 0 = none
         uint holdingGeneration;  // generation the player is held for while its ground loads
         float holdSince;
+        float nextFallCheck;
+        float lastThrownLog = -10f;
         bool holdLogged;
         Behaviour motor;
         bool motorDisabled;
@@ -184,6 +191,7 @@ namespace PerkeleRim.Game
             if (owned) CloseMenu();
 
             playing = owned && player != null && island.HasAnchor && placedGeneration == island.Generation;
+            if (playing) CatchFall();
             MotorBoost.Active = playing;
             DeathGuard.Active = owned;
             DeathGuard.Update();
@@ -473,15 +481,64 @@ namespace PerkeleRim.Game
         bool FindGround(Vector3 p, out Vector3 ground)
         {
             ground = p;
-            if (islandObject == null) return false;
             bool found = false;
-            foreach (var hit in Physics.RaycastAll(p + Vector3.up * GroundSearch, Vector3.down, GroundSearch * 2f))
+            foreach (var y in IslandSurfaces(p))
             {
-                if (hit.collider.transform.parent != islandObject.transform) continue;
-                if (!found || Mathf.Abs(hit.point.y - p.y) < Mathf.Abs(ground.y - p.y)) ground = hit.point;
+                if (!found || Mathf.Abs(y - p.y) < Mathf.Abs(ground.y - p.y)) ground = new Vector3(p.x, y, p.z);
                 found = true;
             }
             return found;
+        }
+
+        // Heights of every upward-facing island surface within GroundSearch above or below p, top
+        // first. A chunk holds the land and the statics in one collider, and RaycastAll reports one
+        // hit per collider, so this casts again from just below each hit.
+        readonly List<float> surfaces = new List<float>();
+        List<float> IslandSurfaces(Vector3 p)
+        {
+            surfaces.Clear();
+            if (islandObject == null) return surfaces;
+            var from = p + Vector3.up * GroundSearch;
+            float bottom = p.y - GroundSearch;
+            RaycastHit hit;
+            for (int i = 0; i < 32 && from.y > bottom && Physics.Raycast(from, Vector3.down, out hit, from.y - bottom); i++)
+            {
+                if (hit.collider.transform.parent == islandObject.transform) surfaces.Add(hit.point.y);
+                from = hit.point + Vector3.down * 0.01f;
+            }
+            return surfaces;
+        }
+
+        // Puts the player back on top when it has fallen through the island: no island surface
+        // under its feet any more, but one above (stepped out of a vehicle into a rock, whose
+        // inside isn't solid, and slipped below the land). The nearest surface above is the land
+        // or floor it fell through.
+        // A seated player more than ThrownDistance from its vehicle was thrown out of it (a crash
+        // flings the seat pivots; DeathGuard puts the ones it knows back) and is checked too.
+        void CatchFall()
+        {
+            if (Time.realtimeSinceStartup < nextFallCheck) return;
+            nextFallCheck = Time.realtimeSinceStartup + FallCheckEvery;
+            var feet = Feet();
+            var carrier = Array.Find(vehicles, v => v.Carries(player));
+            if (carrier != null)
+            {
+                float away = Vector3.Distance(feet, carrier.Position);
+                if (away < ThrownDistance) return;
+                if (Time.realtimeSinceStartup - lastThrownLog > 1f)
+                {
+                    lastThrownLog = Time.realtimeSinceStartup;
+                    log($"player: seated in the {carrier.Name} but {away:0.0} m from it, path {ItemLink.Path(player)}");
+                }
+            }
+            var heights = IslandSurfaces(feet);
+            if (heights.Count == 0 || heights[heights.Count - 1] <= feet.y + FallSlack) return;  // ground below, or no island here
+            float above = heights[heights.Count - 1];  // the lowest, all of them above the feet
+            player.position += new Vector3(0f, above + SpawnClearance - feet.y, 0f);
+            var body = player.GetComponent<Rigidbody>();
+            if (body != null && !body.isKinematic) body.velocity = Vector3.zero;
+            haveLastFeet = false;
+            log($"player: fell through the island at ({feet.x:0.00},{feet.y:0.00},{feet.z:0.00}), put back on top at {above:0.00}");
         }
 
         void SetMotor(bool on)

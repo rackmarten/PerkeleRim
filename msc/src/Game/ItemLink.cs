@@ -299,7 +299,7 @@ namespace PerkeleRim.Game
             return false;
         }
 
-        static string Path(Transform t)
+        internal static string Path(Transform t)
         {
             string path = t.name;
             for (var p = t.parent; p != null; p = p.parent) path = p.name + "/" + path;

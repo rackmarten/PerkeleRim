@@ -1,7 +1,7 @@
 #include "collision/CollisionSampler.h"
 
 #include "collision.h"
-#include "garage/Garage.h"
+#include "collision/StaticMeshes.h"
 #include "link/LinkService.h"
 
 namespace PerkeleRim::CollisionSampler
@@ -19,38 +19,26 @@ namespace PerkeleRim::CollisionSampler
         constexpr float         kMaxAhead = 2.0f * Protocol::kCollisionChunkUnits;  // ... but at most 2 chunks
         constexpr float         kRayAbove = 10000.0f;  // rays run from this far above the player...
         constexpr float         kRayBelow = 10000.0f;  // ...to this far below
-        constexpr int           kMaxPassThrough = 8;   // unwanted surfaces a ray may pass through
+        constexpr int           kMaxPassThrough = 32;  // other surfaces a ray may pass through on its way to the terrain (roofs, floors, bridges)
         constexpr auto          kBudget = 2ms;         // sampling time per frame
-        constexpr auto          kRetryAfter = 2s;      // before sampling a chunk with holes again
+        constexpr auto          kRetryAfter = 2s;      // before sampling an unfinished chunk again
         constexpr int           kMaxTries = 5;
-
-        bool Wanted(Layer a_layer)
-        {
-            switch (a_layer) {
-            case Layer::kStatic:
-            case Layer::kAnimStatic:
-            case Layer::kTerrain:
-            case Layer::kGround:
-            case Layer::kTrees:
-            case Layer::kStairHelper:
-                return true;
-            default:
-                return false;
-            }
-        }
+        constexpr auto          kDoorSwing = 1500ms;   // a door's collision is where it stops after this
+        constexpr float         kDoorReach = 256.0f;   // chunks this close to a door that moved are read again
 
         using Key = std::pair<std::int32_t, std::int32_t>;
 
         struct Known
         {
-            std::uint32_t     sentHits = 0;
+            std::uint32_t     sentScore = 0;  // terrain hits + static triangles in what MSC has
+            bool              done = false;   // terrain complete and every static's 3D was in
             int               tries = 0;
             Clock::time_point retryAt{};
         };
 
         struct Stats
         {
-            int terrain = 0, statics = 0, trees = 0, passed = 0;
+            int terrain = 0, passed = 0;
             int frames = 0;
             Clock::duration time{};
         };
@@ -63,6 +51,7 @@ namespace PerkeleRim::CollisionSampler
             std::map<Key, Known> known;
 
             bool                 sampling = false;
+            bool                 interior = false;  // no terrain: the chunk is its statics only
             Collision::Heightfield field;
             std::uint32_t        next = 0;  // next sample index in field
             float                rayTop = 0.0f;
@@ -71,7 +60,9 @@ namespace PerkeleRim::CollisionSampler
 
             std::vector<std::uint8_t> pending;  // payload waiting for room in the ring
             Key                       pendingKey{};
-            std::uint32_t             pendingHits = 0;
+            std::uint32_t             pendingScore = 0;
+
+            std::vector<std::pair<RE::NiPoint3, Clock::time_point>> doors;  // doors that moved, and when they will have stopped
         } state;
 
         // Chunk offsets around the player's chunk, nearest first.
@@ -96,18 +87,19 @@ namespace PerkeleRim::CollisionSampler
         }
 
         // The player's chunks first, then those around the point ahead of it; nearest first in each.
-        bool Pick(const Key& a_center, const Key& a_ahead, const RE::NiPoint3& a_player)
+        bool Pick(const Key& a_center, const Key& a_ahead, const RE::NiPoint3& a_player, bool a_interior)
         {
             const auto now = Clock::now();
             for (const Key& center : { a_center, a_ahead }) {
                 for (const auto& [dx, dy] : Order()) {
                     const Key  key{ center.first + dx, center.second + dy };
                     const auto it = state.known.find(key);
-                    if (it != state.known.end() && (it->second.sentHits >= kSamples || it->second.tries >= kMaxTries || now < it->second.retryAt)) {
+                    if (it != state.known.end() && (it->second.done || it->second.tries >= kMaxTries || now < it->second.retryAt)) {
                         continue;
                     }
                     state.field.Reset(key.first, key.second, kCells);
-                    state.next = 0;
+                    state.interior = a_interior;
+                    state.next = a_interior ? state.field.Samples() : 0;  // interiors have no terrain to sample
                     state.rayTop = a_player.z + kRayAbove;
                     state.rayBottom = a_player.z - kRayBelow;
                     state.stats = {};
@@ -118,7 +110,22 @@ namespace PerkeleRim::CollisionSampler
             return false;
         }
 
-        // Top wanted surface under (x, y), passing through clutter, actors and the like.
+        // The landscape: the terrain layer, or in some cells the ground layer, which then belongs to
+        // no reference (statics on the ground layer come with the statics).
+        bool IsLand(const RE::hkpCollidable& a_collidable)
+        {
+            switch (a_collidable.GetCollisionLayer()) {
+            case Layer::kTerrain:
+                return true;
+            case Layer::kGround:
+                return !RE::TESHavokUtilities::FindCollidableRef(a_collidable);
+            default:
+                return false;
+            }
+        }
+
+        // Land height under (x, y), passing through everything else: statics come as their own
+        // triangles, clutter, actors and water stay out.
         bool Cast(const RE::hkpWorld* a_world, float a_x, float a_y, float& a_z)
         {
             const float              scale = RE::bhkWorld::GetWorldScale();
@@ -134,10 +141,9 @@ namespace PerkeleRim::CollisionSampler
                     return false;
                 }
                 const float z = top + (state.rayBottom - top) * output.hitFraction;
-                const auto  layer = output.rootCollidable->GetCollisionLayer();
-                if (Wanted(layer) && !Garage::Owns(RE::TESHavokUtilities::FindCollidableRef(*output.rootCollidable))) {
+                if (IsLand(*output.rootCollidable)) {
                     a_z = z;
-                    (layer == Layer::kTerrain ? state.stats.terrain : layer == Layer::kTrees ? state.stats.trees : state.stats.statics)++;
+                    state.stats.terrain++;
                     return true;
                 }
                 state.stats.passed++;
@@ -154,7 +160,7 @@ namespace PerkeleRim::CollisionSampler
             if (!LinkService::Get().Send(Protocol::MessageType::CollisionChunk, state.pending.data(), static_cast<std::uint32_t>(state.pending.size()))) {
                 return false;
             }
-            state.known[state.pendingKey].sentHits = state.pendingHits;
+            state.known[state.pendingKey].sentScore = state.pendingScore;
             state.pending.clear();
             return true;
         }
@@ -165,23 +171,82 @@ namespace PerkeleRim::CollisionSampler
             const auto& f = state.field;
             const Key   key{ f.chunkX, f.chunkY };
             auto&       known = state.known[key];
-            const auto  hits = f.Hits();
             known.tries++;
             known.retryAt = Clock::now() + kRetryAfter;
 
-            const bool improved = hits > known.sentHits;
-            SKSE::log::info(
-                "collision: chunk ({},{}) gen {} try {}: {}/{} hit (terrain {}, static {}, trees {}, passed through {}), {:.1f} ms over {} frames{}",
-                key.first, key.second, state.generation, known.tries, hits, f.Samples(), state.stats.terrain, state.stats.statics,
-                state.stats.trees, state.stats.passed, std::chrono::duration<double, std::milli>(state.stats.time).count(),
-                state.stats.frames, improved ? ", sent" : ", nothing new");
-            if (!improved) {
-                return;
+            const auto start = Clock::now();
+            const auto statics = StaticMeshes::Collect(key.first, key.second);
+            const auto collect = Clock::now() - start;
+            const auto hits = f.Hits();
+            const auto triangles = static_cast<std::uint32_t>(statics.triangles.size() / 9);
+            const auto score = hits + triangles;
+            // A few land samples always miss (terrain holes at cave mouths), so 99% counts as complete.
+            known.done = (state.interior || hits * 100 >= f.Samples() * 99) && statics.pending == 0;
+
+            const bool improved = score > known.sentScore;
+            std::uint32_t dropped = 0;
+            if (improved) {
+                state.pending = Collision::BuildChunkPayload(f, state.worldspace, state.generation, statics.triangles, &dropped);
+                state.pendingKey = key;
+                state.pendingScore = score;
             }
-            state.pending = Collision::BuildChunkPayload(f, state.worldspace, state.generation);
-            state.pendingKey = key;
-            state.pendingHits = hits;
-            TrySend();
+            std::string others;
+            for (const auto& [layer, count] : statics.otherLayers) {
+                others += std::format(" {}x{}", count, layer);
+            }
+            SKSE::log::info(
+                "collision: chunk ({},{}) gen {} try {}: terrain {}/{} (passed through {}), statics {} triangles from {} refs ({} not loaded yet, {} transformed, {} shapes skipped{}{}), {:.1f} ms over {} frames + {:.1f} ms{}{}",
+                key.first, key.second, state.generation, known.tries, hits, state.interior ? 0 : f.Samples(), state.stats.passed,
+                triangles, statics.refs, statics.pending, statics.transformed, statics.skipped, dropped ? std::format(", {} over the vertex limit", dropped) : "", others.empty() ? "" : ", bodies left out by layer:" + others,
+                std::chrono::duration<double, std::milli>(state.stats.time).count(), state.stats.frames,
+                std::chrono::duration<double, std::milli>(collect).count(), improved ? ", sent" : ", nothing new", known.done ? "" : ", again later");
+            if (improved) {
+                TrySend();
+            }
+        }
+
+        // A chunk is read once, so a door (a cell door, a door without a load door) keeps the
+        // collision it had then. Once one has swung, the chunks around it are read and sent again.
+        void RefreshDoors()
+        {
+            const auto now = Clock::now();
+            std::erase_if(state.doors, [&](const auto& a_door) {
+                if (now < a_door.second) {
+                    return false;
+                }
+                const auto& p = a_door.first;
+                for (const float dx : { -kDoorReach, kDoorReach }) {
+                    for (const float dy : { -kDoorReach, kDoorReach }) {
+                        const auto it = state.known.find({ Collision::ChunkIndex(p.x + dx), Collision::ChunkIndex(p.y + dy) });
+                        if (it != state.known.end()) {
+                            it->second = {};  // read again, and sent whatever it holds
+                        }
+                    }
+                }
+                SKSE::log::info("collision: a door at ({:.0f},{:.0f},{:.0f}) moved, reading its chunks again", p.x, p.y, p.z);
+                return true;
+            });
+        }
+
+        class DoorSink : public RE::BSTEventSink<RE::TESOpenCloseEvent>
+        {
+        public:
+            RE::BSEventNotifyControl ProcessEvent(const RE::TESOpenCloseEvent* a_event, RE::BSTEventSource<RE::TESOpenCloseEvent>*) override
+            {
+                auto* ref = a_event ? a_event->ref.get() : nullptr;
+                if (state.active && ref && ref->GetBaseObject() && ref->GetBaseObject()->Is(RE::FormType::Door)) {
+                    state.doors.emplace_back(ref->GetPosition(), Clock::now() + kDoorSwing);
+                }
+                return RE::BSEventNotifyControl::kContinue;
+            }
+        };
+    }
+
+    void OnDataLoaded()
+    {
+        static DoorSink doorSink;
+        if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
+            events->AddEventSink<RE::TESOpenCloseEvent>(&doorSink);
         }
     }
 
@@ -193,6 +258,7 @@ namespace PerkeleRim::CollisionSampler
         state.known.clear();
         state.sampling = false;
         state.pending.clear();
+        state.doors.clear();
     }
 
     void Stop()
@@ -201,6 +267,7 @@ namespace PerkeleRim::CollisionSampler
         state.sampling = false;
         state.pending.clear();
         state.known.clear();
+        state.doors.clear();
     }
 
     void Update(RE::PlayerCharacter* a_player, const RE::NiPoint3& a_velocity)
@@ -208,6 +275,7 @@ namespace PerkeleRim::CollisionSampler
         if (!state.active) {
             return;
         }
+        auto*      cell = a_player->GetParentCell();
         const auto pos = a_player->GetPosition();
         const Key  center{ Collision::ChunkIndex(pos.x), Collision::ChunkIndex(pos.y) };
         RE::NiPoint3 ahead(a_velocity.x * kLookAhead, a_velocity.y * kLookAhead, 0.0f);
@@ -220,18 +288,18 @@ namespace PerkeleRim::CollisionSampler
         };
         std::erase_if(state.known, [&](const auto& a_entry) { return !inRange(a_entry.first, kForgetRadius); });
 
+        RefreshDoors();
         if (!state.pending.empty() && !TrySend()) {
             return;  // ring full, MSC is behind
         }
         if (state.sampling && !inRange({ state.field.chunkX, state.field.chunkY }, kRadius)) {
             state.sampling = false;  // moved away from it
         }
-        if (!state.sampling && !Pick(center, aheadKey, pos)) {
+        if (!state.sampling && (!cell || !Pick(center, aheadKey, pos, cell->IsInteriorCell()))) {
             return;
         }
 
-        auto* cell = a_player->GetParentCell();
-        auto* bhk = cell ? cell->GetbhkWorld() : nullptr;
+        auto* bhk = cell->GetbhkWorld();
         auto* world = bhk ? bhk->GetWorld1() : nullptr;
         if (!world) {
             return;
@@ -253,11 +321,11 @@ namespace PerkeleRim::CollisionSampler
                     break;
                 }
             }
-        }
-        state.stats.time += Clock::now() - start;
-        state.stats.frames++;
-        if (state.next >= state.field.Samples()) {
-            Finish();
+            state.stats.time += Clock::now() - start;
+            state.stats.frames++;
+            if (state.next >= f.Samples()) {
+                Finish();  // reads the statics' shapes, so still under the lock
+            }
         }
     }
 }

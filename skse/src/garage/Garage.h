@@ -22,8 +22,4 @@ namespace PerkeleRim::Garage
     RE::TESObjectREFR* FirstVisit();  // the spawn marker if this save hasn't been to the garage yet, else null
     void               Visited();     // the player arrived; later handovers start where it stands
     std::optional<Spot> Van();         // where the van parks
-
-    // True for the garage's own references. Its roof would be a solid block in MSC's top-down
-    // collision heightfield, so the sampler looks through it.
-    bool Owns(const RE::TESObjectREFR* a_ref);
 }

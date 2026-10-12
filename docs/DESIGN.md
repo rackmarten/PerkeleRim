@@ -129,7 +129,7 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 ## 9. Known limitations
 
 - Vehicles can't go through load doors: park at city gates; the player walks in on foot.
-- The island is a top-down heightfield: overhangs (cliffs over a road, arches) become walls, and tall trees and rocks become spikes, which can stop or flip a vehicle.
+- The island has the land as a heightfield (0.9 m apart) and statics as their real collision; spheres and transform wrappers that don't read as a rotation are left out (counted in the log as skipped), and tree trunks are 8-sided prisms. Doors are read again only after they have swung, so for 1.5 s a moving door is where it was.
 - Skyrim inventory, barter and magic menus are unavailable while MSC controls the player.
 - MSC is first-person only; third-person would need a body model and animation.
 - MSC vehicles are fragile and can kill the player in crashes; may need patching for Skyrim terrain.

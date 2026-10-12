@@ -224,6 +224,11 @@ namespace PerkeleRim.Spike
                     case "death":  // what a fatal crash sends; caught by DeathGuard while handed over
                         PlayMakerFSM.BroadcastEvent("DEATH");
                         break;
+                    case "sink":  // "sink 3" pushes the player 3 m down, through the ground (PlayerLink catches the fall)
+                        var sunk = GameObject.Find("PLAYER");
+                        if (sunk != null) sunk.transform.position += Vector3.down * (words.Length > 1 ? float.Parse(words[1], CultureInfo.InvariantCulture) : 3f);
+                        SpikeLog.Write(sunk != null ? $"cmd: player now at {sunk.transform.position}" : "cmd: no PLAYER");
+                        break;
                     case "grunt":  // what Skyrim's PlayerDeath plays
                         PerkeleRim.Game.DeathGuard.PlayDeathSound();
                         break;

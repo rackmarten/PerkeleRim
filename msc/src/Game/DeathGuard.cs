@@ -105,13 +105,99 @@ namespace PerkeleRim.Game
         static bool wasActive;
         static float lastSeatLog = -10f;
 
-        static void RememberSeats()
+        static readonly System.Collections.Generic.HashSet<Transform> knownSeats = new System.Collections.Generic.HashSet<Transform>();
+        static float nextSeatScan;
+        const float SeatScanEvery = 2f;
+
+        // Finds driver seats not seen yet: a vehicle's LOD (with its seat) may be inactive at the
+        // handover, and FindObjectsOfType skips inactive objects. Remembers each seat's pivots,
+        // everything below DriverHeadPivot but the player (CameraPivot, Pivot, ...), and holds its
+        // joints.
+        static void FindNewSeats()
         {
+            nextSeatScan = Time.realtimeSinceStartup + SeatScanEvery;
+            foreach (var seatJoint in UnityEngine.Object.FindObjectsOfType<Joint>())  // far fewer than transforms; every seat a crash can throw has one
+            {
+                var t = seatJoint.transform;
+                if (t.name != "DriverHeadPivot" || t.parent == null || !knownSeats.Add(t)) continue;
+                int pivots = 0;
+                foreach (var c in t.GetComponentsInChildren<Transform>(true))
+                    if (!InPlayer(c, t))
+                    {
+                        seats.Add(new Seat { Pivot = c, Parent = c.parent, Position = c.localPosition, Rotation = c.localRotation, HadBody = c.GetComponent<Rigidbody>() != null });
+                        pivots++;
+                    }
+                string joints = "";
+                foreach (var joint in t.GetComponents<Joint>())
+                {
+                    heldJoints.Add(new HeldJoint { Joint = joint, Vehicle = t.root.name, Force = joint.breakForce, Torque = joint.breakTorque });
+                    joints += $", joint held unbreakable (broke at {joint.breakForce}/{joint.breakTorque})";
+                }
+                log($"death: {t.root.name} driver seat remembered ({pivots} pivots{joints})");
+            }
+            KeepJointsHeld();
+        }
+
+        // Each DriverHeadPivot hangs in its vehicle by a ConfigurableJoint. A hard hit breaks it,
+        // and its Death FSM then throws the driver out (DEATH, the dead body set loose); the pivot
+        // is a free body from then on, falling through the island or fighting PutDriversBack every
+        // frame. While handed over the joints don't break (CrashSensor charges the hit instead).
+        class HeldJoint
+        {
+            public Joint Joint;
+            public string Vehicle;
+            public float Force, Torque;  // what MSC wants once Skyrim has the player back
+            public bool GoneLogged, SetLogged;
+        }
+
+        static readonly System.Collections.Generic.List<HeldJoint> heldJoints = new System.Collections.Generic.List<HeldJoint>();
+
+        // Starts or ends the handover: lets go of the held joints (back to what MSC set), then
+        // with a handover finds the seats afresh.
+        static void HoldSeats(bool hold)
+        {
+            foreach (var held in heldJoints)
+                if (held.Joint != null)
+                {
+                    held.Joint.breakForce = held.Force;
+                    held.Joint.breakTorque = held.Torque;
+                }
+            heldJoints.Clear();
             seats.Clear();
-            foreach (var t in UnityEngine.Object.FindObjectsOfType<Transform>())
-                if (t.name == "DriverHeadPivot" && t.parent != null)
-                    seats.Add(new Seat { Pivot = t, Parent = t.parent, Position = t.localPosition, Rotation = t.localRotation, HadBody = t.GetComponent<Rigidbody>() != null });
-            log($"death: {seats.Count} driver seats remembered");
+            knownSeats.Clear();
+            if (hold) FindNewSeats();
+        }
+
+        // Every frame, after MSC's scripts and before the next physics step: MSC sets the van's seat
+        // joint to break at 300 every frame, so the hold goes back on each time, and what MSC set is
+        // what the joint gets back when Skyrim takes the player.
+        static void KeepJointsHeld()
+        {
+            foreach (var held in heldJoints)
+            {
+                if (held.Joint == null)
+                {
+                    if (!held.GoneLogged) log($"death: the driver seat joint of {held.Vehicle} is gone (broken before the hold?); reload to get it back");
+                    held.GoneLogged = true;
+                    continue;
+                }
+                if (held.Joint.breakForce >= Unbreakable && held.Joint.breakTorque >= Unbreakable) continue;
+                if (held.Joint.breakForce < Unbreakable) held.Force = held.Joint.breakForce;
+                if (held.Joint.breakTorque < Unbreakable) held.Torque = held.Joint.breakTorque;
+                if (!held.SetLogged) log($"death: MSC sets the {held.Vehicle} driver seat joint to break at {held.Force} / {held.Torque}, held unbreakable again each frame");
+                held.SetLogged = true;
+                held.Joint.breakForce = Mathf.Infinity;
+                held.Joint.breakTorque = Mathf.Infinity;
+            }
+        }
+
+        const float Unbreakable = 1e30f;  // PhysX keeps Mathf.Infinity as float.MaxValue
+
+        static bool InPlayer(Transform t, Transform seat)
+        {
+            for (; t != null && t != seat; t = t.parent)
+                if (t.name == "PLAYER") return true;
+            return false;
         }
 
         static void PutDriversBack()
@@ -121,8 +207,20 @@ namespace PerkeleRim.Game
                 if (s.Pivot == null || s.Parent == null) continue;
                 var body = s.Pivot.GetComponent<Rigidbody>();
                 bool loose = body != null && !s.HadBody;
-                if (s.Pivot.parent == s.Parent && !loose && (s.Pivot.localPosition - s.Position).sqrMagnitude < 0.25f) continue;
+                if (s.Pivot.parent == s.Parent && !loose && (s.Pivot.localPosition - s.Position).sqrMagnitude < 1f) continue;  // a lean moves the inner pivots a little
                 if (loose) UnityEngine.Object.Destroy(body);
+                else if (body != null && !body.isKinematic)
+                {
+                    body.velocity = Vector3.zero;
+                    body.angularVelocity = Vector3.zero;
+                    // With its joint gone (it broke before the hold) physics would throw it again
+                    // every frame: kinematic, it rides along in the seat.
+                    if (s.Pivot.GetComponent<Joint>() == null)
+                    {
+                        body.isKinematic = true;
+                        log($"death: the {s.Parent.root.name} driver seat ({s.Pivot.name}) lost its joint, it rides in the seat kinematic now");
+                    }
+                }
                 s.Pivot.parent = s.Parent;
                 s.Pivot.localPosition = s.Position;
                 s.Pivot.localRotation = s.Rotation;
@@ -130,7 +228,7 @@ namespace PerkeleRim.Game
                 lastSeatLog = Time.realtimeSinceStartup;
                 string states = "";
                 foreach (var fsm in s.Pivot.GetComponents<PlayMakerFSM>()) states += $" {fsm.FsmName}:{fsm.ActiveStateName}";
-                log($"death: the crash threw the driver out of {s.Parent.root.name}, put back in the seat{(loose ? " (its loose body removed)" : "")}; FSMs{states}");
+                log($"death: the crash threw the driver out of {s.Parent.root.name} ({s.Pivot.name}), put back in the seat{(loose ? " (its loose body removed)" : "")}; FSMs{states}");
             }
         }
 
@@ -140,7 +238,7 @@ namespace PerkeleRim.Game
             if (Active != wasActive)
             {
                 wasActive = Active;
-                if (Active) RememberSeats();
+                HoldSeats(Active);
             }
             if (!Active)
             {
@@ -148,6 +246,8 @@ namespace PerkeleRim.Game
                 pendingCrash = 0f;
                 return;
             }
+            if (Time.realtimeSinceStartup >= nextSeatScan) FindNewSeats();
+            KeepJointsHeld();
             PutDriversBack();
             if (death == null)
             {

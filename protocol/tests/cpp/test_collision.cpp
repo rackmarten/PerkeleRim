@@ -137,3 +137,53 @@ TEST_CASE("a full-size chunk fits the ring many times over")
     const auto payload = BuildChunkPayload(Flat(0, 0, 32, 0.0f), 0x3C, 1);
     CHECK(payload.size() + sizeof(Protocol::MessageHeader) < Protocol::kRingToMscCapacity / 64);
 }
+
+TEST_CASE("static triangles follow the heightfield, sharing identical corners")
+{
+    // Two triangles of a 100 x 100 floor at z = -40 in chunk (1, 0), counterclockwise from above.
+    const std::vector<float> statics{
+        2100, 100, -40, 2200, 100, -40, 2100, 200, -40,
+        2200, 100, -40, 2200, 200, -40, 2100, 200, -40,
+    };
+    std::uint32_t dropped = 99;
+    const auto    p = Parse(BuildChunkPayload(Flat(1, 0, 2, 10.0f), 0x3C, 4, statics, &dropped));
+    CHECK(dropped == 0);
+    CHECK(p.header.origin[2] == doctest::Approx(-40.0));  // the statics are lower than the terrain
+    CHECK(p.header.vertexCount == 9 + 4);
+    REQUIRE(p.header.indexCount == 8 * 3 + 2 * 3);
+    CHECK(p.vertices[2] == doctest::Approx(50.0));  // terrain, relative to the new origin
+    for (std::size_t t = 8; t < 10; t++) {
+        CHECK(NormalZ(p, t) > 0.0f);
+    }
+    const float* first = &p.vertices[p.indices[8 * 3] * 3];
+    CHECK(first[0] == doctest::Approx(2100.0 - 2048.0));
+    CHECK(first[1] == doctest::Approx(100.0));
+    CHECK(first[2] == doctest::Approx(0.0));
+}
+
+TEST_CASE("a chunk with no terrain (an interior) is just its statics")
+{
+    Heightfield f;
+    f.Reset(0, 0, 8);
+    const std::vector<float> statics{ 10, 10, 500, 60, 10, 500, 10, 60, 520 };
+    const auto               p = Parse(BuildChunkPayload(f, 0, 2, statics));
+    CHECK(p.header.origin[2] == doctest::Approx(500.0));
+    CHECK(p.header.vertexCount == 3);
+    CHECK(p.header.indexCount == 3);
+}
+
+TEST_CASE("statics past the vertex limit are dropped and counted")
+{
+    std::vector<float> statics;
+    const std::uint32_t triangles = kMaxChunkVertices / 3 + 10;
+    for (std::uint32_t t = 0; t < triangles; t++) {
+        const float x = static_cast<float>(t % 1000), y = static_cast<float>(t / 1000);
+        const float tri[9] = { x, y, 0, x + 0.5f, y, 0, x, y + 0.5f, 0 };
+        statics.insert(statics.end(), tri, tri + 9);
+    }
+    std::uint32_t dropped = 0;
+    const auto    p = Parse(BuildChunkPayload(Flat(0, 0, 2, 0.0f), 0, 1, statics, &dropped));
+    CHECK(p.header.vertexCount <= kMaxChunkVertices);
+    CHECK(dropped > 0);
+    CHECK(p.header.indexCount == (8 + triangles - dropped) * 3);
+}
