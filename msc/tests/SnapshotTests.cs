@@ -113,6 +113,32 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void VehicleKeepsTheSpaceItWasLeftIn()
+        {
+            var s = new Snapshot { Key = 1 };
+            s.Vehicles.Add(new Snapshot.Body { Name = "HAYOSIKO(1500kg, 250)", InSpace = true, Worldspace = 0x3C, Cell = 0 });
+            s.Vehicles.Add(new Snapshot.Body { Name = "JONNEZ ES(Clone)", InSpace = true, Worldspace = 0, Cell = 0x165A3 });
+            var w = new StringWriter();
+            s.Write(w);
+            var back = Snapshot.Read(new StringReader(w.ToString()));
+            Assert.That(back.Vehicles[0].InSpace, Is.True);
+            Assert.That(back.Vehicles[0].Worldspace, Is.EqualTo(0x3Cu));
+            Assert.That(back.Vehicles[1].Cell, Is.EqualTo(0x165A3u));
+        }
+
+        [Test]
+        public void OlderVehicleLinesHaveNoSpace()
+        {
+            var s = new Snapshot { Key = 1 };
+            s.Vehicles.Add(new Snapshot.Body { Name = "HAYOSIKO(1500kg, 250)", Driven = true });
+            var w = new StringWriter();
+            s.Write(w);
+            var v = Snapshot.Read(new StringReader(w.ToString())).Vehicles[0];
+            Assert.That(v.InSpace, Is.False);
+            Assert.That(v.Driven, Is.True);
+        }
+
+        [Test]
         public void DamagedLinesAreSkippedAndOthersKept()
         {
             var text = "PerkeleRim snapshot 1\nkey\t2A\nglobal\tf\tPlayerMoney\tlots\nglobal\tf\tPlayerHunger\t5\nsomething new\t1\nitem\t1\tshort\n";

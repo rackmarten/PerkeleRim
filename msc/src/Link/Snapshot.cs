@@ -49,6 +49,8 @@ namespace PerkeleRim
             public Vec3 Angular;   // Unity, rad/s
             public float Fuel = float.NaN;  // vehicles: tank level, NaN = none
             public bool Driven;             // vehicles: the player sat in it
+            public bool InSpace;            // vehicles: Worldspace and Cell say where it is (older snapshots: here)
+            public uint Worldspace, Cell;   // vehicles: the Skyrim worldspace or interior cell it was left in
             public int Bottles = -1;        // beer cases: bottles left, -1 = not a case
         }
 
@@ -100,7 +102,8 @@ namespace PerkeleRim
             foreach (var v in Fsms)
                 w.WriteLine("fsm\t" + v.Path + "\t" + v.Fsm + "\t" + v.Kind + "\t" + v.Name + "\t" + Num(v.Value));
             foreach (var v in Vehicles)
-                w.WriteLine("vehicle\t" + v.Name + "\t" + Pose(v) + "\t" + Num(v.Fuel) + "\t" + (v.Driven ? "1" : "0"));
+                w.WriteLine("vehicle\t" + v.Name + "\t" + Pose(v) + "\t" + Num(v.Fuel) + "\t" + (v.Driven ? "1" : "0") +
+                    (v.InSpace ? "\t" + v.Worldspace.ToString("X8") + "\t" + v.Cell.ToString("X8") : ""));
             foreach (var i in Items)
                 w.WriteLine("item\t" + i.Id.ToString(CultureInfo.InvariantCulture) + "\t" + i.Name + "\t" + Pose(i) + "\t" + i.Bottles.ToString(CultureInfo.InvariantCulture));
         }
@@ -139,6 +142,12 @@ namespace PerkeleRim
                                 ReadPose(f, 2, v);
                                 v.Fuel = (float)Double(f[15]);
                                 v.Driven = f.Length > 16 && f[16] == "1";
+                                if (f.Length >= 19)
+                                {
+                                    v.InSpace = true;
+                                    v.Worldspace = uint.Parse(f[17], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+                                    v.Cell = uint.Parse(f[18], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+                                }
                                 s.Vehicles.Add(v);
                             }
                             break;

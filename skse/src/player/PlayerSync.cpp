@@ -93,13 +93,15 @@ namespace PerkeleRim::PlayerSync
         // learned into the seat would shift the van under the camera and stay there once driving.
         constexpr float kCameraSeatLearnRoll = 0.03f;  // radians against the van, about 2 degrees
 
-        bool GamePaused()
+        // A Skyrim menu has the input: the game is paused, or it shows its cursor (dialogue, which
+        // doesn't pause). MSC then gets no keys and its mouse stands still.
+        bool MenuHasInput()
         {
             auto* ui = RE::UI::GetSingleton();
-            return ui && ui->GameIsPaused();
+            return ui && (ui->GameIsPaused() || ui->IsMenuOpen(RE::CursorMenu::MENU_NAME));
         }
 
-        void Publish(bool a_paused = GamePaused())
+        void Publish(bool a_paused = MenuHasInput())
         {
             auto& link = LinkService::Get();
             if (!link.IsUp()) {
@@ -651,6 +653,21 @@ namespace PerkeleRim::PlayerSync
             static inline REL::Relocation<decltype(thunk)> original;
         };
 
+        // E is Skyrim's activate and MSC's lean right (and MSC's use key on some things). While MSC's
+        // crosshair is on something of its own (its prompt or hand icon is up), E is MSC's alone;
+        // otherwise it activates in Skyrim: doors, people, quest items.
+        struct ActivateHook
+        {
+            static bool thunk(RE::ActivateHandler* a_handler, RE::InputEvent* a_event)
+            {
+                if (state.owned && (!state.lookAt.empty() || state.lookAtUse)) {
+                    return false;
+                }
+                return original(a_handler, a_event);
+            }
+            static inline REL::Relocation<decltype(thunk)> original;
+        };
+
         // Q (MSC's lean left) would open Skyrim's favorites, which pauses the game and with it MSC's input.
         struct FavoritesHook
         {
@@ -689,6 +706,9 @@ namespace PerkeleRim::PlayerSync
                 bool changed = false;
                 for (auto* e = a_event ? *a_event : nullptr; e; e = e->next) {
                     if (auto* move = e->AsMouseMoveEvent()) {
+                        if (MenuHasInput()) {
+                            continue;  // moves the menu's cursor, not MSC's camera
+                        }
                         state.input.AddMouse(move->mouseInputX, move->mouseInputY);
                         changed = true;
                         continue;
@@ -711,7 +731,7 @@ namespace PerkeleRim::PlayerSync
                         break;
                     case RE::INPUT_DEVICE::kMouse:
                         if (const int notches = Input::WheelNotches(code)) {
-                            if (button->IsDown()) {
+                            if (button->IsDown() && !MenuHasInput()) {
                                 state.input.AddWheel(notches);
                             }
                         } else {
@@ -761,7 +781,7 @@ namespace PerkeleRim::PlayerSync
                         auto  menu = ui ? ui->GetMenu(a_event->menuName) : nullptr;
                         pauses = menu && menu->PausesGame();
                     }
-                    Publish(pauses || GamePaused());
+                    Publish(pauses || MenuHasInput());
                 }
                 return RE::BSEventNotifyControl::kContinue;
             }
@@ -776,7 +796,9 @@ namespace PerkeleRim::PlayerSync
         FavoritesHook::original = favorites.write_vfunc(0x1, FavoritesHook::thunk);
         REL::Relocation<std::uintptr_t> menuOpen{ RE::VTABLE_MenuOpenHandler[0] };
         MenuOpenHook::original = menuOpen.write_vfunc(0x1, MenuOpenHook::thunk);
-        SKSE::log::info("player sync: PlayerCharacter::Update, FavoritesHandler and MenuOpenHandler::CanProcess hooked, F10 hands the player to MSC");
+        REL::Relocation<std::uintptr_t> activate{ RE::VTABLE_ActivateHandler[0] };
+        ActivateHook::original = activate.write_vfunc(0x1, ActivateHook::thunk);
+        SKSE::log::info("player sync: PlayerCharacter::Update, ActivateHandler, FavoritesHandler and MenuOpenHandler::CanProcess hooked, F10 hands the player to MSC");
     }
 
     void OnDataLoaded()

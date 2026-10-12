@@ -44,6 +44,10 @@ namespace PerkeleRim.Game
         float nextGroundCheck;
         bool lastDriven;
         float nextFind;
+        // Where it was left in Skyrim (pose and worldspace or interior), kept up to date while it is
+        // on the island; null until it was first placed. A new anchor elsewhere puts it away.
+        Snapshot.Body home;
+        bool away;
         uint spotGeneration;  // anchor generation the spot below is for, 0 = none
         Vec3 spot;            // Skyrim units, the ground under the vehicle's middle
         float spotHeading;    // Skyrim radians
@@ -190,10 +194,73 @@ namespace PerkeleRim.Game
             spotHeading = heading;
         }
 
+        void Remember()
+        {
+            if (home == null) home = new Snapshot.Body { Name = objectName, InSpace = true };
+            home.Position = island.IslandToSkyrim(Vec3From(car.position));
+            var r = car.rotation;
+            home.Rotation = new Quat(r.x, r.y, r.z, r.w);
+            home.Worldspace = island.Worldspace;
+            home.Cell = island.Cell;
+        }
+
+        bool InHomeSpace() => home != null && (!home.InSpace || (home.Worldspace == island.Worldspace && home.Cell == island.Cell));
+
+        // Back where it was left, standing still (held until the ground there has arrived).
+        void PutHome()
+        {
+            away = false;
+            var at = island.SkyrimToIsland(home.Position);
+            var position = new Vector3(at.x, at.y, at.z);
+            var rotation = new Quaternion(home.Rotation.x, home.Rotation.y, home.Rotation.z, home.Rotation.w);
+            Moves++;
+            car.position = position;
+            car.rotation = rotation;
+            if (body != null)
+            {
+                body.position = position;
+                body.rotation = rotation;
+                if (!body.isKinematic)
+                {
+                    body.velocity = Vector3.zero;
+                    body.angularVelocity = Vector3.zero;
+                }
+            }
+            heldVelocity = heldAngular = Vector3.zero;
+            nextGroundCheck = 0f;
+            log($"vehicle: the {driverName} is where it was left, ({home.Position.x:0},{home.Position.y:0},{home.Position.z:0})");
+        }
+
+        // Left in another worldspace or interior than the new anchor's: held far below the island,
+        // out of the way, until the player is back in its space.
+        void PutAway()
+        {
+            away = true;
+            Hold(true);
+            Moves++;
+            car.position = new Vector3(car.position.x, AwayHeight, car.position.z);
+            if (body != null) body.position = car.position;
+            heldVelocity = heldAngular = Vector3.zero;
+            log($"vehicle: the {driverName} stays in worldspace {home.Worldspace:X8} cell {home.Cell:X8}, put away for gen {island.Generation}");
+        }
+
+        const float AwayHeight = -5000f;
+
         // Where the vehicle is and how it moves, for a snapshot (SaveSync); null when not found.
+        // Put away, it is where it was left.
         public Snapshot.Body Capture(Transform player)
         {
             if (car == null) return null;
+            if (away && home != null)
+            {
+                HutongGames.PlayMaker.FsmFloat tank, size;
+                FuelTank(out tank, out size, null);
+                return new Snapshot.Body
+                {
+                    Name = objectName, Position = home.Position, Rotation = home.Rotation, InSpace = true,
+                    Worldspace = home.Worldspace, Cell = home.Cell, Fuel = tank != null ? tank.Value : float.NaN,
+                };
+            }
             var p = island.IslandToSkyrim(Vec3From(car.position));
             var r = car.rotation;
             var v = body != null ? (held ? heldVelocity : body.velocity) : Vector3.zero;
@@ -209,6 +276,9 @@ namespace PerkeleRim.Game
                 Angular = Vec3From(a),
                 Fuel = level != null ? level.Value : float.NaN,
                 Driven = player != null && Carries(player),
+                InSpace = true,
+                Worldspace = island.Worldspace,
+                Cell = island.Cell,
             };
         }
 
@@ -218,6 +288,13 @@ namespace PerkeleRim.Game
         public void Restore(Snapshot.Body b)
         {
             if (car == null) return;
+            if (b.InSpace && (b.Worldspace != island.Worldspace || b.Cell != island.Cell))
+            {
+                home = b;  // the save had it in another space; it waits there
+                PutAway();
+                return;
+            }
+            away = false;
             var at = island.SkyrimToIsland(b.Position);
             var position = new Vector3(at.x, at.y, at.z);
             var rotation = new Quaternion(b.Rotation.x, b.Rotation.y, b.Rotation.z, b.Rotation.w);
@@ -317,8 +394,23 @@ namespace PerkeleRim.Game
             {
                 placedGeneration = island.Generation;
                 // A driven vehicle came along in PlayerLink.Settle already.
-                if (!driven) Park(player, playerFeet);
+                if (driven) away = false;
+                else if (spotGeneration == island.Generation || home == null) Park(player, playerFeet);
+                else if (InHomeSpace()) PutHome();
+                else PutAway();
             }
+
+            if (away)
+            {
+                // Left in another worldspace or interior: Skyrim hides it until the player is back there.
+                if (link != null && wireId != 0)
+                {
+                    link.WriteVehicle(ref state);
+                    link.WriteVehicleParts(ref partState);
+                }
+                return;
+            }
+            Remember();
 
             if (Time.realtimeSinceStartup >= nextGroundCheck)
             {
