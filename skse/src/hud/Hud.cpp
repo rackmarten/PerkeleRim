@@ -41,6 +41,37 @@ namespace PerkeleRim::Hud
 
         View                       current;
         std::array<int, kRows>     drawnNeeds{};  // current.needs in 0.5 % steps of a full bar
+        std::array<int, 3>         drawnLight{};  // current.handsLight in Color.setTransform percent
+
+        std::array<int, 3> LightPercent(const View& a_view)
+        {
+            std::array<int, 3> p{};
+            for (std::size_t i = 0; i < p.size(); i++) {
+                p[i] = static_cast<int>(std::lround(std::clamp(a_view.handsLight[i], 0.0f, 1.0f) * 100.0f));
+            }
+            return p;
+        }
+
+        // Skyrim's light on the hands: an AS2 Color transform multiplying red, green and blue.
+        void TintHands(RE::GFxMovieView* a_movie, RE::GFxValue& a_hands, const View& a_view)
+        {
+            const auto   percent = LightPercent(a_view);
+            RE::GFxValue color, transform;
+            a_movie->CreateObject(&color, "Color", &a_hands, 1);
+            a_movie->CreateObject(&transform);
+            if (!color.IsObject() || !transform.IsObject()) {
+                return;
+            }
+            transform.SetMember("ra", RE::GFxValue(static_cast<double>(percent[0])));
+            transform.SetMember("ga", RE::GFxValue(static_cast<double>(percent[1])));
+            transform.SetMember("ba", RE::GFxValue(static_cast<double>(percent[2])));
+            transform.SetMember("aa", RE::GFxValue(100.0));
+            transform.SetMember("rb", RE::GFxValue(0.0));
+            transform.SetMember("gb", RE::GFxValue(0.0));
+            transform.SetMember("bb", RE::GFxValue(0.0));
+            transform.SetMember("ab", RE::GFxValue(0.0));
+            color.Invoke("setTransform", nullptr, &transform, 1);
+        }
 
         float Fraction(const View& a_view, std::size_t a_row)
         {
@@ -227,6 +258,7 @@ namespace PerkeleRim::Hud
             if (!show) {
                 return;
             }
+            TintHands(a_movie, hands, a_view);
             RE::GFxValue loaded, image;
             hands.GetMember("image", &loaded);
             if (!loaded.IsString() || a_view.handsImage != loaded.GetString()) {
@@ -356,7 +388,9 @@ namespace PerkeleRim::Hud
         const bool handsChanged = view.handsImage != current.handsImage || view.handsWidth != current.handsWidth ||
                                   view.handsHeight != current.handsHeight;
         const bool handsLoading = !view.handsImage.empty() && !handsSized;
-        const bool changed = textChanged || handsChanged || handsLoading || view.hasNeeds != current.hasNeeds ||
+        const auto light = LightPercent(view);
+        const bool lightChanged = !view.handsImage.empty() && light != drawnLight;
+        const bool changed = textChanged || handsChanged || handsLoading || lightChanged || view.hasNeeds != current.hasNeeds ||
                              (view.hasNeeds && needs != drawnNeeds);
         if (!a_refresh && !changed) {
             return;
@@ -365,8 +399,14 @@ namespace PerkeleRim::Hud
             SKSE::log::info("hud: {} label \"{}\"{}, subtitle \"{}\"", view.show ? "shown," : "hidden,", view.label,
                 view.hand ? ", hand" : "", view.subtitle);
         }
+        static std::array<int, 3> loggedLight{};
+        if ((lightChanged || handsChanged) && !view.handsImage.empty() && std::abs(light[0] - loggedLight[0]) + std::abs(light[1] - loggedLight[1]) + std::abs(light[2] - loggedLight[2]) >= 15) {
+            SKSE::log::info("hud: hands light {} {} {} %", light[0], light[1], light[2]);
+            loggedLight = light;
+        }
         current = view;
         drawnNeeds = needs;
+        drawnLight = light;
         SKSE::GetTaskInterface()->AddUITask([view]() { Apply(view); });
     }
 }

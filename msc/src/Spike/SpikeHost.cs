@@ -19,7 +19,8 @@ namespace PerkeleRim.Spike
     //   items                log the items Skyrim gets (ItemLink): id, path, model id
     //   hands                cameras, layers and first-person renderers to PerkeleRim_hands.txt
     //   handlayer on|off|tint|save  share MSC's first-person layer with Skyrim or not (HandLayerSender); tint toggles a
-    //                        red background, save writes the layer to PerkeleRim_handlayer.png
+    //                        red background, save writes the layer to PerkeleRim_handlayer.png;
+    //                        handlayer light <ambient> <sun> sets its neutral lighting (0.5 0.8)
     //   global <name> <v>    set a global PlayMaker float (global PlayerUrine 100)
     //   event <NAME>         broadcast a global PlayMaker event (DRINKBEER: the beer drinking animation)
     //   textures <name>      read an object's model (GameObject.Find) without sending it and log it
@@ -177,8 +178,13 @@ namespace PerkeleRim.Spike
                         string mode = words.Length > 1 ? words[1].ToLower() : "on";
                         if (mode == "tint") PerkeleRim.Game.HandLayerSender.Tint = !PerkeleRim.Game.HandLayerSender.Tint;
                         else if (mode == "save") PerkeleRim.Game.HandLayerSender.SaveRequested = true;
+                        else if (mode == "light" && words.Length > 3)
+                        {
+                            PerkeleRim.Game.HandLayerSender.Ambient = float.Parse(words[2], CultureInfo.InvariantCulture);
+                            PerkeleRim.Game.HandLayerSender.Sun = float.Parse(words[3], CultureInfo.InvariantCulture);
+                        }
                         else PerkeleRim.Game.HandLayerSender.Enabled = mode != "off";
-                        SpikeLog.Write($"cmd: hand layer {(PerkeleRim.Game.HandLayerSender.Enabled ? "on" : "off")}, tint {PerkeleRim.Game.HandLayerSender.Tint}");
+                        SpikeLog.Write($"cmd: hand layer {(PerkeleRim.Game.HandLayerSender.Enabled ? "on" : "off")}, tint {PerkeleRim.Game.HandLayerSender.Tint}, light {PerkeleRim.Game.HandLayerSender.Ambient} {PerkeleRim.Game.HandLayerSender.Sun}");
                         break;
                     case "textures":
                         var reader = FindObjectOfType<PerkeleRim.Game.PlayerLink>();

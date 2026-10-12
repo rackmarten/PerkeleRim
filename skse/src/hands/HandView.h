@@ -17,4 +17,9 @@ namespace PerkeleRim::HandView
     std::uint32_t      Height();
 
     void Hide();
+
+    // Skyrim's light at the player as a color multiplier (0..1 per channel) for the layer, which
+    // MSC renders under fixed daylight-like lighting: about 1 at a clear noon, dim at night or in
+    // a dark interior, warm at sunset.
+    std::array<float, 3> Light(RE::Actor* a_player);
 }

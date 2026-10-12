@@ -115,4 +115,43 @@ namespace PerkeleRim::HandView
     std::uint32_t      Height() { return state.height; }
 
     void Hide() { state.shown = false; }
+
+    std::array<float, 3> Light(RE::Actor* a_player)
+    {
+        // Ambient plus part of the sun (or a cell's directional light). A clear Skyrim noon comes
+        // to about kDaylight, which is what MSC's neutral lighting stands for.
+        constexpr float kSunShare = 0.5f;
+        constexpr float kDaylight = 0.95f;
+        constexpr float kFloor = 0.12f;  // never fully black, like Skyrim's own night
+
+        float rgb[3] = { kDaylight, kDaylight, kDaylight };
+        auto* cell = a_player ? a_player->GetParentCell() : nullptr;
+        if (cell && cell->IsInteriorCell() && !cell->UsesSkyLighting()) {
+            if (const auto* data = cell->GetLighting()) {
+                const auto* tmpl = cell->GetRuntimeData().lightingTemplate;
+                const auto  inherit = data->lightingTemplateInheritanceFlags;
+                const auto& ambient = tmpl && inherit.any(RE::INTERIOR_DATA::Inherit::kAmbientColor) ? tmpl->data.ambient : data->ambient;
+                const auto& directional =
+                    tmpl && inherit.any(RE::INTERIOR_DATA::Inherit::kDirectionalColor) ? tmpl->data.directional : data->directional;
+                const std::uint8_t a[3] = { ambient.red, ambient.green, ambient.blue };
+                const std::uint8_t d[3] = { directional.red, directional.green, directional.blue };
+                for (int i = 0; i < 3; i++) {
+                    rgb[i] = (a[i] + kSunShare * d[i]) / 255.0f;
+                }
+            }
+        } else if (auto* sky = RE::Sky::GetSingleton()) {
+            const auto& ambient = sky->skyColor[RE::TESWeather::ColorTypes::kAmbient];
+            const auto& sun = sky->skyColor[RE::TESWeather::ColorTypes::kSunlight];
+            rgb[0] = ambient.red + kSunShare * sun.red;
+            rgb[1] = ambient.green + kSunShare * sun.green;
+            rgb[2] = ambient.blue + kSunShare * sun.blue;
+        }
+        // Brighter than daylight keeps its hue at full brightness.
+        const float top = (std::max)({ rgb[0], rgb[1], rgb[2], kDaylight }) / kDaylight;
+        std::array<float, 3> tint{};
+        for (int i = 0; i < 3; i++) {
+            tint[i] = std::clamp(rgb[i] / kDaylight / top, kFloor, 1.0f);
+        }
+        return tint;
+    }
 }

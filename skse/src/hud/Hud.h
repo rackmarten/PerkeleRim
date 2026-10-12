@@ -22,6 +22,7 @@ namespace PerkeleRim::Hud
         float                health = 0.0f;     // Skyrim's health, 0..1 of its max, under the needs
         std::string          handsImage;        // MSC's first-person layer (HandView), full screen under the rest; empty = none
         std::uint32_t        handsWidth = 0, handsHeight = 0;  // its size in pixels
+        std::array<float, 3> handsLight{ 1.0f, 1.0f, 1.0f };   // color multiplier for it (HandView::Light)
     };
 
     // Only queues work when something visible changed, or with a_refresh (rebuilds the layer if

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using PerkeleRim.Protocol;
 using UnityEngine;
@@ -11,14 +12,20 @@ namespace PerkeleRim.Game
     // transparent background, and right after it rendered the texture is copied into one Skyrim
     // opens on the GPU (SharedTexture). Only while the player is handed over, and only with MSC
     // started with -force-gfx-direct (scripts/launch-msc.ps1 does that).
+    // The hidden render is lit neutrally (BeginRender/EndRender: fixed ambient and one light of
+    // our own instead of MSC's), so the layer looks the same at any MSC hour; Skyrim tints it
+    // with its own light at the player.
     public sealed class HandLayerSender
     {
         const string HandCameraPath = "PLAYER/Pivot/AnimPivot/Camera/FPSCamera/FPSCamera/HandCamera";
         const float StatWindow = 5f;
+        const float FarClip = 20f;         // HandCamera stops at 5 m, which cuts the piss stream
+        const float LightsRefresh = 2f;    // seconds between scans for MSC's lights
 
         public static bool Enabled = true;  // spike "handlayer on|off", to compare frame times
         public static bool SaveRequested;   // spike "handlayer save"
         public static bool Tint;            // spike "handlayer tint": a see-through red background, to check Skyrim draws the layer
+        public static float Ambient = 0.5f, Sun = 0.8f;  // spike "handlayer light <ambient> <sun>": the neutral lighting
 
         readonly Action<string> log;
         readonly bool direct;
@@ -31,6 +38,19 @@ namespace PerkeleRim.Game
         GameObject[] strays = new GameObject[0];
         int handLayer = -1;
         bool borrowed;
+        Light sun;  // ours, only on while the hidden camera renders
+        Light[] lights = new Light[0];
+        float lightsAt = -LightsRefresh;
+        readonly List<Light> dimmed = new List<Light>();
+        readonly List<int> dimmedMasks = new List<int>();
+        AmbientState ambient;
+        bool ambientLogged;
+        Renderer[] strayRenderers = new Renderer[0];
+        readonly List<Renderer> swapped = new List<Renderer>();
+        readonly List<Material[]> swappedOriginals = new List<Material[]>();
+        readonly Dictionary<Material, Material> alphaMaterials = new Dictionary<Material, Material>();
+        Shader alphaShader;
+        bool alphaShaderTried;
         RenderTexture target;
         SharedTexture shared;
         uint copies;
@@ -99,6 +119,13 @@ namespace PerkeleRim.Game
                 camera = go.AddComponent<Camera>();
                 camera.enabled = false;
                 go.AddComponent<HandLayerCamera>().Owner = this;
+                var sunGo = new GameObject("PerkeleRim.HandLayerSun");
+                sunGo.transform.SetParent(go.transform, false);
+                sunGo.transform.localRotation = Quaternion.Euler(40f, -25f, 0f);  // from above, a little from the left
+                sun = sunGo.AddComponent<Light>();
+                sun.type = LightType.Directional;
+                sun.shadows = LightShadows.None;
+                sun.enabled = false;
                 FindStrays();
                 log($"hand layer: camera added below {HandCameraPath}, {strays.Length} first-person renderers on layer Default");
             }
@@ -113,6 +140,7 @@ namespace PerkeleRim.Game
             // HandCamera's settings (fov, clip planes, culling mask) every frame, then our own target.
             camera.CopyFrom(handCamera);
             camera.depth = handCamera.depth - 1;
+            camera.farClipPlane = Mathf.Max(handCamera.farClipPlane, FarClip);
             camera.targetTexture = target;
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = Tint ? new Color(0.3f, 0f, 0f, 0.3f) : new Color(0f, 0f, 0f, 0f);
@@ -132,6 +160,156 @@ namespace PerkeleRim.Game
                     if (r.gameObject.layer == DefaultLayer) found.Add(r.gameObject);
             strays = found.ToArray();
             handLayer = LayerMask.NameToLayer("Player");
+            var renderers = new List<Renderer>();
+            foreach (var go in strays)
+            {
+                var r = go.GetComponent<Renderer>();
+                if (r == null) continue;
+                renderers.Add(r);
+                foreach (var m in r.sharedMaterials)
+                    if (m != null) log($"hand layer: stray {go.name} shader {m.shader.name}");
+            }
+            strayRenderers = renderers.ToArray();
+            if (handLayer >= 0) sun.cullingMask = 1 << handLayer;
+        }
+
+        // Right before the hidden camera renders (HandLayerCamera.OnPreCull); EndRender undoes it
+        // all, so MSC's own cameras see their world as before.
+        internal void BeginRender()
+        {
+            ambient = AmbientState.Save();
+            if (!ambientLogged)
+            {
+                ambientLogged = true;
+                log($"hand layer: MSC ambient {RenderSettings.ambientMode} {RenderSettings.ambientLight} x{RenderSettings.ambientIntensity}");
+            }
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(Ambient, Ambient, Ambient);
+            RenderSettings.ambientIntensity = 1f;
+            RenderSettings.fog = false;
+
+            // MSC's own lights (its sun, lamps, headlights) off the hand layer, ours on.
+            if (handLayer >= 0)
+            {
+                float now = Time.realtimeSinceStartup;
+                if (now - lightsAt >= LightsRefresh)
+                {
+                    lightsAt = now;
+                    lights = UnityEngine.Object.FindObjectsOfType<Light>();
+                }
+                int bit = 1 << handLayer;
+                foreach (var l in lights)
+                {
+                    if (l == null || l == sun || !l.enabled || (l.cullingMask & bit) == 0) continue;
+                    dimmed.Add(l);
+                    dimmedMasks.Add(l.cullingMask);
+                    l.cullingMask &= ~bit;
+                }
+                sun.color = Color.white;
+                sun.intensity = Sun;
+                sun.enabled = true;
+            }
+
+            SwapParticleMaterials();
+        }
+
+        internal void EndRender()
+        {
+            for (int i = 0; i < swapped.Count; i++)
+                if (swapped[i] != null) swapped[i].sharedMaterials = swappedOriginals[i];
+            swapped.Clear();
+            swappedOriginals.Clear();
+            sun.enabled = false;
+            for (int i = 0; i < dimmed.Count; i++)
+                if (dimmed[i] != null) dimmed[i].cullingMask = dimmedMasks[i];
+            dimmed.Clear();
+            dimmedMasks.Clear();
+            ambient.Restore();
+        }
+
+        // Unity's legacy particle shaders write ColorMask RGB, so the piss stream left the layer's
+        // alpha at 0 and Skyrim showed nothing. For the hidden render only, the strays' alpha
+        // blended particle materials become copies with a shader that also writes alpha.
+        void SwapParticleMaterials()
+        {
+            foreach (var r in strayRenderers)
+            {
+                if (r == null || !r.enabled) continue;
+                var originals = r.sharedMaterials;
+                Material[] replaced = null;
+                for (int i = 0; i < originals.Length; i++)
+                {
+                    var alpha = AlphaWriting(originals[i]);
+                    if (alpha == null) continue;
+                    if (replaced == null) replaced = (Material[])originals.Clone();
+                    replaced[i] = alpha;
+                }
+                if (replaced == null) continue;
+                swapped.Add(r);
+                swappedOriginals.Add(originals);
+                r.sharedMaterials = replaced;
+            }
+        }
+
+        Material AlphaWriting(Material original)
+        {
+            if (original == null || original.shader == null || original.shader.name != "Particles/Alpha Blended") return null;
+            Material alpha;
+            if (alphaMaterials.TryGetValue(original, out alpha)) return alpha;
+            if (!alphaShaderTried)
+            {
+                alphaShaderTried = true;
+                var holder = new Material(AlphaBlendedSource);
+                alphaShader = holder.shader != null && holder.shader.isSupported ? holder.shader : null;
+                log(alphaShader != null ? "hand layer: alpha-writing particle shader ready" : "hand layer: alpha-writing particle shader NOT supported");
+            }
+            if (alphaShader != null)
+            {
+                alpha = new Material(alphaShader) { name = original.name + " (PerkeleRim alpha)" };
+                alpha.CopyPropertiesFromMaterial(original);
+            }
+            alphaMaterials[original] = alpha;
+            return alpha;
+        }
+
+        // Unity's fixed-function Particles/Alpha Blended, plus alpha: blended alpha accumulates
+        // (One OneMinusSrcAlpha) so the stream covers what's behind it in Skyrim.
+        const string AlphaBlendedSource = @"Shader ""PerkeleRim/Particles Alpha Blended"" {
+Properties { _TintColor (""Tint Color"", Color) = (0.5,0.5,0.5,0.5) _MainTex (""Particle Texture"", 2D) = ""white"" {} }
+Category {
+  Tags { ""Queue""=""Transparent"" ""IgnoreProjector""=""True"" ""RenderType""=""Transparent"" }
+  Blend SrcAlpha OneMinusSrcAlpha, One OneMinusSrcAlpha
+  ColorMask RGBA Cull Off Lighting Off ZWrite Off Fog { Mode Off }
+  BindChannels { Bind ""Color"", color Bind ""Vertex"", vertex Bind ""TexCoord"", texcoord }
+  SubShader { Pass {
+    SetTexture [_MainTex] { constantColor [_TintColor] combine constant * primary }
+    SetTexture [_MainTex] { combine texture * previous DOUBLE }
+  } }
+}
+}";
+
+        struct AmbientState
+        {
+            UnityEngine.Rendering.AmbientMode mode;
+            Color light;
+            float intensity;
+            bool fog;
+
+            public static AmbientState Save() => new AmbientState
+            {
+                mode = RenderSettings.ambientMode,
+                light = RenderSettings.ambientLight,
+                intensity = RenderSettings.ambientIntensity,
+                fog = RenderSettings.fog,
+            };
+
+            public void Restore()
+            {
+                RenderSettings.ambientMode = mode;
+                RenderSettings.ambientLight = light;
+                RenderSettings.ambientIntensity = intensity;
+                RenderSettings.fog = fog;
+            }
         }
 
         void Borrow()
@@ -207,10 +385,17 @@ namespace PerkeleRim.Game
         internal HandLayerSender Owner;
         long start;
 
-        void OnPreCull() => start = Stopwatch.GetTimestamp();
+        void OnPreCull()
+        {
+            start = Stopwatch.GetTimestamp();
+            try { Owner?.BeginRender(); }
+            catch (Exception e) { HandLayerSender.Enabled = false; ModConsoleLog("hand layer: lighting FAILED, off: " + e); }
+        }
 
         void OnPostRender()
         {
+            try { Owner?.EndRender(); }
+            catch (Exception e) { HandLayerSender.Enabled = false; ModConsoleLog("hand layer: restore FAILED, off: " + e); }
             try { Owner?.Copy(start); }
             catch (Exception e) { HandLayerSender.Enabled = false; ModConsoleLog("hand layer: copy FAILED, off: " + e); }
         }
