@@ -39,6 +39,9 @@ namespace PerkeleRim::PlayerSync
         constexpr float kGarageArrivedUnits = 256.0f;
         constexpr int   kGarageSettleFrames = 30;
         constexpr float kGarageTimeout = 60.0f;
+        // Resuming the handover after loading a save taken while MSC had the player: once the
+        // player's cell is attached, the same settle frames, given up after the timeout (seconds).
+        constexpr float kResumeTimeout = 30.0f;
 
         // Main thread only: the input and menu sinks and the Update hook all run there.
         struct State
@@ -47,6 +50,9 @@ namespace PerkeleRim::PlayerSync
             RE::TESObjectREFR* garage = nullptr;  // spawn marker while the player travels there for the first handover
             float              garageTime = 0.0f;
             int                garageFrames = 0;
+            bool               resume = false;  // hand over again once the loaded save's player is in its cell
+            float              resumeTime = 0.0f;
+            int                resumeFrames = 0;
             std::uint32_t  generation = 0;
             std::uint32_t  anchorWorldspace = 0;
             std::uint32_t  anchorCell = 0;
@@ -298,6 +304,23 @@ namespace PerkeleRim::PlayerSync
             if (state.owned) {
                 Garage::Visited();
             }
+        }
+
+        void Resume(RE::PlayerCharacter* a_player, float a_delta)
+        {
+            state.resumeTime += a_delta;
+            if (!LinkService::Get().IsUp() || state.resumeTime > kResumeTimeout) {
+                SKSE::log::warn("player sync: gave up handing the loaded save's player back to MSC ({})", LinkService::Get().IsUp() ? "timed out" : "link down");
+                state.resume = false;
+                return;
+            }
+            auto*      cell = a_player->GetParentCell();
+            const bool there = cell && cell->IsAttached() && a_player->Is3DLoaded();
+            if (!there || ++state.resumeFrames < kGarageSettleFrames) {
+                return;
+            }
+            state.resume = false;
+            TakeOver(a_player);
         }
 
         // A load door, fast travel or a script moved the player somewhere MSC's island doesn't cover.
@@ -619,6 +642,8 @@ namespace PerkeleRim::PlayerSync
                 Death::Tick();
                 if (state.garage && a_delta > 0.0f) {
                     TravelToGarage(a_player, a_delta);
+                } else if (state.resume && !state.owned && a_delta > 0.0f) {
+                    Resume(a_player, a_delta);
                 } else if (state.owned && a_delta > 0.0f) {
                     Drive(a_player, a_delta);
                 }
@@ -709,6 +734,9 @@ namespace PerkeleRim::PlayerSync
             {
                 if (state.owned) {
                     Release("F10");
+                } else if (state.resume) {
+                    state.resume = false;
+                    SKSE::log::info("player sync: F10 before the loaded save's handover resumed, not handing over");
                 } else if (state.garage) {
                     state.garage = nullptr;
                     SKSE::log::info("player sync: F10 again on the way to the garage, not handing over");
@@ -761,5 +789,36 @@ namespace PerkeleRim::PlayerSync
         if (auto* ui = RE::UI::GetSingleton()) {
             ui->AddEventSink<RE::MenuOpenCloseEvent>(&menuSink);
         }
+    }
+
+    void OnGameLoad()
+    {
+        Release("game loading");
+        state.garage = nullptr;
+        state.resume = false;
+    }
+
+    bool Owned()
+    {
+        return state.owned;
+    }
+
+    void RestoreControls()
+    {
+        if (!state.owned) {
+            SetControls(true);
+            SKSE::log::info("player sync: the save was taken while MSC had the player, Skyrim's controls are back");
+        }
+    }
+
+    void ResumeHandover()
+    {
+        if (state.owned) {
+            return;
+        }
+        state.resume = true;
+        state.resumeTime = 0.0f;
+        state.resumeFrames = 0;
+        SKSE::log::info("player sync: the save was taken while MSC had the player, handing it back once it's in");
     }
 }

@@ -9,7 +9,6 @@ namespace PerkeleRim::Garage
         constexpr RE::FormID kSpawnMarker = 0x800;
         constexpr RE::FormID kVanMarker = 0x801;
 
-        constexpr std::uint32_t kCosaveId = 'PRIM';
         constexpr std::uint32_t kVisitedRecord = 'GRGE';
         constexpr std::uint32_t kVisitedVersion = 1;
 
@@ -20,39 +19,31 @@ namespace PerkeleRim::Garage
             RE::TESObjectREFR*  van = nullptr;
             bool                visited = false;  // this save's first handover already went to the garage
         } state;
+    }
 
-        void Save(SKSE::SerializationInterface* a_intfc)
-        {
-            if (!a_intfc->OpenRecord(kVisitedRecord, kVisitedVersion) || !a_intfc->WriteRecordData(state.visited)) {
-                SKSE::log::warn("garage: could not save the visited flag");
-            }
-        }
-
-        void Load(SKSE::SerializationInterface* a_intfc)
-        {
-            std::uint32_t type, version, length;
-            while (a_intfc->GetNextRecordInfo(type, version, length)) {
-                if (type == kVisitedRecord && version == kVisitedVersion) {
-                    a_intfc->ReadRecordData(state.visited);
-                }
-            }
-            SKSE::log::info("garage: save loaded, {}", state.visited ? "already been to the garage" : "first handover goes to the garage");
-        }
-
-        // New game, or before a save loads: a save without our record hasn't been there.
-        void Revert(SKSE::SerializationInterface*)
-        {
-            state.visited = false;
+    void Save(SKSE::SerializationInterface* a_intfc)
+    {
+        if (!a_intfc->OpenRecord(kVisitedRecord, kVisitedVersion) || !a_intfc->WriteRecordData(state.visited)) {
+            SKSE::log::warn("garage: could not save the visited flag");
         }
     }
 
-    void Install()
+    bool Read(SKSE::SerializationInterface* a_intfc, std::uint32_t a_type, std::uint32_t a_version)
     {
-        auto* serialization = SKSE::GetSerializationInterface();
-        serialization->SetUniqueID(kCosaveId);
-        serialization->SetSaveCallback(Save);
-        serialization->SetLoadCallback(Load);
-        serialization->SetRevertCallback(Revert);
+        if (a_type != kVisitedRecord) {
+            return false;
+        }
+        if (a_version == kVisitedVersion) {
+            a_intfc->ReadRecordData(state.visited);
+        }
+        SKSE::log::info("garage: save loaded, {}", state.visited ? "already been to the garage" : "first handover goes to the garage");
+        return true;
+    }
+
+    // New game, or before a save loads: a save without our record hasn't been there.
+    void Revert()
+    {
+        state.visited = false;
     }
 
     void OnDataLoaded()

@@ -69,6 +69,7 @@ namespace PerkeleRim.Game
         // by hand (its velocity jumps then without a hit).
         public Rigidbody Body => body;
         public string Name => driverName;
+        public string ObjectName => objectName;
         public int Moves { get; private set; }
 
         bool PlayerDriving
@@ -135,29 +136,36 @@ namespace PerkeleRim.Game
             return null;
         }
 
-        // Fills the tank (<vehicle>/FuelTank :: Data) to its capacity, so a vehicle from a fresh save
-        // runs. Logs the tank's floats, since their names were never dumped.
-        void Refuel()
+        // The tank's level and capacity (<vehicle>/FuelTank :: Data); either may be null.
+        void FuelTank(out HutongGames.PlayMaker.FsmFloat level, out HutongGames.PlayMaker.FsmFloat capacity, System.Text.StringBuilder names)
         {
-            var tank = car.Find("FuelTank");
+            level = capacity = null;
+            var tank = car != null ? car.Find("FuelTank") : null;
             if (tank == null) return;
             foreach (var fsm in tank.GetComponents<PlayMakerFSM>())
             {
                 if (fsm.FsmName != "Data") continue;
-                HutongGames.PlayMaker.FsmFloat level = null, capacity = null;
-                var names = new System.Text.StringBuilder();
                 foreach (var f in fsm.FsmVariables.FloatVariables)
                 {
-                    names.Append($" {f.Name}={f.Value:0.##}");
+                    if (names != null) names.Append($" {f.Name}={f.Value:0.##}");
                     if (f.Name.IndexOf("Level", StringComparison.OrdinalIgnoreCase) >= 0) level = f;
                     else if (f.Name.IndexOf("Capacity", StringComparison.OrdinalIgnoreCase) >= 0 || f.Name.StartsWith("Max", StringComparison.OrdinalIgnoreCase)) capacity = f;
                 }
-                log($"vehicle: {driverName} fuel tank floats:{names}");
-                if (level != null && capacity != null && capacity.Value > 0f && level.Value < capacity.Value)
-                {
-                    level.Value = capacity.Value;
-                    log($"vehicle: filled the {driverName} tank ({level.Name} = {capacity.Name} = {capacity.Value:0.##})");
-                }
+            }
+        }
+
+        // Fills the tank to its capacity, so a vehicle from a fresh save runs. Logs the tank's
+        // floats, since their names were never dumped.
+        void Refuel()
+        {
+            HutongGames.PlayMaker.FsmFloat level, capacity;
+            var names = new System.Text.StringBuilder();
+            FuelTank(out level, out capacity, names);
+            if (names.Length > 0) log($"vehicle: {driverName} fuel tank floats:{names}");
+            if (level != null && capacity != null && capacity.Value > 0f && level.Value < capacity.Value)
+            {
+                level.Value = capacity.Value;
+                log($"vehicle: filled the {driverName} tank ({level.Name} = {capacity.Name} = {capacity.Value:0.##})");
             }
         }
 
@@ -179,6 +187,65 @@ namespace PerkeleRim.Game
             spotGeneration = generation;
             this.spot = spot;
             spotHeading = heading;
+        }
+
+        // Where the vehicle is and how it moves, for a snapshot (SaveSync); null when not found.
+        public Snapshot.Body Capture(Transform player)
+        {
+            if (car == null) return null;
+            var p = island.IslandToSkyrim(Vec3From(car.position));
+            var r = car.rotation;
+            var v = body != null ? (held ? heldVelocity : body.velocity) : Vector3.zero;
+            var a = body != null ? (held ? heldAngular : body.angularVelocity) : Vector3.zero;
+            HutongGames.PlayMaker.FsmFloat level, capacity;
+            FuelTank(out level, out capacity, null);
+            return new Snapshot.Body
+            {
+                Name = objectName,
+                Position = p,
+                Rotation = new Quat(r.x, r.y, r.z, r.w),
+                Velocity = Vec3From(v),
+                Angular = Vec3From(a),
+                Fuel = level != null ? level.Value : float.NaN,
+                Driven = player != null && Carries(player),
+            };
+        }
+
+        // Puts the vehicle back where a snapshot had it (the player in it comes along), on the
+        // current island. Without ground there yet it is held with that speed, as when it drives off
+        // the streamed area.
+        public void Restore(Snapshot.Body b)
+        {
+            if (car == null) return;
+            var at = island.SkyrimToIsland(b.Position);
+            var position = new Vector3(at.x, at.y, at.z);
+            var rotation = new Quaternion(b.Rotation.x, b.Rotation.y, b.Rotation.z, b.Rotation.w);
+            var velocity = new Vector3(b.Velocity.x, b.Velocity.y, b.Velocity.z);
+            var angular = new Vector3(b.Angular.x, b.Angular.y, b.Angular.z);
+            Moves++;
+            car.position = position;
+            car.rotation = rotation;
+            if (body != null)
+            {
+                body.position = position;
+                body.rotation = rotation;
+                if (body.isKinematic)
+                {
+                    heldVelocity = velocity;
+                    heldAngular = angular;
+                }
+                else
+                {
+                    body.velocity = velocity;
+                    body.angularVelocity = angular;
+                }
+            }
+            nextGroundCheck = 0f;
+            HutongGames.PlayMaker.FsmFloat level, capacity;
+            FuelTank(out level, out capacity, null);
+            if (level != null && !float.IsNaN(b.Fuel)) level.Value = b.Fuel;
+            log($"vehicle: the {driverName} is back at ({b.Position.x:0},{b.Position.y:0},{b.Position.z:0}) at {velocity.magnitude * 3.6f:0} km/h" +
+                (level != null && !float.IsNaN(b.Fuel) ? $", fuel {b.Fuel:0.#}" : ""));
         }
 
         // True when moving the vehicle also moves the player (sitting in it, parented to it).

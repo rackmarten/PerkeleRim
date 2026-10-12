@@ -29,10 +29,13 @@ namespace PerkeleRim::Input
     }
 
     // Scan codes that stay with Skyrim and never reach MSC: Escape and Tab open Skyrim's menus,
-    // ~ opens the console, F10 toggles who owns the player.
+    // ~ opens the console, F5 and F9 quicksave and quickload (MSC would switch its cinematic camera),
+    // F10 toggles who owns the player.
     inline constexpr std::uint32_t kDikEscape = 0x01;
     inline constexpr std::uint32_t kDikTab = 0x0F;
     inline constexpr std::uint32_t kDikGrave = 0x29;
+    inline constexpr std::uint32_t kDikF5 = 0x3F;
+    inline constexpr std::uint32_t kDikF9 = 0x43;
     inline constexpr std::uint32_t kDikF10 = 0x44;
 
     // DirectInput scan code -> Unity KeyCode, None for keys MSC doesn't get.
@@ -46,6 +49,7 @@ namespace PerkeleRim::Input
         if (a_dik >= 0x1E && a_dik <= 0x26) return static_cast<std::uint16_t>(kRowA[a_dik - 0x1E]);
         if (a_dik >= 0x2C && a_dik <= 0x32) return static_cast<std::uint16_t>(kRowZ[a_dik - 0x2C]);
         if (a_dik >= 0x02 && a_dik <= 0x0A) return static_cast<std::uint16_t>(49 + (a_dik - 0x02));  // Alpha1..Alpha9
+        if (a_dik == kDikF5 || a_dik == kDikF9) return KeyCode::None;
         if (a_dik >= 0x3B && a_dik <= 0x43) return static_cast<std::uint16_t>(282 + (a_dik - 0x3B));  // F1..F9
 
         switch (a_dik) {

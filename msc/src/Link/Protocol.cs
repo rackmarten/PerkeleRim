@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 13;
+        public const uint ProtocolVersion = 14;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -60,6 +60,7 @@ namespace PerkeleRim.Protocol
         public const uint ModelMeshVertexMax = 65535;
         public const uint DamageCrash = 1;
         public const uint DamageOther = 2;
+        public const uint MscSnapshotPathMax = 1024;
         public const uint MaterialCutout = 0x1;
         public const uint MaterialBlend = 0x2;
         public const uint MaterialUnlit = 0x4;
@@ -130,6 +131,8 @@ namespace PerkeleRim.Protocol
         ModelChunk = 6,
         PlayerDamage = 7,
         PlayerDeath = 8,
+        MscSave = 9,
+        MscLoad = 10,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -418,6 +421,14 @@ namespace PerkeleRim.Protocol
     public unsafe struct PlayerDeath
     {
         public fixed uint reserved[2];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct MscSnapshot
+    {
+        public ulong key;
+        public uint length;
+        public uint reserved;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

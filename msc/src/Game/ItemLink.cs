@@ -91,6 +91,75 @@ namespace PerkeleRim.Game
                         $"layer {(e.Renderers.Length > 0 && e.Renderers[0] != null ? LayerMask.LayerToName(e.Renderers[0].gameObject.layer) : "-")}");
         }
 
+        // The items near the player for a snapshot (SaveSync), but not the ones in the player's hands
+        // (they come along with the player).
+        public List<Snapshot.Body> Capture(Transform player)
+        {
+            var list = new List<Snapshot.Body>();
+            foreach (var t in items)
+            {
+                if (t == null || (player != null && t.IsChildOf(player))) continue;
+                var body = t.GetComponent<Rigidbody>();
+                bool moving = body != null && !body.isKinematic;
+                var v = moving ? body.velocity : Vector3.zero;
+                var a = moving ? body.angularVelocity : Vector3.zero;
+                list.Add(new Snapshot.Body
+                {
+                    Id = t.GetInstanceID(),
+                    Name = t.name,
+                    Position = island.IslandToSkyrim(new Vec3(t.position.x, t.position.y, t.position.z)),
+                    Rotation = new Quat(t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w),
+                    Velocity = new Vec3(v.x, v.y, v.z),
+                    Angular = new Vec3(a.x, a.y, a.z),
+                    Bottles = BeerGift.Bottles(t),
+                });
+            }
+            return list;
+        }
+
+        // Puts items back where a snapshot had them, on the current island, by instance id (so only
+        // within the MSC session that took it). Items in the player's hands now stay there; ones
+        // without ground yet are held until it arrives. Beer cases get their bottle count back.
+        public void Restore(List<Snapshot.Body> saved, Transform player)
+        {
+            var byId = new Dictionary<int, Snapshot.Body>();
+            foreach (var b in saved) byId[b.Id] = b;
+            int moved = 0, held = 0;
+            foreach (Rigidbody body in UnityEngine.Object.FindObjectsOfType(typeof(Rigidbody)))
+            {
+                var t = body.transform;
+                Snapshot.Body b;
+                if (!byId.TryGetValue(t.GetInstanceID(), out b)) continue;
+                byId.Remove(b.Id);
+                if (player != null && t.IsChildOf(player)) continue;
+                var at = island.SkyrimToIsland(b.Position);
+                t.position = new Vector3(at.x, at.y, at.z);
+                t.rotation = new Quaternion(b.Rotation.x, b.Rotation.y, b.Rotation.z, b.Rotation.w);
+                body.position = t.position;
+                body.rotation = t.rotation;
+                if (findGround(t.position).HasValue)
+                {
+                    if (!body.isKinematic)
+                    {
+                        body.velocity = new Vector3(b.Velocity.x, b.Velocity.y, b.Velocity.z);
+                        body.angularVelocity = new Vector3(b.Angular.x, b.Angular.y, b.Angular.z);
+                    }
+                }
+                else if (!body.isKinematic)
+                {
+                    body.isKinematic = true;
+                    holding.Add(body);
+                    held++;
+                }
+                if (b.Bottles >= 0) BeerGift.SetBottles(t, b.Bottles, log);
+                moved++;
+            }
+            if (held > 0) holdUntil = Time.realtimeSinceStartup + HoldMax;
+            nextScan = 0f;
+            log($"items: {moved} of {saved.Count} saved items back, {held} held for their ground" +
+                (byId.Count > 0 ? $", {byId.Count} gone (used up, or from another MSC session)" : ""));
+        }
+
         // A new anchor moved the island under the player: move the items along so each stays where it
         // was in Skyrim's world. Only the ones that end up near the player, where the new island has
         // ground; the rest stay behind. Held items come along with the player anyway.

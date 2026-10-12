@@ -22,7 +22,7 @@ TEST_CASE("scan codes map to Unity key codes")
     CHECK(KeyFromScanCode(0x39) == KeyCode::Space);
     CHECK(KeyFromScanCode(0x1C) == 13);   // Return (enter/exit vehicle)
     CHECK(KeyFromScanCode(0x3B) == 282);  // F1
-    CHECK(KeyFromScanCode(0x43) == 290);  // F9
+    CHECK(KeyFromScanCode(0x42) == 289);  // F8
     CHECK(KeyFromScanCode(0x57) == 292);  // F11
     CHECK(KeyFromScanCode(0xC8) == KeyCode::UpArrow);
 }
@@ -32,6 +32,8 @@ TEST_CASE("keys that stay with Skyrim never reach MSC")
     CHECK(KeyFromScanCode(kDikEscape) == KeyCode::None);
     CHECK(KeyFromScanCode(kDikTab) == KeyCode::None);
     CHECK(KeyFromScanCode(kDikGrave) == KeyCode::None);
+    CHECK(KeyFromScanCode(kDikF5) == KeyCode::None);  // quicksave
+    CHECK(KeyFromScanCode(kDikF9) == KeyCode::None);  // quickload
     CHECK(KeyFromScanCode(kDikF10) == KeyCode::None);
 }
 

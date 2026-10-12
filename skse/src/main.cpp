@@ -7,6 +7,8 @@
 #include "garage/Garage.h"
 #include "link/LinkService.h"
 #include "player/PlayerSync.h"
+#include "save/Cosave.h"
+#include "save/SaveSync.h"
 
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
@@ -19,7 +21,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 
     PerkeleRim::LinkService::Start();
     PerkeleRim::PlayerSync::Install();
-    PerkeleRim::Garage::Install();
+    PerkeleRim::Cosave::Install();
     SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
         if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
             PerkeleRim::PlayerSync::OnDataLoaded();
@@ -28,8 +30,12 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::Autoload::OnDataLoaded();
         } else if (a_msg->type == SKSE::MessagingInterface::kPreLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
             PerkeleRim::Death::Hide();  // the reload after a death
+            PerkeleRim::PlayerSync::OnGameLoad();
         } else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame) {
             PerkeleRim::Autoload::OnGameLoaded();
+            PerkeleRim::SaveSync::OnGameLoaded();
+        } else if (a_msg->type == SKSE::MessagingInterface::kSaveGame) {
+            PerkeleRim::SaveSync::OnSaveGame(static_cast<const char*>(a_msg->data));
         }
     });
 

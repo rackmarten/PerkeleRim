@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 13;
+    inline constexpr std::uint32_t kProtocolVersion = 14;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -344,6 +344,8 @@ namespace PerkeleRim::Protocol
         ModelChunk = 6,        // MSC -> Skyrim
         PlayerDamage = 7,      // MSC -> Skyrim
         PlayerDeath = 8,       // Skyrim -> MSC
+        MscSave = 9,           // Skyrim -> MSC
+        MscLoad = 10,          // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -427,6 +429,21 @@ namespace PerkeleRim::Protocol
     struct PlayerDeath
     {
         std::uint32_t reserved[2];
+    };
+
+    // MscSave: Skyrim is saving. MSC saves its game the way its own save does (global event
+    // SAVEGAME) and copies its save files into the folder named here, together with the key; the
+    // Skyrim save keeps the key in its cosave. MscLoad: a Skyrim save with a key was loaded. When the
+    // folder holds that key, MSC puts its save files back from it and reloads its game; otherwise MSC
+    // stays as it is. Payload for both: this header, then length bytes of UTF-8 folder path (no
+    // terminator).
+    inline constexpr std::uint32_t kMscSnapshotPathMax = 1024;
+
+    struct MscSnapshot
+    {
+        std::uint64_t key;     // never 0
+        std::uint32_t length;  // path bytes, <= kMscSnapshotPathMax
+        std::uint32_t reserved;
     };
 
     // ---- Models (MSC -> Skyrim) ----
@@ -591,6 +608,8 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(PlayerDamage) == 8);
     static_assert(offsetof(PlayerDamage, severity) == 4);
     static_assert(sizeof(PlayerDeath) == 8);
+    static_assert(sizeof(MscSnapshot) == 16);
+    static_assert(offsetof(MscSnapshot, length) == 8);
     static_assert(sizeof(ModelChunk) == 16);
     static_assert(offsetof(ModelChunk, offset) == 8);
     static_assert(sizeof(ModelHeader) == 64);

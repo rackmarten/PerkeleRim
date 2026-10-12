@@ -21,6 +21,8 @@ namespace PerkeleRim.Spike
     //   handlayer on|off|tint|save  share MSC's first-person layer with Skyrim or not (HandLayerSender); tint toggles a
     //                        red background, save writes the layer to PerkeleRim_handlayer.png;
     //                        handlayer light <ambient> <sun> sets its neutral lighting (0.5 0.8)
+    //   snapshot save|load <name>  what Skyrim's MscSave / MscLoad do (SaveSync), with the snapshot in
+    //                        <MSC>/PerkeleRim_snapshots/<name> and key 1
     //   global <name> <v>    set a global PlayMaker float (global PlayerUrine 100)
     //   event <NAME>         broadcast a global PlayMaker event (DRINKBEER: the beer drinking animation)
     //   textures <name>      read an object's model (GameObject.Find) without sending it and log it
@@ -203,6 +205,21 @@ namespace PerkeleRim.Spike
                         var global = words.Length > 2 ? HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmFloat(words[1]) : null;
                         if (global != null) global.Value = float.Parse(words[2], CultureInfo.InvariantCulture);
                         SpikeLog.Write(global != null ? $"cmd: {words[1]} = {global.Value}" : "cmd: no such global float");
+                        break;
+                    case "snapshot":
+                        if (words.Length < 3 || PerkeleRim.Game.SaveSync.Instance == null) { SpikeLog.Write("cmd: snapshot save|load <name>, in a real build"); break; }
+                        var folder = Path.Combine(Path.Combine(SpikeLog.GameDir, "PerkeleRim_snapshots"), words[2]);
+                        if (words[1].ToLower() == "save") PerkeleRim.Game.SaveSync.Instance.Save(1, folder);
+                        else PerkeleRim.Game.SaveSync.Instance.Load(1, folder);
+                        break;
+                    case "pick":  // what PlayMaker's MousePickEvent sees: Camera.main's ray through the mouse
+                        var cam = Camera.main;
+                        SpikeLog.Write($"cmd: Camera.main {(cam != null ? cam.name + " enabled " + cam.enabled + " depth " + cam.depth + " at " + cam.transform.position : "none")}, mouse {Input.mousePosition}, screen {Screen.width}x{Screen.height}");
+                        foreach (Camera c in Camera.allCameras)
+                            SpikeLog.Write($"cmd: camera {c.name} tag {c.tag} depth {c.depth} mask {c.cullingMask:X8}");
+                        if (cam != null)
+                            foreach (var hit in Physics.RaycastAll(cam.ScreenPointToRay(Input.mousePosition), 3f))
+                                SpikeLog.Write($"cmd: hit {hit.collider.name} ({(hit.collider.transform.parent != null ? hit.collider.transform.parent.name : "")}) layer {hit.collider.gameObject.layer} at {hit.distance:0.00} m trigger {hit.collider.isTrigger}");
                         break;
                     case "death":  // what a fatal crash sends; caught by DeathGuard while handed over
                         PlayMakerFSM.BroadcastEvent("DEATH");

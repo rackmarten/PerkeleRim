@@ -76,6 +76,39 @@ namespace PerkeleRim.Game
             return best;
         }
 
+        // A case's Use FSM, null when t isn't a beer case.
+        static PlayMakerFSM CaseFsm(Transform t)
+        {
+            foreach (var fsm in t.GetComponents<PlayMakerFSM>())
+                if (fsm.FsmName == "Use" && fsm.FsmVariables.FindFsmInt("DestroyedBottles") != null) return fsm;
+            return null;
+        }
+
+        // The bottles left in a beer case, -1 when t isn't one.
+        public static int Bottles(Transform t) => CaseFsm(t) != null ? t.childCount : -1;
+
+        // Gives a case the bottle count a snapshot had: copies of a bottle still in it, or bottles
+        // taken out, with DestroyedBottles kept to match. Only for a case at rest with a bottle left.
+        public static void SetBottles(Transform t, int bottles, Action<string> log)
+        {
+            var fsm = CaseFsm(t);
+            int now = t.childCount;
+            if (fsm == null || bottles == now) return;
+            var consumed = fsm.FsmVariables.FindFsmBool("Consumed");
+            if (now == 0 || (consumed != null && consumed.Value) || (fsm.ActiveStateName != "Wait player" && fsm.ActiveStateName != "Wait button"))
+            {
+                log($"beer: case {t.name} can't go back to {bottles} bottles ({now} left, state {fsm.ActiveStateName})");
+                return;
+            }
+            if (bottles > now) AddBottles(fsm, bottles - now);
+            else
+            {
+                for (int i = bottles; i < now; i++) UnityEngine.Object.Destroy(t.GetChild(i).gameObject);
+                fsm.FsmVariables.FindFsmInt("DestroyedBottles").Value += now - bottles;
+            }
+            log($"beer: case {t.name} back to {bottles} bottles (had {now})");
+        }
+
         static void AddBottles(PlayMakerFSM fsm, int n)
         {
             var box = fsm.transform;

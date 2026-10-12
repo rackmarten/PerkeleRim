@@ -12,7 +12,11 @@ namespace PerkeleRim::Garage
         float        heading;   // radians, clockwise from north
     };
 
-    void Install();       // cosave callbacks; call at SKSE load
+    // Cosave record (Cosave): whether this save has been to the garage yet.
+    void Save(SKSE::SerializationInterface* a_intfc);
+    bool Read(SKSE::SerializationInterface* a_intfc, std::uint32_t a_type, std::uint32_t a_version);  // false: not ours
+    void Revert();
+
     void OnDataLoaded();  // finds the ESP's markers; call on kDataLoaded
 
     RE::TESObjectREFR* FirstVisit();  // the spawn marker if this save hasn't been to the garage yet, else null

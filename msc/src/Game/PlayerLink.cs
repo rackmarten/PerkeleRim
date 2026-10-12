@@ -23,7 +23,8 @@ namespace PerkeleRim.Game
     //  - shares MSC's first-person layer (hands, drinks, tools in hand) with Skyrim (HandLayerSender);
     //  - keeps MSC's player alive while handed over and sends what it would have died of as
     //    PlayerDamage (DeathGuard), plays MSC's death sound on PlayerDeath, and sends MSC's blood
-    //    overlay for Skyrim's death ahead of time.
+    //    overlay for Skyrim's death ahead of time;
+    //  - keeps MSC's state with Skyrim's saves and puts it back when one loads (SaveSync).
     public unsafe class PlayerLink : MonoBehaviour
     {
         // Drop the player this far above the ground so it never starts inside the collider.
@@ -44,6 +45,7 @@ namespace PerkeleRim.Game
         ModelSender models;
         ItemLink items;
         HandLayerSender hands;
+        SaveSync saves;
         Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
         Collider groundTemplate;  // MSC ground the island chunks copy layer, tag and material from
 
@@ -94,6 +96,7 @@ namespace PerkeleRim.Game
             hands = new HandLayerSender(log);
             crash = new CrashSensor(log);
             DeathGuard.Install(log);
+            saves = new SaveSync(island, vehicles, items, () => playing, () => player, log);
         }
 
         // Beer as if Skyrim sent GiveBeer (spike command "beer").
@@ -197,6 +200,7 @@ namespace PerkeleRim.Game
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
             models.Update(link);
             hands.Update(link, playing, input.ScreenWidth, input.ScreenHeight);
+            saves.Update();
         }
 
         // MSC's blood over the view when the player dies (Systems/Death/PlayerBlood's texture), sent as
@@ -272,6 +276,8 @@ namespace PerkeleRim.Game
             }
             else if (type == MessageType.PlayerDeath)
                 DeathGuard.PlayDeathSound();
+            else if (type == MessageType.MscSave || type == MessageType.MscLoad)
+                saves.OnMessage(type, payload, size);
         }
 
         void FindPlayer()

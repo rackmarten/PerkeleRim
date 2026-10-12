@@ -7,10 +7,15 @@
 // A save's first handover moves the player to the garage (Garage) first and parks the van there.
 // Taking over sends a WorldspaceChange with the player's spot, which MSC uses as the anchor of its
 // collision island, and starts CollisionSampler. A load door, fast travel or other jump sends a
-// new anchor; poses for older anchors are ignored. Ownership ends on F10 again or when the link
-// goes down.
+// new anchor; poses for older anchors are ignored. Ownership ends on F10 again, when the link
+// goes down or when a game loads; a save taken while MSC had the player hands over again after it loads.
 namespace PerkeleRim::PlayerSync
 {
     void Install();       // hook; call at SKSE load
     void OnDataLoaded();  // input and menu sinks; call on kDataLoaded
+    void OnGameLoad();    // Skyrim takes the player back; call on kPreLoadGame and kNewGame
+
+    bool Owned();            // MSC has the player
+    void RestoreControls();  // the loaded save was taken while MSC had the player and kept its controls off
+    void ResumeHandover();   // and hands the player to MSC again once it's in its cell (F10 cancels)
 }
