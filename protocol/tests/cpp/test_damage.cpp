@@ -19,6 +19,29 @@ TEST_CASE("a punch costs a quarter of the target's max health, dragons less")
     CHECK(Damage::Punch(-5.0f, false) == 0.0f);
 }
 
+TEST_CASE("drunk punches hit harder, up to twice as hard")
+{
+    CHECK(Damage::Punch(100.0f, false, 0.0f) == doctest::Approx(25.0f));
+    CHECK(Damage::Punch(100.0f, false, 2.0f) == doctest::Approx(37.5f));
+    CHECK(Damage::Punch(100.0f, false, 4.0f) * 2.0f >= 100.0f);  // two drunk punches drop anyone
+    CHECK(Damage::Punch(100.0f, false, 8.0f) == doctest::Approx(50.0f));
+    CHECK(Damage::Punch(100.0f, false, -1.0f) == doctest::Approx(25.0f));
+}
+
+TEST_CASE("drinks, cigarettes and food heal a share of max health, never past it")
+{
+    using namespace PerkeleRim::Protocol;
+    CHECK(Damage::Heal(kConsumedBeer, 200.0f, 50.0f) == doctest::Approx(20.0f));
+    CHECK(Damage::Heal(kConsumedCigarette, 200.0f, 50.0f) == doctest::Approx(10.0f));
+    CHECK(Damage::Heal(kConsumedFood, 200.0f, 50.0f) == doctest::Approx(50.0f));
+    CHECK(Damage::Heal(kConsumedSpirit, 200.0f, 50.0f) == doctest::Approx(50.0f));
+    CHECK(Damage::Heal(kConsumedFood, 200.0f, 190.0f) == doctest::Approx(10.0f));  // capped at max
+    CHECK(Damage::Heal(kConsumedBeer, 200.0f, 200.0f) == 0.0f);
+    CHECK(Damage::Heal(kConsumedBeer, 200.0f, 250.0f) == 0.0f);  // fortified above max: no harm
+    CHECK(Damage::Heal(0, 200.0f, 50.0f) == 0.0f);
+    CHECK(Damage::Heal(99, 200.0f, 50.0f) == 0.0f);
+}
+
 TEST_CASE("fall damage follows Skyrim's formula")
 {
     CHECK(Damage::Fall(600.0f) == 0.0f);  // up to fJumpFallHeightMin is free

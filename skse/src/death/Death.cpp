@@ -85,6 +85,28 @@ namespace PerkeleRim::Death
             values->DamageActorValue(RE::ActorValue::kHealth, a_amount);
         }
 
+        const char* ConsumedName(std::uint32_t a_kind)
+        {
+            switch (a_kind) {
+            case Protocol::kConsumedBeer:
+                return "beer";
+            case Protocol::kConsumedShot:
+                return "shot";
+            case Protocol::kConsumedKilju:
+                return "kilju";
+            case Protocol::kConsumedBooze:
+                return "booze";
+            case Protocol::kConsumedSpirit:
+                return "spirit";
+            case Protocol::kConsumedCigarette:
+                return "cigarette";
+            case Protocol::kConsumedFood:
+                return "food";
+            default:
+                return "unknown consume";
+            }
+        }
+
         void SetAlpha(RE::NiAVObject* a_node, float a_alpha)
         {
             RE::BSVisit::TraverseScenegraphGeometries(a_node, [a_alpha](RE::BSGeometry* a_geometry) {
@@ -179,6 +201,24 @@ namespace PerkeleRim::Death
         const float max = a_player->AsActorValueOwner()->GetPermanentActorValue(RE::ActorValue::kHealth);
         Hurt(a_player, Damage::Crash(max, damage.severity),
             damage.cause == Protocol::kDamageCrash ? "an MSC crash" : "an MSC death (not a crash)");
+    }
+
+    void OnConsumed(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
+    {
+        Protocol::Consumed consumed{};
+        if (a_size < sizeof(consumed)) {
+            SKSE::log::warn("death: short Consumed ({} bytes)", a_size);
+            return;
+        }
+        std::memcpy(&consumed, a_data, sizeof(consumed));
+        auto*       values = a_player->AsActorValueOwner();
+        const float max = values->GetPermanentActorValue(RE::ActorValue::kHealth);
+        const float health = values->GetActorValue(RE::ActorValue::kHealth);
+        const float heal = Damage::Heal(consumed.kind, max, health);
+        SKSE::log::info("death: MSC's {} heals {:.0f} health of {:.0f} (max {:.0f})", ConsumedName(consumed.kind), heal, health, max);
+        if (heal > 0.0f) {
+            values->RestoreActorValue(RE::ActorValue::kHealth, heal);
+        }
     }
 
     void OnPose(RE::PlayerCharacter* a_player, const Protocol::PlayerState* a_pose, bool a_seated)

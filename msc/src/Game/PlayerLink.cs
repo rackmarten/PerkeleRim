@@ -26,6 +26,7 @@ namespace PerkeleRim.Game
     //  - keeps MSC's player alive while handed over and sends what it would have died of as
     //    PlayerDamage (DeathGuard), plays MSC's death sound on PlayerDeath, and sends MSC's blood
     //    overlay for Skyrim's death ahead of time;
+    //  - sends what the player drinks, smokes and eats for Skyrim to heal by (ConsumeWatch);
     //  - keeps MSC's state with Skyrim's saves and puts it back when one loads (SaveSync).
     public unsafe class PlayerLink : MonoBehaviour
     {
@@ -109,6 +110,7 @@ namespace PerkeleRim.Game
             hands = new HandLayerSender(log);
             crash = new CrashSensor(log);
             DeathGuard.Install(log);
+            ConsumeWatch.Install(log);
             saves = new SaveSync(island, vehicles, items, () => playing, () => player, log);
         }
 
@@ -137,7 +139,7 @@ namespace PerkeleRim.Game
             input.Update(ref s);
             InputShim.Active = input.OwnsPlayer;
             if (!input.OwnsPlayer) { punch.Reset(); return; }
-            punch.Apply(input.Keys, HandsFree(), hitKey);
+            punch.Apply(input.Keys, HandsFree(), hitKey, Time.realtimeSinceStartup);
 
             InputShim.Keys.Clear();
             foreach (var k in input.Keys) InputShim.Keys.Add((KeyCode)k);
@@ -203,6 +205,9 @@ namespace PerkeleRim.Game
             DeathGuard.Active = owned;
             DeathGuard.Update();
             SendDamage(link);
+            ConsumeWatch.Active = owned;
+            if (!owned) ConsumeWatch.Clear();
+            SendConsumed(link);
             // Skyrim has the blood ready before it is needed (shown when the player dies there).
             if (playing) models.IdForBuilt(BloodModel, () => ModelSender.Overlay(BloodModel, BloodTexture, log));
             if (playing) FillPose(ref state);
@@ -235,6 +240,20 @@ namespace PerkeleRim.Game
             var payload = new byte[sizeof(PlayerDamage)];
             fixed (byte* p = payload) *(PlayerDamage*)p = damage;
             if (link.Send(MessageType.PlayerDamage, payload, payload.Length)) DeathGuard.DamageSent();
+        }
+
+        // What the player drank, smoked or ate goes to Skyrim to heal by. A full ring retries next frame.
+        void SendConsumed(Link link)
+        {
+            uint kind;
+            while (ConsumeWatch.Peek(out kind))
+            {
+                var consumed = new Consumed { kind = kind };
+                var payload = new byte[sizeof(Consumed)];
+                fixed (byte* p = payload) *(Consumed*)p = consumed;
+                if (!link.Send(MessageType.Consumed, payload, payload.Length)) return;
+                ConsumeWatch.Sent();
+            }
         }
 
         // Getting the mouse out of MSC's window takes Escape, which opens MSC's menu

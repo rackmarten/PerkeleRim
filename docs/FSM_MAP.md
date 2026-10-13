@@ -90,6 +90,7 @@ Triggers:
 - The drink events are sent by item FSMs (`beer case(itemx) :: Use`, `booze :: Use`, `spirit(Clone) :: Use`, `.../KiljuBuyer/CanTrigger :: PlayerDrink`, granny `DrinkCoffee :: Use`). Those item FSMs dumped with "no actions", so the key that triggers them is not visible. `Use` (F) is the likely key (unverified; seen on door and pickup FSMs elsewhere).
 - Mod trigger: `Drink` FSM `.SendEvent("DRINKBEER")` (global transition). For the others, send the event while the FSM is in `State 4`. This skips the item and does not consume a bottle (unverified in practice, derived from transitions).
 - Read: `PlayerDrinkOn`, `PlayerDrunk`, `PlayerDrunkAdjusted`, `Drink` active state.
+- Finished drink: the drinking animation state hands over to the throw: `Drink anim` → `Throw bottle` → `Burb` (beer), `Drink anim 1` → `Throw bottle 1` → `Check day` (booze), `Drink anim 2` → `Throw glass` (shot), `Drink anim 3` → `Throw milk`, `Drink anim 5` → `Throw glass 2` (coffee), `Drink anim 8` → `Throw bottle 2` (spirit), `Kilju` → `Calc`, `Juice` → `Burb`; all end in `State 4`. A new `DRINKBEER`/`DRINKVIINA` (global transitions) cuts a drink short. PerkeleRim heals on these transitions (`ConsumeWatch`).
 
 ## 3. Pissing
 
@@ -201,7 +202,7 @@ Owner of the passive simulation: `Database/PlayerDatabase :: Simulation` (also `
 | Need | Global | Rises | Falls | Thresholds |
 |---|---|---|---|---|
 | Thirst | `PlayerThirst` | tick +1.83; running +weight/400 per s; punching +0.35; sleep +fatigue/5; sauna | drinks (table in section 2); drinking own urine -3/s | HUD red above 100. 200 = death (`Thirst`) |
-| Hunger | `PlayerHunger` | tick +1.42; swim +0.2; hangover +0.007; sleep +fatigue/5 | drinks (mostly small); food not in dump | HUD red above 100. 200 = death (`Hunger`) |
+| Hunger | `PlayerHunger` | tick +1.42; swim +0.2; hangover +0.007; sleep +fatigue/5 | drinks (mostly small); food (`Use` FSMs, amounts not readable) | HUD red above 100. 200 = death (`Hunger`) |
 | Urine | `PlayerUrine` | tick +0.24; drinks (+1 to +7 per s) | peeing | HUD red above 100. 200 = death (`Urine`). Pee needs `PlayerCurrentVehicle` empty |
 | Fatigue | `PlayerFatigue` | tick +`PlayerFatigueRate` (0.98 to 8); running +0.02/s; swim +0.3; squat +0.05 | coffee (-6/s, -2/s granny); sleep sets 0; `SpeedStress` while driving fast | HUD red above 100. Above 150 activates `FatigueEyes` (`.../FPSCamera/FPSCamera/FatigueEyes`, eyes closing). `Death.Fatigue` exists but no writer seen. Can sleep only if fatigue >= 10 |
 | Stress | `PlayerStress` | tick +`PlayerStressRate` (1.2 to 8.5); hangover +0.0014 | drinks (beer -3, shot -40, bottle -180); speech -0.5; sauna; driving over 120 km/h (`SpeedStress`) | Above 100: sends `SWEARING` events. At 200 for 1 s = death (`Stress`) |
@@ -216,7 +217,9 @@ Sleep (`.../LOD_bedroom1/Sleep/SleepTrigger :: Activate`, same FSM on `COTTAGE/L
 - Sets global `PlayerSleeps` true while asleep, `PlayerStop` true, sends `SLEEP`, later `WAKE`. Advances `GlobalDay` (wraps after 7 to 1).
 - `Systems/PlayerWanted :: Activate` (arrest/jail) applies a similar reset: `Rate = Fatigue/4`, fatigue 0, drunk 0, dirtiness 5.
 
-Smoking: `PlayerFunctions` `Smoking` key `I`, needs `PlayerCigarettes > 0` ("NO CIGARETTES" otherwise), blocked if `PlayerHelmet` or `PlayerHandRight`. Effects are in `.../FPSCamera/FPSCamera/Smoking :: Start/Hand` (not read; `CANT_STOP_SMOKING_NOW` achievement fires when `PlayerStressRate` is near its 8.5 max).
+Smoking: `PlayerFunctions` `Smoking` key `I`, needs `PlayerCigarettes > 0` ("NO CIGARETTES" otherwise), blocked if `PlayerHelmet` or `PlayerHandRight`. Flow: `Initiate` (`GetButtonDown(Smoking)`) → `Check hand 2` → `Check tobacco` (`IntCompare PlayerCigarettes` with 0) → `Activate` (activates the `Smoking` object, local `Smoking = true`) or `No cigaretes`. Effects are in `.../FPSCamera/FPSCamera/Smoking :: Start/Hand` (actions not readable while inactive): `Reset` → `Anim 1` → `Wait player`, `SMOKE` puffs (`Double` → `Anim 2` → `Inhale` → `Anim 3` → `Outhale` → `Stop smoke`), `STOP` puts it out (`Put out` → `Dump cigarette 2`); the `Explosion?` states check for a gasoline nozzle nearby. `CANT_STOP_SMOKING_NOW` achievement fires when `PlayerStressRate` is near its 8.5 max.
+
+Eating: each food item's `Use` FSM (`pizza`, `macaron box`, `sausages`, `potato chips`, `pike`, `moosemeat`) goes `Wait button` / `Wait button 2` → `USE` → `Eat` / `Eat 2` → `FINISHED` → `Destroy` (`STOP` → back to waiting). A single sausage (`sausage0 :: Use`): `USE` → `State 2` → `1` → `Grilled` or `2` → `Fresh` → `Destroy`. Bottles (`booze`, `milk`, `spirit`) pass `Eat 2` too, then `Play anim` → `Check drink`, which sends the `Drink` FSM's event. The item FSMs' actions are not readable ("actions failed"), so the hunger each food takes off is unknown.
 
 ## Global variables of interest
 
@@ -277,10 +280,10 @@ Note `Drunk` and `Wipers` both default to K. There is no drink action: drinking 
 
 The mod's `dump <keyword...>` matches FSM path or name.
 - Vehicle control/telemetry (who sets `PlayerCarControl`, `SpeedKMH`, `RPM`, starter, ignition, throttle): not covered. Try `dump Throttle Starter Ignition Dashboard CarSimulation`.
-- Eating and food (hunger restore): no eat FSMs matched. Try `dump Sausage Macaroni Pizza Eat Food Fridge Groceries`.
+- Eating and food: state graphs known (section above); the actions (hunger taken off) are not readable. Try a dump with the item in hand.
 - Washing (dirtiness down): `Shower :: Distance` is index only. Try `dump Shower Sauna Wash`.
 - Drink item FSMs (`beer case`, `booze`, `spirit`) and `Systems/Death` showed "(actions failed)" because the objects were inactive. Re-dump with a bottle in hand and while dead: `dump beer booze spirit Death`.
-- Smoking effects: `dump Smoking Cigarette`.
+- Smoking effects: state graph known, actions not readable while `Smoking` is inactive. Re-dump while smoking: `dump Smoking`.
 - Piss emitter and area reactions: `dump Fluid PeeSound PissAreas Rain`. The particle component name needs a hierarchy or component dump, not available here.
 - Vehicle death causes (who sends `DEATH`, crash thresholds): `dump Crash Collision DeathBody DriverHeadPivot`.
 - Burn and fire: `dump FIRE Burn`. Passenger vehicles Kylajani and Combine: only indexed.

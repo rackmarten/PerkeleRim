@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 15;
+    inline constexpr std::uint32_t kProtocolVersion = 16;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -383,6 +383,7 @@ namespace PerkeleRim::Protocol
         MscSave = 9,           // Skyrim -> MSC
         MscLoad = 10,          // Skyrim -> MSC
         PunchEvent = 11,       // MSC -> Skyrim
+        Consumed = 12,         // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -489,6 +490,22 @@ namespace PerkeleRim::Protocol
     {
         std::uint32_t actor;         // ActorPose.id
         float         direction[3];  // the punch's way, unit vector in Skyrim space
+    };
+
+    // Consumed: MSC's player finished an alcoholic drink, lit a cigarette or ate something. Skyrim
+    // heals by kind (protocol/cpp/damage.h). Drinks without alcohol aren't sent.
+    inline constexpr std::uint32_t kConsumedBeer = 1;       // Consumed.kind
+    inline constexpr std::uint32_t kConsumedShot = 2;       // a glass of booze
+    inline constexpr std::uint32_t kConsumedKilju = 3;
+    inline constexpr std::uint32_t kConsumedBooze = 4;      // a bottle of booze (viina)
+    inline constexpr std::uint32_t kConsumedSpirit = 5;     // denatured spirit
+    inline constexpr std::uint32_t kConsumedCigarette = 6;  // lit, not finished
+    inline constexpr std::uint32_t kConsumedFood = 7;
+
+    struct Consumed
+    {
+        std::uint32_t kind;  // kConsumed*
+        std::uint32_t reserved;
     };
 
     // ---- Models (MSC -> Skyrim) ----
@@ -668,6 +685,7 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(MscSnapshot, length) == 8);
     static_assert(sizeof(PunchEvent) == 16);
     static_assert(offsetof(PunchEvent, direction) == 4);
+    static_assert(sizeof(Consumed) == 8);
     static_assert(sizeof(ModelChunk) == 16);
     static_assert(offsetof(ModelChunk, offset) == 8);
     static_assert(sizeof(ModelHeader) == 64);

@@ -1,12 +1,15 @@
 // Damage rules while MSC has the player: what an MSC death costs Skyrim's health, Skyrim's own fall
-// damage, which doesn't run while MSC places the player, and what MSC's attacks cost Skyrim actors.
-// Header-only and free of
-// Skyrim types, so the protocol tests cover it.
+// damage, which doesn't run while MSC places the player, what MSC's attacks cost Skyrim actors, and
+// what MSC's drinks, cigarettes and food heal. Header-only and free of Skyrim types, so the protocol
+// tests cover it.
 
 #pragma once
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+
+#include "../perkelerim_protocol.h"
 
 namespace PerkeleRim::Damage
 {
@@ -23,10 +26,49 @@ namespace PerkeleRim::Damage
     // health (no skills or perks), the same at any level. Dragons take a fraction of it.
     inline constexpr float kPunchShare = 0.25f;  // a bandit goes down in four punches
     inline constexpr float kDragonFactor = 0.25f;
+    // Drinking pays off in a fight (MSC's drunk camera wobble makes aiming hard): each MSC drunk level
+    // (0..8) adds this much, up to kDrunkPunchMax times the sober punch.
+    inline constexpr float kDrunkPunchPerLevel = 0.25f;
+    inline constexpr float kDrunkPunchMax = 2.0f;  // drunk 4: two punches drop a bandit
 
-    inline float Punch(float a_targetMaxHealth, bool a_dragon)
+    inline float DrunkPunch(float a_drunk)
     {
-        return (std::max)(0.0f, a_targetMaxHealth) * kPunchShare * (a_dragon ? kDragonFactor : 1.0f);
+        return (std::min)(kDrunkPunchMax, 1.0f + kDrunkPunchPerLevel * (std::max)(0.0f, a_drunk));
+    }
+
+    inline float Punch(float a_targetMaxHealth, bool a_dragon, float a_drunk = 0.0f)
+    {
+        return (std::max)(0.0f, a_targetMaxHealth) * kPunchShare * (a_dragon ? kDragonFactor : 1.0f) * DrunkPunch(a_drunk);
+    }
+
+    // What one Consumed heals, as a share of the player's max health: fun over RPG, like the damage.
+    inline float HealShare(std::uint32_t a_kind)
+    {
+        switch (a_kind) {
+        case Protocol::kConsumedBeer:
+            return 0.10f;
+        case Protocol::kConsumedShot:
+            return 0.10f;
+        case Protocol::kConsumedKilju:
+            return 0.15f;
+        case Protocol::kConsumedBooze:
+            return 0.20f;
+        case Protocol::kConsumedSpirit:
+            return 0.25f;
+        case Protocol::kConsumedCigarette:
+            return 0.05f;
+        case Protocol::kConsumedFood:
+            return 0.25f;
+        default:
+            return 0.0f;
+        }
+    }
+
+    // Health one Consumed restores, never past the max.
+    inline float Heal(std::uint32_t a_kind, float a_maxHealth, float a_health)
+    {
+        const float max = (std::max)(0.0f, a_maxHealth);
+        return (std::max)(0.0f, (std::min)(max * HealShare(a_kind), max - a_health));
     }
 
     // Skyrim's player fall damage: ((height - fJumpFallHeightMin) * fJumpFallHeightMult) ^

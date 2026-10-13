@@ -15,8 +15,8 @@ namespace PerkeleRim::Combat
     // Every frame MSC has the player: writes the ActorList for the current anchor.
     void Update(RE::PlayerCharacter* a_player, std::uint32_t a_generation, float a_delta);
 
-    // A PunchEvent message.
-    void OnPunch(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
+    // A PunchEvent message. a_drunk: MSC's drunk level (0..8), drunk punches hit harder.
+    void OnPunch(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk);
 
     // Skyrim has the player back: MSC's capsules go.
     void Stop();

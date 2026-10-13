@@ -111,8 +111,8 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 | Crouch = sneak | MSC crouch → Skyrim player sneak state. |
 | Piss on Jarl → bounty | Skyrim traces the urine arc; on NPC hit, send an assault alarm credited to the player. |
 | Talking / quests | Activate key → Skyrim; dialogue, doors and quest pickups work natively. Quest items go into Skyrim's inventory through the activate pass-through. |
-| Damage to player | Skyrim health is authoritative. MSC's player can't die while handed over: a crash MSC would die of costs half of Skyrim's max health, falls cost Skyrim's vanilla fall damage. At 0, MSC's blood over the view and its death sound, then Skyrim's own death and reload. |
-| Punching | MSC's own punch (Hit key, or left click with free hands) on a capsule of a Skyrim actor; Skyrim hits it as the player (a share of its max health, stagger). See PROTOCOL.md, Combat. |
+| Damage to player | Skyrim health is authoritative. MSC's player can't die while handed over: a crash MSC would die of costs half of Skyrim's max health, falls cost Skyrim's vanilla fall damage. At 0, MSC's blood over the view and its death sound, then Skyrim's own death and reload. MSC's alcohol, cigarettes and food heal a share of it. |
+| Punching | MSC's own punch (Hit key, or left click with free hands) on a capsule of a Skyrim actor; Skyrim hits it as the player (a share of its max health, more when drunk, stagger). See PROTOCOL.md, Combat. |
 | Thrown bottles | MSC physics item hits a mirrored capsule → `ImpactEvent` → Skyrim damage. |
 | Running people over | Capsule hit → impulse + damage on the real NPC; Skyrim ragdoll does the rest. |
 | Finnish summer | Force clear weather, long bright evenings; maybe a sauna in the garage. |

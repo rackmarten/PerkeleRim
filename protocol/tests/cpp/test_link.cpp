@@ -229,6 +229,28 @@ TEST_CASE("look-at text travels from MSC to Skyrim")
     }
 }
 
+TEST_CASE("what MSC's player consumed travels from MSC to Skyrim")
+{
+    Pair p;
+    p.Tick(3);
+    REQUIRE(p.msc->IsUp());
+
+    const std::uint32_t kinds[] = { kConsumedBeer, kConsumedCigarette, kConsumedFood };
+    for (const auto kind : kinds) {
+        const Consumed consumed{ kind, 0 };
+        REQUIRE(p.msc->Send(MessageType::Consumed, &consumed, sizeof(consumed)));
+    }
+    std::vector<std::uint32_t> got;
+    p.skyrim->Receive([&](MessageType a_type, const std::uint8_t* a_data, std::uint32_t a_size) {
+        CHECK(a_type == MessageType::Consumed);
+        REQUIRE(a_size == sizeof(Consumed));
+        Consumed consumed{};
+        std::memcpy(&consumed, a_data, sizeof(consumed));
+        got.push_back(consumed.kind);
+    });
+    CHECK(got == std::vector<std::uint32_t>(std::begin(kinds), std::end(kinds)));
+}
+
 TEST_CASE("look-at text is cut at a character and malformed payloads are refused")
 {
     std::string long_text(kLookAtTextMax - 1, 'a');

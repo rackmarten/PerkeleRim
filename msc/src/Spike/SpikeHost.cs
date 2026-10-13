@@ -23,7 +23,9 @@ namespace PerkeleRim.Spike
     //                        handlayer light <ambient> <sun> sets its neutral lighting (0.5 0.8)
     //   snapshot save|load <name>  what Skyrim's MscSave / MscLoad do (SaveSync), with the snapshot in
     //                        <MSC>/PerkeleRim_snapshots/<name> and key 1
-    //   global <name> <v>    set a global PlayMaker float (global PlayerUrine 100)
+    //   global <name> <v>    set a global PlayMaker float or int (global PlayerUrine 100, global PlayerCigarettes 20)
+    //   spawn <product> [n]  a shop product in front of the player, from its Spawner/CreateItems FSM
+    //                        (spawn Sausages 2; Pizza, Chips, MacaronBox, Cigarettes, Beer, ...)
     //   event <NAME>         broadcast a global PlayMaker event (DRINKBEER: the beer drinking animation)
     //   textures <name>      read an object's model (GameObject.Find) without sending it and log it
     //   override on|off      InputShim on/off with nothing pressed (on: the link no longer feeds it)
@@ -34,6 +36,44 @@ namespace PerkeleRim.Spike
     // If <MSC>/PerkeleRim_autoload.txt exists, "continue" runs by itself on the main menu.
     public class SpikeHost : MonoBehaviour
     {
+        // Sends SPAWNITEM to one Spawner/CreateItems FSM (it is a global event: broadcast, every shop
+        // product would spawn) and moves what it made from the store's bag spot to in front of the player.
+        // The spawner copies the condition of whatever lies at the bag spot (an old bag: spoiled food),
+        // so the new item's Use FSM is held at Condition 100 while it loads.
+        void Spawn(string product, int count)
+        {
+            PlayMakerFSM spawner = null;
+            var items = GameObject.Find("Spawner/CreateItems");
+            if (items != null)
+                foreach (var f in items.GetComponents<PlayMakerFSM>())
+                    if (f.FsmName == product) spawner = f;
+            var player = GameObject.Find("PLAYER");
+            if (spawner == null || player == null) { SpikeLog.Write($"cmd: no Spawner/CreateItems :: {product} or no PLAYER"); return; }
+            var t = player.transform;
+            for (int i = 0; i < count; i++)
+            {
+                spawner.SendEvent("SPAWNITEM");
+                var made = spawner.FsmVariables.FindFsmGameObject("New").Value;
+                if (made == null) { SpikeLog.Write($"cmd: {product} spawned nothing"); return; }
+                made.transform.position = t.position + t.forward * 0.8f + t.right * (0.25f * (i - (count - 1) / 2f)) + Vector3.up * 0.3f;
+                var body = made.GetComponent<Rigidbody>();
+                if (body != null) body.velocity = Vector3.zero;
+                foreach (var f in made.GetComponents<PlayMakerFSM>())
+                    if (f.FsmName == "Use" && f.FsmVariables.FindFsmFloat("Condition") != null) StartCoroutine(KeepFresh(f));
+                SpikeLog.Write($"cmd: spawned {made.name} in front of the player");
+            }
+        }
+
+        static System.Collections.IEnumerator KeepFresh(PlayMakerFSM use)
+        {
+            for (float until = Time.realtimeSinceStartup + 3f; Time.realtimeSinceStartup < until && use != null; )
+            {
+                use.FsmVariables.FindFsmFloat("Condition").Value = 100f;
+                yield return null;
+            }
+            if (use != null) SpikeLog.Write($"cmd: {use.name} condition {use.FsmVariables.FindFsmFloat("Condition").Value}, state {use.ActiveStateName}");
+        }
+
         class Step
         {
             public float Seconds;
@@ -201,10 +241,18 @@ namespace PerkeleRim.Spike
                     case "event":  // a global PlayMaker event, e.g. "event DRINKBEER" plays the beer drinking animation
                         if (words.Length > 1) PlayMakerFSM.BroadcastEvent(words[1]);
                         break;
-                    case "global":  // set a global PlayMaker float, e.g. "global PlayerUrine 100"
-                        var global = words.Length > 2 ? HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmFloat(words[1]) : null;
+                    case "global":  // set a global PlayMaker float or int, e.g. "global PlayerUrine 100"
+                        var globals = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
+                        var global = words.Length > 2 ? globals.FindFsmFloat(words[1]) : null;
+                        var globalInt = words.Length > 2 && global == null ? globals.FindFsmInt(words[1]) : null;
                         if (global != null) global.Value = float.Parse(words[2], CultureInfo.InvariantCulture);
-                        SpikeLog.Write(global != null ? $"cmd: {words[1]} = {global.Value}" : "cmd: no such global float");
+                        if (globalInt != null) globalInt.Value = int.Parse(words[2], CultureInfo.InvariantCulture);
+                        SpikeLog.Write(global != null ? $"cmd: {words[1]} = {global.Value}"
+                            : globalInt != null ? $"cmd: {words[1]} = {globalInt.Value}" : "cmd: no such global float or int");
+                        break;
+                    case "spawn":
+                        if (words.Length < 2) { SpikeLog.Write("cmd: spawn <product> [count]"); break; }
+                        Spawn(words[1], words.Length > 2 ? int.Parse(words[2]) : 1);
                         break;
                     case "snapshot":
                         if (words.Length < 3 || PerkeleRim.Game.SaveSync.Instance == null) { SpikeLog.Write("cmd: snapshot save|load <name>, in a real build"); break; }

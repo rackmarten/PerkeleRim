@@ -199,7 +199,7 @@ namespace PerkeleRim::Combat
         }
     }
 
-    void OnPunch(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
+    void OnPunch(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk)
     {
         if (a_size < sizeof(Protocol::PunchEvent)) {
             SKSE::log::warn("combat: bad punch message ({} bytes)", a_size);
@@ -218,11 +218,12 @@ namespace PerkeleRim::Combat
         }
         auto*       values = target->AsActorValueOwner();
         const float max = values ? values->GetPermanentActorValue(RE::ActorValue::kHealth) : 0.0f;
-        const float damage = Damage::Punch(max, IsDragon(target));
+        const float damage = Damage::Punch(max, IsDragon(target), a_drunk);
         const float health = values ? values->GetActorValue(RE::ActorValue::kHealth) : 0.0f;  // the spell lands next frame
         caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
-        SKSE::log::info("combat: the player punched {} for {:.0f} of {:.0f} max health, it had {:.0f}", NameOf(target), damage, max, health);
+        SKSE::log::info("combat: the player punched {} for {:.0f} of {:.0f} max health (drunk {:.1f}), it had {:.0f}", NameOf(target), damage, max,
+            a_drunk, health);
     }
 
     void Stop()

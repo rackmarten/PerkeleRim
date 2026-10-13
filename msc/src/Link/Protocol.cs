@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 15;
+        public const uint ProtocolVersion = 16;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -62,6 +62,13 @@ namespace PerkeleRim.Protocol
         public const uint ModelMeshVertexMax = 65535;
         public const uint DamageCrash = 1;
         public const uint DamageOther = 2;
+        public const uint ConsumedBeer = 1;
+        public const uint ConsumedShot = 2;
+        public const uint ConsumedKilju = 3;
+        public const uint ConsumedBooze = 4;
+        public const uint ConsumedSpirit = 5;
+        public const uint ConsumedCigarette = 6;
+        public const uint ConsumedFood = 7;
         public const uint MscSnapshotPathMax = 1024;
         public const uint MaterialCutout = 0x1;
         public const uint MaterialBlend = 0x2;
@@ -136,6 +143,7 @@ namespace PerkeleRim.Protocol
         MscSave = 9,
         MscLoad = 10,
         PunchEvent = 11,
+        Consumed = 12,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -483,6 +491,13 @@ namespace PerkeleRim.Protocol
     {
         public uint actor;
         public fixed float direction[3];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct Consumed
+    {
+        public uint kind;
+        public uint reserved;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
