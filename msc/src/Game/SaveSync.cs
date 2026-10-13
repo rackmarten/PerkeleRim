@@ -30,7 +30,9 @@ namespace PerkeleRim.Game
             "PlayerDrunk", "PlayerDrunkAdjusted", "PlayerStressRate", "PlayerFatigueRate", "PlayerWeight", "PlayerBurns",
             "PlayerMoney", "PlayerFines", "PlayerNetIncome", "GlobalTime",
         };
-        static readonly string[] Ints = { "PlayerCigarettes", "GlobalDay", "GlobalHour" };
+        // Not PlayerCigarettes: Skyrim's inventory (the pocket) holds them in the same save, and
+        // PocketLink copies its count to MSC; restoring the snapshot's would fight it.
+        static readonly string[] Ints = { "GlobalDay", "GlobalHour" };
 
         // FSM states and variables, put back in this order (entering a state resets its variables).
         // Time of day: the sun's 2-hour block (Color, which also turns the sun pivot to the block's
@@ -223,7 +225,7 @@ namespace PerkeleRim.Game
         }
 
         // Enters a state the way a transition does (its actions run); private in PlayMaker 1.6.
-        static readonly System.Reflection.MethodInfo SwitchState = typeof(HutongGames.PlayMaker.Fsm)
+        internal static readonly System.Reflection.MethodInfo SwitchState = typeof(HutongGames.PlayMaker.Fsm)
             .GetMethod("SwitchState", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
 
         static PlayMakerFSM FindFsm(string path, string name)

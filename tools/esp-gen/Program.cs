@@ -1,8 +1,8 @@
 // Writes PerkeleRim.esp: the garage near Whiterun (vanilla pieces) with the player's spawn marker in
-// front of it and a marker where the van parks inside, the mead and ale that become MSC beer, and
-// the drunk blur. Reads only the player's own Skyrim.esm (for
-// the vanilla base objects, the Tamriel cells to add to and the terrain height there). Also the
-// spells MSC's punch lands as.
+// front of it and a marker where the van parks inside, the mead and ale that become MSC beer, the
+// drunk blur and the pocket's items (MSC's beer, bottles, food and cigarettes). Reads only the
+// player's own Skyrim.esm (for the vanilla base objects, the Tamriel cells to add to and the terrain
+// height there). Also the spells MSC's punch lands as.
 //
 //   EspGen --data "<Skyrim>/Data" --out <dir>/PerkeleRim.esp
 //
@@ -163,9 +163,10 @@ foreach (var p in markers.Concat(pieces))
 
 // ---- Drinks ----
 //
-// Fixed ids the SKSE plugin looks up (skse/src/drink/Drink.cpp), clear of the garage's.
+// Fixed ids the SKSE plugin looks up (skse/src/drink/Drink.cpp, skse/src/pocket/Pocket.cpp), clear of
+// the garage's.
 //
-// The mead and ale that turn into MSC beer when the player picks them up. Quest drinks
+// The mead and ale that turn into MSC beer (the pocket's PerkeleRimBeer) when the player picks them up. Quest drinks
 // (MQ101JuniperMead, FreeformDragonBridgeMead) stay out: taking them away would break their quests.
 var drinks = new FormList(new FormKey(mod.ModKey, 0x900), SkyrimRelease.SkyrimSE) { EditorID = "PerkeleRimBeerDrinks" };
 foreach (var id in new[] { "FoodMead", "Ale", "FoodHonningbrewMead", "FoodBlackBriarMead", "FoodBlackBriarMeadPrivateReserve" })
@@ -233,9 +234,52 @@ var punchStagger = Effect(0x903, "PerkeleRimPunchStaggerEffect", "Punch",
     new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Stagger));
 var punch = Spell(0x904, "PerkeleRimPunch", "Punch", punchDamage, 1f);
 var punchKnock = Spell(0x905, "PerkeleRimPunchStagger", "Punch", punchStagger, 0.5f);
-mod.ModHeader.Stats.NextFormID = 0x906;
 foreach (var r in new IMajorRecordGetter[] { punchDamage, punchStagger, punch, punchKnock })
     Console.WriteLine($"  {r.FormKey.ID:X3} {r.EditorID}");
+
+// ---- Pocket ----
+//
+// Fixed ids the SKSE plugin looks up (skse/src/pocket/Pocket.cpp): 0x906 + the protocol's kPocket*
+// kind. MSC's beer, empty bottles, food and cigarettes as plain misc items in Skyrim's inventory, so
+// nothing can be eaten or drunk on Skyrim's side; they come out into MSC's hand. Each looks like the
+// vanilla item named (model, bounds and sounds copied).
+(IModelGetter? Model, IObjectBoundsGetter? Bounds, FormKey? Up, FormKey? Down) Look(string editorId)
+{
+    var food = skyrim.Ingestibles.FirstOrDefault(r => r.EditorID == editorId);
+    if (food != null) return (food.Model, food.ObjectBounds, food.PickUpSound.FormKeyNullable, food.PutDownSound.FormKeyNullable);
+    var misc = skyrim.MiscItems.FirstOrDefault(r => r.EditorID == editorId)
+        ?? throw new InvalidOperationException($"{editorId} not in Skyrim.esm as food or misc item");
+    return (misc.Model, misc.ObjectBounds, misc.PickUpSound.FormKeyNullable, misc.PutDownSound.FormKeyNullable);
+}
+var pocket = new (string EditorId, string Name, string LooksLike, float Weight, uint Value)[]
+{
+    ("PerkeleRimBeer", "MSC Beer", "Ale", 0.5f, 3),
+    ("PerkeleRimEmptyBottle", "Empty Bottle", "WineBottle01AEmpty", 0.3f, 0),
+    ("PerkeleRimSausages", "Sausages", "FoodBeefCooked", 0.8f, 4),
+    ("PerkeleRimPizza", "Pizza", "FoodPie", 0.5f, 5),
+    ("PerkeleRimPotatoChips", "Potato Chips", "FoodPotatoesBaked", 0.3f, 2),
+    ("PerkeleRimMacaronBox", "Macaron Box", "FoodSweetroll", 0.5f, 3),
+    ("PerkeleRimCigarette", "Cigarette", "Quill01", 0f, 1),
+};
+for (uint i = 0; i < pocket.Length; i++)
+{
+    var p = pocket[i];
+    var look = Look(p.LooksLike);
+    var item = new MiscItem(new FormKey(mod.ModKey, 0x906 + i), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = p.EditorId,
+        Name = p.Name,
+        Model = look.Model?.DeepCopy(),
+        ObjectBounds = look.Bounds?.DeepCopy() ?? new ObjectBounds(),
+        Weight = p.Weight,
+        Value = p.Value,
+    };
+    if (look.Up != null) item.PickUpSound.SetTo(look.Up.Value);
+    if (look.Down != null) item.PutDownSound.SetTo(look.Down.Value);
+    mod.MiscItems.Add(item);
+    Console.WriteLine($"  {item.FormKey.ID:X3} {item.EditorID} (looks like {p.LooksLike})");
+}
+mod.ModHeader.Stats.NextFormID = 0x906 + (uint)pocket.Length;
 
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
 mod.WriteToBinary(output);

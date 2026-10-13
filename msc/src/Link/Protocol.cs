@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 16;
+        public const uint ProtocolVersion = 17;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -69,6 +69,14 @@ namespace PerkeleRim.Protocol
         public const uint ConsumedSpirit = 5;
         public const uint ConsumedCigarette = 6;
         public const uint ConsumedFood = 7;
+        public const uint PocketBeer = 0;
+        public const uint PocketBottle = 1;
+        public const uint PocketSausages = 2;
+        public const uint PocketPizza = 3;
+        public const uint PocketChips = 4;
+        public const uint PocketMacaron = 5;
+        public const uint PocketCigarettes = 6;
+        public const uint PocketKinds = 7;
         public const uint MscSnapshotPathMax = 1024;
         public const uint MaterialCutout = 0x1;
         public const uint MaterialBlend = 0x2;
@@ -136,7 +144,6 @@ namespace PerkeleRim.Protocol
         WorldspaceChange = 2,
         LookAtText = 3,
         Subtitle = 4,
-        GiveBeer = 5,
         ModelChunk = 6,
         PlayerDamage = 7,
         PlayerDeath = 8,
@@ -144,6 +151,8 @@ namespace PerkeleRim.Protocol
         MscLoad = 10,
         PunchEvent = 11,
         Consumed = 12,
+        PocketChange = 13,
+        PocketCounts = 14,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -459,13 +468,6 @@ namespace PerkeleRim.Protocol
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct GiveBeer
-    {
-        public uint count;
-        public uint reserved;
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct PlayerDamage
     {
         public uint cause;
@@ -498,6 +500,23 @@ namespace PerkeleRim.Protocol
     {
         public uint kind;
         public uint reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct PocketChange
+    {
+        public uint session;
+        public uint seq;
+        public uint kind;
+        public int delta;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct PocketCounts
+    {
+        public uint session;
+        public uint appliedSeq;
+        public fixed uint counts[7];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

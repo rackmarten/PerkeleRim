@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 16;
+    inline constexpr std::uint32_t kProtocolVersion = 17;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -376,7 +376,7 @@ namespace PerkeleRim::Protocol
         WorldspaceChange = 2,  // Skyrim -> MSC
         LookAtText = 3,        // MSC -> Skyrim
         Subtitle = 4,          // MSC -> Skyrim
-        GiveBeer = 5,          // Skyrim -> MSC
+        // 5 was GiveBeer (until v16): mead and ale now become PerkeleRim.esp beer in Skyrim's inventory.
         ModelChunk = 6,        // MSC -> Skyrim
         PlayerDamage = 7,      // MSC -> Skyrim
         PlayerDeath = 8,       // Skyrim -> MSC
@@ -384,6 +384,8 @@ namespace PerkeleRim::Protocol
         MscLoad = 10,          // Skyrim -> MSC
         PunchEvent = 11,       // MSC -> Skyrim
         Consumed = 12,         // MSC -> Skyrim
+        PocketChange = 13,     // MSC -> Skyrim
+        PocketCounts = 14,     // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -439,15 +441,6 @@ namespace PerkeleRim::Protocol
     // Subtitle: MSC's subtitle line (global GUIsubtitle: the player's swearing and other speech),
     // sent when it changes and once more each time MSC takes the player. Same payload as LookAtText
     // with flags 0; no text clears it.
-
-    // GiveBeer: the player picked up mead or ale in Skyrim, which is gone from Skyrim's inventory
-    // once this is sent. MSC adds that many bottles of beer to a case near its player (a new case
-    // when none has room).
-    struct GiveBeer
-    {
-        std::uint32_t count;
-        std::uint32_t reserved;
-    };
 
     // PlayerDamage: something hit MSC's player that MSC would have died of (a crash, drowning), or a
     // crash it survives (a jump, a flip, a rock; severity below 1, scaled by the impact). MSC never
@@ -506,6 +499,36 @@ namespace PerkeleRim::Protocol
     {
         std::uint32_t kind;  // kConsumed*
         std::uint32_t reserved;
+    };
+
+    // The pocket: Skyrim's inventory holds MSC's beer, empty bottles, food and cigarettes as
+    // PerkeleRim.esp items, one kind each (kPocket*). Skyrim's counts are the truth.
+    inline constexpr std::uint32_t kPocketBeer = 0;        // PocketChange.kind, PocketCounts.counts index
+    inline constexpr std::uint32_t kPocketBottle = 1;      // an empty beer bottle
+    inline constexpr std::uint32_t kPocketSausages = 2;
+    inline constexpr std::uint32_t kPocketPizza = 3;
+    inline constexpr std::uint32_t kPocketChips = 4;       // potato chips
+    inline constexpr std::uint32_t kPocketMacaron = 5;     // a macaron box
+    inline constexpr std::uint32_t kPocketCigarettes = 6;  // MSC's PlayerCigarettes, one item per cigarette
+    inline constexpr std::uint32_t kPocketKinds = 7;
+
+    // PocketChange: MSC put delta of a kind into the pocket (> 0) or took it out (< 0). seq counts
+    // up from 1 per session (MSC picks a new nonzero session each time its link comes up).
+    struct PocketChange
+    {
+        std::uint32_t session;
+        std::uint32_t seq;
+        std::uint32_t kind;   // kPocket*
+        std::int32_t  delta;
+    };
+
+    // PocketCounts: what Skyrim's inventory holds, sent when it changes, after each PocketChange and
+    // when the link comes up. appliedSeq is the last PocketChange of session applied (0: none).
+    struct PocketCounts
+    {
+        std::uint32_t session;
+        std::uint32_t appliedSeq;
+        std::uint32_t counts[7];  // by kPocket*
     };
 
     // ---- Models (MSC -> Skyrim) ----
@@ -677,7 +700,6 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(WorldspaceChange, vehicleSpot) == 32);
     static_assert(offsetof(WorldspaceChange, vehicleHeading) == 44);
     static_assert(sizeof(LookAtText) == 8);
-    static_assert(sizeof(GiveBeer) == 8);
     static_assert(sizeof(PlayerDamage) == 8);
     static_assert(offsetof(PlayerDamage, severity) == 4);
     static_assert(sizeof(PlayerDeath) == 8);
@@ -686,6 +708,10 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(PunchEvent) == 16);
     static_assert(offsetof(PunchEvent, direction) == 4);
     static_assert(sizeof(Consumed) == 8);
+    static_assert(sizeof(PocketChange) == 16);
+    static_assert(offsetof(PocketChange, delta) == 12);
+    static_assert(sizeof(PocketCounts) == 36);
+    static_assert(offsetof(PocketCounts, counts) == 8);
     static_assert(sizeof(ModelChunk) == 16);
     static_assert(offsetof(ModelChunk, offset) == 8);
     static_assert(sizeof(ModelHeader) == 64);

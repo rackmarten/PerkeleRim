@@ -9,6 +9,7 @@
 #include "garage/Garage.h"
 #include "link/LinkService.h"
 #include "player/PlayerSync.h"
+#include "pocket/Pocket.h"
 #include "save/Cosave.h"
 #include "save/SaveSync.h"
 
@@ -29,6 +30,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::PlayerSync::OnDataLoaded();
             PerkeleRim::Garage::OnDataLoaded();
             PerkeleRim::Drink::OnDataLoaded();
+            PerkeleRim::Pocket::OnDataLoaded();
             PerkeleRim::CollisionSampler::OnDataLoaded();
             PerkeleRim::Combat::OnDataLoaded();
             PerkeleRim::Autoload::OnDataLoaded();

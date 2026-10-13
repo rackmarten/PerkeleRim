@@ -286,6 +286,7 @@ namespace PerkeleRim.Game
             var t = body.transform;
             if (t == player || t.GetComponentInChildren<MeshRenderer>() == null) return false;
             if (t.name.Contains("(itemx)") || t.root.name == "ITEMS") return true;
+            if (t.parent != null && t.parent.name == "ItemPivot") return true;  // in MSC's hand (an empty bottle out of the pocket never lay loose)
             if (t.IsChildOf(player) || body.isKinematic || body.mass > LooseMassMax) return false;
             var rootBody = t.root != t ? t.root.GetComponent<Rigidbody>() : null;
             return rootBody == null || rootBody.mass < VehicleMassMin;

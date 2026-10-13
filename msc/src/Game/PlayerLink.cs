@@ -18,7 +18,8 @@ namespace PerkeleRim.Game
     //  - runs the vehicles (VehicleLink) on the same island: the van (drawn in Skyrim) on the
     //    player's right, or at the spot the anchor names (the garage), the Jonnez moped (MSC only
     //    so far) on the left;
-    //  - hands out the beer Skyrim sends (GiveBeer) through BeerGift;
+    //  - puts what the player carries into Skyrim's inventory and uses it from there (Y, keys 3 to 8),
+    //    and keeps MSC's cigarettes and Skyrim's the same (PocketLink);
     //  - reports the physics items around the player (ItemLink), whose models ModelSender sends;
     //  - puts Skyrim's actors near the player on the island as capsules and sends MSC's punches
     //    that land on them (ActorLink);
@@ -51,7 +52,8 @@ namespace PerkeleRim.Game
         Action<string> log;
         VehicleLink van, moped;
         VehicleLink[] vehicles;
-        BeerGift beer;
+        BeerGift beer;  // spike "beer" only
+        PocketLink pocket;
         ModelSender models;
         ItemLink items;
         ActorLink actors;
@@ -104,6 +106,7 @@ namespace PerkeleRim.Game
             moped = new VehicleLink("JONNEZ ES(Clone)", "Jonnez", new Vector3(-2.5f, 0f, 1.5f), 0, null, island, ground, log);
             vehicles = new[] { van, moped };
             beer = new BeerGift(log);
+            pocket = new PocketLink(log);
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
             actors = new ActorLink(island, log);
@@ -114,8 +117,12 @@ namespace PerkeleRim.Game
             saves = new SaveSync(island, vehicles, items, () => playing, () => player, log);
         }
 
-        // Beer as if Skyrim sent GiveBeer (spike command "beer").
+        // A beer case next to the player (spike command "beer").
         public void GiveBeer(int count) => beer.Give(count);
+
+        // Spike command "pocket <key>": a pocket key press (Y, 3..8).
+        public void PressPocketKey(int keyCode) => pocket.Press(keyCode);
+        public void HoldPocketKind(int kind) => pocket.Hold(kind);
 
         // Spike commands "textures" (read an object's model and log it) and "items" (what Skyrim gets).
         public void InspectModel(string name) => models.Inspect(name);
@@ -140,9 +147,11 @@ namespace PerkeleRim.Game
             InputShim.Active = input.OwnsPlayer;
             if (!input.OwnsPlayer) { punch.Reset(); return; }
             punch.Apply(input.Keys, HandsFree(), hitKey, Time.realtimeSinceStartup);
+            pocket.Keys(input.Keys);
 
+            // The pocket keys are PerkeleRim's alone.
             InputShim.Keys.Clear();
-            foreach (var k in input.Keys) InputShim.Keys.Add((KeyCode)k);
+            foreach (var k in input.Keys) if (!Pocket.IsKey(k)) InputShim.Keys.Add((KeyCode)k);
             InputShim.Axes["Mouse X"] = input.MouseX;
             InputShim.Axes["Mouse Y"] = input.MouseY;
             InputShim.Axes["Mouse ScrollWheel"] = input.MouseWheel;  // radio tuning, among others
@@ -187,9 +196,9 @@ namespace PerkeleRim.Game
             {
                 lastOwned = owned;
                 log(owned ? "player: Skyrim handed the player to MSC" : "player: Skyrim took the player back");
-                // Test loop: with this flag file next to the game, every handover hands out a case.
+                // Test loop: with this flag file next to the game, every handover tops the pocket up.
                 if (owned && System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Application.dataPath), TestBeerFlag)))
-                    beer.Give(TestBeerBottles);
+                    pocket.TopUpTestStock();
             }
 
             if (player != null && island.HasAnchor && placedGeneration != island.Generation)
@@ -217,6 +226,7 @@ namespace PerkeleRim.Game
             SendSubtitle(link, playing);
             foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero);
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
+            pocket.Update(link, playing, player != null);
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
             actors.Update(link, playing, player, playing && Driven() != null, viewCamera != null ? viewCamera.transform : null);
             models.Update(link);
@@ -227,7 +237,6 @@ namespace PerkeleRim.Game
         // MSC's blood over the view when the player dies (Systems/Death/PlayerBlood's texture), sent as
         // an overlay model; Skyrim looks it up by this name.
         const string TestBeerFlag = "PerkeleRim_testbeer.txt";
-        const int TestBeerBottles = 6;
 
         const string BloodModel = "PlayerBlood";
         const string BloodTexture = "player_blood_vision";
@@ -303,12 +312,8 @@ namespace PerkeleRim.Game
             }
             else if (type == MessageType.CollisionChunk)
                 OnChunk(payload, size);
-            else if (type == MessageType.GiveBeer && size >= sizeof(GiveBeer))
-            {
-                GiveBeer g;
-                fixed (byte* p = payload) g = *(GiveBeer*)p;
-                beer.Give((int)g.count);
-            }
+            else if (type == MessageType.PocketCounts)
+                pocket.OnCounts(payload, size);
             else if (type == MessageType.PlayerDeath)
                 DeathGuard.PlayDeathSound();
             else if (type == MessageType.MscSave || type == MessageType.MscLoad)
@@ -336,7 +341,8 @@ namespace PerkeleRim.Game
             MotorBoost.Install(go, log);
         }
 
-        // For PunchButton: on foot, nothing in the hands, and no MSC prompt for what the crosshair is on.
+        // For PunchButton: on foot, nothing in the hands (MSC drops what it carries on a click), no MSC
+        // prompt for what the crosshair is on and nothing there MSC would pick up.
         static bool HandsFree()
         {
             var g = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
@@ -347,7 +353,8 @@ namespace PerkeleRim.Game
             var vehicle = g.FindFsmString("PlayerCurrentVehicle");
             return (text == null || string.IsNullOrEmpty(text.Value)) && (use == null || !use.Value) &&
                    (left == null || !left.Value) && (right == null || !right.Value) &&
-                   (vehicle == null || string.IsNullOrEmpty(vehicle.Value));
+                   (vehicle == null || string.IsNullOrEmpty(vehicle.Value)) &&
+                   !PocketLink.Carrying() && PocketLink.Aimed() == null;  // an item MSC picks up shows no prompt (empty bottles)
         }
 
         // The key MSC's Hit action (its punch) is bound to, H unless the player changed it.

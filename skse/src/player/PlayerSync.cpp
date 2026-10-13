@@ -14,6 +14,7 @@
 #include "link/LinkService.h"
 #include "look_at.h"
 #include "model/ModelView.h"
+#include "pocket/Pocket.h"
 #include "vehicle/VehicleView.h"
 
 namespace PerkeleRim::PlayerSync
@@ -560,6 +561,10 @@ namespace PerkeleRim::PlayerSync
                     Death::OnConsumed(a_player, a_data, a_size);
                     return;
                 }
+                if (a_type == Protocol::MessageType::PocketChange) {
+                    Pocket::OnChange(a_player, a_data, a_size);
+                    return;
+                }
                 if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle) {
                     return;
                 }
@@ -625,6 +630,7 @@ namespace PerkeleRim::PlayerSync
             hud.subtitle = state.subtitle;
             hud.hasNeeds = state.hasNeeds;
             hud.needs = state.needs;
+            hud.pocket = Pocket::Hint();
             hud.handsImage = HandView::Image();
             hud.handsWidth = HandView::Width();
             hud.handsHeight = HandView::Height();
@@ -654,6 +660,7 @@ namespace PerkeleRim::PlayerSync
             {
                 original(a_player, a_delta);
                 Death::Tick();
+                Pocket::Update(a_player, a_delta);
                 if (state.garage && a_delta > 0.0f) {
                     TravelToGarage(a_player, a_delta);
                 } else if (state.resume && !state.owned && a_delta > 0.0f) {

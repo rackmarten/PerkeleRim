@@ -255,6 +255,12 @@ Eating: each food item's `Use` FSM (`pizza`, `macaron box`, `sausages`, `potato 
 
 The globals list also contains a service URL and credential-like strings (`WWW*`); they are deliberately not reproduced here.
 
+## Carrying items
+
+The hand is `PLAYER/Pivot/AnimPivot/Camera/FPSCamera/1Hand_Assemble/Hand :: PickUp` (dumped live). Idle `Look for object`: `MousePick` 1 m on layers 19/15/9 into `RaycastHitObject` every frame, left click -> `State 1` (`PickedObject = RaycastHitObject`) -> `Check moped?` -> `Check if Item` (tag `ITEM`) / `Check if Part` (tag `PART`: store items, beer cases, food, empty bottles) -> `Set pivot` (hand and `ItemPivot` moved to the object) -> `Part picked`: the object is parented to `ItemPivot`, layer 16, held by the hand's joint. There left click or Alpha2 drops (`Drop part`), right click throws, `Use` on an `ITEM` equips it. Globals `DROP_PART`/`DROP_TOOL` drop from any state; after a drop `Wait` (0.1 s) leads back to `Look for object`.
+
+Item `Use` FSMs mouse-pick on layers 19 and 16, so a carried item is used with F like one on the ground (a held beer case is drunk from). `beer case(itemx) :: Use`: `Remove bottle` destroys a random child and counts `DestroyedBottles`; empty -> `State 4` renames it `empty(itemx)`. Items have a global `GARBAGE` (case: `Is garbage`, `Consumed = true`; food: `Destroy`, `Condition = 888`): renderer and collider removed, moved to `GarbageSpawnPos`, destroyed on the next load. Spoiling food renames itself `spoiled <name>`. Store items' names: `beer case(itemx)`, `sausages(itemx)`, `pizza(itemx)`, `potato chips(itemx)`, `macaron box(itemx)`, spawned by `Spawner/CreateItems` FSMs `Beer`, `Sausages`, `Pizza`, `Chips`, `MacaronBox` (`SPAWNITEM`, result in `New`). The bottle thrown after a beer is a copy of the inactive root prefab `BottleBeerFly` (0.5 kg, `PART`), renamed `empty bottle(Clone)` by its `Go` FSM, which also tosses it; it isn't saved. A cigarette pack (`cigarettes0 :: Use`) goes into `PlayerCigarettes` when used (`Check pocket` -> `Add inventory`).
+
 ## cInput bindings (primary key, no secondary binds set)
 
 | Action | Key | Action | Key |
@@ -274,7 +280,7 @@ The globals list also contains a service URL and credential-like strings (`WWW*`
 | IndicatorLeft / Right | Semicolon / Colon | HighBeam / Wipers | L / K |
 | Boost | T | StartEngine, reverse, neutral, gears 1 to 6 | unbound |
 
-Note `Drunk` and `Wipers` both default to K. There is no drink action: drinking is triggered by item `Use` FSMs.
+Not cInput but read directly: Alpha1 and Alpha2 switch between the hand and the tools (`2Spanner`), and Alpha2 also drops what `PickUp` carries. Note `Drunk` and `Wipers` both default to K. There is no drink action: drinking is triggered by item `Use` FSMs.
 
 ## Coverage gaps and re-dump keywords
 

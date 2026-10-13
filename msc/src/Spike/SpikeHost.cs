@@ -15,7 +15,10 @@ namespace PerkeleRim.Spike
     // Commands (first line):
     //   dump [keyword ...]   FSM index + detail files (FsmDump)
     //   continue             main menu only: load the saved game as the Continue button would
-    //   beer <count>         hand out beer as if Skyrim sent GiveBeer (BeerGift)
+    //   beer <count>         a beer case with that many bottles next to the player (BeerGift)
+    //   pocket <key>         press a pocket key while handed over: Y, or 3..8 (PocketLink)
+    //   hold <kind>          a new pocket kind (0 beer .. 5 macaron box) into MSC's hand, pocket untouched
+    //   inspect <text>       objects named like text, inactive ones too: tag, layer, physics, FSMs
     //   items                log the items Skyrim gets (ItemLink): id, path, model id
     //   hands                cameras, layers and first-person renderers to PerkeleRim_hands.txt
     //   handlayer on|off|tint|save  share MSC's first-person layer with Skyrim or not (HandLayerSender); tint toggles a
@@ -62,6 +65,27 @@ namespace PerkeleRim.Spike
                     if (f.FsmName == "Use" && f.FsmVariables.FindFsmFloat("Condition") != null) StartCoroutine(KeepFresh(f));
                 SpikeLog.Write($"cmd: spawned {made.name} in front of the player");
             }
+        }
+
+        // Tag, layer, physics and FSMs of every object whose name contains text (prefabs and inactive
+        // templates included), at most 20.
+        static void Inspect(string text)
+        {
+            int n = 0;
+            foreach (GameObject go in Resources.FindObjectsOfTypeAll(typeof(GameObject)))
+            {
+                if (go.name.IndexOf(text, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                if (++n > 20) { SpikeLog.Write("cmd: inspect: more than 20, stopped"); return; }
+                string path = go.name;
+                for (var p = go.transform.parent; p != null; p = p.parent) path = p.name + "/" + path;
+                var body = go.GetComponent<Rigidbody>();
+                var fsms = new List<string>();
+                foreach (var f in go.GetComponents<PlayMakerFSM>()) fsms.Add($"{f.FsmName} [{f.ActiveStateName}]");
+                SpikeLog.Write($"cmd: inspect {path} active {go.activeInHierarchy} tag {go.tag} layer {go.layer} hide {go.hideFlags} " +
+                               $"body {(body != null ? $"{body.mass} kg kinematic {body.isKinematic}" : "none")} colliders {go.GetComponentsInChildren<Collider>(true).Length} " +
+                               $"children {go.transform.childCount} at {go.transform.position} fsms {string.Join(", ", fsms.ToArray())}");
+            }
+            if (n == 0) SpikeLog.Write("cmd: inspect: nothing named like " + text);
         }
 
         static System.Collections.IEnumerator KeepFresh(PlayMakerFSM use)
@@ -276,6 +300,18 @@ namespace PerkeleRim.Spike
                         var sunk = GameObject.Find("PLAYER");
                         if (sunk != null) sunk.transform.position += Vector3.down * (words.Length > 1 ? float.Parse(words[1], CultureInfo.InvariantCulture) : 3f);
                         SpikeLog.Write(sunk != null ? $"cmd: player now at {sunk.transform.position}" : "cmd: no PLAYER");
+                        break;
+                    case "pocket":  // "pocket Y", "pocket 1"
+                        var pocketLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (pocketLink == null || words.Length < 2) { SpikeLog.Write("cmd: pocket <Y|3..8>, with PlayerLink"); break; }
+                        pocketLink.PressPocketKey(char.IsDigit(words[1][0]) ? (int)KeyCode.Alpha0 + (words[1][0] - (char)48) : (int)KeyCode.Y);
+                        break;
+                    case "hold":  // "hold 0": a one-bottle beer case in the hand
+                        var holder = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (holder != null && words.Length > 1) holder.HoldPocketKind(int.Parse(words[1]));
+                        break;
+                    case "inspect":  // "inspect empty bottle" lists objects with that name, inactive ones too
+                        Inspect(lines[0].Trim().Substring(7).Trim());
                         break;
                     case "grunt":  // what Skyrim's PlayerDeath plays
                         PerkeleRim.Game.DeathGuard.PlayDeathSound();
