@@ -1,5 +1,6 @@
-// Damage rules for the player while MSC has it: what an MSC death costs Skyrim's health, and
-// Skyrim's own fall damage, which doesn't run while MSC places the player. Header-only and free of
+// Damage rules while MSC has the player: what an MSC death costs Skyrim's health, Skyrim's own fall
+// damage, which doesn't run while MSC places the player, and what MSC's attacks cost Skyrim actors.
+// Header-only and free of
 // Skyrim types, so the protocol tests cover it.
 
 #pragma once
@@ -16,6 +17,16 @@ namespace PerkeleRim::Damage
     inline float Crash(float a_maxHealth, float a_severity)
     {
         return a_maxHealth * kCrashShare * (std::max)(0.0f, a_severity);
+    }
+
+    // What the player's MSC attacks cost Skyrim actors: fun over RPG, so a share of the target's max
+    // health (no skills or perks), the same at any level. Dragons take a fraction of it.
+    inline constexpr float kPunchShare = 0.25f;  // a bandit goes down in four punches
+    inline constexpr float kDragonFactor = 0.25f;
+
+    inline float Punch(float a_targetMaxHealth, bool a_dragon)
+    {
+        return (std::max)(0.0f, a_targetMaxHealth) * kPunchShare * (a_dragon ? kDragonFactor : 1.0f);
     }
 
     // Skyrim's player fall damage: ((height - fJumpFallHeightMin) * fJumpFallHeightMult) ^

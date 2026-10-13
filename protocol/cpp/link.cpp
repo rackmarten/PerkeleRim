@@ -327,6 +327,18 @@ namespace PerkeleRim
         return IsUp() && SeqRead(At<HandLayerSlot>(Base(), kOffsetHandLayerSlot), a_out);
     }
 
+    void Link::WriteActors(const ActorList& a_value)
+    {
+        if (std::uint8_t* base = Base(); base && _attached.load(std::memory_order_acquire)) {
+            SeqWrite(At<ActorSlot>(base, kOffsetActorSlot), a_value);
+        }
+    }
+
+    bool Link::ReadActors(ActorList& a_out) const
+    {
+        return IsUp() && SeqRead(At<ActorSlot>(Base(), kOffsetActorSlot), a_out);
+    }
+
     bool Link::Send(MessageType a_type, const void* a_payload, std::uint32_t a_size)
     {
         if (!IsUp()) {

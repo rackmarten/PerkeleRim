@@ -20,6 +20,8 @@ namespace PerkeleRim.Game
     //    so far) on the left;
     //  - hands out the beer Skyrim sends (GiveBeer) through BeerGift;
     //  - reports the physics items around the player (ItemLink), whose models ModelSender sends;
+    //  - puts Skyrim's actors near the player on the island as capsules and sends MSC's punches
+    //    that land on them (ActorLink);
     //  - shares MSC's first-person layer (hands, drinks, tools in hand) with Skyrim (HandLayerSender);
     //  - keeps MSC's player alive while handed over and sends what it would have died of as
     //    PlayerDamage (DeathGuard), plays MSC's death sound on PlayerDeath, and sends MSC's blood
@@ -43,12 +45,15 @@ namespace PerkeleRim.Game
 
         readonly Island island = new Island();
         readonly InputFrame input = new InputFrame();
+        readonly PunchButton punch = new PunchButton();
+        int hitKey = (int)KeyCode.H;  // MSC's Hit binding, read once the player is found
         Action<string> log;
         VehicleLink van, moped;
         VehicleLink[] vehicles;
         BeerGift beer;
         ModelSender models;
         ItemLink items;
+        ActorLink actors;
         HandLayerSender hands;
         SaveSync saves;
         Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
@@ -100,6 +105,7 @@ namespace PerkeleRim.Game
             beer = new BeerGift(log);
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
+            actors = new ActorLink(island, log);
             hands = new HandLayerSender(log);
             crash = new CrashSensor(log);
             DeathGuard.Install(log);
@@ -130,7 +136,8 @@ namespace PerkeleRim.Game
             // doesn't start with a jump.
             input.Update(ref s);
             InputShim.Active = input.OwnsPlayer;
-            if (!input.OwnsPlayer) return;
+            if (!input.OwnsPlayer) { punch.Reset(); return; }
+            punch.Apply(input.Keys, HandsFree(), hitKey);
 
             InputShim.Keys.Clear();
             foreach (var k in input.Keys) InputShim.Keys.Add((KeyCode)k);
@@ -206,6 +213,7 @@ namespace PerkeleRim.Game
             foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero);
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
+            actors.Update(link, playing, player, playing && Driven() != null, viewCamera != null ? viewCamera.transform : null);
             models.Update(link);
             hands.Update(link, playing, input.ScreenWidth, input.ScreenHeight);
             saves.Update();
@@ -303,9 +311,40 @@ namespace PerkeleRim.Game
             haveLastFeet = false;
             motor = go.GetComponent("CharacterMotor") as Behaviour;
             motorDisabled = false;
+            ReadHitKey();
             log($"player: found PLAYER (controller {(controller != null)}, camera {(fpsCamera != null)}, view camera {(viewCamera != null ? viewCamera.name : "none")}, crouch fsm {(crouch != null)})");
             LogSurfaces();
             MotorBoost.Install(go, log);
+        }
+
+        // For PunchButton: on foot, nothing in the hands, and no MSC prompt for what the crosshair is on.
+        static bool HandsFree()
+        {
+            var g = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
+            var text = g.FindFsmString("GUIinteraction");
+            var use = g.FindFsmBool("GUIuse");
+            var left = g.FindFsmBool("PlayerHandLeft");
+            var right = g.FindFsmBool("PlayerHandRight");
+            var vehicle = g.FindFsmString("PlayerCurrentVehicle");
+            return (text == null || string.IsNullOrEmpty(text.Value)) && (use == null || !use.Value) &&
+                   (left == null || !left.Value) && (right == null || !right.Value) &&
+                   (vehicle == null || string.IsNullOrEmpty(vehicle.Value));
+        }
+
+        // The key MSC's Hit action (its punch) is bound to, H unless the player changed it.
+        void ReadHitKey()
+        {
+            try
+            {
+                for (int i = 0; i < cInput.length; i++)
+                    if (cInput.GetText(i, 0) == "Hit")
+                        hitKey = (int)(KeyCode)Enum.Parse(typeof(KeyCode), cInput.GetText(i, 1), true);
+            }
+            catch (Exception e)
+            {
+                log("player: could not read MSC's Hit binding, punching with H: " + e.Message);
+            }
+            log($"player: left click with free hands punches (MSC's Hit key {(KeyCode)hitKey})");
         }
 
         // Every ground surface MSC's map uses (tag + physics material, with friction), once, to pick

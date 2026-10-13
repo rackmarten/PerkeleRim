@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 14;
+        public const uint ProtocolVersion = 15;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -20,11 +20,12 @@ namespace PerkeleRim.Protocol
         public const uint OffsetVehiclePartsSlot = 512;
         public const uint OffsetItemSlot = 2112;
         public const uint OffsetHandLayerSlot = 7296;
-        public const uint OffsetRingToMsc = 7360;
+        public const uint OffsetActorSlot = 7360;
+        public const uint OffsetRingToMsc = 8960;
         public const uint RingToMscCapacity = 4194304;
-        public const uint OffsetRingToSkyrim = 4201728;
+        public const uint OffsetRingToSkyrim = 4203328;
         public const uint RingToSkyrimCapacity = 262144;
-        public const uint MappingSize = 4463936;
+        public const uint MappingSize = 4465536;
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint PlayerValid = 0x1;
@@ -50,6 +51,7 @@ namespace PerkeleRim.Protocol
         public const uint ItemVisible = 0x1;
         public const uint ItemHeld = 0x2;
         public const uint HandLayerValid = 0x1;
+        public const uint ActorCapacity = 32;
         public const uint LookAtTextMax = 255;
         public const uint LookAtUse = 0x1;
         public const uint ModelChunkMax = 49152;
@@ -133,6 +135,7 @@ namespace PerkeleRim.Protocol
         PlayerDeath = 8,
         MscSave = 9,
         MscLoad = 10,
+        PunchEvent = 11,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -352,6 +355,50 @@ namespace PerkeleRim.Protocol
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ActorPose
+    {
+        public uint id;
+        public fixed float position[3];
+        public float heading;
+        public fixed float velocity[3];
+        public float radius;
+        public float height;
+        public fixed uint reserved[2];
+    }
+
+    // actors holds kActorCapacity ActorPoses.
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ActorList
+    {
+        public uint frame;
+        public uint generation;
+        public uint count;
+        public uint reserved;
+        public fixed byte actors[1536];
+
+        public ActorPose Get(int i)
+        {
+            if ((uint)i >= Wire.ActorCapacity) throw new System.ArgumentOutOfRangeException(nameof(i));
+            fixed (byte* p = actors) return ((ActorPose*)p)[i];
+        }
+
+        public void Set(int i, ActorPose actor)
+        {
+            if ((uint)i >= Wire.ActorCapacity) throw new System.ArgumentOutOfRangeException(nameof(i));
+            fixed (byte* p = actors) ((ActorPose*)p)[i] = actor;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ActorSlot
+    {
+        public uint seq;
+        public uint reserved;
+        public ActorList value;
+        public fixed byte pad[40];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct RingHeader
     {
         public uint capacity;
@@ -429,6 +476,13 @@ namespace PerkeleRim.Protocol
         public ulong key;
         public uint length;
         public uint reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct PunchEvent
+    {
+        public uint actor;
+        public fixed float direction[3];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

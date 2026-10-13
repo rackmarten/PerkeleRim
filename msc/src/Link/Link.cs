@@ -368,6 +368,32 @@ namespace PerkeleRim
             return false;
         }
 
+        public void WriteActors(ref ActorList value)
+        {
+            if (basePtr == null || !attached) return;
+            var slot = (ActorSlot*)(basePtr + Wire.OffsetActorSlot);
+            BeginWrite(&slot->seq, out uint n);
+            slot->value = value;
+            EndWrite(&slot->seq, n);
+        }
+
+        public bool ReadActors(out ActorList value)
+        {
+            value = default(ActorList);
+            if (!IsUp) return false;
+            var slot = (ActorSlot*)(basePtr + Wire.OffsetActorSlot);
+            for (int attempt = 0; attempt < 64; attempt++)
+            {
+                uint before = (uint)Thread.VolatileRead(ref *(int*)&slot->seq);
+                if (before == 0) return false;
+                if ((before & 1) != 0) continue;
+                value = slot->value;
+                Thread.MemoryBarrier();
+                if ((uint)Thread.VolatileRead(ref *(int*)&slot->seq) == before) return true;
+            }
+            return false;
+        }
+
         // ---- Rings ----
 
         // Outbound ring (MSC -> Skyrim here). False when the link is down, the ring is full or the

@@ -1,7 +1,8 @@
 // Writes PerkeleRim.esp: the garage near Whiterun (vanilla pieces) with the player's spawn marker in
 // front of it and a marker where the van parks inside, the mead and ale that become MSC beer, and
 // the drunk blur. Reads only the player's own Skyrim.esm (for
-// the vanilla base objects, the Tamriel cells to add to and the terrain height there).
+// the vanilla base objects, the Tamriel cells to add to and the terrain height there). Also the
+// spells MSC's punch lands as.
 //
 //   EspGen --data "<Skyrim>/Data" --out <dir>/PerkeleRim.esp
 //
@@ -185,9 +186,56 @@ drunk.DoubleVisionStrength = Track((0f, 0.01f), (0.25f, 0.025f), (0.5f, 0.008f),
 var clear = System.Drawing.Color.FromArgb(0, 255, 255, 255);
 drunk.FadeColor = new ExtendedList<ColorFrame> { new ColorFrame { Time = 0f, Color = clear }, new ColorFrame { Time = 1f, Color = clear } };
 mod.ImageSpaceAdapters.Add(drunk);
-mod.ModHeader.Stats.NextFormID = 0x902;
 Console.WriteLine($"  900 {drinks.EditorID} ({drinks.Items.Count} drinks)");
 Console.WriteLine($"  901 {drunk.EditorID}");
+
+// ---- Combat ----
+//
+// Fixed ids the SKSE plugin looks up (skse/src/combat/Combat.cpp). MSC's punch lands on an actor as
+// two hostile spells the plugin casts from the player at it: the damage (magnitude set per cast, a
+// share of the target's max health) and a stagger. Being the player's hostile spells, the target
+// fights back and a hit on someone peaceful is assault, the way Skyrim treats any attack.
+MagicEffect Effect(uint id, string editorId, string name, MagicEffectArchetype archetype)
+{
+    var effect = new MagicEffect(new FormKey(mod.ModKey, id), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = editorId,
+        Name = name,
+        Flags = MagicEffect.Flag.Hostile | MagicEffect.Flag.Detrimental | MagicEffect.Flag.NoDuration | MagicEffect.Flag.NoArea,
+        Archetype = archetype,
+        CastType = CastType.FireAndForget,
+        TargetType = TargetType.TargetActor,
+        MagicSkill = ActorValue.None,
+        ResistValue = ActorValue.None,
+    };
+    mod.MagicEffects.Add(effect);
+    return effect;
+}
+Spell Spell(uint id, string editorId, string name, MagicEffect effect, float magnitude)
+{
+    var spell = new Spell(new FormKey(mod.ModKey, id), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = editorId,
+        Name = name,
+        Type = SpellType.Spell,
+        CastType = CastType.FireAndForget,
+        TargetType = TargetType.TargetActor,
+        Flags = SpellDataFlag.ManualCostCalc | SpellDataFlag.NoAbsorbOrReflect,
+        BaseCost = 0,
+    };
+    spell.Effects.Add(new Effect { BaseEffect = effect.ToNullableLink(), Data = new EffectData { Magnitude = magnitude } });
+    mod.Spells.Add(spell);
+    return spell;
+}
+var punchDamage = Effect(0x902, "PerkeleRimPunchDamageEffect", "Punch",
+    new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.ValueModifier) { ActorValue = ActorValue.Health });
+var punchStagger = Effect(0x903, "PerkeleRimPunchStaggerEffect", "Punch",
+    new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Stagger));
+var punch = Spell(0x904, "PerkeleRimPunch", "Punch", punchDamage, 1f);
+var punchKnock = Spell(0x905, "PerkeleRimPunchStagger", "Punch", punchStagger, 0.5f);
+mod.ModHeader.Stats.NextFormID = 0x906;
+foreach (var r in new IMajorRecordGetter[] { punchDamage, punchStagger, punch, punchKnock })
+    Console.WriteLine($"  {r.FormKey.ID:X3} {r.EditorID}");
 
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
 mod.WriteToBinary(output);

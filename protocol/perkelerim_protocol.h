@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 14;
+    inline constexpr std::uint32_t kProtocolVersion = 15;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -37,11 +37,12 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 512;
     inline constexpr std::uint32_t kOffsetItemSlot = 2112;
     inline constexpr std::uint32_t kOffsetHandLayerSlot = 7296;
-    inline constexpr std::uint32_t kOffsetRingToMsc = 7360;         // RingHeader, data follows
+    inline constexpr std::uint32_t kOffsetActorSlot = 7360;
+    inline constexpr std::uint32_t kOffsetRingToMsc = 8960;         // RingHeader, data follows
     inline constexpr std::uint32_t kRingToMscCapacity = 4194304;    // 4 MiB: collision chunks
-    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4201728;   // 7360 + 64 + 4 MiB
+    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4203328;   // 8960 + 64 + 4 MiB
     inline constexpr std::uint32_t kRingToSkyrimCapacity = 262144;  // 256 KiB: events
-    inline constexpr std::uint32_t kMappingSize = 4463936;         // 4201728 + 64 + 256 KiB
+    inline constexpr std::uint32_t kMappingSize = 4465536;         // 4203328 + 64 + 256 KiB
 
     enum class Side : std::uint32_t
     {
@@ -317,6 +318,41 @@ namespace PerkeleRim::Protocol
         std::uint8_t  pad[24];
     };
 
+    inline constexpr std::uint32_t kActorCapacity = 32;  // ActorList.actors
+
+    // One Skyrim actor near the player, as an upright capsule MSC's player bumps into and punches.
+    // Skyrim world space like PlayerState.
+    struct ActorPose
+    {
+        std::uint32_t id;           // the actor reference's form id, never 0
+        float         position[3];  // feet
+        float         heading;      // radians
+        float         velocity[3];  // units per second
+        float         radius;       // capsule radius, units
+        float         height;       // capsule height from the feet, units
+        std::uint32_t reserved[2];
+    };
+
+    // Skyrim -> MSC, while MSC has the player. The living actors near the player that stand (not
+    // dead, knocked down or ragdolled), closest first; count of them, the rest is zero. An actor
+    // missing from one list to the next has gone away (too far, dead, knocked down).
+    struct ActorList
+    {
+        std::uint32_t frame;       // Skyrim frame counter
+        std::uint32_t generation;  // WorldspaceChange.generation the positions are for
+        std::uint32_t count;       // <= kActorCapacity
+        std::uint32_t reserved;
+        ActorPose     actors[32];  // kActorCapacity
+    };
+
+    struct ActorSlot
+    {
+        std::uint32_t seq;
+        std::uint32_t reserved;
+        ActorList     value;
+        std::uint8_t  pad[40];
+    };
+
     // ---- Rings (single producer, single consumer) ----
     //
     // head and tail are monotonic byte counts; position = count % capacity. The producer owns head,
@@ -346,6 +382,7 @@ namespace PerkeleRim::Protocol
         PlayerDeath = 8,       // Skyrim -> MSC
         MscSave = 9,           // Skyrim -> MSC
         MscLoad = 10,          // Skyrim -> MSC
+        PunchEvent = 11,       // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -444,6 +481,14 @@ namespace PerkeleRim::Protocol
         std::uint64_t key;     // never 0
         std::uint32_t length;  // path bytes, <= kMscSnapshotPathMax
         std::uint32_t reserved;
+    };
+
+    // PunchEvent: MSC's player punched (its Hit key) and the fist landed on an actor's capsule
+    // from the latest ActorList. Skyrim hits that actor as the player.
+    struct PunchEvent
+    {
+        std::uint32_t actor;         // ActorPose.id
+        float         direction[3];  // the punch's way, unit vector in Skyrim space
     };
 
     // ---- Models (MSC -> Skyrim) ----
@@ -588,6 +633,17 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(HandLayer, costMicros) == 28);
     static_assert(sizeof(HandLayerSlot) == 64);
     static_assert(offsetof(HandLayerSlot, value) == 8);
+    static_assert(sizeof(ActorPose) == 48);
+    static_assert(offsetof(ActorPose, position) == 4);
+    static_assert(offsetof(ActorPose, heading) == 16);
+    static_assert(offsetof(ActorPose, velocity) == 20);
+    static_assert(offsetof(ActorPose, radius) == 32);
+    static_assert(offsetof(ActorPose, height) == 36);
+    static_assert(sizeof(ActorList) == 1552);
+    static_assert(offsetof(ActorList, count) == 8);
+    static_assert(offsetof(ActorList, actors) == 16);
+    static_assert(sizeof(ActorSlot) == 1600);
+    static_assert(offsetof(ActorSlot, value) == 8);
     static_assert(sizeof(RingHeader) == 64);
     static_assert(offsetof(RingHeader, head) == 8);
     static_assert(offsetof(RingHeader, tail) == 32);
@@ -610,6 +666,8 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(PlayerDeath) == 8);
     static_assert(sizeof(MscSnapshot) == 16);
     static_assert(offsetof(MscSnapshot, length) == 8);
+    static_assert(sizeof(PunchEvent) == 16);
+    static_assert(offsetof(PunchEvent, direction) == 4);
     static_assert(sizeof(ModelChunk) == 16);
     static_assert(offsetof(ModelChunk, offset) == 8);
     static_assert(sizeof(ModelHeader) == 64);
@@ -640,8 +698,10 @@ namespace PerkeleRim::Protocol
     static_assert(kOffsetVehiclePartsSlot == kOffsetVehicleSlot + sizeof(VehicleSlot));
     static_assert(kOffsetItemSlot == kOffsetVehiclePartsSlot + sizeof(VehiclePartsSlot));
     static_assert(kOffsetHandLayerSlot == kOffsetItemSlot + sizeof(ItemSlot));
-    static_assert(kOffsetRingToMsc == kOffsetHandLayerSlot + sizeof(HandLayerSlot));
+    static_assert(kOffsetActorSlot == kOffsetHandLayerSlot + sizeof(HandLayerSlot));
+    static_assert(kOffsetRingToMsc == kOffsetActorSlot + sizeof(ActorSlot));
     static_assert(sizeof(ItemState::items) / sizeof(ItemPose) == kItemCapacity);
+    static_assert(sizeof(ActorList::actors) / sizeof(ActorPose) == kActorCapacity);
     static_assert(kOffsetRingToSkyrim == kOffsetRingToMsc + sizeof(RingHeader) + kRingToMscCapacity);
     static_assert(kMappingSize == kOffsetRingToSkyrim + sizeof(RingHeader) + kRingToSkyrimCapacity);
     static_assert(sizeof(kHayosikoParts) / sizeof(kHayosikoParts[0]) == kHayosikoPartCount);

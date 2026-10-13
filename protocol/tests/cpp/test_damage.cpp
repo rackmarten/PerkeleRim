@@ -11,6 +11,14 @@ TEST_CASE("an MSC death costs half of Skyrim's max health")
     CHECK(Damage::Crash(200.0f, -1.0f) == 0.0f);
 }
 
+TEST_CASE("a punch costs a quarter of the target's max health, dragons less")
+{
+    CHECK(Damage::Punch(100.0f, false) == doctest::Approx(25.0f));
+    CHECK(Damage::Punch(100.0f, false) * 4.0f >= 100.0f);  // four punches drop anyone
+    CHECK(Damage::Punch(3000.0f, true) == doctest::Approx(187.5f));
+    CHECK(Damage::Punch(-5.0f, false) == 0.0f);
+}
+
 TEST_CASE("fall damage follows Skyrim's formula")
 {
     CHECK(Damage::Fall(600.0f) == 0.0f);  // up to fJumpFallHeightMin is free

@@ -2,6 +2,7 @@
 
 #include "camera.h"
 #include "collision/CollisionSampler.h"
+#include "combat/Combat.h"
 #include "coords.h"
 #include "death/Death.h"
 #include "drink/Drink.h"
@@ -21,9 +22,11 @@ namespace PerkeleRim::PlayerSync
     {
         using UEFlag = RE::UserEvents::USER_EVENT_FLAG;
 
-        // Skyrim controls that MSC replaces while it owns the player. Activate and the menus stay
-        // with Skyrim.
-        constexpr auto kTakenControls = static_cast<UEFlag>(
+        // Skyrim controls earlier versions turned off while MSC owned the player. Now they all stay on:
+        // Skyrim treats a player with these off like one in a scripted scene, and enemies saw it,
+        // walked up and never fought. Instead the input handlers refuse while MSC has the player
+        // (BlockHook). Still turned back on at release and after loading, for saves taken back then.
+        constexpr auto kOldControls = static_cast<UEFlag>(
             static_cast<std::uint32_t>(UEFlag::kMovement) | static_cast<std::uint32_t>(UEFlag::kLooking) |
             static_cast<std::uint32_t>(UEFlag::kSneaking) | static_cast<std::uint32_t>(UEFlag::kJumping) |
             static_cast<std::uint32_t>(UEFlag::kFighting) | static_cast<std::uint32_t>(UEFlag::kPOVSwitch) |
@@ -148,7 +151,7 @@ namespace PerkeleRim::PlayerSync
         void SetControls(bool a_enable)
         {
             if (auto* controls = RE::ControlMap::GetSingleton()) {
-                controls->ToggleControls(kTakenControls, a_enable, false);
+                controls->ToggleControls(kOldControls, a_enable, false);
             }
         }
 
@@ -185,6 +188,7 @@ namespace PerkeleRim::PlayerSync
             Hud::Set({});
             Drink::SetDrunk(0.0f, 0.0f);
             CollisionSampler::Stop();
+            Combat::Stop();
             VehicleView::Hide();
             ItemView::Clear();
             HandView::Hide();
@@ -259,7 +263,6 @@ namespace PerkeleRim::PlayerSync
             Death::Hide();
             state.statTime = 0.0f;
             state.frames = state.placed = state.newPoses = 0;
-            SetControls(false);
             Publish();
             SKSE::log::info("player sync: MSC owns the player");
         }
@@ -549,6 +552,10 @@ namespace PerkeleRim::PlayerSync
                     Death::OnDamage(a_player, a_data, a_size);
                     return;
                 }
+                if (a_type == Protocol::MessageType::PunchEvent) {
+                    Combat::OnPunch(a_player, a_data, a_size);
+                    return;
+                }
                 if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle) {
                     return;
                 }
@@ -599,6 +606,7 @@ namespace PerkeleRim::PlayerSync
             }
             Protocol::HandLayer hands{};
             HandView::Update(link.ReadHandLayer(hands) ? &hands : nullptr, a_delta);
+            Combat::Update(a_player, state.generation, a_delta);
             // Stream ahead of the player while it moves fast (driving).
             const RE::NiPoint3 velocity = valid ? RE::NiPoint3(pose.velocity[0], pose.velocity[1], pose.velocity[2]) : RE::NiPoint3();
             CollisionSampler::Update(a_player, velocity);
@@ -666,6 +674,27 @@ namespace PerkeleRim::PlayerSync
                 return original(a_handler, a_event);
             }
             static inline REL::Relocation<decltype(thunk)> original;
+        };
+
+        // Skyrim's own reaction to keys MSC uses: moving, looking, jumping (Space), sneaking (Ctrl,
+        // MSC's zoom), first or third person (F, MSC's use; the wheel, MSC's radio dial), autorun (C,
+        // MSC's crouch), running, attacking and blocking (MSC's mouse buttons), drawing (R) and
+        // shouting (Z, MSC's handbrake). Each handler's CanProcess refuses while MSC has the player.
+        // One instance per handler (N).
+        template <class T, int N>
+        struct BlockHook
+        {
+            static bool thunk(T* a_handler, RE::InputEvent* a_event)
+            {
+                return !state.owned && original(a_handler, a_event);
+            }
+            static inline REL::Relocation<decltype(thunk)> original;
+
+            static void Install(REL::VariantID a_vtable)
+            {
+                REL::Relocation<std::uintptr_t> vtable{ a_vtable };
+                original = vtable.write_vfunc(0x1, thunk);
+            }
         };
 
         // Q (MSC's lean left) would open Skyrim's favorites, which pauses the game and with it MSC's input.
@@ -798,7 +827,21 @@ namespace PerkeleRim::PlayerSync
         MenuOpenHook::original = menuOpen.write_vfunc(0x1, MenuOpenHook::thunk);
         REL::Relocation<std::uintptr_t> activate{ RE::VTABLE_ActivateHandler[0] };
         ActivateHook::original = activate.write_vfunc(0x1, ActivateHook::thunk);
-        SKSE::log::info("player sync: PlayerCharacter::Update, ActivateHandler, FavoritesHandler and MenuOpenHandler::CanProcess hooked, F10 hands the player to MSC");
+        BlockHook<RE::PlayerInputHandler, 0>::Install(RE::VTABLE_MovementHandler[0]);
+        BlockHook<RE::PlayerInputHandler, 1>::Install(RE::VTABLE_LookHandler[0]);
+        BlockHook<RE::PlayerInputHandler, 2>::Install(RE::VTABLE_SprintHandler[0]);
+        BlockHook<RE::PlayerInputHandler, 3>::Install(RE::VTABLE_AutoMoveHandler[0]);
+        BlockHook<RE::PlayerInputHandler, 4>::Install(RE::VTABLE_ToggleRunHandler[0]);
+        BlockHook<RE::PlayerInputHandler, 5>::Install(RE::VTABLE_RunHandler[0]);
+        BlockHook<RE::PlayerInputHandler, 6>::Install(RE::VTABLE_JumpHandler[0]);
+        BlockHook<RE::PlayerInputHandler, 7>::Install(RE::VTABLE_SneakHandler[0]);
+        BlockHook<RE::PlayerInputHandler, 8>::Install(RE::VTABLE_TogglePOVHandler[0]);
+        BlockHook<RE::PlayerInputHandler, 9>::Install(RE::VTABLE_AttackBlockHandler[0]);
+        BlockHook<RE::PlayerInputHandler, 10>::Install(RE::VTABLE_ReadyWeaponHandler[0]);
+        BlockHook<RE::PlayerInputHandler, 11>::Install(RE::VTABLE_FirstPersonState[1]);  // its zoom and POV keys
+        BlockHook<RE::PlayerInputHandler, 12>::Install(RE::VTABLE_ThirdPersonState[1]);
+        BlockHook<RE::PlayerInputHandler, 13>::Install(RE::VTABLE_ShoutHandler[0]);
+        SKSE::log::info("player sync: PlayerCharacter::Update and the CanProcess of the activate, favorites, menu, movement, look, jump, sneak, POV, attack, shout and camera input handlers hooked, F10 hands the player to MSC");
     }
 
     void OnDataLoaded()
