@@ -94,13 +94,13 @@ namespace PerkeleRim.Tests
             new Mesh().Floor(-6, 0, -3, 3, 0).Floor(0, 6, -3, 3, lip).Wall(0, -3, 3, -0.5f, lip);
 
         [Test]
-        public void A_short_lip_gets_a_1_in_4_ramp_onto_the_lower_side()
+        public void A_short_lip_gets_a_1_in_5_ramp_onto_the_lower_side()
         {
             var r = Step(0.3f).Fillet();
 
             Assert.That(r.Added, Is.GreaterThan(0));
             r.RampsFaceUp();
-            Assert.That(r.HeightAt(-0.6f, 0), Is.EqualTo(0.15f).Within(0.03f));
+            Assert.That(r.HeightAt(-0.6f, 0), Is.EqualTo(0.18f).Within(0.03f));
             Assert.That(r.HeightAt(-1.5f, 0), Is.EqualTo(0f).Within(0.001f), "the road beyond the ramp");
             Assert.That(r.HeightAt(2f, 0), Is.EqualTo(0.3f).Within(0.001f), "the deck");
         }
@@ -109,7 +109,7 @@ namespace PerkeleRim.Tests
         public void A_bridge_deck_edge_of_0_73_m_gets_a_ramp()
         {
             var r = Step(0.73f).Fillet();
-            Assert.That(r.HeightAt(-1.4f, 0), Is.EqualTo(0.38f).Within(0.04f));
+            Assert.That(r.HeightAt(-1.4f, 0), Is.EqualTo(0.45f).Within(0.04f));
         }
 
         [Test]
@@ -124,7 +124,7 @@ namespace PerkeleRim.Tests
 
             var r = m.Fillet();
             r.RampsFaceUp();
-            Assert.That(r.HeightAt(-1.4f, 0), Is.EqualTo(0.35f).Within(0.04f), "half way down the ramp, above the road");
+            Assert.That(r.HeightAt(-1.4f, 0), Is.EqualTo(0.42f).Within(0.04f), "half way down the ramp, above the road");
             Assert.That(r.HeightAt(-0.35f, 0), Is.GreaterThan(0.55f), "over the strip");
         }
 
@@ -173,6 +173,21 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void A_hill_steeper_than_the_ramp_gets_nothing()
+        {
+            // A cobbled road climbing 0.4 in 1 (about 22 degrees), each cell a little bumpy: a steady
+            // slope the wheels climb on their own, not a stack of steps.
+            var m = new Mesh();
+            for (int k = 0; k < 48; k++)
+            {
+                float x0 = -6 + k * 0.25f, bump = k % 3 == 0 ? 0.02f : 0;
+                m.Slope(x0, x0 + 0.25f, -3, 3, x0 * 0.4f + bump, (x0 + 0.25f) * 0.4f + bump);
+            }
+            var r = m.Fillet();
+            Assert.That(r.Added, Is.EqualTo(0));
+        }
+
+        [Test]
         public void The_same_step_off_road_gets_no_ramp()
         {
             var why = new List<string>();
@@ -191,7 +206,7 @@ namespace PerkeleRim.Tests
             // The road crosses the step along x for z in -1..1; the rest of the step is off road.
             var r = Step(0.3f).Fillet(Road(-6, 6, -1, 1));
             Assert.That(r.Added, Is.GreaterThan(0));
-            Assert.That(r.HeightAt(-0.6f, 0), Is.EqualTo(0.15f).Within(0.03f), "on the road");
+            Assert.That(r.HeightAt(-0.6f, 0), Is.EqualTo(0.18f).Within(0.03f), "on the road");
             Assert.That(r.HeightAt(-0.6f, 2.5f), Is.EqualTo(0f).Within(0.001f), "beside the road");
         }
 
@@ -221,7 +236,7 @@ namespace PerkeleRim.Tests
             // The road crosses the step for z in -1..1: the ramp spreads up to RoadMargin past its side.
             var r = Step(0.3f).Fillet(Road(-6, 6, -1, 1));
             Assert.That(r.HeightAt(-0.25f, 1.25f), Is.GreaterThan(0.1f), "0.25 m beside the road");
-            Assert.That(r.HeightAt(-0.25f, 1.75f), Is.EqualTo(0f).Within(0.001f), "0.75 m beside the road");
+            Assert.That(r.HeightAt(-0.25f, 2.25f), Is.EqualTo(0f).Within(0.001f), "1.25 m beside the road");
 
             // A deck edge outside the road lays no ramp of its own.
             Assert.That(Step(0.3f).Fillet(Road(0.6f, 6, -3, 3)).Added, Is.EqualTo(0));

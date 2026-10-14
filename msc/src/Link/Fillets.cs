@@ -22,8 +22,8 @@ namespace PerkeleRim
         public const float MinLip = 0.03f;
         public const float MaxLip = 0.8f;  // a Whiterun bridge's deck edge is 0.73 m
         public const float Cell = 0.25f;
-        public const float RoadMargin = 0.5f;
-        const float RampSlope = 0.25f;     // rise over run, ~14 degrees
+        public const float RoadMargin = 0.75f;
+        const float RampSlope = 0.2f;      // rise over run, ~11 degrees
         const float SurfaceY = 0.1f;       // normal.y above this: part of the top surface
         const float DeckTolerance = 0.15f;
         const int DeckReach = 2;           // a deck point is level with most points this many cells around
@@ -220,7 +220,23 @@ namespace PerkeleRim
             for (int a = i - DeckReach; a <= i + DeckReach; a++)
                 for (int b = j - DeckReach; b <= j + DeckReach; b++)
                     if (a >= 0 && a < nx && b >= 0 && b < nz && Math.Abs(h[a * nz + b] - y) <= DeckTolerance) level++;
-            return level >= DeckLevel;
+            if (level < DeckLevel) return false;
+
+            // Flatter than the ramp on at least one side along each axis: a deck's edge has its drop
+            // on one side only, while a hill steeper than the ramp falls away on both and is no deck
+            // (otherwise every cell of it is a "step" and lays a shelf down the hill).
+            float sx = SideSlope(h, y, i > DeckReach - 1 ? (i - DeckReach) * nz + j : -1, i + DeckReach < nx ? (i + DeckReach) * nz + j : -1);
+            float sz = SideSlope(h, y, j > DeckReach - 1 ? i * nz + j - DeckReach : -1, j + DeckReach < nz ? i * nz + j + DeckReach : -1);
+            return sx * sx + sz * sz <= RampSlope * RampSlope;
+        }
+
+        // The gentler of the slopes from y to the points before and after it, DeckReach cells away.
+        static float SideSlope(float[] h, float y, int before, int after)
+        {
+            float b = before < 0 || float.IsNaN(h[before]) ? float.NaN : Math.Abs(y - h[before]);
+            float a = after < 0 || float.IsNaN(h[after]) ? float.NaN : Math.Abs(h[after] - y);
+            float d = float.IsNaN(b) ? a : float.IsNaN(a) ? b : Math.Min(a, b);
+            return float.IsNaN(d) ? 0 : d / (DeckReach * Cell);
         }
 
         // A neighbor more than MinLip lower than the ramp would be there: a step, not just a slope
