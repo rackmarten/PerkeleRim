@@ -102,8 +102,8 @@ namespace PerkeleRim.Game
             this.log = log;
             InputShim.Feed = FeedInput;
             Func<Vector3, Vector3?> ground = p => { Vector3 g; return FindGround(p, out g) ? g : (Vector3?)null; };
-            van = new VehicleLink("HAYOSIKO(1500kg, 250)", "Hayosiko", new Vector3(3.5f, 0f, 2f), Wire.VehicleHayosiko, "PlayerKeyHayosiko", island, ground, log);
-            moped = new VehicleLink("JONNEZ ES(Clone)", "Jonnez", new Vector3(-2.5f, 0f, 1.5f), 0, null, island, ground, log);
+            van = new VehicleLink("HAYOSIKO(1500kg, 250)", "Hayosiko", new Vector3(3.5f, 0f, 2f), Wire.VehicleHayosiko, "PlayerKeyHayosiko", VehicleTune.Van, island, ground, log);
+            moped = new VehicleLink("JONNEZ ES(Clone)", "Jonnez", new Vector3(-2.5f, 0f, 1.5f), 0, null, VehicleTune.Moped, island, ground, log);
             vehicles = new[] { van, moped };
             beer = new BeerGift(log);
             pocket = new PocketLink(log);
@@ -225,6 +225,8 @@ namespace PerkeleRim.Game
             SendLookAt(link, playing);
             SendSubtitle(link, playing);
             foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero);
+            if (playing && Driven() == null && cInput.GetKeyDown("Push"))
+                foreach (var v in vehicles) if (v.RightIfRolled(player)) break;
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             pocket.Update(link, playing, player != null);
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);

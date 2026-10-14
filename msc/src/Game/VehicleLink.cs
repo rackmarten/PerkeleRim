@@ -33,6 +33,7 @@ namespace PerkeleRim.Game
         readonly Island island;
         readonly Action<string> log;
         readonly Func<Vector3, Vector3?> findGround;
+        readonly VehicleTune tune;
 
         Transform car;
         Transform[] wheels;
@@ -53,7 +54,7 @@ namespace PerkeleRim.Game
         float spotHeading;    // Skyrim radians
 
         public VehicleLink(string objectName, string driverName, Vector3 parkOffset, uint wireId, string keyVariable,
-            Island island, Func<Vector3, Vector3?> findGround, Action<string> log)
+            VehicleTune.Settings tuning, Island island, Func<Vector3, Vector3?> findGround, Action<string> log)
         {
             this.objectName = objectName;
             this.driverName = driverName;
@@ -63,6 +64,7 @@ namespace PerkeleRim.Game
             this.island = island;
             this.findGround = findGround;
             this.log = log;
+            tune = new VehicleTune(tuning, driverName, log);
         }
 
         // The ground the vehicle stood on before it was first moved, for the island chunks: the
@@ -76,6 +78,7 @@ namespace PerkeleRim.Game
         public string ObjectName => objectName;
         public Vector3 Position => car != null ? car.position : Vector3.zero;
         public int Moves { get; private set; }
+        public string Contact(float within) => tune.Contact(within);
 
         bool PlayerDriving
         {
@@ -98,6 +101,7 @@ namespace PerkeleRim.Game
             placedGeneration = 0;
             held = false;
             Ground = ColliderBelow(car);
+            tune.Attach(car, body);
             wheels = new Transform[WheelModels.Length];
             int found = 0;
             for (int i = 0; i < wheels.Length; i++)
@@ -356,15 +360,38 @@ namespace PerkeleRim.Game
 
         void PutBackOnTop(Vector3 ground)
         {
+            SetUpright(ground);
+            log($"vehicle: the {driverName} fell through the island, put back on its wheels on top");
+        }
+
+        // On its wheels at ground, facing the way it faced (its forward flattened).
+        void SetUpright(Vector3 ground)
+        {
             Shift(new Vector3(0f, ground.y + ParkClearance - car.position.y, 0f));
-            car.rotation = Quaternion.Euler(0f, car.eulerAngles.y, 0f);
+            var f = car.forward;
+            var u = car.up;
+            car.rotation = Quaternion.Euler(0f, Upright.Heading(f.x, f.z, u.x, u.z), 0f);
             if (body != null)
             {
                 body.rotation = car.rotation;
                 body.velocity = Vector3.zero;
                 body.angularVelocity = Vector3.zero;
             }
-            log($"vehicle: the {driverName} fell through the island, put back on its wheels on top");
+        }
+
+        // MSC's push key next to the vehicle (the player on foot): a rolled vehicle that has come to
+        // rest goes back on its wheels, lifted a little, facing the way it faced. MSC's own push only
+        // moves one standing on its wheels.
+        public bool RightIfRolled(Transform player)
+        {
+            if (car == null || body == null || held || away) return false;
+            float distance = Vector3.Distance(player.position, car.position);
+            if (!Upright.CanRight(car.up.y, body.velocity.magnitude, body.angularVelocity.magnitude, distance)) return false;
+            var ground = findGround(car.position);
+            if (!ground.HasValue) return false;
+            SetUpright(ground.Value);
+            log($"vehicle: put the {driverName} back on its wheels ({distance:0.0} m from the player)");
+            return true;
         }
 
         // Call every LateUpdate. playing: MSC owns the player and it stands on the current island.
@@ -411,6 +438,7 @@ namespace PerkeleRim.Game
                 return;
             }
             Remember();
+            tune.Update();
 
             if (Time.realtimeSinceStartup >= nextGroundCheck)
             {

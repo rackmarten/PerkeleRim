@@ -31,7 +31,8 @@ namespace PerkeleRim.Game
             float impact = meter.Step(v.x, v.y, v.z, Time.fixedDeltaTime, Physics.gravity.y);
             if (impact < CrashMeter.LogFloor) return;
             float severity = meter.Hit(impact, Time.realtimeSinceStartup);
-            log($"crash: the {driven.Name} hit {impact:0.0} m/s at {v.magnitude * 3.6f:0} km/h, severity {severity:0.00}");
+            var contact = driven.Contact(0.2f);
+            log($"crash: the {driven.Name} hit {impact:0.0} m/s at {v.magnitude * 3.6f:0} km/h, severity {severity:0.00}" + (contact != null ? ", touching " + contact : ""));
             DeathGuard.Impact(impact, severity);
         }
     }

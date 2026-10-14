@@ -29,6 +29,7 @@
     <Reference Include="UnityEngine" HintPath="$(MscPath)\mysummercar_Data\Managed\UnityEngine.dll" Private="false" />
     <Reference Include="0Harmony" HintPath="$(MscPath)\mysummercar_Data\Managed\0Harmony.dll" Private="false" />
     <Reference Include="PlayMaker" HintPath="$(MscPath)\mysummercar_Data\Managed\PlayMaker.dll" Private="false" />
+    <Reference Include="Assembly-CSharp" HintPath="$(MscPath)\mysummercar_Data\Managed\Assembly-CSharp.dll" Private="false" />
     <Reference Include="cInput" HintPath="$(MscPath)\mysummercar_Data\Managed\cInput.dll" Private="false" />
   </ItemGroup>
 
