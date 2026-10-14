@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 19;
+        public const uint ProtocolVersion = 20;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -449,7 +449,7 @@ namespace PerkeleRim.Protocol
         public fixed float origin[3];
         public uint vertexCount;
         public uint indexCount;
-        public uint reserved;
+        public uint roadCount;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

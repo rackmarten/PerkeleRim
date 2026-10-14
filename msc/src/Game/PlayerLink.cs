@@ -65,11 +65,14 @@ namespace PerkeleRim.Game
         GameObject islandObject;
         readonly Dictionary<long, GameObject> chunks = new Dictionary<long, GameObject>();
         // Spike "island show|hide": draws the chunks, flat-shaded and colored by slope (green flat,
-        // red at 60 degrees and steeper, ramps over lips blue), to compare the island with Skyrim's ground.
+        // red at 60 degrees and steeper, ramps over lips blue, Skyrim's roads bluish green), to compare
+        // the island with Skyrim's ground.
         public static bool ShowIsland;
         static Material islandMaterial;
         // Where each chunk mesh's ramps (Fillets) start in its triangle list; drawn blue.
         static readonly Dictionary<Mesh, int> filletFrom = new Dictionary<Mesh, int>();
+        // Each chunk mesh's road triangles (CollisionChunk.Roads), in the chunk's own space.
+        static readonly Dictionary<Mesh, float[]> roadsOf = new Dictionary<Mesh, float[]>();
         float nextPrune;
         uint placedGeneration;  // island generation the player was put down for; 0 = none
         uint holdingGeneration;  // generation the player is held for while its ground loads
@@ -425,7 +428,7 @@ namespace PerkeleRim.Game
 
             var watch = System.Diagnostics.Stopwatch.StartNew();
             int sampled = chunk.Triangles.Length;
-            int fillets = Fillets.Add(ref chunk.Vertices, ref chunk.Triangles);
+            int fillets = Fillets.Add(ref chunk.Vertices, ref chunk.Triangles, chunk.Roads);
             watch.Stop();
 
             var vertices = new Vector3[chunk.Vertices.Length];
@@ -433,6 +436,7 @@ namespace PerkeleRim.Game
             var mesh = new Mesh { name = $"PerkeleRim.Chunk {chunk.ChunkX},{chunk.ChunkY}", vertices = vertices, triangles = chunk.Triangles };
             mesh.RecalculateBounds();
             filletFrom[mesh] = sampled;
+            roadsOf[mesh] = chunk.Roads;
 
             GameObject go;
             bool rebuilt = chunks.TryGetValue(chunk.Key, out go);
@@ -446,10 +450,10 @@ namespace PerkeleRim.Game
             if (collider == null) collider = go.AddComponent<MeshCollider>();
             var old = collider.sharedMesh;
             collider.sharedMesh = mesh;
-            if (old != null) { filletFrom.Remove(old); Destroy(old); }
+            if (old != null) { filletFrom.Remove(old); roadsOf.Remove(old); Destroy(old); }
             CopyGround(go);
             DrawChunk(go);
-            log($"player: chunk ({chunk.ChunkX},{chunk.ChunkY}) gen {chunk.Generation}: {vertices.Length} vertices, {chunk.Triangles.Length / 3} triangles ({fillets} ramp), ramps took {watch.Elapsed.TotalMilliseconds:0.0} ms, {(rebuilt ? "rebuilt" : "new")}");
+            log($"player: chunk ({chunk.ChunkX},{chunk.ChunkY}) gen {chunk.Generation}: {vertices.Length} vertices, {chunk.Triangles.Length / 3} triangles ({fillets} ramp), {chunk.Roads.Length / 6} road triangles, ramps took {watch.Elapsed.TotalMilliseconds:0.0} ms, {(rebuilt ? "rebuilt" : "new")}");
         }
 
         // Makes the island look like MSC's own ground to the vehicles, once a vehicle has shown which
@@ -488,7 +492,7 @@ namespace PerkeleRim.Game
             go.transform.parent = null;
             var collider = go.GetComponent<MeshCollider>();
             if (collider != null) collider.enabled = false;
-            if (collider != null && collider.sharedMesh != null) { filletFrom.Remove(collider.sharedMesh); Destroy(collider.sharedMesh); }
+            if (collider != null && collider.sharedMesh != null) { filletFrom.Remove(collider.sharedMesh); roadsOf.Remove(collider.sharedMesh); Destroy(collider.sharedMesh); }
             var filter = go.GetComponent<MeshFilter>();
             if (filter != null && filter.sharedMesh != null) Destroy(filter.sharedMesh);
             Destroy(go);
@@ -522,7 +526,9 @@ namespace PerkeleRim.Game
                 var triangles = new int[sampled];
                 Array.Copy(mesh.triangles, triangles, sampled);
                 int lines = 0;
-                Fillets.Add(ref vertices, ref triangles, (mid, reason) =>
+                float[] roads;
+                roadsOf.TryGetValue(mesh, out roads);
+                Fillets.Add(ref vertices, ref triangles, roads, (mid, reason) =>
                 {
                     var off = ToVector3(mid) - at;
                     if (off.magnitude > radius || ++lines > 30) return;
@@ -556,6 +562,9 @@ namespace PerkeleRim.Game
             var tris = source.triangles;
             int ramps;
             if (!filletFrom.TryGetValue(source, out ramps)) ramps = tris.Length;
+            float[] roads;
+            roadsOf.TryGetValue(source, out roads);
+            var roadColor = new Color(0.1f, 0.85f, 0.7f);
             var vertices = new Vector3[tris.Length];
             var colors = new Color[tris.Length];
             var order = new int[tris.Length];
@@ -563,7 +572,9 @@ namespace PerkeleRim.Game
             {
                 Vector3 a = from[tris[i]], b = from[tris[i + 1]], c = from[tris[i + 2]];
                 float up = Mathf.Abs(Vector3.Cross(b - a, c - a).normalized.y);
-                var color = i >= ramps ? new Color(0.2f, 0.4f, 1f) : Color.Lerp(Color.red, Color.green, Mathf.InverseLerp(0.5f, 0.97f, up));
+                var mid = (a + b + c) / 3f;
+                var flat = i < ramps && Fillets.InRoad(roads, mid.x, mid.z) ? roadColor : Color.green;
+                var color = i >= ramps ? new Color(0.2f, 0.4f, 1f) : Color.Lerp(Color.red, flat, Mathf.InverseLerp(0.5f, 0.97f, up));
                 vertices[i] = a; vertices[i + 1] = b; vertices[i + 2] = c;
                 colors[i] = colors[i + 1] = colors[i + 2] = color;
                 order[i] = i; order[i + 1] = i + 1; order[i + 2] = i + 2;

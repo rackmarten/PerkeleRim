@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 19;
+    inline constexpr std::uint32_t kProtocolVersion = 20;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -398,9 +398,11 @@ namespace PerkeleRim::Protocol
     };
 
     // Payload: this header, then vertexCount * float[3] vertices (Skyrim units, relative to origin),
-    // then indexCount uint32 triangle indices. Triangles wind counterclockwise seen from above in
-    // Skyrim space (cross(b - a, c - a) points up). A newer chunk with the same x/y and generation
-    // replaces the older one.
+    // then indexCount uint32 triangle indices, then roadCount road triangles of float[6] (three x, y
+    // corners, Skyrim units relative to origin, either winding). Triangles wind counterclockwise seen
+    // from above in Skyrim space (cross(b - a, c - a) points up). Road triangles are the navmesh
+    // triangles flagged preferred that reach into the chunk. A newer chunk with the same x/y and
+    // generation replaces the older one.
     struct CollisionChunkHeader
     {
         std::int32_t  chunkX;
@@ -410,7 +412,7 @@ namespace PerkeleRim::Protocol
         float         origin[3];
         std::uint32_t vertexCount;
         std::uint32_t indexCount;
-        std::uint32_t reserved;
+        std::uint32_t roadCount;
     };
 
     inline constexpr std::uint32_t kAnchorVehicleSpot = 0x1;  // WorldspaceChange.flags: park the van at vehicleSpot
@@ -713,6 +715,7 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(CollisionChunkHeader, origin) == 16);
     static_assert(offsetof(CollisionChunkHeader, vertexCount) == 28);
     static_assert(offsetof(CollisionChunkHeader, indexCount) == 32);
+    static_assert(offsetof(CollisionChunkHeader, roadCount) == 36);
     static_assert(sizeof(WorldspaceChange) == 48);
     static_assert(offsetof(WorldspaceChange, flags) == 12);
     static_assert(offsetof(WorldspaceChange, spawn) == 16);

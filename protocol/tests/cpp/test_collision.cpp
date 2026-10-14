@@ -15,6 +15,7 @@ namespace
         Protocol::CollisionChunkHeader header{};
         std::vector<float>             vertices;
         std::vector<std::uint32_t>     indices;
+        std::vector<float>             roads;
     };
 
     Parsed Parse(const std::vector<std::uint8_t>& a_payload)
@@ -24,9 +25,14 @@ namespace
         std::memcpy(&p.header, a_payload.data(), sizeof(p.header));
         const std::size_t vertexBytes = p.header.vertexCount * 3 * sizeof(float);
         const std::size_t indexBytes = p.header.indexCount * sizeof(std::uint32_t);
-        REQUIRE(a_payload.size() == sizeof(p.header) + vertexBytes + indexBytes);
+        const std::size_t roadBytes = p.header.roadCount * 6 * sizeof(float);
+        REQUIRE(a_payload.size() == sizeof(p.header) + vertexBytes + indexBytes + roadBytes);
         p.vertices.resize(p.header.vertexCount * 3);
         p.indices.resize(p.header.indexCount);
+        p.roads.resize(p.header.roadCount * 6);
+        if (roadBytes) {
+            std::memcpy(p.roads.data(), a_payload.data() + sizeof(p.header) + vertexBytes + indexBytes, roadBytes);
+        }
         if (vertexBytes) {
             std::memcpy(p.vertices.data(), a_payload.data() + sizeof(p.header), vertexBytes);
         }
@@ -186,4 +192,48 @@ TEST_CASE("statics past the vertex limit are dropped and counted")
     CHECK(p.header.vertexCount <= kMaxChunkVertices);
     CHECK(dropped > 0);
     CHECK(p.header.indexCount == (8 + triangles - dropped) * 3);
+}
+
+TEST_CASE("road triangles go after the triangles, relative to the origin")
+{
+    // Chunk (1, -1): origin (2048, -2048). Two road triangles in world x, y.
+    const std::vector<float> roads{
+        2100, -2000, 2300, -2000, 2100, -1800,
+        2300, -2000, 2300, -1800, 2100, -1800,
+    };
+    const auto p = Parse(BuildChunkPayload(Flat(1, -1, 2, 0.0f), 0x3C, 4, {}, nullptr, roads));
+    CHECK(p.header.indexCount == 8 * 3);
+    REQUIRE(p.header.roadCount == 2);
+    CHECK(p.roads[0] == doctest::Approx(52.0));
+    CHECK(p.roads[1] == doctest::Approx(48.0));
+    CHECK(p.roads[10] == doctest::Approx(52.0));
+    CHECK(p.roads[11] == doctest::Approx(248.0));
+}
+
+TEST_CASE("a chunk without roads has an empty road section")
+{
+    const auto p = Parse(BuildChunkPayload(Flat(0, 0, 2, 0.0f), 0x3C, 1));
+    CHECK(p.header.roadCount == 0);
+    CHECK(p.roads.empty());
+
+    // A trailing partial triangle is not sent.
+    const auto partial = Parse(BuildChunkPayload(Flat(0, 0, 2, 0.0f), 0x3C, 1, {}, nullptr, { 1, 2, 3, 4, 5 }));
+    CHECK(partial.header.roadCount == 0);
+}
+
+TEST_CASE("a road triangle belongs to every chunk it reaches within kRoadReach of")
+{
+    // Inside chunk (0, 0).
+    CHECK(RoadTouchesChunk(0, 0, { 100, 200, 100 }, { 100, 100, 200 }));
+    // Just past the east edge, within reach.
+    CHECK(RoadTouchesChunk(0, 0, { 2048 + kRoadReach - 1, 2048 + kRoadReach + 100, 2048 + kRoadReach }, { 100, 100, 200 }));
+    // Past the reach on every side.
+    CHECK_FALSE(RoadTouchesChunk(0, 0, { 2048 + kRoadReach + 1, 2048 + kRoadReach + 100, 2048 + kRoadReach + 50 }, { 100, 100, 200 }));
+    CHECK_FALSE(RoadTouchesChunk(0, 0, { -kRoadReach - 300, -kRoadReach - 100, -kRoadReach - 200 }, { 100, 100, 200 }));
+    CHECK_FALSE(RoadTouchesChunk(0, 0, { 100, 200, 100 }, { 2048 + kRoadReach + 10, 2048 + kRoadReach + 10, 2048 + kRoadReach + 90 }));
+    CHECK_FALSE(RoadTouchesChunk(0, 0, { 100, 200, 100 }, { -kRoadReach - 90, -kRoadReach - 10, -kRoadReach - 10 }));
+    // A long triangle spanning the chunk with no corner in it.
+    CHECK(RoadTouchesChunk(0, 0, { -1000, 3000, -1000 }, { 900, 900, 1100 }));
+    // Negative chunks.
+    CHECK(RoadTouchesChunk(-2, -3, { -3000, -2900, -3000 }, { -5000, -5000, -4900 }));
 }

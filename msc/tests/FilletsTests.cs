@@ -34,14 +34,28 @@ namespace PerkeleRim.Tests
                 return this;
             }
 
-            public Result Fillet()
+            // Everything on road unless roads says otherwise.
+            public Result Fillet(float[] roads = null, List<string> why = null)
             {
                 var v = V.ToArray();
                 var t = T.ToArray();
                 int sampled = t.Length;
-                int added = Fillets.Add(ref v, ref t);
+                Action<Vec3, string> explain = null;
+                if (why != null) explain = (at, reason) => why.Add($"{at.x:0.00} {at.z:0.00}: {reason}");
+                int added = Fillets.Add(ref v, ref t, roads ?? Road(-20, 20, -20, 20), explain);
                 return new Result { V = v, T = t, Added = added, Sampled = sampled };
             }
+        }
+
+        // A road rectangle over x0..x1, z0..z1 as two triangles (x, z corners).
+        static float[] Road(float x0, float x1, float z0, float z1) =>
+            new[] { x0, z0, x1, z0, x1, z1, x0, z0, x1, z1, x0, z1 };
+
+        static float[] Roads(params float[][] parts)
+        {
+            var all = new List<float>();
+            foreach (var p in parts) all.AddRange(p);
+            return all.ToArray();
         }
 
         sealed class Result
@@ -156,6 +170,72 @@ namespace PerkeleRim.Tests
             m.V.Add(new Vec3(-3, 0, -3)); m.V.Add(new Vec3(6, 0, -3)); m.V.Add(new Vec3(6, 0, 3)); m.V.Add(new Vec3(-3, 0, 3));
             m.T.AddRange(new[] { i, i + 1, i + 2, i, i + 2, i + 3 });
             Assert.That(m.Fillet().Added, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void The_same_step_off_road_gets_no_ramp()
+        {
+            var why = new List<string>();
+            var r = Step(0.3f).Fillet(new float[0], why);
+            Assert.That(r.Added, Is.EqualTo(0));
+            Assert.That(r.HeightAt(-0.6f, 0), Is.EqualTo(0f).Within(0.001f));
+            Assert.That(why, Has.Some.Contains("not road"));
+
+            // A road somewhere else in the chunk doesn't help.
+            Assert.That(Step(0.3f).Fillet(Road(-6, -4, -3, 3)).Added, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void A_step_across_a_road_is_ramped_only_where_the_road_is()
+        {
+            // The road crosses the step along x for z in -1..1; the rest of the step is off road.
+            var r = Step(0.3f).Fillet(Road(-6, 6, -1, 1));
+            Assert.That(r.Added, Is.GreaterThan(0));
+            Assert.That(r.HeightAt(-0.6f, 0), Is.EqualTo(0.15f).Within(0.03f), "on the road");
+            Assert.That(r.HeightAt(-0.6f, 2.5f), Is.EqualTo(0f).Within(0.001f), "beside the road");
+        }
+
+        [Test]
+        public void A_railing_top_beside_the_road_gets_no_ramp()
+        {
+            // A deck road at 0 over z -3..1, a wide stone railing 0.5 m higher over z 1..3, the road
+            // stopping at its foot. The railing top is level and wide, so it would be a deck.
+            var m = new Mesh().Floor(-6, 6, -3, 1, 0).Floor(-6, 6, 1, 3, 0.5f);
+            int i = m.V.Count;  // the railing's face, z = 1, facing the road
+            m.V.Add(new Vec3(-6, 0, 1)); m.V.Add(new Vec3(6, 0, 1)); m.V.Add(new Vec3(6, 0.5f, 1)); m.V.Add(new Vec3(-6, 0.5f, 1));
+            m.T.AddRange(new[] { i, i + 1, i + 2, i, i + 2, i + 3 });
+
+            var why = new List<string>();
+            var r = m.Fillet(Road(-6, 6, -3, 1), why);
+            Assert.That(r.Added, Is.EqualTo(0));
+            Assert.That(r.HeightAt(0, 0.6f), Is.EqualTo(0f).Within(0.001f), "the road at the railing's foot");
+            Assert.That(why, Has.Some.Contains("not road"));
+
+            // The same railing with the road over it would get one, so it is the road that stops it.
+            Assert.That(m.Fillet(Road(-6, 6, -3, 3)).Added, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void Points_within_the_margin_of_a_road_are_still_raised()
+        {
+            // The road crosses the step for z in -1..1: the ramp spreads up to RoadMargin past its side.
+            var r = Step(0.3f).Fillet(Road(-6, 6, -1, 1));
+            Assert.That(r.HeightAt(-0.25f, 1.25f), Is.GreaterThan(0.1f), "0.25 m beside the road");
+            Assert.That(r.HeightAt(-0.25f, 1.75f), Is.EqualTo(0f).Within(0.001f), "0.75 m beside the road");
+
+            // A deck edge outside the road lays no ramp of its own.
+            Assert.That(Step(0.3f).Fillet(Road(0.6f, 6, -3, 3)).Added, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void InRoad_takes_either_winding()
+        {
+            var cw = new float[] { 0, 0, 0, 1, 1, 0 };
+            var ccw = new float[] { 0, 0, 1, 0, 0, 1 };
+            Assert.That(Fillets.InRoad(cw, 0.2f, 0.2f), Is.True);
+            Assert.That(Fillets.InRoad(ccw, 0.2f, 0.2f), Is.True);
+            Assert.That(Fillets.InRoad(ccw, 0.8f, 0.8f), Is.False);
+            Assert.That(Fillets.InRoad(null, 0, 0), Is.False);
         }
     }
 }

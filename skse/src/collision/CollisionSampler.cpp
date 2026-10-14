@@ -155,6 +155,56 @@ namespace PerkeleRim::CollisionSampler
             return false;
         }
 
+        struct Roads
+        {
+            std::vector<float> triangles;  // 6 floats each: three world x, y corners
+            int                navmeshes = 0;  // navmeshes of the loaded cells
+        };
+
+        // The navmesh triangles flagged preferred (Bethesda's roads, for NPC pathing) of the loaded
+        // cells that reach into the chunk: MSC only ramps steps on them.
+        Roads CollectRoads(const Key& a_key)
+        {
+            Roads roads;
+            auto* tes = RE::TES::GetSingleton();
+            if (!tes) {
+                return roads;
+            }
+            tes->ForEachCell([&](RE::TESObjectCELL* a_cell) {
+                auto* array = a_cell ? a_cell->GetRuntimeData().navMeshes : nullptr;
+                if (!array) {
+                    return;
+                }
+                for (const auto& navmesh : array->navMeshes) {
+                    if (!navmesh) {
+                        continue;
+                    }
+                    roads.navmeshes++;
+                    const auto& vertices = navmesh->vertices;
+                    for (const auto& triangle : navmesh->triangles) {
+                        if (!triangle.triangleFlags.all(RE::BSNavmeshTriangle::TriangleFlag::kPreferred) ||
+                            triangle.triangleFlags.any(RE::BSNavmeshTriangle::TriangleFlag::kDeleted)) {
+                            continue;
+                        }
+                        float x[3], y[3];
+                        bool  valid = true;
+                        for (int c = 0; c < 3; c++) {
+                            if (triangle.vertices[c] >= vertices.size()) {
+                                valid = false;
+                                break;
+                            }
+                            x[c] = vertices[triangle.vertices[c]].location.x;
+                            y[c] = vertices[triangle.vertices[c]].location.y;
+                        }
+                        if (valid && Collision::RoadTouchesChunk(a_key.first, a_key.second, x, y)) {
+                            roads.triangles.insert(roads.triangles.end(), { x[0], y[0], x[1], y[1], x[2], y[2] });
+                        }
+                    }
+                }
+            });
+            return roads;
+        }
+
         bool TrySend()
         {
             if (!LinkService::Get().Send(Protocol::MessageType::CollisionChunk, state.pending.data(), static_cast<std::uint32_t>(state.pending.size()))) {
@@ -177,16 +227,19 @@ namespace PerkeleRim::CollisionSampler
             const auto start = Clock::now();
             const auto statics = StaticMeshes::Collect(key.first, key.second);
             const auto collect = Clock::now() - start;
+            const auto roads = CollectRoads(key);
+            const auto navmesh = Clock::now() - start - collect;
             const auto hits = f.Hits();
             const auto triangles = static_cast<std::uint32_t>(statics.triangles.size() / 9);
-            const auto score = hits + triangles;
+            const auto roadCount = static_cast<std::uint32_t>(roads.triangles.size() / 6);
+            const auto score = hits + triangles + roadCount;
             // A few land samples always miss (terrain holes at cave mouths), so 99% counts as complete.
             known.done = (state.interior || hits * 100 >= f.Samples() * 99) && statics.pending == 0;
 
             const bool improved = score > known.sentScore;
             std::uint32_t dropped = 0;
             if (improved) {
-                state.pending = Collision::BuildChunkPayload(f, state.worldspace, state.generation, statics.triangles, &dropped);
+                state.pending = Collision::BuildChunkPayload(f, state.worldspace, state.generation, statics.triangles, &dropped, roads.triangles);
                 state.pendingKey = key;
                 state.pendingScore = score;
             }
@@ -195,11 +248,12 @@ namespace PerkeleRim::CollisionSampler
                 others += std::format(" {}x{}", count, layer);
             }
             SKSE::log::info(
-                "collision: chunk ({},{}) gen {} try {}: terrain {}/{} (passed through {}), statics {} triangles from {} refs ({} not loaded yet, {} transformed, {} shapes skipped{}{}), {:.1f} ms over {} frames + {:.1f} ms{}{}",
+                "collision: chunk ({},{}) gen {} try {}: terrain {}/{} (passed through {}), statics {} triangles from {} refs ({} not loaded yet, {} transformed, {} shapes skipped{}{}), roads {} triangles from {} navmeshes, {:.1f} ms over {} frames + {:.1f} ms statics + {:.1f} ms navmesh{}{}",
                 key.first, key.second, state.generation, known.tries, hits, state.interior ? 0 : f.Samples(), state.stats.passed,
                 triangles, statics.refs, statics.pending, statics.transformed, statics.skipped, dropped ? std::format(", {} over the vertex limit", dropped) : "", others.empty() ? "" : ", bodies left out by layer:" + others,
-                std::chrono::duration<double, std::milli>(state.stats.time).count(), state.stats.frames,
-                std::chrono::duration<double, std::milli>(collect).count(), improved ? ", sent" : ", nothing new", known.done ? "" : ", again later");
+                roadCount, roads.navmeshes, std::chrono::duration<double, std::milli>(state.stats.time).count(), state.stats.frames,
+                std::chrono::duration<double, std::milli>(collect).count(), std::chrono::duration<double, std::milli>(navmesh).count(),
+                improved ? ", sent" : ", nothing new", known.done ? "" : ", again later");
             if (improved) {
                 TrySend();
             }

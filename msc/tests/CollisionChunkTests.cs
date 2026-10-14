@@ -16,9 +16,11 @@ namespace PerkeleRim.Tests
 
         // One grid cell like protocol/cpp/collision.h builds it: corners a (0,0), b east, c north,
         // d north-east, triangles a-b-c and b-d-c, counterclockwise from above in Skyrim.
-        static byte[] OneCell(int chunkX, int chunkY, uint generation, float[] origin, uint[] indices = null)
+        // roads: x, y of three corners per road triangle, relative to origin.
+        static byte[] OneCell(int chunkX, int chunkY, uint generation, float[] origin, uint[] indices = null, float[] roads = null)
         {
             indices = indices ?? new uint[] { 0, 1, 2, 1, 3, 2 };
+            roads = roads ?? new float[0];
             var vertices = new float[] { 0, 0, 0, 64, 0, 0, 0, 64, 0, 64, 64, 35 };
             using (var ms = new MemoryStream())
             using (var w = new BinaryWriter(ms))
@@ -30,9 +32,10 @@ namespace PerkeleRim.Tests
                 foreach (var f in origin) w.Write(f);
                 w.Write((uint)(vertices.Length / 3));
                 w.Write((uint)indices.Length);
-                w.Write(0u);
+                w.Write((uint)(roads.Length / 6));
                 foreach (var f in vertices) w.Write(f);
                 foreach (var i in indices) w.Write(i);
+                foreach (var f in roads) w.Write(f);
                 return ms.ToArray();
             }
         }
@@ -102,6 +105,45 @@ namespace PerkeleRim.Tests
             Assert.That(error, Is.Null);
             Assert.That(chunk.Vertices, Is.Empty);
             Assert.That(chunk.Triangles, Is.Empty);
+        }
+
+        [Test]
+        public void RoadTrianglesParseFlatOntoTheIsland()
+        {
+            var island = AnchoredIsland();
+            var payload = OneCell(9, -5, 4, new[] { 20000f, -9000f, -3000f }, roads: new float[] { 0, 0, 70, 0, 0, 140 });
+            var chunk = CollisionChunk.Parse(payload, payload.Length, island, out var error);
+
+            Assert.That(error, Is.Null);
+            Assert.That(chunk.Roads, Has.Length.EqualTo(6));
+            Assert.That(chunk.Roads[0], Is.EqualTo(Island.Base.x).Within(1e-3), "x of the anchor");
+            Assert.That(chunk.Roads[1], Is.EqualTo(Island.Base.z).Within(1e-3), "z of the anchor");
+            Assert.That(chunk.Roads[2], Is.EqualTo(Island.Base.x + 70 * Coords.MetersPerUnit).Within(1e-3));
+            Assert.That(chunk.Roads[5], Is.EqualTo(Island.Base.z + 140 * Coords.MetersPerUnit).Within(1e-3));
+            // The same spots the chunk's vertices land on.
+            Assert.That(chunk.Roads[0], Is.EqualTo(chunk.Vertices[0].x).Within(1e-4));
+            Assert.That(chunk.Roads[1], Is.EqualTo(chunk.Vertices[0].z).Within(1e-4));
+        }
+
+        [Test]
+        public void RejectsRoadCountsThatDontMatchThePayload()
+        {
+            var island = AnchoredIsland();
+            var payload = OneCell(0, 0, 1, new[] { 0f, 0f, 0f }, roads: new float[] { 0, 0, 1, 0, 0, 1 });
+            Assert.That(CollisionChunk.Parse(payload, payload.Length - 4, island, out var error), Is.Null);
+            Assert.That(error, Does.Contain("road triangles"));
+
+            payload[36] = 2;  // says two, holds one
+            Assert.That(CollisionChunk.Parse(payload, payload.Length, island, out error), Is.Null);
+        }
+
+        [Test]
+        public void ChunkWithoutRoadsHasNone()
+        {
+            var payload = OneCell(0, 0, 1, new[] { 0f, 0f, 0f });
+            var chunk = CollisionChunk.Parse(payload, payload.Length, AnchoredIsland(), out var error);
+            Assert.That(error, Is.Null);
+            Assert.That(chunk.Roads, Is.Empty);
         }
 
         [TestCase(0f, 0)]

@@ -26,7 +26,7 @@ namespace PerkeleRim.Spike
     //                        handlayer light <ambient> <sun> sets its neutral lighting (0.5 0.8)
     //   snapshot save|load <name>  what Skyrim's MscSave / MscLoad do (SaveSync), with the snapshot in
     //                        <MSC>/PerkeleRim_snapshots/<name> and key 1
-    //   island show|hide     draw the collision island, colored by slope (PlayerLink)
+    //   island show|hide     draw the collision island, colored by slope, roads bluish green (PlayerLink)
     //   island steps [m]     log the island triangles over 30 degrees within m (8) of the player whose top is within 1 m of the feet
     //   island why [m]       what the ramp pass made of the steep triangles within m (2) of where MSC's camera looks
     //   day on|off          hold MSC at midday (12-14) for testing; the clock jumps back every 2 h

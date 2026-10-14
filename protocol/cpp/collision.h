@@ -57,15 +57,31 @@ namespace PerkeleRim::Collision
     // Unity 5's meshes index vertices with 16 bits, so MSC can't build a chunk with more.
     constexpr std::uint32_t kMaxChunkVertices = 65000;
 
+    // How far past its edges a chunk takes road triangles: a chunk's statics reach out of it, and
+    // MSC's ramps over them need the road there too.
+    constexpr float kRoadReach = 512.0f;
+
+    // Whether a road triangle (three world x, y corners) reaches within kRoadReach of chunk (x, y).
+    inline bool RoadTouchesChunk(std::int32_t a_chunkX, std::int32_t a_chunkY, const float (&a_x)[3], const float (&a_y)[3])
+    {
+        const float x0 = static_cast<float>(a_chunkX) * Protocol::kCollisionChunkUnits - kRoadReach;
+        const float y0 = static_cast<float>(a_chunkY) * Protocol::kCollisionChunkUnits - kRoadReach;
+        const float x1 = x0 + Protocol::kCollisionChunkUnits + 2 * kRoadReach;
+        const float y1 = y0 + Protocol::kCollisionChunkUnits + 2 * kRoadReach;
+        return (std::max)({ a_x[0], a_x[1], a_x[2] }) >= x0 && (std::min)({ a_x[0], a_x[1], a_x[2] }) <= x1 &&
+               (std::max)({ a_y[0], a_y[1], a_y[2] }) >= y0 && (std::min)({ a_y[0], a_y[1], a_y[2] }) <= y1;
+    }
+
     // CollisionChunk payload for a heightfield and a triangle soup. The heightfield gives a vertex
     // per hit sample, two triangles per grid cell, and a triangle only where all three corners
     // were hit, so misses leave holes instead of spikes. The statics are 9 floats per triangle
     // (three Skyrim world positions, counterclockwise seen from outside), appended with
     // identical vertices shared; triangles that would go past kMaxChunkVertices are left out and
-    // counted in a_dropped. The origin is the chunk's corner at the lowest height, which keeps
-    // the relative vertices small.
+    // counted in a_dropped. The roads are 6 floats per triangle (three world x, y corners) and go
+    // after the triangles, relative to the origin. The origin is the chunk's corner at the lowest
+    // height, which keeps the relative vertices small.
     inline std::vector<std::uint8_t> BuildChunkPayload(const Heightfield& a_field, std::uint32_t a_worldspace, std::uint32_t a_generation,
-        const std::vector<float>& a_statics = {}, std::uint32_t* a_dropped = nullptr)
+        const std::vector<float>& a_statics = {}, std::uint32_t* a_dropped = nullptr, const std::vector<float>& a_roads = {})
     {
         const std::uint32_t side = a_field.Side();
         float               minZ = 0.0f;
@@ -148,7 +164,13 @@ namespace PerkeleRim::Collision
         header.vertexCount = static_cast<std::uint32_t>(vertices.size() / 3);
         header.indexCount = static_cast<std::uint32_t>(indices.size());
 
-        std::vector<std::uint8_t> payload(sizeof(header) + vertices.size() * sizeof(float) + indices.size() * sizeof(std::uint32_t));
+        std::vector<float> roads(a_roads.size() / 6 * 6);
+        for (std::size_t k = 0; k < roads.size(); k++) {
+            roads[k] = a_roads[k] - header.origin[k % 2];
+        }
+        header.roadCount = static_cast<std::uint32_t>(roads.size() / 6);
+
+        std::vector<std::uint8_t> payload(sizeof(header) + vertices.size() * sizeof(float) + indices.size() * sizeof(std::uint32_t) + roads.size() * sizeof(float));
         std::uint8_t*             out = payload.data();
         std::memcpy(out, &header, sizeof(header));
         out += sizeof(header);
@@ -158,6 +180,10 @@ namespace PerkeleRim::Collision
         }
         if (!indices.empty()) {
             std::memcpy(out, indices.data(), indices.size() * sizeof(std::uint32_t));
+            out += indices.size() * sizeof(std::uint32_t);
+        }
+        if (!roads.empty()) {
+            std::memcpy(out, roads.data(), roads.size() * sizeof(float));
         }
         return payload;
     }

@@ -14,6 +14,9 @@ namespace PerkeleRim
         public uint Generation;
         public Vec3[] Vertices;
         public int[] Triangles;
+        // Skyrim's roads (navmesh triangles flagged preferred) reaching into the chunk, flat on the
+        // island: x, z of three corners per triangle, either winding.
+        public float[] Roads;
 
         public long Key => KeyOf(ChunkX, ChunkY);
 
@@ -31,10 +34,10 @@ namespace PerkeleRim
             fixed (byte* p = payload)
             {
                 var h = *(CollisionChunkHeader*)p;
-                long vertexBytes = (long)h.vertexCount * 12, indexBytes = (long)h.indexCount * 4;
-                if (sizeof(CollisionChunkHeader) + vertexBytes + indexBytes != size || h.indexCount % 3 != 0)
+                long vertexBytes = (long)h.vertexCount * 12, indexBytes = (long)h.indexCount * 4, roadBytes = (long)h.roadCount * 24;
+                if (sizeof(CollisionChunkHeader) + vertexBytes + indexBytes + roadBytes != size || h.indexCount % 3 != 0)
                 {
-                    error = $"payload of {size} bytes doesn't match {h.vertexCount} vertices and {h.indexCount} indices";
+                    error = $"payload of {size} bytes doesn't match {h.vertexCount} vertices, {h.indexCount} indices and {h.roadCount} road triangles";
                     return null;
                 }
 
@@ -46,6 +49,7 @@ namespace PerkeleRim
                     Generation = h.generation,
                     Vertices = new Vec3[h.vertexCount],
                     Triangles = new int[h.indexCount],
+                    Roads = new float[h.roadCount * 6],
                 };
 
                 var v = (float*)(p + sizeof(CollisionChunkHeader));
@@ -66,6 +70,14 @@ namespace PerkeleRim
                     chunk.Triangles[t] = (int)a;
                     chunk.Triangles[t + 1] = (int)c;
                     chunk.Triangles[t + 2] = (int)b;
+                }
+
+                var road = (float*)(p + sizeof(CollisionChunkHeader) + vertexBytes + indexBytes);
+                for (int k = 0; k < chunk.Roads.Length; k += 2)
+                {
+                    var at = island.SkyrimToIsland(new Vec3(h.origin[0] + road[k], h.origin[1] + road[k + 1], h.origin[2]));
+                    chunk.Roads[k] = at.x;
+                    chunk.Roads[k + 1] = at.z;
                 }
                 return chunk;
             }
