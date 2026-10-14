@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 18;
+        public const uint ProtocolVersion = 19;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -71,6 +71,7 @@ namespace PerkeleRim.Protocol
         public const uint ConsumedFood = 7;
         public const uint ImpactThrown = 1;
         public const uint ImpactPiss = 2;
+        public const uint ImpactVehicle = 3;
         public const uint PocketBeer = 0;
         public const uint PocketBottle = 1;
         public const uint PocketSausages = 2;
@@ -383,7 +384,8 @@ namespace PerkeleRim.Protocol
         public fixed float velocity[3];
         public float radius;
         public float height;
-        public fixed uint reserved[2];
+        public float mass;
+        public uint reserved;
     }
 
     // actors holds kActorCapacity ActorPoses.

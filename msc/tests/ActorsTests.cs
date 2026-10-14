@@ -15,7 +15,7 @@ namespace PerkeleRim.Tests
 
         static ActorPose Pose(uint id, float x, float y, float z)
         {
-            var a = new ActorPose { id = id, radius = 21f, height = 128f, heading = 1f };
+            var a = new ActorPose { id = id, radius = 21f, height = 128f, heading = 1f, mass = 80f };
             a.position[0] = x;
             a.position[1] = y;
             a.position[2] = z;
@@ -40,6 +40,7 @@ namespace PerkeleRim.Tests
             Assert.That(bodies[1].Feet.y - Island.Base.y, Is.EqualTo(1.0f).Within(0.01f));
             Assert.That(bodies[0].Radius, Is.EqualTo(0.30f).Within(0.01f));
             Assert.That(bodies[0].Height, Is.EqualTo(1.83f).Within(0.01f));
+            Assert.That(bodies[0].Mass, Is.EqualTo(80f));
             Assert.That(bodies[0].Velocity.x, Is.EqualTo(1.0f).Within(0.01f));
         }
 

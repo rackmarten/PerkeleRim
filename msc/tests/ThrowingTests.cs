@@ -40,7 +40,7 @@ namespace PerkeleRim.Tests
         [Test]
         public void PissHitsEachActorEveryHalfSecondAtMost()
         {
-            var pacer = new PissPacer();
+            var pacer = new HitPacer(Throwing.PissEvery);
             Assert.That(pacer.Ready(1, 0f), Is.True);
             Assert.That(pacer.Ready(1, 0.2f), Is.False);
             Assert.That(pacer.Ready(2, 0.2f), Is.True);

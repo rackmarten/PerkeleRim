@@ -39,20 +39,4 @@ namespace PerkeleRim
             return Actors.Punch(from, direction, length, radius, bodies, out distance);
         }
     }
-
-    // When the piss stream may hit an actor again: at most once every Throwing.PissEvery seconds each.
-    public sealed class PissPacer
-    {
-        readonly Dictionary<uint, float> last = new Dictionary<uint, float>();
-
-        public bool Ready(uint actor, float now)
-        {
-            float at;
-            if (last.TryGetValue(actor, out at) && now - at < Throwing.PissEvery) return false;
-            last[actor] = now;
-            return true;
-        }
-
-        public void Clear() => last.Clear();
-    }
 }

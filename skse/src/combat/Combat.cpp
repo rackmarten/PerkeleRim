@@ -17,12 +17,24 @@ namespace PerkeleRim::Combat
         constexpr float         kListUnits = 2800.0f;   // actors within 40 m go to MSC
         constexpr float         kPunchMaxUnits = 400.0f;  // a punch further than this away is stale
         constexpr float         kWatchUnits = 1000.0f;  // attackers the per-second log follows
+        constexpr int           kThrowWaitFrames = 30;  // frames a run-over actor gets to go ragdoll
+        constexpr int           kThrowFrames = 3;       // frames its ragdoll is thrown for (the first settle eats one)
         // Capsule size when an actor's bounds look wrong (a person).
         constexpr float kDefaultRadius = 20.0f;
         constexpr float kDefaultHeight = 128.0f;
 
+        // A run-over actor whose ragdoll is to be thrown, in Havok units per second.
+        struct Throw
+        {
+            RE::ActorHandle actor;
+            RE::hkVector4   velocity;
+            int             wait = kThrowWaitFrames;
+            int             frames = kThrowFrames;
+        };
+
         struct State
         {
+            std::vector<Throw>            throws;
             RE::SpellItem*                punch = nullptr;
             RE::SpellItem*                stagger = nullptr;
             RE::SpellItem*                piss = nullptr;
@@ -42,6 +54,16 @@ namespace PerkeleRim::Combat
         {
             auto* race = a_actor->GetRace();
             return race && race->HasKeywordString("ActorTypeDragon"sv);
+        }
+
+        // Its weight guessed from its bounds; a dragon counts as huge whatever they say.
+        float MassOf(RE::Actor* a_actor)
+        {
+            const auto  min = a_actor->GetBoundMin();
+            const auto  max = a_actor->GetBoundMax();
+            const float scale = a_actor->GetScale();
+            const float mass = Damage::Mass((max.x - min.x) * scale, (max.y - min.y) * scale, (max.z - min.z) * scale);
+            return IsDragon(a_actor) ? (std::max)(mass, Damage::kHugeMass) : mass;
         }
 
         // An actor MSC's player can bump into and punch: alive, standing, its 3D in the world.
@@ -81,9 +103,10 @@ namespace PerkeleRim::Combat
             a_pose.velocity[2] = velocity.z;
             a_pose.radius = radius;
             a_pose.height = height;
+            a_pose.mass = MassOf(a_actor);
             if (state.logged.insert(a_pose.id).second) {
-                SKSE::log::info("combat: {} ({:08X}) as a capsule r {:.0f} h {:.0f} (bounds {:.0f}x{:.0f}x{:.0f}, scale {:.2f})",
-                    NameOf(a_actor), a_pose.id, radius, height, max.x - min.x, max.y - min.y, max.z - min.z, scale);
+                SKSE::log::info("combat: {} ({:08X}) as a capsule r {:.0f} h {:.0f} (bounds {:.0f}x{:.0f}x{:.0f}, scale {:.2f}), {:.0f} kg",
+                    NameOf(a_actor), a_pose.id, radius, height, max.x - min.x, max.y - min.y, max.z - min.z, scale, a_pose.mass);
             }
         }
 
@@ -133,6 +156,44 @@ namespace PerkeleRim::Combat
                 }
                 SKSE::log::info("combat: the player's 3D is {:.0f} units off its position, its controller {:.0f}, midair {}, sneaking {}",
                     offRoot, offController, a_player->IsInMidair(), a_player->IsSneaking());
+            }
+        }
+
+        // Sets every rigid body of the actor's ragdoll moving at a_velocity. Returns how many.
+        int ThrowRagdoll(RE::Actor* a_actor, const RE::hkVector4& a_velocity)
+        {
+            int count = 0;
+            if (auto* root = a_actor->Get3D(false)) {
+                RE::BSVisit::TraverseScenegraphCollision(root, [&](RE::bhkNiCollisionObject* a_object) {
+                    auto* body = a_object->body ? skyrim_cast<RE::bhkRigidBody*>(a_object->body.get()) : nullptr;
+                    if (body) {
+                        body->SetLinearVelocity(a_velocity);
+                        count++;
+                    }
+                    return RE::BSVisit::BSVisitControl::kContinue;
+                });
+            }
+            return count;
+        }
+
+        // Each frame: run-over actors that went ragdoll get thrown, for a few frames.
+        void Throws()
+        {
+            for (auto it = state.throws.begin(); it != state.throws.end();) {
+                auto actor = it->actor.get();
+                bool done = !actor;
+                if (actor && actor->IsInRagdollState()) {
+                    const int bodies = ThrowRagdoll(actor.get(), it->velocity);
+                    if (it->frames == kThrowFrames) {
+                        SKSE::log::info("combat: {} thrown as a ragdoll of {} bodies after {} frames", NameOf(actor.get()), bodies,
+                            kThrowWaitFrames - it->wait);
+                    }
+                    done = --it->frames <= 0;
+                } else if (actor && --it->wait <= 0) {
+                    SKSE::log::info("combat: {} never went ragdoll, not thrown", NameOf(actor.get()));
+                    done = true;
+                }
+                it = done ? state.throws.erase(it) : it + 1;
             }
         }
 
@@ -196,6 +257,8 @@ namespace PerkeleRim::Combat
         LinkService::Get().WriteActors(list);
         state.sent = list.count > 0;
 
+        Throws();
+
         state.statTime += a_delta;
         if (state.statTime >= 1.0f) {
             state.statTime = 0.0f;
@@ -238,11 +301,12 @@ namespace PerkeleRim::Combat
         }
         Protocol::ImpactEvent impact;
         std::memcpy(&impact, a_data, sizeof(impact));
-        const bool piss = impact.kind == Protocol::kImpactPiss;
-        auto*      target = RE::TESForm::LookupByID<RE::Actor>(impact.actor);
+        const bool  piss = impact.kind == Protocol::kImpactPiss;
+        const char* what = piss ? "piss" : impact.kind == Protocol::kImpactVehicle ? "run-over" : "throw";
+        auto*       target = RE::TESForm::LookupByID<RE::Actor>(impact.actor);
         // A little past the listed range: the target may have moved on since the list.
         if (!target || !Standing(target) || target->GetPosition().GetDistance(a_player->GetPosition()) > kListUnits + kPunchMaxUnits) {
-            SKSE::log::info("combat: {} on {:08X} dropped (gone, down or too far)", piss ? "piss" : "throw", impact.actor);
+            SKSE::log::info("combat: {} on {:08X} dropped (gone, down or too far)", what, impact.actor);
             return;
         }
         auto* caster = a_player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
@@ -262,6 +326,40 @@ namespace PerkeleRim::Combat
                 Damage::kPissSeconds, max);
             return;
         }
+        if (impact.kind == Protocol::kImpactVehicle) {
+            if (!state.punch) {
+                return;
+            }
+            // Knocked over first unless huge, away along the vehicle's way: the knock comes from
+            // just behind the target's feet. Then the damage, the player's hostile spell like a
+            // punch (assault). Only a light one is thrown (Throws), a heavy one stopped the vehicle.
+            const auto   bulk = Damage::BulkOf(MassOf(target), IsDragon(target));
+            const float  knock = bulk == Damage::Bulk::kHuge ? 0.0f : Damage::KnockOver(impact.speed);
+            RE::NiPoint3 from = target->GetPosition();
+            from.x -= impact.direction[0] * 100.0f;
+            from.y -= impact.direction[1] * 100.0f;
+            auto* process = target->GetActorRuntimeData().currentProcess;
+            if (process && knock > 0.0f) {
+                process->KnockExplosion(target, from, knock);
+            }
+            const float damage = Damage::RunOver(max, IsDragon(target), impact.speed);
+            const float health = values->GetActorValue(RE::ActorValue::kHealth);
+            if (damage > 0.0f) {
+                caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
+            }
+            SKSE::log::info("combat: the player ran {} over at {:.0f} km/h for {:.0f} of {:.0f} max health (it had {:.0f}), {}, knock {:.1f}",
+                NameOf(target), impact.speed * 3.6f, damage, max, health,
+                bulk == Damage::Bulk::kLight ? "light" : bulk == Damage::Bulk::kHeavy ? "heavy" : "huge", knock);
+            if (bulk != Damage::Bulk::kLight) {
+                return;
+            }
+            // Havok units are meters, near enough: the vehicle's speed carries over as is.
+            const float throwSpeed = impact.speed * Damage::kThrowShare;
+            state.throws.push_back({ target->CreateRefHandle(),
+                RE::hkVector4(impact.direction[0] * throwSpeed, impact.direction[1] * throwSpeed,
+                    impact.direction[2] * throwSpeed + impact.speed * Damage::kThrowLift, 0.0f) });
+            return;
+        }
         if (impact.kind != Protocol::kImpactThrown || !state.punch || !state.stagger) {
             return;
         }
@@ -277,6 +375,7 @@ namespace PerkeleRim::Combat
 
     void Stop()
     {
+        state.throws.clear();
         if (!state.sent) {
             return;
         }

@@ -8,12 +8,16 @@ namespace PerkeleRim.Game
     // Skyrim's actors near the player (ActorList) as capsules on the island, and MSC's punch.
     //  - One kinematic CapsuleCollider per listed actor, moved with Skyrim's pose (carried on by its
     //    velocity between lists), on a layer of its own that only collides with the player's: the
-    //    player bumps into people, while vehicles, their wheels and items pass through for now.
+    //    player bumps into people, while vehicles, their wheels and items pass through. Heavy
+    //    actors (RunOver.Solid) go on a second layer that collides with everything but the
+    //    capsules: a bear stops the van.
     //  - MSC's Hit key (H) throws MSC's own punch; a moment later, when the fist is out, a fist-sized
     //    sweep from the camera finds the capsule it lands on and Skyrim gets a PunchEvent.
     //  - An item thrown out of the hand (right button) is followed until it passes through a capsule
     //    (ImpactEvent, kImpactThrown) or slows down; bottles fly twice as fast (Throwing).
     //  - While the piss stream is on, its drops inside a capsule hit that actor (kImpactPiss).
+    //  - The vehicle the player drives runs over the capsules its box touches (kImpactVehicle,
+    //    RunOver); it passes through them, so it neither stops nor counts a crash.
     public unsafe class ActorLink
     {
         const float CarryOnMax = 0.25f;  // seconds a pose is carried on by its velocity at most
@@ -42,13 +46,19 @@ namespace PerkeleRim.Game
         Transform fluid;
         bool fluidLooked, particlesLogged;
         ParticleSystem.Particle[] drops = new ParticleSystem.Particle[256];
-        readonly PissPacer pissPacer = new PissPacer();
+        readonly HitPacer pissPacer = new HitPacer(Throwing.PissEvery);
+        readonly HitPacer runOverPacer = new HitPacer(RunOver.IgnoreSeconds);
+        Rigidbody boxOf;  // the vehicle boxMin..boxMax were measured on
+        Vector3 boxMin, boxMax;
         readonly HashSet<uint> pissed = new HashSet<uint>();
         readonly Dictionary<uint, CapsuleCollider> capsules = new Dictionary<uint, CapsuleCollider>();
         readonly List<uint> gone = new List<uint>();
         List<ActorBody> bodies = new List<ActorBody>();
         GameObject root;
         int layer = -1;  // the capsules' own layer, -1 = not picked yet
+        int solidLayer = -1;  // heavy actors' capsules
+        Rigidbody lastVehicle;
+        Vector3 lastVehicleVelocity;  // lastVehicle's, last frame: before it hit something solid
         uint listFrame;
         float listTime;
         float punchAt = -1f;  // when the pending punch's fist is out, -1 = none
@@ -61,8 +71,9 @@ namespace PerkeleRim.Game
         }
 
         // Call every LateUpdate. playing: MSC owns the player and it stands on the current island;
-        // driving: it sits in a vehicle (no punching); view: MSC's rendering camera.
-        public void Update(Link link, bool playing, Transform player, bool driving, Transform view)
+        // driving: it sits in a vehicle (no punching), driven: that vehicle's body; view: MSC's
+        // rendering camera.
+        public void Update(Link link, bool playing, Transform player, bool driving, Rigidbody driven, Transform view)
         {
             ActorList list;
             if (!playing || player == null || !link.ReadActors(out list))
@@ -73,6 +84,7 @@ namespace PerkeleRim.Game
                 held.Clear();
                 flights.Clear();
                 pissPacer.Clear();
+                runOverPacer.Clear();
                 return;
             }
             if (list.frame != listFrame)
@@ -86,6 +98,62 @@ namespace PerkeleRim.Game
             Punch(link, driving, view);
             Throws(link, player, driving);
             Piss(link, player, view);
+            RunOverBodies(link, driven);
+        }
+
+        // The driven vehicle's box: its own non-trigger colliders' bounds in its space, measured
+        // once per vehicle (the player and loose parts with bodies of their own left out).
+        void Measure(Rigidbody vehicle)
+        {
+            boxOf = vehicle;
+            var space = vehicle.transform;
+            bool any = false;
+            foreach (var c in vehicle.GetComponentsInChildren<Collider>())
+            {
+                if (c.isTrigger || !c.enabled || c.attachedRigidbody != vehicle) continue;
+                Bounds local;
+                var box = c as BoxCollider;
+                var mesh = c as MeshCollider;
+                if (box != null) local = new Bounds(box.center, box.size);
+                else if (mesh != null && mesh.sharedMesh != null) local = mesh.sharedMesh.bounds;
+                else local = new Bounds(c.transform.InverseTransformPoint(c.bounds.center), c.transform.InverseTransformVector(c.bounds.size));
+                var e = local.extents;
+                for (int k = 0; k < 8; k++)
+                {
+                    var corner = local.center + new Vector3((k & 1) != 0 ? e.x : -e.x, (k & 2) != 0 ? e.y : -e.y, (k & 4) != 0 ? e.z : -e.z);
+                    var p = space.InverseTransformPoint(c.transform.TransformPoint(corner));
+                    if (!any) { boxMin = boxMax = p; any = true; }
+                    else { boxMin = Vector3.Min(boxMin, p); boxMax = Vector3.Max(boxMax, p); }
+                }
+            }
+            if (!any) boxMin = boxMax = Vector3.zero;
+            log($"actors: {vehicle.name} runs people over as a box {boxMin} .. {boxMax}");
+        }
+
+        // Every capsule the driven vehicle's box touches while it moves fast enough is run over.
+        void RunOverBodies(Link link, Rigidbody vehicle)
+        {
+            var v = vehicle != null ? vehicle.velocity : Vector3.zero;
+            var before = vehicle == lastVehicle ? lastVehicleVelocity : Vector3.zero;
+            lastVehicle = vehicle;
+            lastVehicleVelocity = v;
+            if (vehicle == null || bodies.Count == 0) return;
+            if (before.magnitude > v.magnitude) v = before;  // stopped by a solid capsule this frame
+            if (v.magnitude < RunOver.SpeedMin) return;
+            if (vehicle != boxOf) Measure(vehicle);
+            if (boxMin == boxMax) return;
+            var space = vehicle.transform;
+            var min = new Vec3(boxMin.x, boxMin.y, boxMin.z);
+            var max = new Vec3(boxMax.x, boxMax.y, boxMax.z);
+            foreach (var b in BodiesNow())
+            {
+                var bottom = space.InverseTransformPoint(new Vector3(b.Bottom.x, b.Bottom.y, b.Bottom.z));
+                var top = space.InverseTransformPoint(new Vector3(b.Top.x, b.Top.y, b.Top.z));
+                if (!RunOver.Touches(min, max, new Vec3(bottom.x, bottom.y, bottom.z), new Vec3(top.x, top.y, top.z), b.Radius)) continue;
+                if (!runOverPacer.Ready(b.Id, Time.time)) continue;
+                bool sent = SendImpact(link, b.Id, Wire.ImpactVehicle, v.magnitude, v);
+                log($"actors: the {vehicle.name} ran over {b.Id:X8} at {v.magnitude * 3.6f:0} km/h{(sent ? "" : ", but the ring is full")}");
+            }
         }
 
         // The listed bodies where they are now, carried on by their velocity since the list.
@@ -218,19 +286,28 @@ namespace PerkeleRim.Game
             }
         }
 
-        // An unused layer that collides with the player's layer only.
+        // Two unused layers: one colliding with the player's layer only, one (heavy actors) with
+        // everything but the capsules.
         void PickLayer(int playerLayer)
         {
-            for (int i = 31; i >= 8 && layer < 0; i--)
-                if (string.IsNullOrEmpty(LayerMask.LayerToName(i))) layer = i;
-            if (layer < 0)
+            for (int i = 31; i >= 8 && solidLayer < 0; i--)
+                if (string.IsNullOrEmpty(LayerMask.LayerToName(i)))
+                {
+                    if (layer < 0) layer = i;
+                    else solidLayer = i;
+                }
+            if (solidLayer < 0)
             {
-                layer = 0;
-                log("actors: no free layer, capsules go on Default and collide with everything");
+                layer = solidLayer = 0;
+                log("actors: no two free layers, capsules go on Default and collide with everything");
                 return;
             }
-            for (int i = 0; i < 32; i++) Physics.IgnoreLayerCollision(layer, i, i != playerLayer);
-            log($"actors: capsules on layer {layer}, colliding with the player's layer {playerLayer} ({LayerMask.LayerToName(playerLayer)}) only");
+            for (int i = 0; i < 32; i++)
+            {
+                Physics.IgnoreLayerCollision(layer, i, i != playerLayer);
+                if (i != layer) Physics.IgnoreLayerCollision(solidLayer, i, i == solidLayer);
+            }
+            log($"actors: capsules on layer {layer}, colliding with the player's layer {playerLayer} ({LayerMask.LayerToName(playerLayer)}) only; heavy ones on {solidLayer}, solid to vehicles");
         }
 
         void Place()
@@ -243,6 +320,8 @@ namespace PerkeleRim.Game
                 gone.Remove(b.Id);
                 CapsuleCollider capsule;
                 if (!capsules.TryGetValue(b.Id, out capsule)) capsule = capsules[b.Id] = Create(b.Id);
+                int want = RunOver.Solid(b) ? solidLayer : layer;
+                if (capsule.gameObject.layer != want) capsule.gameObject.layer = want;
                 capsule.radius = b.Radius;
                 capsule.height = Mathf.Max(b.Height, b.Radius * 2f);
                 var feet = new Vector3(b.Feet.x, b.Feet.y, b.Feet.z) + new Vector3(b.Velocity.x, b.Velocity.y, b.Velocity.z) * carry;

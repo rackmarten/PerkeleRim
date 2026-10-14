@@ -61,6 +61,36 @@ TEST_CASE("drinks, cigarettes and food heal a share of max health, never past it
     CHECK(Damage::Heal(99, 200.0f, 50.0f) == 0.0f);
 }
 
+TEST_CASE("running someone over hurts by speed and kills from 50 km/h")
+{
+    CHECK(Damage::RunOver(100.0f, false, 1.9f) == 0.0f);  // a nudge while parking
+    CHECK(Damage::RunOver(100.0f, false, 2.0f) == 0.0f);
+    const float at20 = Damage::RunOver(100.0f, false, 20.0f / 3.6f);
+    CHECK(at20 > 20.0f);
+    CHECK(at20 < 50.0f);  // ragdolled, survives
+    CHECK(Damage::RunOver(100.0f, false, 13.0f) < 100.0f);
+    CHECK(Damage::RunOver(100.0f, false, 50.0f / 3.6f) >= 100.0f);
+    CHECK(Damage::RunOver(100.0f, false, 60.0f / 3.6f) == doctest::Approx(200.0f));  // dead, fortified or not
+    CHECK(Damage::RunOver(3000.0f, true, 60.0f / 3.6f) == doctest::Approx(1500.0f));  // a dragon gets up again
+    CHECK(Damage::RunOver(-5.0f, false, 20.0f) == 0.0f);
+    CHECK(Damage::KnockOver(0.0f) == 1.0f);
+    CHECK(Damage::KnockOver(10.0f) == doctest::Approx(5.0f));
+    CHECK(Damage::KnockOver(100.0f) == Damage::kKnockMax);
+}
+
+TEST_CASE("weight from bounds sorts actors into light, heavy and huge")
+{
+    CHECK(Damage::Mass(44.0f, 28.0f, 128.0f) == doctest::Approx(80.0f));  // a guard
+    CHECK(Damage::Mass(-1.0f, 28.0f, 128.0f) == 0.0f);
+    const float chicken = Damage::Mass(19.0f * 1.3f, 35.0f * 1.3f, 36.0f * 1.3f);
+    const float cow = Damage::Mass(51.0f, 181.0f, 100.0f);
+    CHECK(Damage::BulkOf(80.0f, false) == Damage::Bulk::kLight);
+    CHECK(Damage::BulkOf(chicken, false) == Damage::Bulk::kLight);
+    CHECK(Damage::BulkOf(cow, false) == Damage::Bulk::kHeavy);
+    CHECK(Damage::BulkOf(Damage::kHugeMass, false) == Damage::Bulk::kHuge);
+    CHECK(Damage::BulkOf(10.0f, true) == Damage::Bulk::kHuge);  // a dragon, whatever its bounds say
+}
+
 TEST_CASE("fall damage follows Skyrim's formula")
 {
     CHECK(Damage::Fall(600.0f) == 0.0f);  // up to fJumpFallHeightMin is free

@@ -228,7 +228,8 @@ namespace PerkeleRim.Game
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             pocket.Update(link, playing, player != null);
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
-            actors.Update(link, playing, player, playing && Driven() != null, viewCamera != null ? viewCamera.transform : null);
+            var driven = playing ? Driven() : null;
+            actors.Update(link, playing, player, driven != null, driven != null ? driven.Body : null, viewCamera != null ? viewCamera.transform : null);
             models.Update(link);
             hands.Update(link, playing, input.ScreenWidth, input.ScreenHeight);
             saves.Update();

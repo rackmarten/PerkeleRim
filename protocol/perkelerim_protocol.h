@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 18;
+    inline constexpr std::uint32_t kProtocolVersion = 19;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -330,7 +330,8 @@ namespace PerkeleRim::Protocol
         float         velocity[3];  // units per second
         float         radius;       // capsule radius, units
         float         height;       // capsule height from the feet, units
-        std::uint32_t reserved[2];
+        float         mass;         // kilograms, a guess from its bounds (Damage::Mass); decides what a vehicle does to it
+        std::uint32_t reserved;
     };
 
     // Skyrim -> MSC, while MSC has the player. The living actors near the player that stand (not
@@ -487,17 +488,19 @@ namespace PerkeleRim::Protocol
     };
 
     // ImpactEvent: something of MSC's player other than its fist reached an actor's capsule from
-    // the latest ActorList: an item it threw (kImpactThrown, with its speed at the hit) or its piss
-    // stream (kImpactPiss, sent again every so often while the stream stays on that actor). Skyrim
-    // hits that actor as the player.
+    // the latest ActorList: an item it threw (kImpactThrown, with its speed at the hit), its piss
+    // stream (kImpactPiss, sent again every so often while the stream stays on that actor) or the
+    // vehicle it drives (kImpactVehicle, with the vehicle's speed). Skyrim hits that actor as the
+    // player.
     inline constexpr std::uint32_t kImpactThrown = 1;  // ImpactEvent.kind
     inline constexpr std::uint32_t kImpactPiss = 2;
+    inline constexpr std::uint32_t kImpactVehicle = 3;
 
     struct ImpactEvent
     {
         std::uint32_t actor;         // ActorPose.id
         std::uint32_t kind;          // kImpact*
-        float         speed;         // meters per second (kImpactThrown)
+        float         speed;         // meters per second (kImpactThrown, kImpactVehicle)
         float         direction[3];  // the way it moved, unit vector in Skyrim space
     };
 
@@ -695,6 +698,7 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ActorPose, velocity) == 20);
     static_assert(offsetof(ActorPose, radius) == 32);
     static_assert(offsetof(ActorPose, height) == 36);
+    static_assert(offsetof(ActorPose, mass) == 40);
     static_assert(sizeof(ActorList) == 1552);
     static_assert(offsetof(ActorList, count) == 8);
     static_assert(offsetof(ActorList, actors) == 16);

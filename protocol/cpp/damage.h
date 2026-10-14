@@ -53,6 +53,60 @@ namespace PerkeleRim::Damage
         return Punch(a_targetMaxHealth, a_dragon) * scale;
     }
 
+    // Run over by the vehicle MSC's player drives: nothing below kRunOverSpeedMin (a nudge while
+    // parking), then a share of max health rising with speed, lethal from kRunOverSpeedLethal
+    // (50 km/h) on. Dragons take a fraction, so they survive. Every hit throws the target over
+    // (KnockOver; light and heavy ones), then a light one's ragdoll is thrown along the vehicle's way at kThrowShare of its speed
+    // plus kThrowLift of it upward: the vehicle has no collision in Skyrim, so without the throw
+    // the body would just drop and the van pass through it.
+    inline constexpr float kRunOverSpeedMin = 2.0f;      // meters per second, about 7 km/h
+    inline constexpr float kRunOverSpeedLethal = 50.0f / 3.6f;  // 50 km/h
+    inline constexpr float kRunOverLethalShare = 2.0f;   // past fortified health too
+    inline constexpr float kKnockPerSpeed = 0.5f;        // knock magnitude per m/s (PushActorAway scale)
+    inline constexpr float kKnockMax = 15.0f;
+    inline constexpr float kThrowShare = 1.2f;
+    inline constexpr float kThrowLift = 0.35f;
+
+    // What a vehicle does to an actor depends on its weight, guessed from its bounds (units, scale
+    // applied) with a person's density: light ones (people, wolves) are run over and flung, the
+    // vehicle passes through; heavy ones (bears, cows, horses) stop it like a wall and only fall
+    // over; huge ones (giants, mammoths, every dragon) stop it and don't even fall.
+    inline constexpr float kMassPerCubicUnit = 80.0f / (44.0f * 28.0f * 128.0f);  // a person's bounds weigh 80 kg
+    inline constexpr float kHeavyMass = 250.0f;  // kilograms
+    inline constexpr float kHugeMass = 2000.0f;
+
+    enum class Bulk
+    {
+        kLight,
+        kHeavy,
+        kHuge
+    };
+
+    inline float Mass(float a_x, float a_y, float a_z)
+    {
+        return (std::max)(0.0f, a_x) * (std::max)(0.0f, a_y) * (std::max)(0.0f, a_z) * kMassPerCubicUnit;
+    }
+
+    inline Bulk BulkOf(float a_mass, bool a_dragon)
+    {
+        return a_dragon || a_mass >= kHugeMass ? Bulk::kHuge : a_mass >= kHeavyMass ? Bulk::kHeavy : Bulk::kLight;
+    }
+
+    inline float RunOver(float a_targetMaxHealth, bool a_dragon, float a_speed)
+    {
+        if (a_speed < kRunOverSpeedMin) {
+            return 0.0f;
+        }
+        const float share = a_speed >= kRunOverSpeedLethal ? kRunOverLethalShare :
+                                                             (a_speed - kRunOverSpeedMin) / (kRunOverSpeedLethal - kRunOverSpeedMin);
+        return (std::max)(0.0f, a_targetMaxHealth) * share * (a_dragon ? kDragonFactor : 1.0f);
+    }
+
+    inline float KnockOver(float a_speed)
+    {
+        return (std::clamp)(a_speed * kKnockPerSpeed, 1.0f, kKnockMax);
+    }
+
     // Piss is poison: while the stream stays on an actor it gets a damage over time, a share of its
     // max health per second for kPissSeconds after the last hit. Dragons take a fraction of it.
     inline constexpr float kPissSharePerSecond = 0.02f;

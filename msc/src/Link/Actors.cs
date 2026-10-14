@@ -13,6 +13,7 @@ namespace PerkeleRim
         public Vec3 Velocity;  // meters per second
         public float Radius;
         public float Height;
+        public float Mass;     // kilograms (ActorPose.mass)
 
         // The capsule's axis, between the centers of its end spheres (one point for a squat capsule).
         public Vec3 Bottom => new Vec3(Feet.x, Feet.y + Math.Min(Radius, Height * 0.5f), Feet.z);
@@ -40,6 +41,7 @@ namespace PerkeleRim
                     Velocity = Coords.SkyrimToUnity(new Vec3(a.velocity[0], a.velocity[1], a.velocity[2])),
                     Radius = (float)(a.radius * Coords.MetersPerUnit),
                     Height = (float)(a.height * Coords.MetersPerUnit),
+                    Mass = a.mass,
                 });
             }
             return bodies;
