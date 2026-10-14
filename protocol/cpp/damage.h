@@ -41,6 +41,28 @@ namespace PerkeleRim::Damage
         return (std::max)(0.0f, a_targetMaxHealth) * kPunchShare * (a_dragon ? kDragonFactor : 1.0f) * DrunkPunch(a_drunk);
     }
 
+    // A thrown item hits by its speed: nothing at kThrownSpeedMin, a sober punch from kThrownSpeedFull
+    // on. MSC's own throw lands in between; a bottle, thrown twice as fast (msc/src/Link/Throwing.cs),
+    // hits like a punch from range.
+    inline constexpr float kThrownSpeedMin = 2.0f;    // meters per second
+    inline constexpr float kThrownSpeedFull = 15.0f;
+
+    inline float Thrown(float a_targetMaxHealth, bool a_dragon, float a_speed)
+    {
+        const float scale = (std::clamp)((a_speed - kThrownSpeedMin) / (kThrownSpeedFull - kThrownSpeedMin), 0.0f, 1.0f);
+        return Punch(a_targetMaxHealth, a_dragon) * scale;
+    }
+
+    // Piss is poison: while the stream stays on an actor it gets a damage over time, a share of its
+    // max health per second for kPissSeconds after the last hit. Dragons take a fraction of it.
+    inline constexpr float kPissSharePerSecond = 0.02f;
+    inline constexpr float kPissSeconds = 5.0f;
+
+    inline float PissPerSecond(float a_targetMaxHealth, bool a_dragon)
+    {
+        return (std::max)(0.0f, a_targetMaxHealth) * kPissSharePerSecond * (a_dragon ? kDragonFactor : 1.0f);
+    }
+
     // What one Consumed heals, as a share of the player's max health: fun over RPG, like the damage.
     inline float HealShare(std::uint32_t a_kind)
     {

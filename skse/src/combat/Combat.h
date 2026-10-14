@@ -18,6 +18,10 @@ namespace PerkeleRim::Combat
     // A PunchEvent message. a_drunk: MSC's drunk level (0..8), drunk punches hit harder.
     void OnPunch(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk);
 
+    // An ImpactEvent message: a thrown item (hits like a punch, by its speed) or the piss stream
+    // (PerkeleRim.esp's poison) reached an actor.
+    void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
+
     // Skyrim has the player back: MSC's capsules go.
     void Stop();
 }

@@ -557,6 +557,10 @@ namespace PerkeleRim::PlayerSync
                     Combat::OnPunch(a_player, a_data, a_size, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f);
                     return;
                 }
+                if (a_type == Protocol::MessageType::ImpactEvent) {
+                    Combat::OnImpact(a_player, a_data, a_size);
+                    return;
+                }
                 if (a_type == Protocol::MessageType::Consumed) {
                     Death::OnConsumed(a_player, a_data, a_size);
                     return;

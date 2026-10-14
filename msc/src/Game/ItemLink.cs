@@ -14,7 +14,7 @@ namespace PerkeleRim.Game
     public unsafe class ItemLink
     {
         const float Radius = 15f;         // meters from the player's feet to pick an item up
-        const float KeepRadius = 20f;     // and to let it go again
+        const float KeepRadius = 50f;     // and to let it go again: a thrown bottle flies 35 m, the island reaches 58 m
         const float ScanEvery = 0.5f;     // seconds between looking for new items
         const float HoldMax = 10f;        // seconds a carried item waits for its ground at most
         const float LooseMassMax = 30f;   // kg: heavier loose rigidbodies aren't items

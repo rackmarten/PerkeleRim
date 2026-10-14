@@ -236,6 +236,17 @@ var punch = Spell(0x904, "PerkeleRimPunch", "Punch", punchDamage, 1f);
 var punchKnock = Spell(0x905, "PerkeleRimPunchStagger", "Punch", punchStagger, 0.5f);
 foreach (var r in new IMajorRecordGetter[] { punchDamage, punchStagger, punch, punchKnock })
     Console.WriteLine($"  {r.FormKey.ID:X3} {r.EditorID}");
+// Thrown items land as the punch spells too. Piss is poison: damage health per second (magnitude set
+// per cast, protocol/cpp/damage.h) for kPissSeconds, resisted by poison resistance. Recasting while the
+// stream stays on refreshes it.
+var pissPoison = Effect(0x90D, "PerkeleRimPissEffect", "Piss",
+    new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.ValueModifier) { ActorValue = ActorValue.Health });
+pissPoison.Flags = MagicEffect.Flag.Hostile | MagicEffect.Flag.Detrimental | MagicEffect.Flag.NoArea;
+pissPoison.ResistValue = ActorValue.PoisonResist;
+var piss = Spell(0x90E, "PerkeleRimPiss", "Piss", pissPoison, 1f);
+piss.Effects[0].Data!.Duration = 5;
+foreach (var r in new IMajorRecordGetter[] { pissPoison, piss })
+    Console.WriteLine($"  {r.FormKey.ID:X3} {r.EditorID}");
 
 // ---- Pocket ----
 //
@@ -279,7 +290,7 @@ for (uint i = 0; i < pocket.Length; i++)
     mod.MiscItems.Add(item);
     Console.WriteLine($"  {item.FormKey.ID:X3} {item.EditorID} (looks like {p.LooksLike})");
 }
-mod.ModHeader.Stats.NextFormID = 0x906 + (uint)pocket.Length;
+mod.ModHeader.Stats.NextFormID = 0x90F;  // after the pocket (0x906 + 7) and piss (0x90D, 0x90E)
 
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
 mod.WriteToBinary(output);

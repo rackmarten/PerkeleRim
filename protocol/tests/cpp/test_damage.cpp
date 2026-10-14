@@ -28,6 +28,25 @@ TEST_CASE("drunk punches hit harder, up to twice as hard")
     CHECK(Damage::Punch(100.0f, false, -1.0f) == doctest::Approx(25.0f));
 }
 
+TEST_CASE("a thrown item hits by its speed, up to a sober punch")
+{
+    CHECK(Damage::Thrown(100.0f, false, 1.0f) == 0.0f);
+    CHECK(Damage::Thrown(100.0f, false, 2.0f) == 0.0f);
+    CHECK(Damage::Thrown(100.0f, false, 8.5f) == doctest::Approx(12.5f));
+    CHECK(Damage::Thrown(100.0f, false, 15.0f) == doctest::Approx(25.0f));
+    CHECK(Damage::Thrown(100.0f, false, 40.0f) == doctest::Approx(25.0f));
+    CHECK(Damage::Thrown(3000.0f, true, 15.0f) == doctest::Approx(187.5f));
+    CHECK(Damage::Thrown(-5.0f, false, 15.0f) == 0.0f);
+}
+
+TEST_CASE("piss poisons for a share of max health per second, dragons less")
+{
+    CHECK(Damage::PissPerSecond(100.0f, false) == doctest::Approx(2.0f));
+    CHECK(Damage::PissPerSecond(100.0f, false) * Damage::kPissSeconds == doctest::Approx(10.0f));
+    CHECK(Damage::PissPerSecond(3000.0f, true) == doctest::Approx(15.0f));
+    CHECK(Damage::PissPerSecond(-5.0f, false) == 0.0f);
+}
+
 TEST_CASE("drinks, cigarettes and food heal a share of max health, never past it")
 {
     using namespace PerkeleRim::Protocol;

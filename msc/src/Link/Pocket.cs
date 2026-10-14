@@ -54,7 +54,7 @@ namespace PerkeleRim
 
         // Test loop (PerkeleRim_testbeer.txt): what each handover tops the pocket up to.
         public static int TestStock(int kind) =>
-            kind == (int)Wire.PocketBeer ? 6 : kind == (int)Wire.PocketSausages ? 2 : kind == (int)Wire.PocketPizza ? 1
+            kind == (int)Wire.PocketBeer ? 6 : kind == (int)Wire.PocketBottle ? 10 : kind == (int)Wire.PocketSausages ? 2 : kind == (int)Wire.PocketPizza ? 1
             : kind == (int)Wire.PocketCigarettes ? 20 : 0;
 
         public static bool IsKey(int keyCode) => keyCode == PocketKey || SlotOfKey(keyCode) != None;

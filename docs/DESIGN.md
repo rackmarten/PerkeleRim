@@ -113,7 +113,7 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 | Talking / quests | Activate key → Skyrim; dialogue, doors and quest pickups work natively. Quest items go into Skyrim's inventory through the activate pass-through. |
 | Damage to player | Skyrim health is authoritative. MSC's player can't die while handed over: a crash MSC would die of costs half of Skyrim's max health, falls cost Skyrim's vanilla fall damage. At 0, MSC's blood over the view and its death sound, then Skyrim's own death and reload. MSC's alcohol, cigarettes and food heal a share of it. |
 | Punching | MSC's own punch (Hit key, or left click with free hands) on a capsule of a Skyrim actor; Skyrim hits it as the player (a share of its max health, more when drunk, stagger). See PROTOCOL.md, Combat. |
-| Thrown bottles | MSC physics item hits a mirrored capsule → `ImpactEvent` → Skyrim damage. |
+| Thrown bottles | An item MSC's player throws passes through an actor's capsule → `ImpactEvent` → Skyrim hits it like a punch, by speed. Bottles fly twice as fast, as a ranged attack. Piss is poison: the stream on a capsule → `ImpactEvent` → a damage over time. See PROTOCOL.md, Combat. |
 | Running people over | Capsule hit → impulse + damage on the real NPC; Skyrim ragdoll does the rest. |
 | Finnish summer | Force clear weather, long bright evenings; maybe a sauna in the garage. |
 

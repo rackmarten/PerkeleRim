@@ -15,7 +15,7 @@ namespace PerkeleRim.Game
     //    goes the way MSC's own garbage does (its Use FSM's GARBAGE: never loaded again), an empty
     //    bottle is destroyed;
     //  - used: a beer is MSC's own beer drinking (DRINKBEER: the animation, then the empty bottle
-    //    thrown), food a new one from the store's spawner eaten at once (its Use FSM put in Eat);
+    //    MSC throws goes back into the pocket instead, to be thrown at someone), food a new one from the store's spawner eaten at once (its Use FSM put in Eat);
     //  - taken out: an empty bottle, a copy of the one MSC throws after a beer (BottleBeerFly), put
     //    in the hand the way a click on it would.
     // Also keeps MSC's cigarette count (PlayerCigarettes) and Skyrim's Cigarette items the same
@@ -51,6 +51,12 @@ namespace PerkeleRim.Game
         bool eating;             // eaten as soon as it has loaded, never held
         float takingSince;
         bool topUp;              // test stock wanted (PerkeleRim_testbeer.txt)
+
+        // A beer from the pocket is being drunk: the empty bottle MSC throws after it (a new copy of
+        // BottleBeerFly) goes back into the pocket, until emptyUntil (-1 = none).
+        const float EmptyWait = DrinkTime + 3f;
+        float emptyUntil = -1f, nextEmptyLook;
+        readonly HashSet<int> bottlesBefore = new HashSet<int>();
 
         public PocketLink(Action<string> log) { this.log = log; }
 
@@ -105,6 +111,7 @@ namespace PerkeleRim.Game
             }
             if (!link.IsUp) { presses.Clear(); return; }
             if (inGame) MirrorCigarettes(link);
+            if (emptyUntil >= 0f) CatchEmpty(link);
             if (taking != null || takingKind != Pocket.None) { AdvanceTake(); presses.Clear(); return; }
             if (!playing) { presses.Clear(); return; }
             if (topUp && ledger.Known) TopUp(link);
@@ -308,6 +315,9 @@ namespace PerkeleRim.Game
             // A beer case checks the left hand (busy drinking, pushing, giving the finger) and the helmet.
             if (Global("PlayerDrinkOn") || Global("PlayerHandLeft") || Global("PlayerHelmet")) { log("pocket: can't drink now (left hand busy or helmet on)"); return; }
             if (!Send(link, (int)Wire.PocketBeer, -1)) { log("pocket: the link is full, no beer"); return; }
+            bottlesBefore.Clear();
+            foreach (var go in EmptyBottles()) bottlesBefore.Add(go.GetInstanceID());
+            emptyUntil = Time.realtimeSinceStartup + EmptyWait;
             PlayMakerFSM.BroadcastEvent("DRINKBEER");
             // As the case does: no smoking or gestures until the beer is down.
             var camera = GameObject.Find(FunctionsPath);
@@ -315,6 +325,37 @@ namespace PerkeleRim.Game
                 foreach (var f in camera.GetComponents<PlayMakerFSM>())
                     if (f.FsmName == "PlayerFunctions") { functions = f; f.enabled = false; functionsBackAt = Time.realtimeSinceStartup + DrinkTime; }
             log($"pocket: drinking a beer ({ledger.Available((int)Wire.PocketBeer)} left)");
+        }
+
+        // MSC's empty beer bottles in the world: copies of BottleBeerFly, renamed by their Go FSM.
+        static List<GameObject> EmptyBottles()
+        {
+            var list = new List<GameObject>();
+            foreach (Rigidbody body in UnityEngine.Object.FindObjectsOfType(typeof(Rigidbody)))
+            {
+                var go = body.gameObject;
+                if (go.activeInHierarchy && (go.name == "empty bottle(Clone)" || go.name == BottleTemplate + "(Clone)")) list.Add(go);
+            }
+            return list;
+        }
+
+        // The pocket beer's empty bottle, once MSC has thrown it: into the pocket instead of the
+        // ground. None turns up when the drink was cut short.
+        void CatchEmpty(Link link)
+        {
+            float now = Time.realtimeSinceStartup;
+            if (now > emptyUntil) { emptyUntil = -1f; log("pocket: no empty bottle after the beer (the drink was cut short?)"); return; }
+            if (now < nextEmptyLook) return;
+            nextEmptyLook = now + 0.1f;
+            foreach (var go in EmptyBottles())
+            {
+                if (bottlesBefore.Contains(go.GetInstanceID())) continue;
+                if (!Send(link, (int)Wire.PocketBottle, 1)) return;  // the link is full: next look
+                UnityEngine.Object.Destroy(go);
+                emptyUntil = -1f;
+                log($"pocket: the beer's empty bottle went into the pocket ({ledger.Available((int)Wire.PocketBottle)} empty)");
+                return;
+            }
         }
 
         void StartTake(Link link, int kind, bool eat)

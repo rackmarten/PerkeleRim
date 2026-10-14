@@ -69,11 +69,11 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
-        public void TestStockTopsUpBeerFoodAndCigarettes()
+        public void TestStockTopsUpBeerBottlesFoodAndCigarettes()
         {
             Assert.That(Pocket.TestStock(Beer), Is.EqualTo(6));
             Assert.That(Pocket.TestStock(Cigs), Is.EqualTo(20));
-            Assert.That(Pocket.TestStock(Bottle), Is.EqualTo(0));
+            Assert.That(Pocket.TestStock(Bottle), Is.EqualTo(10));
         }
 
         static uint[] Counts(uint beer, uint bottles = 0, uint cigs = 0) => new uint[] { beer, bottles, 0, 0, 0, 0, cigs };

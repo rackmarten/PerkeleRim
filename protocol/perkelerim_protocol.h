@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 17;
+    inline constexpr std::uint32_t kProtocolVersion = 18;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -386,6 +386,7 @@ namespace PerkeleRim::Protocol
         Consumed = 12,         // MSC -> Skyrim
         PocketChange = 13,     // MSC -> Skyrim
         PocketCounts = 14,     // Skyrim -> MSC
+        ImpactEvent = 15,      // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -483,6 +484,21 @@ namespace PerkeleRim::Protocol
     {
         std::uint32_t actor;         // ActorPose.id
         float         direction[3];  // the punch's way, unit vector in Skyrim space
+    };
+
+    // ImpactEvent: something of MSC's player other than its fist reached an actor's capsule from
+    // the latest ActorList: an item it threw (kImpactThrown, with its speed at the hit) or its piss
+    // stream (kImpactPiss, sent again every so often while the stream stays on that actor). Skyrim
+    // hits that actor as the player.
+    inline constexpr std::uint32_t kImpactThrown = 1;  // ImpactEvent.kind
+    inline constexpr std::uint32_t kImpactPiss = 2;
+
+    struct ImpactEvent
+    {
+        std::uint32_t actor;         // ActorPose.id
+        std::uint32_t kind;          // kImpact*
+        float         speed;         // meters per second (kImpactThrown)
+        float         direction[3];  // the way it moved, unit vector in Skyrim space
     };
 
     // Consumed: MSC's player finished an alcoholic drink, lit a cigarette or ate something. Skyrim
@@ -707,6 +723,9 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(MscSnapshot, length) == 8);
     static_assert(sizeof(PunchEvent) == 16);
     static_assert(offsetof(PunchEvent, direction) == 4);
+    static_assert(sizeof(ImpactEvent) == 24);
+    static_assert(offsetof(ImpactEvent, speed) == 8);
+    static_assert(offsetof(ImpactEvent, direction) == 12);
     static_assert(sizeof(Consumed) == 8);
     static_assert(sizeof(PocketChange) == 16);
     static_assert(offsetof(PocketChange, delta) == 12);

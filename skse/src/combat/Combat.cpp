@@ -13,6 +13,7 @@ namespace PerkeleRim::Combat
         constexpr auto          kPlugin = "PerkeleRim.esp"sv;
         constexpr RE::FormID    kPunchSpell = 0x904;   // PerkeleRimPunch: damage, magnitude set per cast
         constexpr RE::FormID    kStaggerSpell = 0x905;  // PerkeleRimPunchStagger
+        constexpr RE::FormID    kPissSpell = 0x90E;     // PerkeleRimPiss: poison, magnitude (per second) set per cast
         constexpr float         kListUnits = 2800.0f;   // actors within 40 m go to MSC
         constexpr float         kPunchMaxUnits = 400.0f;  // a punch further than this away is stale
         constexpr float         kWatchUnits = 1000.0f;  // attackers the per-second log follows
@@ -24,6 +25,7 @@ namespace PerkeleRim::Combat
         {
             RE::SpellItem*                punch = nullptr;
             RE::SpellItem*                stagger = nullptr;
+            RE::SpellItem*                piss = nullptr;
             std::uint32_t                 frame = 0;
             bool                          sent = false;  // a non-empty list went out
             float                         statTime = 0.0f;
@@ -155,11 +157,13 @@ namespace PerkeleRim::Combat
         auto* data = RE::TESDataHandler::GetSingleton();
         state.punch = data ? data->LookupForm<RE::SpellItem>(kPunchSpell, kPlugin) : nullptr;
         state.stagger = data ? data->LookupForm<RE::SpellItem>(kStaggerSpell, kPlugin) : nullptr;
+        state.piss = data ? data->LookupForm<RE::SpellItem>(kPissSpell, kPlugin) : nullptr;
         static HitSink hits;
         if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
             events->AddEventSink<RE::TESHitEvent>(&hits);
         }
-        SKSE::log::info("combat: punch spells {}", state.punch && state.stagger ? "found" : "missing (PerkeleRim.esp not loaded or too old), punches do nothing");
+        SKSE::log::info("combat: punch spells {}", state.punch && state.stagger ? "found" : "missing (PerkeleRim.esp not loaded or too old), punches and throws do nothing");
+        SKSE::log::info("combat: piss spell {}", state.piss ? "found" : "missing (PerkeleRim.esp not loaded or too old), piss does nothing");
     }
 
     void Update(RE::PlayerCharacter* a_player, std::uint32_t a_generation, float a_delta)
@@ -224,6 +228,51 @@ namespace PerkeleRim::Combat
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
         SKSE::log::info("combat: the player punched {} for {:.0f} of {:.0f} max health (drunk {:.1f}), it had {:.0f}", NameOf(target), damage, max,
             a_drunk, health);
+    }
+
+    void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
+    {
+        if (a_size < sizeof(Protocol::ImpactEvent)) {
+            SKSE::log::warn("combat: bad impact message ({} bytes)", a_size);
+            return;
+        }
+        Protocol::ImpactEvent impact;
+        std::memcpy(&impact, a_data, sizeof(impact));
+        const bool piss = impact.kind == Protocol::kImpactPiss;
+        auto*      target = RE::TESForm::LookupByID<RE::Actor>(impact.actor);
+        // A little past the listed range: the target may have moved on since the list.
+        if (!target || !Standing(target) || target->GetPosition().GetDistance(a_player->GetPosition()) > kListUnits + kPunchMaxUnits) {
+            SKSE::log::info("combat: {} on {:08X} dropped (gone, down or too far)", piss ? "piss" : "throw", impact.actor);
+            return;
+        }
+        auto* caster = a_player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
+        auto* values = target->AsActorValueOwner();
+        if (!caster || !values) {
+            return;
+        }
+        const float max = values->GetPermanentActorValue(RE::ActorValue::kHealth);
+        if (piss) {
+            if (!state.piss) {
+                return;
+            }
+            // Recast while the stream stays on: Skyrim refreshes the running poison, it doesn't stack.
+            const float perSecond = Damage::PissPerSecond(max, IsDragon(target));
+            caster->CastSpellImmediate(state.piss, false, target, 1.0f, false, perSecond, a_player);
+            SKSE::log::info("combat: the player pissed on {}, poison {:.1f}/s for {:.0f} s of {:.0f} max health", NameOf(target), perSecond,
+                Damage::kPissSeconds, max);
+            return;
+        }
+        if (impact.kind != Protocol::kImpactThrown || !state.punch || !state.stagger) {
+            return;
+        }
+        const float damage = Damage::Thrown(max, IsDragon(target), impact.speed);
+        if (damage <= 0.0f) {
+            SKSE::log::info("combat: a throw at {:.1f} m/s bounced off {} harmlessly", impact.speed, NameOf(target));
+            return;
+        }
+        caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
+        caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
+        SKSE::log::info("combat: the player's throw at {:.1f} m/s hit {} for {:.0f} of {:.0f} max health", impact.speed, NameOf(target), damage, max);
     }
 
     void Stop()
