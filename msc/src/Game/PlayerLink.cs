@@ -64,6 +64,12 @@ namespace PerkeleRim.Game
 
         GameObject islandObject;
         readonly Dictionary<long, GameObject> chunks = new Dictionary<long, GameObject>();
+        // Spike "island show|hide": draws the chunks, flat-shaded and colored by slope (green flat,
+        // red at 60 degrees and steeper, ramps over lips blue), to compare the island with Skyrim's ground.
+        public static bool ShowIsland;
+        static Material islandMaterial;
+        // Where each chunk mesh's ramps (Fillets) start in its triangle list; drawn blue.
+        static readonly Dictionary<Mesh, int> filletFrom = new Dictionary<Mesh, int>();
         float nextPrune;
         uint placedGeneration;  // island generation the player was put down for; 0 = none
         uint holdingGeneration;  // generation the player is held for while its ground loads
@@ -417,10 +423,16 @@ namespace PerkeleRim.Game
             if (chunk == null) { log("player: bad collision chunk: " + error); return; }
             if (chunk.Generation != island.Generation) return;  // for an older anchor
 
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            int sampled = chunk.Triangles.Length;
+            int fillets = Fillets.Add(ref chunk.Vertices, ref chunk.Triangles);
+            watch.Stop();
+
             var vertices = new Vector3[chunk.Vertices.Length];
             for (int i = 0; i < vertices.Length; i++) vertices[i] = ToVector3(chunk.Vertices[i]);
             var mesh = new Mesh { name = $"PerkeleRim.Chunk {chunk.ChunkX},{chunk.ChunkY}", vertices = vertices, triangles = chunk.Triangles };
             mesh.RecalculateBounds();
+            filletFrom[mesh] = sampled;
 
             GameObject go;
             bool rebuilt = chunks.TryGetValue(chunk.Key, out go);
@@ -434,9 +446,10 @@ namespace PerkeleRim.Game
             if (collider == null) collider = go.AddComponent<MeshCollider>();
             var old = collider.sharedMesh;
             collider.sharedMesh = mesh;
-            if (old != null) Destroy(old);
+            if (old != null) { filletFrom.Remove(old); Destroy(old); }
             CopyGround(go);
-            log($"player: chunk ({chunk.ChunkX},{chunk.ChunkY}) gen {chunk.Generation}: {vertices.Length} vertices, {chunk.Triangles.Length / 3} triangles, {(rebuilt ? "rebuilt" : "new")}");
+            DrawChunk(go);
+            log($"player: chunk ({chunk.ChunkX},{chunk.ChunkY}) gen {chunk.Generation}: {vertices.Length} vertices, {chunk.Triangles.Length / 3} triangles ({fillets} ramp), ramps took {watch.Elapsed.TotalMilliseconds:0.0} ms, {(rebuilt ? "rebuilt" : "new")}");
         }
 
         // Makes the island look like MSC's own ground to the vehicles, once a vehicle has shown which
@@ -475,8 +488,145 @@ namespace PerkeleRim.Game
             go.transform.parent = null;
             var collider = go.GetComponent<MeshCollider>();
             if (collider != null) collider.enabled = false;
-            if (collider != null && collider.sharedMesh != null) Destroy(collider.sharedMesh);
+            if (collider != null && collider.sharedMesh != null) { filletFrom.Remove(collider.sharedMesh); Destroy(collider.sharedMesh); }
+            var filter = go.GetComponent<MeshFilter>();
+            if (filter != null && filter.sharedMesh != null) Destroy(filter.sharedMesh);
             Destroy(go);
+        }
+
+        // Spike "island why [m]": what the ramp pass (Fillets) made of the steep island triangles
+        // within m (2) of where MSC's camera looks.
+        public void LogWhy(float radius)
+        {
+            var cam = Camera.main;
+            RaycastHit hit;
+            if (cam == null || !Physics.Raycast(cam.transform.position, cam.transform.forward, out hit, 30f)
+                || hit.collider.transform.parent != IslandRoot())
+            {
+                log("player: island why: the camera doesn't look at the island");
+                return;
+            }
+            log($"player: island why: looking at {hit.collider.name}, {Vector3.Angle(Vector3.up, hit.normal):0} deg there, {hit.distance:0.0} m away");
+            foreach (var go in chunks.Values)
+            {
+                var collider = go.GetComponent<MeshCollider>();
+                if (collider == null || collider.sharedMesh == null) continue;
+                var mesh = collider.sharedMesh;
+                var at = go.transform.InverseTransformPoint(hit.point);
+                if (!mesh.bounds.Intersects(new Bounds(at, Vector3.one * radius * 2))) continue;
+                int sampled;
+                if (!filletFrom.TryGetValue(mesh, out sampled)) sampled = mesh.triangles.Length;
+                var from = mesh.vertices;
+                var vertices = new Vec3[from.Length];
+                for (int i = 0; i < from.Length; i++) vertices[i] = ToVec3(from[i]);
+                var triangles = new int[sampled];
+                Array.Copy(mesh.triangles, triangles, sampled);
+                int lines = 0;
+                Fillets.Add(ref vertices, ref triangles, (mid, reason) =>
+                {
+                    var off = ToVector3(mid) - at;
+                    if (off.magnitude > radius || ++lines > 30) return;
+                    log($"player:   ({off.x:+0.0;-0.0},{off.y:+0.00;-0.00},{off.z:+0.0;-0.0}) {reason} on {go.name}");
+                });
+            }
+        }
+
+        public void SetIslandVisible(bool show)
+        {
+            ShowIsland = show;
+            foreach (var go in chunks.Values) DrawChunk(go);
+            log($"player: island {(show ? "shown" : "hidden")}, {chunks.Count} chunks");
+        }
+
+        // A render copy of the chunk's collider mesh with no shared vertices, so each triangle is
+        // lit and colored on its own and a single steep cell stands out.
+        static void DrawChunk(GameObject go)
+        {
+            var filter = go.GetComponent<MeshFilter>();
+            if (filter != null && filter.sharedMesh != null) Destroy(filter.sharedMesh);
+            var collider = go.GetComponent<MeshCollider>();
+            if (!ShowIsland || collider == null || collider.sharedMesh == null)
+            {
+                if (filter != null) filter.sharedMesh = null;
+                return;
+            }
+
+            var source = collider.sharedMesh;
+            var from = source.vertices;
+            var tris = source.triangles;
+            int ramps;
+            if (!filletFrom.TryGetValue(source, out ramps)) ramps = tris.Length;
+            var vertices = new Vector3[tris.Length];
+            var colors = new Color[tris.Length];
+            var order = new int[tris.Length];
+            for (int i = 0; i < tris.Length; i += 3)
+            {
+                Vector3 a = from[tris[i]], b = from[tris[i + 1]], c = from[tris[i + 2]];
+                float up = Mathf.Abs(Vector3.Cross(b - a, c - a).normalized.y);
+                var color = i >= ramps ? new Color(0.2f, 0.4f, 1f) : Color.Lerp(Color.red, Color.green, Mathf.InverseLerp(0.5f, 0.97f, up));
+                vertices[i] = a; vertices[i + 1] = b; vertices[i + 2] = c;
+                colors[i] = colors[i + 1] = colors[i + 2] = color;
+                order[i] = i; order[i + 1] = i + 1; order[i + 2] = i + 2;
+            }
+            var mesh = new Mesh { name = source.name + " (drawn)", vertices = vertices, colors = colors, triangles = order };
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+
+            if (filter == null) filter = go.AddComponent<MeshFilter>();
+            filter.sharedMesh = mesh;
+            var renderer = go.GetComponent<MeshRenderer>();
+            if (renderer == null) renderer = go.AddComponent<MeshRenderer>();
+            if (islandMaterial == null) islandMaterial = new Material(IslandShaderSource) { name = "PerkeleRim.Island" };
+            renderer.sharedMaterial = islandMaterial;
+        }
+
+        // Vertex colors, vertex lit, both sides.
+        const string IslandShaderSource = @"Shader ""PerkeleRim/Island"" {
+    SubShader {
+        Pass {
+            Material { Diffuse (1,1,1,1) Ambient (1,1,1,1) }
+            Lighting On
+            ColorMaterial AmbientAndDiffuse
+            Cull Off
+        }
+    }
+}";
+
+        // Spike "island steps [radius]": the island triangles within radius (m, default 8) of the
+        // player steeper than 30 degrees with their top within 1 m of the feet, steepest first, with
+        // the top relative to the feet and their height, so a bridge lip
+        // or road hole can be read from the log.
+        public void LogSteps(float radius)
+        {
+            if (player == null) { log("player: island steps: no player"); return; }
+            var at = Feet();
+            var found = new List<KeyValuePair<float, string>>();
+            foreach (var go in chunks.Values)
+            {
+                var collider = go.GetComponent<MeshCollider>();
+                if (collider == null || collider.sharedMesh == null) continue;
+                var v = collider.sharedMesh.vertices;
+                var t = collider.sharedMesh.triangles;
+                var to = go.transform;
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    Vector3 a = to.TransformPoint(v[t[i]]), b = to.TransformPoint(v[t[i + 1]]), c = to.TransformPoint(v[t[i + 2]]);
+                    var mid = (a + b + c) / 3f;
+                    if (new Vector2(mid.x - at.x, mid.z - at.z).magnitude > radius) continue;
+                    float slope = Vector3.Angle(Vector3.up, Vector3.Cross(b - a, c - a).normalized);
+                    if (slope > 90f) slope = 180f - slope;
+                    if (slope < 30f) continue;
+                    float topY = Mathf.Max(a.y, Mathf.Max(b.y, c.y));
+                    float span = topY - Mathf.Min(a.y, Mathf.Min(b.y, c.y));
+                    if (Mathf.Abs(topY - at.y) > 1f) continue;  // walls, the bridge's sides
+                    var off = mid - at;
+                    found.Add(new KeyValuePair<float, string>(slope,
+                        $"{slope:0} deg, top {topY - at.y:+0.00;-0.00} m from the feet, {span:0.00} m tall, at ({off.x:0.0},{off.z:0.0}) on {go.name}"));
+                }
+            }
+            found.Sort((x, y) => y.Key.CompareTo(x.Key));
+            log($"player: island steps within {radius:0} m: {found.Count} triangles over 30 deg");
+            for (int i = 0; i < found.Count && i < 30; i++) log("player:   " + found[i].Value);
         }
 
         // Drops chunks the player has walked away from, once a second.
