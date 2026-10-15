@@ -14,7 +14,8 @@ TEST_CASE("scan codes map to Unity key codes")
     CHECK(KeyFromScanCode(0x2E) == 99);   // C (crouch)
     CHECK(KeyFromScanCode(0x21) == 102);  // F (use)
     CHECK(KeyFromScanCode(0x19) == 112);  // P (urinate)
-    CHECK(KeyFromScanCode(0x32) == 109);  // M
+    CHECK(KeyFromScanCode(0x31) == 110);  // N (swear)
+    CHECK(KeyFromScanCode(0x2C) == 122);  // Z (finger while handed over)
     CHECK(KeyFromScanCode(0x02) == 49);   // Alpha1
     CHECK(KeyFromScanCode(0x0B) == 48);   // Alpha0
     CHECK(KeyFromScanCode(0x2A) == 304);  // LeftShift (run)
@@ -35,6 +36,7 @@ TEST_CASE("keys that stay with Skyrim never reach MSC")
     CHECK(KeyFromScanCode(kDikF5) == KeyCode::None);  // quicksave
     CHECK(KeyFromScanCode(kDikF9) == KeyCode::None);  // quickload
     CHECK(KeyFromScanCode(kDikF10) == KeyCode::None);
+    CHECK(KeyFromScanCode(kDikM) == KeyCode::None);  // Skyrim's map
 }
 
 TEST_CASE("mouse buttons map to Mouse0..Mouse6, the wheel to nothing")
@@ -115,4 +117,12 @@ TEST_CASE("a paused game sends no keys or axes but keeps the mouse totals")
     b.ReleaseAll();
     CHECK(!b.IsKeyDown(KeyCode::W));
     CHECK(b.Build(0, false, true).flags == 0);
+}
+
+TEST_CASE("a game paused by a menu tells MSC to freeze, only while MSC owns the player")
+{
+    Builder b;
+    CHECK(b.Build(0, true, false, true).flags == (Protocol::kInputOwnsPlayer | Protocol::kInputPaused));
+    CHECK(b.Build(0, true, false, false).flags == Protocol::kInputOwnsPlayer);  // dialogue: no keys, time runs
+    CHECK(b.Build(0, false, false, true).flags == 0);
 }

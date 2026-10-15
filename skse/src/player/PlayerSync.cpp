@@ -105,13 +105,20 @@ namespace PerkeleRim::PlayerSync
             return ui && (ui->GameIsPaused() || ui->IsMenuOpen(RE::CursorMenu::MENU_NAME));
         }
 
-        void Publish(bool a_paused = MenuHasInput())
+        // A menu pauses the game (Escape, the map, inventories): MSC freezes its time as well.
+        bool GamePaused()
+        {
+            auto* ui = RE::UI::GetSingleton();
+            return ui && ui->GameIsPaused();
+        }
+
+        void Publish(bool a_menu = MenuHasInput(), bool a_paused = GamePaused())
         {
             auto& link = LinkService::Get();
             if (!link.IsUp()) {
                 return;
             }
-            auto       input = state.input.Build(++state.inputFrame, state.owned, !a_paused);
+            auto       input = state.input.Build(++state.inputFrame, state.owned, !a_menu, a_paused);
             const auto screen = RE::BSGraphics::Renderer::GetScreenSize();
             input.screenWidth = screen.width;  // MSC renders its hand layer this size
             input.screenHeight = screen.height;
@@ -729,9 +736,10 @@ namespace PerkeleRim::PlayerSync
             static inline REL::Relocation<decltype(thunk)> original;
         };
 
-        // MSC's own keys open Skyrim's menus too (M map, P magic, J journal, I inventory, T wait),
-        // and a menu pauses Skyrim and with it MSC's input. While MSC has the player only Escape
-        // (Skyrim's system menu) and Tab still open menus from the keyboard.
+        // MSC's own keys open Skyrim's menus too (P magic, J journal, I inventory, T wait), and a
+        // menu pauses Skyrim and with it MSC. While MSC has the player only Escape (Skyrim's system
+        // menu), Tab and M (the map; it never reaches MSC, whose finger moves to Z) still open menus
+        // from the keyboard.
         struct MenuOpenHook
         {
             static bool thunk(RE::MenuOpenHandler* a_handler, RE::InputEvent* a_event)
@@ -739,7 +747,7 @@ namespace PerkeleRim::PlayerSync
                 if (state.owned && a_event && a_event->GetDevice() == RE::INPUT_DEVICE::kKeyboard) {
                     if (auto* button = a_event->AsButtonEvent()) {
                         const auto key = button->GetIDCode();
-                        if (key != Input::kDikEscape && key != Input::kDikTab) {
+                        if (key != Input::kDikEscape && key != Input::kDikTab && key != Input::kDikM) {
                             return false;
                         }
                     }
@@ -832,7 +840,7 @@ namespace PerkeleRim::PlayerSync
                         auto  menu = ui ? ui->GetMenu(a_event->menuName) : nullptr;
                         pauses = menu && menu->PausesGame();
                     }
-                    Publish(pauses || MenuHasInput());
+                    Publish(pauses || MenuHasInput(), pauses || GamePaused());
                 }
                 return RE::BSEventNotifyControl::kContinue;
             }

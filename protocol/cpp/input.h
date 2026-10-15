@@ -30,13 +30,14 @@ namespace PerkeleRim::Input
 
     // Scan codes that stay with Skyrim and never reach MSC: Escape and Tab open Skyrim's menus,
     // ~ opens the console, F5 and F9 quicksave and quickload (MSC would switch its cinematic camera),
-    // F10 toggles who owns the player.
+    // F10 toggles who owns the player, M opens Skyrim's map (MSC's finger moves to Z, see KeyRemap.cs).
     inline constexpr std::uint32_t kDikEscape = 0x01;
     inline constexpr std::uint32_t kDikTab = 0x0F;
     inline constexpr std::uint32_t kDikGrave = 0x29;
     inline constexpr std::uint32_t kDikF5 = 0x3F;
     inline constexpr std::uint32_t kDikF9 = 0x43;
     inline constexpr std::uint32_t kDikF10 = 0x44;
+    inline constexpr std::uint32_t kDikM = 0x32;
 
     // DirectInput scan code -> Unity KeyCode, None for keys MSC doesn't get.
     constexpr std::uint16_t KeyFromScanCode(std::uint32_t a_dik)
@@ -47,6 +48,7 @@ namespace PerkeleRim::Input
         constexpr const char* kRowZ = "zxcvbnm";     // 0x2C..0x32
         if (a_dik >= 0x10 && a_dik <= 0x19) return static_cast<std::uint16_t>(kRowQ[a_dik - 0x10]);
         if (a_dik >= 0x1E && a_dik <= 0x26) return static_cast<std::uint16_t>(kRowA[a_dik - 0x1E]);
+        if (a_dik == kDikM) return KeyCode::None;
         if (a_dik >= 0x2C && a_dik <= 0x32) return static_cast<std::uint16_t>(kRowZ[a_dik - 0x2C]);
         if (a_dik >= 0x02 && a_dik <= 0x0A) return static_cast<std::uint16_t>(49 + (a_dik - 0x02));  // Alpha1..Alpha9
         if (a_dik == kDikF5 || a_dik == kDikF9) return KeyCode::None;
@@ -168,12 +170,16 @@ namespace PerkeleRim::Input
             }
         }
 
-        // a_live false (a Skyrim menu pauses the game): no keys or axes, so MSC stands still.
-        Protocol::InputState Build(std::uint32_t a_frame, bool a_ownsPlayer, bool a_live) const
+        // a_live false (a Skyrim menu has the input): no keys or axes, so MSC stands still.
+        // a_paused (that menu pauses the game, e.g. Escape or the map): MSC freezes its time too.
+        Protocol::InputState Build(std::uint32_t a_frame, bool a_ownsPlayer, bool a_live, bool a_paused = false) const
         {
             Protocol::InputState s{};
             s.frame = a_frame;
             s.flags = a_ownsPlayer ? Protocol::kInputOwnsPlayer : 0;
+            if (a_ownsPlayer && a_paused) {
+                s.flags |= Protocol::kInputPaused;
+            }
             s.mouseX = _mouseX;
             s.mouseY = _mouseY;
             s.mouseWheel = _mouseWheel;

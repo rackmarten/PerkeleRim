@@ -18,6 +18,20 @@ Inspired by [SkyCraft](https://github.com/chasmlol/SkyCraft), which couples Mine
 
 Details: [docs/DESIGN.md](docs/DESIGN.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
+## Keys
+
+F10 hands the player to My Summer Car and back. While MSC has the player you never need its window: WASD and the mouse are MSC's, Skyrim keeps Escape (pauses both games), Tab, M (map), F5/F9 and the console, and MSC's hand actions sit next to WASD:
+
+| Key | Action |
+|---|---|
+| Left / right click (free hands) | punch / guard (Skyrim blocks) |
+| Z | middle finger, Skyrim shouts Fus |
+| Middle click | swear |
+| X / G / T / B (on foot) | piss / push / hitchhike thumb / smoke |
+| Y, 3 to 8 | pocket (Skyrim's inventory) |
+
+Driving, X, G, T and B are MSC's clutch, shifting and boost again. MSC's own keys (N, P, O, J, I, ...) still work. Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).
+
 ## Requirements (planned)
 
 - Windows 10/11

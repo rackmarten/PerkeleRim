@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 22;
+        public const uint ProtocolVersion = 23;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -28,6 +28,7 @@ namespace PerkeleRim.Protocol
         public const uint MappingSize = 4465536;
 
         public const uint InputOwnsPlayer = 0x1;
+        public const uint InputPaused = 0x2;
         public const uint PlayerValid = 0x1;
         public const uint PlayerCamera = 0x2;
         public const uint PlayerNeeds = 0x4;

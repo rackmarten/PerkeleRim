@@ -49,6 +49,8 @@ namespace PerkeleRim.Game
         readonly InputFrame input = new InputFrame();
         readonly PunchButton punch = new PunchButton();
         readonly BlockButton block = new BlockButton();
+        readonly KeyRemap remap = new KeyRemap();
+        readonly PauseClock clock = new PauseClock();
         int hitKey = (int)KeyCode.H;  // MSC's Hit binding, read once the player is found
         int watchKey = (int)KeyCode.U;  // MSC's Watch binding, likewise
         Action<string> log;
@@ -152,18 +154,21 @@ namespace PerkeleRim.Game
             {
                 input.Reset();
                 InputShim.Active = false;
+                Freeze(false);
                 return;
             }
 
             // Keep the mouse totals current even while Skyrim owns the player, so taking over
             // doesn't start with a jump.
             input.Update(ref s);
+            Freeze(input.Paused);
             InputShim.Active = input.OwnsPlayer;
             if (!input.OwnsPlayer) { punch.Reset(); block.Reset(); return; }
             var state = functions != null ? functions.ActiveStateName : null;
             bool free = HandsFree(BlockButton.Watching(state));
             block.Apply(input.Keys, free, watchKey, hitKey, state, Time.realtimeSinceStartup);
             punch.Apply(input.Keys, free, hitKey, Time.realtimeSinceStartup);
+            remap.Apply(input.Keys, Driven() != null);
             pocket.Keys(input.Keys);
 
             // The pocket keys are PerkeleRim's alone.
@@ -174,6 +179,18 @@ namespace PerkeleRim.Game
             InputShim.Axes["Mouse ScrollWheel"] = input.MouseWheel;  // radio tuning, among others
             InputShim.Axes["Horizontal"] = input.Horizontal;
             InputShim.Axes["Vertical"] = input.Vertical;
+        }
+
+        // Skyrim paused by a menu (Escape, the map): MSC's time and sound stand still until it runs
+        // again (a frozen time scale alone leaves the engine and radio playing).
+        void Freeze(bool paused)
+        {
+            bool was = clock.Frozen;
+            float scale = clock.Apply(paused, Time.timeScale);
+            if (scale != Time.timeScale) Time.timeScale = scale;
+            if (clock.Frozen == was) return;
+            AudioListener.pause = clock.Frozen;
+            log(clock.Frozen ? "player: Skyrim paused, MSC's time and sound frozen" : $"player: Skyrim runs again, time scale {scale:0.##}");
         }
 
         // ---- Frame ----
@@ -383,8 +400,8 @@ namespace PerkeleRim.Game
                    !PocketLink.Carrying() && PocketLink.Aimed() == null;  // an item MSC picks up shows no prompt (empty bottles)
         }
 
-        // The keys MSC's Hit action (its punch) and Watch action are bound to, H and U unless the
-        // player changed them.
+        // The keys MSC's Hit action (its punch), Watch action and the remapped hand actions
+        // (KeyRemap) are bound to, MSC's defaults unless the player changed them.
         void ReadBindings()
         {
             try
@@ -392,17 +409,20 @@ namespace PerkeleRim.Game
                 for (int i = 0; i < cInput.length; i++)
                 {
                     var action = cInput.GetText(i, 0);
-                    if (action == "Hit")
-                        hitKey = (int)(KeyCode)Enum.Parse(typeof(KeyCode), cInput.GetText(i, 1), true);
-                    else if (action == "Watch")
-                        watchKey = (int)(KeyCode)Enum.Parse(typeof(KeyCode), cInput.GetText(i, 1), true);
+                    KeyCode key;
+                    try { key = (KeyCode)Enum.Parse(typeof(KeyCode), cInput.GetText(i, 1), true); }
+                    catch (ArgumentException) { continue; }  // unbound or not a KeyCode
+                    if (action == "Hit") hitKey = (int)key;
+                    else if (action == "Watch") watchKey = (int)key;
+                    else remap.Bind(action, (int)key);
                 }
             }
             catch (Exception e)
             {
-                log($"player: could not read MSC's Hit and Watch bindings, using {(KeyCode)hitKey} and {(KeyCode)watchKey}: " + e.Message);
+                log($"player: could not read MSC's bindings, using {(KeyCode)hitKey} and {(KeyCode)watchKey} for Hit and Watch: " + e.Message);
             }
             log($"player: left click with free hands punches (MSC's Hit key {(KeyCode)hitKey}), right click guards (its Watch key {(KeyCode)watchKey})");
+            log($"player: Z finger ({(KeyCode)remap.KeyOf("Finger")}), middle click swear ({(KeyCode)remap.KeyOf("Swear")}); on foot X piss ({(KeyCode)remap.KeyOf("Urinate")}), G push ({(KeyCode)remap.KeyOf("Push")}), T thumb ({(KeyCode)remap.KeyOf("Hitchhike")}), B smoke ({(KeyCode)remap.KeyOf("Smoking")})");
         }
 
         // Every ground surface MSC's map uses (tag + physics material, with friction), once, to pick
@@ -900,6 +920,7 @@ namespace PerkeleRim.Game
         void OnDestroy()
         {
             if (InputShim.Feed == FeedInput) InputShim.Feed = null;
+            Freeze(false);
         }
     }
 }

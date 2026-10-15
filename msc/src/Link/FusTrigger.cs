@@ -1,9 +1,9 @@
 namespace PerkeleRim
 {
-    // MSC's middle finger (M) casts Fus in Skyrim. The gesture starts when the player's
-    // PlayerFunctions FSM enters Finger (from Check hand 3, which refuses while the left hand is
-    // busy; docs/FSM_MAP.md), read once a frame. A start fires at most once per Cooldown, so
-    // spamming M shouts no faster than that. Unity-free.
+    // MSC's middle finger (Z while handed over) casts Fus in Skyrim. The gesture starts when the
+    // player's PlayerFunctions FSM enters Finger (from Check hand 3, which refuses while the left
+    // hand is busy; docs/FSM_MAP.md), read once a frame. A start fires at most once per Cooldown, so
+    // spamming Z shouts no faster than that. Unity-free.
     public sealed class FusTrigger
     {
         public const float Cooldown = 1.5f;  // seconds

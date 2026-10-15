@@ -12,6 +12,7 @@ namespace PerkeleRim
         double lastMouseX, lastMouseY, lastMouseWheel;
 
         public bool OwnsPlayer { get; private set; }
+        public bool Paused { get; private set; }  // a Skyrim menu pauses the game (only while OwnsPlayer)
         public float MouseX { get; private set; }
         public float MouseY { get; private set; }
         public float MouseWheel { get; private set; }
@@ -29,6 +30,7 @@ namespace PerkeleRim
             // giant turn.
             bool wasOwned = OwnsPlayer;
             OwnsPlayer = (s.flags & Wire.InputOwnsPlayer) != 0;
+            Paused = OwnsPlayer && (s.flags & Wire.InputPaused) != 0;
             bool fresh = seeded && wasOwned && OwnsPlayer;
             MouseX = fresh ? (float)(s.mouseX - lastMouseX) : 0f;
             MouseY = fresh ? (float)(s.mouseY - lastMouseY) : 0f;
@@ -52,6 +54,7 @@ namespace PerkeleRim
         {
             seeded = false;
             OwnsPlayer = false;
+            Paused = false;
             MouseX = MouseY = MouseWheel = Horizontal = Vertical = 0f;
             ScreenWidth = ScreenHeight = 0;
             Keys.Clear();
