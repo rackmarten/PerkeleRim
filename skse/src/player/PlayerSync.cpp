@@ -650,10 +650,6 @@ namespace PerkeleRim::PlayerSync
             hud.handsWidth = HandView::Width();
             hud.handsHeight = HandView::Height();
             hud.handsLight = HandView::Light(a_player);
-            if (auto* values = a_player->AsActorValueOwner()) {
-                const float max = values->GetPermanentActorValue(RE::ActorValue::kHealth);
-                hud.health = max > 0.0f ? values->GetActorValue(RE::ActorValue::kHealth) / max : 0.0f;
-            }
             Hud::Set(hud, second);  // refreshed once a second in case the HUD movie was rebuilt
             Drink::SetDrunk(state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, a_delta);
             if (second) {

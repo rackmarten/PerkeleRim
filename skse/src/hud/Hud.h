@@ -6,7 +6,7 @@
 // Our own layer in Skyrim's HUD movie while MSC owns the player: MSC's first-person hands under
 // everything else in the movie, a small dot at the screen center
 // (Skyrim hides its crosshair then), MSC's look-at prompt just below it (its hand icon for things
-// to use, and its text on a dark box so it reads in daylight), MSC's needs bars (and Skyrim's health) bottom left with the
+// to use, and its text on a dark box so it reads in daylight), MSC's needs bars bottom left (above Skyrim's own health meter) with the
 // pocket's slots next to them, and its subtitle line above Skyrim's own subtitles. Main thread; the Scaleform work runs as an SKSE UI
 // task.
 namespace PerkeleRim::Hud
@@ -19,7 +19,6 @@ namespace PerkeleRim::Hud
         std::string          subtitle;          // empty = none
         bool                 hasNeeds = false;  // needs below are MSC's
         std::array<float, 7> needs{};           // PlayerState.needs, kNeed* order
-        float                health = 0.0f;     // Skyrim's health, 0..1 of its max, under the needs
         std::string          pocket;            // the pocket's slots (Pocket::Hint), right of the needs bars; empty = none
         std::string          handsImage;        // MSC's first-person layer (HandView), full screen under the rest; empty = none
         std::uint32_t        handsWidth = 0, handsHeight = 0;  // its size in pixels
