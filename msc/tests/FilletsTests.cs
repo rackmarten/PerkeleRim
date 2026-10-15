@@ -188,6 +188,20 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void A_lip_at_the_top_of_a_hill_fades_out_down_the_hill_without_a_shelf()
+        {
+            // A deck at 0 for x > 0, a 0.2 m lip, then a hill falling 0.4 in 1 (steeper than the ramp).
+            var m = new Mesh().Floor(0, 6, -3, 3, 0).Slope(-6, 0, -3, 3, -2.6f, -0.2f).Wall(0, -3, 3, -0.5f, 0);
+            var r = m.Fillet();
+            Assert.That(r.Added, Is.GreaterThan(0));
+            r.RampsFaceUp();
+            Assert.That(r.HeightAt(-0.25f, 0), Is.GreaterThan(-0.2f), "the lip is ramped");
+            for (float x = -0.25f; x > -3f; x -= 0.25f)
+                Assert.That(r.HeightAt(x, 0) - r.HeightAt(x - 0.25f, 0), Is.LessThan((0.4f + 0.2f) * 0.25f + 0.03f), $"no shelf below x = {x}: the hill plus the fading ramp");
+            Assert.That(r.HeightAt(-2f, 0), Is.EqualTo(-0.2f - 0.8f).Within(0.01f), "the hill below the ramp");
+        }
+
+        [Test]
         public void The_same_step_off_road_gets_no_ramp()
         {
             var why = new List<string>();

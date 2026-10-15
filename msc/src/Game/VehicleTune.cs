@@ -14,10 +14,15 @@ namespace PerkeleRim.Game
             public float CenterDrop;  // meters the center of mass goes down
             public float Spring;      // spring rate times this (and times Mass, so it sags as before)
             public float Travel;      // suspension travel times this
+            public float BottomLift;  // meters the body collider's bottom goes up
         }
 
-        public static readonly Settings Van = new Settings { Mass = 1.2f, CenterDrop = 0.2f, Spring = 0.85f, Travel = 1.2f };
+        // The van's wheels sit far behind its bumpers, so the body's overhang reached a lip or a ramp
+        // before the wheels and stopped the van dead. With its bottom lifted the overhang clips into
+        // the ground instead and the wheels climb.
+        public static readonly Settings Van = new Settings { Mass = 1.2f, CenterDrop = 0.2f, Spring = 0.85f, Travel = 1.2f, BottomLift = 0.25f };
         public static readonly Settings Moped = new Settings { Mass = 1.2f, CenterDrop = 0.1f, Spring = 1f, Travel = 1f };
+        const string BodyCollider = "CarCollider";
 
         // MSC sets things up in its own Start; tune after it.
         const float TuneDelay = 1f;
@@ -73,6 +78,7 @@ namespace PerkeleRim.Game
             mass0 = body.mass;
             tunedMass = mass0 * settings.Mass;
             body.mass = tunedMass;
+            if (settings.BottomLift > 0) LiftBottom();
             var center0 = body.centerOfMass;
             tunedCenter = center0 - Vector3.up * settings.CenterDrop;
             SetCenter(dynamics);
@@ -103,6 +109,57 @@ namespace PerkeleRim.Game
             }
             log($"vehicle tune: {name} mass {mass0:0} -> {tunedMass:0} kg, center of mass {center0} -> {tunedCenter}" +
                 (dynamics == null ? ", no CarDynamics (suspension left alone)" : $", suspension x{settings.Mass * settings.Spring:0.##} rate x{settings.Travel:0.##} travel, was{sb}"));
+        }
+
+        // Moves the bottom of the body colliders up by BottomLift (in the car's space), the top stays.
+        // A box gets shorter; a mesh has the vertices below the new bottom moved up to it.
+        void LiftBottom()
+        {
+            foreach (var c in car.GetComponentsInChildren<Collider>(true))
+            {
+                if (c.isTrigger || c.name != BodyCollider) continue;
+                var t = c.transform;
+                var box = c as BoxCollider;
+                var mesh = c as MeshCollider;
+                if (box != null)
+                {
+                    // Assumes the box is upright in the car (MSC's are); its local y is the car's.
+                    float scale = Mathf.Abs(t.lossyScale.y / car.lossyScale.y);
+                    float lift = Mathf.Min(settings.BottomLift / Mathf.Max(scale, 1e-4f), box.size.y * 0.5f);
+                    box.center += Vector3.up * lift * 0.5f;
+                    box.size -= Vector3.up * lift;
+                    log($"vehicle tune: {name} {c.name} box bottom up {lift * scale:0.00} m");
+                }
+                else if (mesh != null && mesh.sharedMesh != null)
+                {
+                    Vector3[] v;
+                    try { v = mesh.sharedMesh.vertices; }
+                    catch (Exception e) { log($"vehicle tune: {name} {c.name} mesh not readable: {e.Message}"); continue; }
+                    float bottom = float.MaxValue;
+                    var inCar = new Vector3[v.Length];
+                    for (int i = 0; i < v.Length; i++)
+                    {
+                        inCar[i] = car.InverseTransformPoint(t.TransformPoint(v[i]));
+                        bottom = Mathf.Min(bottom, inCar[i].y);
+                    }
+                    float floor = bottom + settings.BottomLift;
+                    int moved = 0;
+                    for (int i = 0; i < v.Length; i++)
+                        if (inCar[i].y < floor)
+                        {
+                            inCar[i].y = floor;
+                            v[i] = t.InverseTransformPoint(car.TransformPoint(inCar[i]));
+                            moved++;
+                        }
+                    var lifted = UnityEngine.Object.Instantiate(mesh.sharedMesh);
+                    lifted.vertices = v;
+                    lifted.RecalculateBounds();
+                    mesh.sharedMesh = null;  // makes PhysX cook the new mesh
+                    mesh.sharedMesh = lifted;
+                    log($"vehicle tune: {name} {c.name} mesh bottom {bottom:0.00} -> {floor:0.00} m in the car, {moved}/{v.Length} vertices moved{(mesh.convex ? "" : ", not convex")}");
+                }
+                else log($"vehicle tune: {name} {c.name} is a {c.GetType().Name}, bottom left alone");
+            }
         }
 
         void SetCenter(CarDynamics dynamics)

@@ -8,10 +8,14 @@ namespace PerkeleRim
     // the body slamming into them. Skyrim's character controller steps over such lips; the van can't.
     //
     // The chunk's top surface is sampled on a Cell grid. Every deck point (level ground at least
-    // about a meter across, so not a fence or railing top) next to a drop lays a RampSlope slope out
-    // from itself, and lower ground under that slope is raised to it, as long as the drop from the
-    // deck is MinLip..MaxLip. Taller drops (walls, the bridge's sides, cliffs) stay as they are. The
-    // raised grid squares become the ramp triangles. How the steps are triangulated doesn't matter.
+    // about a meter across, so not a fence or railing top) next to a step of MinLip..MaxLip (measured
+    // down to the step's foot, where the ground stops falling steeper than StepSlope) raises the
+    // ground around it by the step's height, less RampSlope per meter out from the deck, and never
+    // above the deck's own RampSlope slope. So on flat ground the ramp is a plain 1 in 5, and where
+    // the ground beyond falls away (a lip at the top of a hill) the ramp follows it down and fades
+    // out instead of ending in a shelf. Taller steps (walls, the bridge's sides, cliffs) stay as
+    // they are. The raised grid squares become the ramp triangles. How the steps are triangulated
+    // doesn't matter.
     // Only Skyrim's roads get ramps (navmesh triangles flagged preferred, see CollisionChunk.Roads):
     // a deck point lays a slope only when it and its four neighbors are inside road triangles, and
     // a point it raises must be within RoadMargin of one, so stones, rocks and railings beside the
@@ -24,6 +28,7 @@ namespace PerkeleRim
         public const float Cell = 0.25f;
         public const float RoadMargin = 0.75f;
         const float RampSlope = 0.2f;      // rise over run, ~11 degrees
+        const float StepSlope = 0.5f;      // ground falling steeper than this (~27 degrees) is the step's face
         const float SurfaceY = 0.1f;       // normal.y above this: part of the top surface
         const float DeckTolerance = 0.15f;
         const int DeckReach = 2;           // a deck point is level with most points this many cells around
@@ -55,23 +60,23 @@ namespace PerkeleRim
                     deck[i * nz + j] = IsDeck(h, nx, nz, i, j);
             var road = RoadMask(roads, minX, minZ, nx, nz);
 
-            // Lay the slope out from every deck point with a drop next to it.
+            // Raise the ground around every deck point with a step next to it.
             var f = (float[])h.Clone();
-            int reach = (int)Math.Ceiling(MaxLip / RampSlope / Cell);
             for (int i = 0; i < nx; i++)
                 for (int j = 0; j < nz; j++)
                 {
                     int s = i * nz + j;
                     if (!deck[s] || !RoadAround(road, nx, nz, i, j) || !HasDrop(h, nx, nz, i, j)) continue;
-                    float top = h[s];
+                    float top = h[s], lip = Lip(h, nx, nz, i, j);
+                    if (lip < MinLip) continue;
+                    int reach = (int)Math.Ceiling(lip / RampSlope / Cell);
                     for (int a = Math.Max(0, i - reach); a <= Math.Min(nx - 1, i + reach); a++)
                         for (int b = Math.Max(0, j - reach); b <= Math.Min(nz - 1, j + reach); b++)
                         {
                             int t = a * nz + b;
-                            float drop = top - h[t];
-                            if (float.IsNaN(drop) || drop < MinLip || drop > MaxLip || road[t] == 0) continue;
+                            if (float.IsNaN(h[t]) || road[t] == 0) continue;
                             float run = (float)Math.Sqrt((a - i) * (a - i) + (b - j) * (b - j)) * Cell;
-                            float y = top - run * RampSlope;
+                            float y = Math.Min(top - run * RampSlope, h[t] + lip - run * RampSlope);
                             if (y > f[t]) f[t] = y;
                         }
                 }
@@ -237,6 +242,32 @@ namespace PerkeleRim
             float a = after < 0 || float.IsNaN(h[after]) ? float.NaN : Math.Abs(h[after] - y);
             float d = float.IsNaN(b) ? a : float.IsNaN(a) ? b : Math.Min(a, b);
             return float.IsNaN(d) ? 0 : d / (DeckReach * Cell);
+        }
+
+        // The height of the tallest step of at most MaxLip down from (i, j): along each of the eight
+        // directions, the drop to where the ground stops falling steeper than StepSlope. A taller
+        // step that way is a wall and doesn't count; 0 if there is none.
+        static float Lip(float[] h, int nx, int nz, int i, int j)
+        {
+            float top = h[i * nz + j], lip = 0;
+            int limit = (int)Math.Ceiling(MaxLip / StepSlope / Cell) + 1;
+            for (int di = -1; di <= 1; di++)
+                for (int dj = -1; dj <= 1; dj++)
+                {
+                    if (di == 0 && dj == 0) continue;
+                    float run = (di != 0 && dj != 0 ? 1.4142f : 1f) * Cell, prev = top;
+                    for (int k = 1; k <= limit; k++)
+                    {
+                        int a = i + k * di, b = j + k * dj;
+                        if (a < 0 || a >= nx || b < 0 || b >= nz) break;
+                        float y = h[a * nz + b];
+                        if (float.IsNaN(y) || prev - y <= StepSlope * run) break;
+                        prev = y;
+                    }
+                    float drop = top - prev;
+                    if (drop <= MaxLip && drop > lip) lip = drop;
+                }
+            return lip;
         }
 
         // A neighbor more than MinLip lower than the ramp would be there: a step, not just a slope
