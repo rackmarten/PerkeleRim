@@ -44,6 +44,9 @@ namespace PerkeleRim
         // Beer and food are used at once (drunk, eaten); an empty bottle comes out into the hand.
         public static bool Consumable(int kind) => kind != None && kind != (int)Wire.PocketBottle && kind != (int)Wire.PocketCigarettes;
 
+        // Seated in a vehicle only beer and food are used (3, 5 to 8); nothing goes in or out of the hand.
+        public static bool WorksInVehicle(int keyCode) => Consumable(KindOfSlot(SlotOfKey(keyCode)));
+
         public static int KindOfSlot(int slot) => slot >= 0 && slot < SlotKinds.Length ? SlotKinds[slot] : None;
 
         public static int SlotOfKind(int kind)

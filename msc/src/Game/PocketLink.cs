@@ -183,7 +183,7 @@ namespace PerkeleRim.Game
             return b != null && b.Value;
         }
 
-        // Not while driving or riding.
+        // Driving or riding: only eating and drinking (Pocket.WorksInVehicle).
         static bool InVehicle()
         {
             var vehicle = FsmVariables.GlobalVariables.FindFsmString("PlayerCurrentVehicle");
@@ -215,10 +215,12 @@ namespace PerkeleRim.Game
             if (hand == null) { log("pocket: no pick-up hand (" + HandPath + ")"); return; }
             string state = hand.ActiveStateName;
             bool holding = Holding(state);
-            // As MSC's own checks: a tool, ax or flashlight out keeps the pick-up hand busy; smoking doesn't.
-            if ((!holding && state != "Look for object") || InVehicle())
+            // As MSC's own checks: a tool, ax or flashlight out keeps the pick-up hand busy; smoking
+            // doesn't. Seated, the hand doesn't matter: only beer and food work there.
+            bool inVehicle = InVehicle();
+            if (inVehicle ? !Pocket.WorksInVehicle(key) : !holding && state != "Look for object")
             {
-                log($"pocket: hands busy ({state}{(InVehicle() ? ", in a vehicle" : "")}), key {(KeyCode)key} ignored");
+                log($"pocket: {(inVehicle ? "in a vehicle" : "hands busy (" + state + ")")}, key {(KeyCode)key} ignored");
                 return;
             }
             var held = holding ? hand.FsmVariables.FindFsmGameObject("PickedObject").Value : null;

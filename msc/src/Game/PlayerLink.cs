@@ -422,7 +422,9 @@ namespace PerkeleRim.Game
                 log($"player: could not read MSC's bindings, using {(KeyCode)hitKey} and {(KeyCode)watchKey} for Hit and Watch: " + e.Message);
             }
             log($"player: left click with free hands punches (MSC's Hit key {(KeyCode)hitKey}), right click guards (its Watch key {(KeyCode)watchKey})");
-            log($"player: Z finger ({(KeyCode)remap.KeyOf("Finger")}), middle click swear ({(KeyCode)remap.KeyOf("Swear")}); on foot X piss ({(KeyCode)remap.KeyOf("Urinate")}), G push ({(KeyCode)remap.KeyOf("Push")}), T thumb ({(KeyCode)remap.KeyOf("Hitchhike")}), B smoke ({(KeyCode)remap.KeyOf("Smoking")})");
+            log($"player: V finger ({(KeyCode)remap.KeyOf("Finger")}), middle click swear ({(KeyCode)remap.KeyOf("Swear")}), C smoke ({(KeyCode)remap.KeyOf("Smoking")}), B zoom ({(KeyCode)remap.KeyOf("Zoom")}); " +
+                $"on foot X piss ({(KeyCode)remap.KeyOf("Urinate")}), G push ({(KeyCode)remap.KeyOf("Push")}), T thumb ({(KeyCode)remap.KeyOf("Hitchhike")}), Ctrl crouch ({(KeyCode)remap.KeyOf("Crouch")}); " +
+                $"driving Shift gear up ({(KeyCode)remap.KeyOf("ShiftUp")}), Ctrl gear down ({(KeyCode)remap.KeyOf("ShiftDown")})");
         }
 
         // Every ground surface MSC's map uses (tag + physics material, with friction), once, to pick

@@ -30,7 +30,7 @@ namespace PerkeleRim::Input
 
     // Scan codes that stay with Skyrim and never reach MSC: Escape and Tab open Skyrim's menus,
     // ~ opens the console, F5 and F9 quicksave and quickload (MSC would switch its cinematic camera),
-    // F10 toggles who owns the player, M opens Skyrim's map (MSC's finger moves to Z, see KeyRemap.cs).
+    // F10 toggles who owns the player, M opens Skyrim's map (MSC's finger moves to V, see KeyRemap.cs).
     inline constexpr std::uint32_t kDikEscape = 0x01;
     inline constexpr std::uint32_t kDikTab = 0x0F;
     inline constexpr std::uint32_t kDikGrave = 0x29;

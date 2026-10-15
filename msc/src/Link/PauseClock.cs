@@ -1,10 +1,13 @@
 namespace PerkeleRim
 {
     // Freezes MSC's time while a Skyrim menu pauses Skyrim (Escape, the map), so nothing rolls or
-    // drains behind the menu, and gives back the time scale MSC had once Skyrim runs again.
-    // Unity-free: the caller sets Time.timeScale to what Apply returns.
+    // drains behind the menu, and gives back the time scale MSC had once Skyrim runs again. Frozen
+    // is a tiny scale, not 0: MSC's character motor divides by Time.deltaTime, and a 0 there turned
+    // the player's position into NaN. Unity-free: the caller sets Time.timeScale to what Apply returns.
     public sealed class PauseClock
     {
+        public const float FrozenScale = 0.0001f;  // a minute of menu is 6 ms of MSC
+
         float saved = 1f;
 
         public bool Frozen { get; private set; }
@@ -22,7 +25,7 @@ namespace PerkeleRim
                 Frozen = false;
                 return saved;
             }
-            return Frozen ? 0f : current;
+            return Frozen ? FrozenScale : current;
         }
     }
 }

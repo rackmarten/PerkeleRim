@@ -97,6 +97,16 @@ namespace PerkeleRim::PlayerSync
         // learned into the seat would shift the van under the camera and stay there once driving.
         constexpr float kCameraSeatLearnRoll = 0.03f;  // radians against the van, about 2 degrees
 
+        bool Finite(const Protocol::PlayerState& a_pose)
+        {
+            for (int i = 0; i < 3; ++i) {
+                if (!std::isfinite(a_pose.position[i]) || !std::isfinite(a_pose.velocity[i]) || !std::isfinite(a_pose.eye[i])) {
+                    return false;
+                }
+            }
+            return std::isfinite(a_pose.heading) && std::isfinite(a_pose.pitch) && std::isfinite(a_pose.roll) && std::isfinite(a_pose.fov);
+        }
+
         // A Skyrim menu has the input: the game is paused, or it shows its cursor (dialogue, which
         // doesn't pause). MSC then gets no keys and its mouse stands still.
         bool MenuHasInput()
@@ -540,8 +550,10 @@ namespace PerkeleRim::PlayerSync
 
             // A pose for an older anchor would put the player back where it came from.
             Protocol::PlayerState pose{};
+            // A pose that isn't finite (a NaN out of MSC's physics) would put the camera at NaN and
+            // wreck Skyrim's rendering, so it's skipped like an invalid one.
             const bool            valid = link.ReadPlayer(pose) && (pose.flags & Protocol::kPlayerValid) != 0 &&
-                               pose.generation == state.generation;
+                               pose.generation == state.generation && Finite(pose);
             Protocol::VehicleState vehicle{};
             const bool             hasVehicle = link.ReadVehicle(vehicle);
             const bool             seated = valid && hasVehicle && (vehicle.flags & Protocol::kVehicleDriven) != 0 &&
@@ -706,9 +718,9 @@ namespace PerkeleRim::PlayerSync
         };
 
         // Skyrim's own reaction to keys MSC uses: moving, looking, jumping (Space), sneaking (Ctrl,
-        // MSC's zoom), first or third person (F, MSC's use; the wheel, MSC's radio dial), autorun (C,
-        // MSC's crouch), running, attacking and blocking (MSC's mouse buttons), drawing (R) and
-        // shouting (Z, MSC's handbrake). Each handler's CanProcess refuses while MSC has the player.
+        // MSC's crouch), first or third person (F, MSC's use; the wheel, MSC's radio dial), autorun (C,
+        // smoking), running, sprinting (Alt, MSC's piss), attacking and blocking (MSC's mouse buttons)
+        // and drawing (R). Each handler's CanProcess refuses while MSC has the player. Shouting (Z) stays Skyrim's.
         // One instance per handler (N).
         template <class T, int N>
         struct BlockHook
@@ -738,7 +750,7 @@ namespace PerkeleRim::PlayerSync
 
         // MSC's own keys open Skyrim's menus too (P magic, J journal, I inventory, T wait), and a
         // menu pauses Skyrim and with it MSC. While MSC has the player only Escape (Skyrim's system
-        // menu), Tab and M (the map; it never reaches MSC, whose finger moves to Z) still open menus
+        // menu), Tab and M (the map; it never reaches MSC, whose finger moves to V) still open menus
         // from the keyboard.
         struct MenuOpenHook
         {
@@ -870,8 +882,7 @@ namespace PerkeleRim::PlayerSync
         BlockHook<RE::PlayerInputHandler, 10>::Install(RE::VTABLE_ReadyWeaponHandler[0]);
         BlockHook<RE::PlayerInputHandler, 11>::Install(RE::VTABLE_FirstPersonState[1]);  // its zoom and POV keys
         BlockHook<RE::PlayerInputHandler, 12>::Install(RE::VTABLE_ThirdPersonState[1]);
-        BlockHook<RE::PlayerInputHandler, 13>::Install(RE::VTABLE_ShoutHandler[0]);
-        SKSE::log::info("player sync: PlayerCharacter::Update and the CanProcess of the activate, favorites, menu, movement, look, jump, sneak, POV, attack, shout and camera input handlers hooked, F10 hands the player to MSC");
+        SKSE::log::info("player sync: PlayerCharacter::Update and the CanProcess of the activate, favorites, menu, movement, look, jump, sneak, POV, attack and camera input handlers hooked (shouting stays Skyrim's, Z), F10 hands the player to MSC");
     }
 
     void OnDataLoaded()

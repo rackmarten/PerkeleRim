@@ -15,7 +15,7 @@ TEST_CASE("scan codes map to Unity key codes")
     CHECK(KeyFromScanCode(0x21) == 102);  // F (use)
     CHECK(KeyFromScanCode(0x19) == 112);  // P (urinate)
     CHECK(KeyFromScanCode(0x31) == 110);  // N (swear)
-    CHECK(KeyFromScanCode(0x2C) == 122);  // Z (finger while handed over)
+    CHECK(KeyFromScanCode(0x2F) == 118);  // V (finger while handed over)
     CHECK(KeyFromScanCode(0x02) == 49);   // Alpha1
     CHECK(KeyFromScanCode(0x0B) == 48);   // Alpha0
     CHECK(KeyFromScanCode(0x2A) == 304);  // LeftShift (run)

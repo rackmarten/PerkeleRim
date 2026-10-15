@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace PerkeleRim.Game
 {
-    // MSC's middle finger (Z while handed over, KeyRemap) casts Fus in Skyrim: when PlayerFunctions
+    // MSC's middle finger (V while handed over, KeyRemap) casts Fus in Skyrim: when PlayerFunctions
     // starts the Finger gesture (FusTrigger, at most once per cooldown), Skyrim gets a MiddleFinger
     // along MSC's camera. On foot and in vehicles alike. Swearing stays MSC's own.
     public unsafe class FusLink

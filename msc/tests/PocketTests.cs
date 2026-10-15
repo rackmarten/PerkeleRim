@@ -59,6 +59,13 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void InAVehicleOnlyBeerAndFoodWork()
+        {
+            Assert.That(Pocket.WorksInVehicle(Key3) && Pocket.WorksInVehicle(Key5) && Pocket.WorksInVehicle(Key8), Is.True);
+            Assert.That(Pocket.WorksInVehicle(Y) || Pocket.WorksInVehicle(Key4) || Pocket.WorksInVehicle(Key9), Is.False);
+        }
+
+        [Test]
         public void EmptyBottlesComeOutSwapAndGoBack()
         {
             Assert.That(Pocket.Decide(Key4, Pocket.None, false, Pocket.None, 2), Is.EqualTo(Pocket.Action.Take));

@@ -25,12 +25,16 @@ F10 hands the player to My Summer Car and back. While MSC has the player you nev
 | Key | Action |
 |---|---|
 | Left / right click (free hands) | punch / guard (Skyrim blocks) |
-| Z | middle finger, Skyrim shouts Fus |
+| V | middle finger, Skyrim shouts Fus |
+| Z | Skyrim's shout or power, as usual |
+| Alt (hold) | piss |
 | Middle click | swear |
-| X / G / T / B (on foot) | piss / push / hitchhike thumb / smoke |
-| Y, 3 to 8 | pocket (Skyrim's inventory) |
+| C / B | smoke / zoom |
+| Ctrl / G / T (on foot) | crouch / push / hitchhike thumb |
+| Shift / Ctrl (driving) | shift up / down |
+| Y, 3 to 8 | pocket (Skyrim's inventory); driving, 3 and 5 to 8 drink and eat |
 
-Driving, X, G, T and B are MSC's clutch, shifting and boost again. MSC's own keys (N, P, O, J, I, ...) still work. Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).
+Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, P, O, J, I, ...) still work. Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).
 
 ## Requirements (planned)
 
