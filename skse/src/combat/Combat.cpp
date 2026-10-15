@@ -14,6 +14,7 @@ namespace PerkeleRim::Combat
         constexpr RE::FormID    kPunchSpell = 0x904;   // PerkeleRimPunch: damage, magnitude set per cast
         constexpr RE::FormID    kStaggerSpell = 0x905;  // PerkeleRimPunchStagger
         constexpr RE::FormID    kPissSpell = 0x90E;     // PerkeleRimPiss: poison, magnitude (per second) set per cast
+        constexpr RE::FormID    kUnrelentingForce = 0x13E07;  // Skyrim.esm's shout
         constexpr float         kListUnits = 2800.0f;   // actors within 40 m go to MSC
         constexpr float         kPunchMaxUnits = 400.0f;  // a punch further than this away is stale
         constexpr float         kWatchUnits = 1000.0f;  // attackers the per-second log follows
@@ -38,6 +39,7 @@ namespace PerkeleRim::Combat
             RE::SpellItem*                punch = nullptr;
             RE::SpellItem*                stagger = nullptr;
             RE::SpellItem*                piss = nullptr;
+            RE::SpellItem*                fus = nullptr;  // Unrelenting Force's first word
             std::uint32_t                 frame = 0;
             bool                          sent = false;  // a non-empty list went out
             float                         statTime = 0.0f;
@@ -219,6 +221,11 @@ namespace PerkeleRim::Combat
         state.punch = data ? data->LookupForm<RE::SpellItem>(kPunchSpell, kPlugin) : nullptr;
         state.stagger = data ? data->LookupForm<RE::SpellItem>(kStaggerSpell, kPlugin) : nullptr;
         state.piss = data ? data->LookupForm<RE::SpellItem>(kPissSpell, kPlugin) : nullptr;
+        // Fus whether or not the player learned it: the word's spell, cast directly, needs no Dragon
+        // Souls and leaves the shout's own cooldown alone.
+        auto* shout = RE::TESForm::LookupByID<RE::TESShout>(kUnrelentingForce);
+        state.fus = shout ? shout->variations[RE::TESShout::VariationID::kOne].spell : nullptr;
+        SKSE::log::info("combat: middle finger shouts {}", state.fus ? state.fus->GetFullName() : "nothing (Unrelenting Force not found)");
         static HitSink hits;
         if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
             events->AddEventSink<RE::TESHitEvent>(&hits);
@@ -371,6 +378,28 @@ namespace PerkeleRim::Combat
         caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
         SKSE::log::info("combat: the player's throw at {:.1f} m/s hit {} for {:.0f} of {:.0f} max health", impact.speed, NameOf(target), damage, max);
+    }
+
+    void OnMiddleFinger(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
+    {
+        if (a_size < sizeof(Protocol::MiddleFinger)) {
+            SKSE::log::warn("combat: bad middle finger message ({} bytes)", a_size);
+            return;
+        }
+        Protocol::MiddleFinger finger;
+        std::memcpy(&finger, a_data, sizeof(finger));
+        auto* caster = a_player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
+        if (!caster || !state.fus) {
+            return;
+        }
+        // Aimed along MSC's camera: the player already faces it (PlayerSync places it every frame),
+        // this frame's direction only makes it exact. Heading 0 is +Y, clockwise; pitch > 0 looks down.
+        const float x = finger.direction[0], y = finger.direction[1], z = std::clamp(finger.direction[2], -1.0f, 1.0f);
+        a_player->SetHeading(std::atan2(x, y));
+        a_player->data.angle.x = -std::asin(z);
+        caster->CastSpellImmediate(state.fus, false, nullptr, 1.0f, false, 0.0f, a_player);
+        SKSE::log::info("combat: the player's middle finger shouts Fus (heading {:.2f}, pitch {:.2f})", a_player->GetAngleZ(),
+            a_player->data.angle.x);
     }
 
     void Stop()

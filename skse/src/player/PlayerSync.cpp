@@ -561,6 +561,15 @@ namespace PerkeleRim::PlayerSync
                     Combat::OnImpact(a_player, a_data, a_size);
                     return;
                 }
+                if (a_type == Protocol::MessageType::MiddleFinger) {
+                    // A pausing menu stops this hook, so this catches the ones that don't (dialogue).
+                    if (MenuHasInput()) {
+                        SKSE::log::info("player sync: middle finger ignored, a menu has the input");
+                    } else {
+                        Combat::OnMiddleFinger(a_player, a_data, a_size);
+                    }
+                    return;
+                }
                 if (a_type == Protocol::MessageType::Consumed) {
                     Death::OnConsumed(a_player, a_data, a_size);
                     return;

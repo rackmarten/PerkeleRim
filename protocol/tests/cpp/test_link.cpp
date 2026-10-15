@@ -251,6 +251,28 @@ TEST_CASE("what MSC's player consumed travels from MSC to Skyrim")
     CHECK(got == std::vector<std::uint32_t>(std::begin(kinds), std::end(kinds)));
 }
 
+TEST_CASE("MSC's middle finger travels from MSC to Skyrim with its direction")
+{
+    Pair p;
+    p.Tick(3);
+    REQUIRE(p.msc->IsUp());
+
+    const MiddleFinger finger{ { 0.6f, 0.0f, -0.8f }, 0 };
+    REQUIRE(p.msc->Send(MessageType::MiddleFinger, &finger, sizeof(finger)));
+    int count = 0;
+    p.skyrim->Receive([&](MessageType a_type, const std::uint8_t* a_data, std::uint32_t a_size) {
+        CHECK(a_type == MessageType::MiddleFinger);
+        REQUIRE(a_size == sizeof(MiddleFinger));
+        MiddleFinger got{};
+        std::memcpy(&got, a_data, sizeof(got));
+        CHECK(got.direction[0] == 0.6f);
+        CHECK(got.direction[1] == 0.0f);
+        CHECK(got.direction[2] == -0.8f);
+        count++;
+    });
+    CHECK(count == 1);
+}
+
 TEST_CASE("look-at text is cut at a character and malformed payloads are refused")
 {
     std::string long_text(kLookAtTextMax - 1, 'a');

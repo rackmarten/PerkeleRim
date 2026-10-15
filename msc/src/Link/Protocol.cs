@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 20;
+        public const uint ProtocolVersion = 21;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -157,6 +157,7 @@ namespace PerkeleRim.Protocol
         PocketChange = 13,
         PocketCounts = 14,
         ImpactEvent = 15,
+        MiddleFinger = 16,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -507,6 +508,13 @@ namespace PerkeleRim.Protocol
         public uint kind;
         public float speed;
         public fixed float direction[3];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct MiddleFinger
+    {
+        public fixed float direction[3];
+        public uint reserved;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

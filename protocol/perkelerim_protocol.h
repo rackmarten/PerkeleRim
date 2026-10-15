@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 20;
+    inline constexpr std::uint32_t kProtocolVersion = 21;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -388,6 +388,7 @@ namespace PerkeleRim::Protocol
         PocketChange = 13,     // MSC -> Skyrim
         PocketCounts = 14,     // Skyrim -> MSC
         ImpactEvent = 15,      // MSC -> Skyrim
+        MiddleFinger = 16,     // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -504,6 +505,14 @@ namespace PerkeleRim::Protocol
         std::uint32_t kind;          // kImpact*
         float         speed;         // meters per second (kImpactThrown, kImpactVehicle)
         float         direction[3];  // the way it moved, unit vector in Skyrim space
+    };
+
+    // MiddleFinger: MSC's player started giving the finger (its Finger key, M), at most once per
+    // cooldown. Skyrim casts the first word of Unrelenting Force from the player along direction.
+    struct MiddleFinger
+    {
+        float         direction[3];  // MSC's camera forward, unit vector in Skyrim space
+        std::uint32_t reserved;
     };
 
     // Consumed: MSC's player finished an alcoholic drink, lit a cigarette or ate something. Skyrim
@@ -733,6 +742,8 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(ImpactEvent) == 24);
     static_assert(offsetof(ImpactEvent, speed) == 8);
     static_assert(offsetof(ImpactEvent, direction) == 12);
+    static_assert(sizeof(MiddleFinger) == 16);
+    static_assert(offsetof(MiddleFinger, reserved) == 12);
     static_assert(sizeof(Consumed) == 8);
     static_assert(sizeof(PocketChange) == 16);
     static_assert(offsetof(PocketChange, delta) == 12);

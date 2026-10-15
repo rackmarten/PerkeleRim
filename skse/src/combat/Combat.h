@@ -23,6 +23,10 @@ namespace PerkeleRim::Combat
     // actor.
     void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
 
+    // A MiddleFinger message: the player shouts the first word of Unrelenting Force along MSC's
+    // camera, learned or not, with no Dragon Souls and no shout cooldown (MSC paces it).
+    void OnMiddleFinger(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
+
     // Skyrim has the player back: MSC's capsules go.
     void Stop();
 }

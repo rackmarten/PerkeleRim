@@ -57,6 +57,7 @@ namespace PerkeleRim.Game
         ModelSender models;
         ItemLink items;
         ActorLink actors;
+        FusLink fus;
         HandLayerSender hands;
         SaveSync saves;
         Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
@@ -119,6 +120,7 @@ namespace PerkeleRim.Game
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
             actors = new ActorLink(island, log);
+            fus = new FusLink(log);
             hands = new HandLayerSender(log);
             crash = new CrashSensor(log);
             DeathGuard.Install(log);
@@ -241,6 +243,7 @@ namespace PerkeleRim.Game
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
             var driven = playing ? Driven() : null;
             actors.Update(link, playing, player, driven != null, driven != null ? driven.Body : null, viewCamera != null ? viewCamera.transform : null);
+            fus.Update(link, playing, fpsCamera, viewCamera != null ? viewCamera.transform : null);
             models.Update(link);
             hands.Update(link, playing, input.ScreenWidth, input.ScreenHeight);
             saves.Update();
