@@ -49,6 +49,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Ramps only on Skyrim's roads (protocol v20, a road section in `CollisionChunk`): Skyrim sends each chunk's navmesh triangles flagged preferred (the ones Bethesda marks as roads for NPCs), and MSC only ramps a step whose deck is on the road, raising ground up to 0.75 m beside it. Stones, rocks and railings beside the road (a stone bridge's wide railing tops) stay obstacles. `island show` tints the road bluish green so its coverage can be checked, and `island why` says `not road` for steps skipped for that.
 - Spike tools for the island (`scripts/spike.ps1`): `island show|hide` draws the collision island in MSC, flat-shaded and colored by slope (green flat, red 60 degrees and steeper, ramps blue); `island steps [m]` logs the steep triangles near the player; `island why [m]` logs what the ramp pass made of the steps where MSC's camera looks; `day on|off` holds MSC's sun at 12-14 so the island can be seen.
 - The middle finger shouts Fus (protocol v21, `MiddleFinger`): MSC's finger gesture (M), on foot or driving, casts the first word of Unrelenting Force in Skyrim along the camera, whether or not the player has learned it, with no Dragon Souls and its own 1.5 s cooldown instead of the shout's. MSC's swearing (N) stays in MSC.
+- A higher jump while handed over: MSC's jump is raised to at least 1.1 m, about Skyrim's, so ledges Skyrim's player can reach are reachable. MSC's own height comes back when Skyrim takes the player back.
 
 ### Changed
 

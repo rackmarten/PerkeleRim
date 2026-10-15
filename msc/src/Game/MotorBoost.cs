@@ -18,10 +18,14 @@ namespace PerkeleRim.Game
     // MSC's ground acceleration is gentle: at the boosted speeds it took about 4 s to get going
     // and as long to stop. Nothing in MSC writes it, so the prefix raises it to at least
     // MinGroundAcceleration while active and puts MSC's own value back afterwards.
+    //
+    // Skyrim's jump is higher than MSC's, and some ledges need it: the jump's base height is
+    // raised the same way, to at least JumpHeight, and MSC's own comes back afterwards.
     public static class MotorBoost
     {
         public const float Scale = 2.75f;
         const float MinGroundAcceleration = 30f;  // m/s^2: 0 to Skyrim sprint in about 0.3 s
+        const float JumpHeight = 1.1f;            // meters, about Skyrim's (76 units)
 
         // Set every frame by PlayerLink: true while MSC plays the player for Skyrim.
         public static bool Active;
@@ -29,9 +33,12 @@ namespace PerkeleRim.Game
         static bool installed;
         static FieldInfo movementField;
         static FieldInfo accelerationField;
+        static FieldInfo jumpingField;
+        static FieldInfo jumpHeightField;
         static readonly List<FieldInfo> speedFields = new List<FieldInfo>();
         static HutongGames.PlayMaker.FsmFloat speedGlobal;
         static readonly Dictionary<object, float> ownAcceleration = new Dictionary<object, float>();
+        static readonly Dictionary<object, float> ownJumpHeight = new Dictionary<object, float>();
 
         public static void Install(UnityEngine.GameObject player, Action<string> log)
         {
@@ -57,6 +64,16 @@ namespace PerkeleRim.Game
                 if (accelerationField != null) acceleration = ((float)accelerationField.GetValue(movement)).ToString("0.##");
             }
 
+            jumpingField = type.GetField("jumping");
+            var jumping = jumpingField?.GetValue(motor);
+            string jump = "none";
+            if (jumping != null)
+            {
+                jumpHeightField = jumping.GetType().GetField("baseHeight");
+                if (jumpHeightField != null && jumpHeightField.FieldType != typeof(float)) jumpHeightField = null;
+                if (jumpHeightField != null) jump = ((float)jumpHeightField.GetValue(jumping)).ToString("0.##");
+            }
+
             // Standard Assets' motor moves in UpdateFunction (called from FixedUpdate or Update);
             // fall back to those two if it was renamed.
             var harmony = HarmonyInstance.Create("PerkeleRim.MotorBoost");
@@ -71,11 +88,13 @@ namespace PerkeleRim.Game
                 catch (Exception e) { log($"player: speed boost patch of {m.Name} failed: {e.Message}"); }
             }
             log($"player: speed boost x{Scale} on {type.Name}.{string.Join("/", targets.ToArray())}, {speedFields.Count} speed fields, " +
-                $"global {(speedGlobal != null)}, MSC ground acceleration {acceleration} (boosted to at least {MinGroundAcceleration})");
+                $"global {(speedGlobal != null)}, MSC ground acceleration {acceleration} (boosted to at least {MinGroundAcceleration}), " +
+                $"MSC jump height {jump} m (raised to at least {JumpHeight})");
         }
 
         static void Prefix(object __instance)
         {
+            JumpBoost(__instance);
             if (movementField == null) return;
             var movement = movementField.GetValue(__instance);
             if (movement == null) return;
@@ -102,6 +121,25 @@ namespace PerkeleRim.Game
                 if (!ownAcceleration.ContainsKey(movement)) ownAcceleration[movement] = current;
                 accelerationField.SetValue(movement, Math.Max(ownAcceleration[movement] * Scale, MinGroundAcceleration));
             }
+        }
+
+        static void JumpBoost(object motor)
+        {
+            if (jumpingField == null || jumpHeightField == null) return;
+            var jumping = jumpingField.GetValue(motor);
+            if (jumping == null) return;
+            float own;
+            if (!Active)
+            {
+                if (ownJumpHeight.TryGetValue(jumping, out own))
+                {
+                    jumpHeightField.SetValue(jumping, own);
+                    ownJumpHeight.Remove(jumping);
+                }
+                return;
+            }
+            if (!ownJumpHeight.TryGetValue(jumping, out own)) ownJumpHeight[jumping] = own = (float)jumpHeightField.GetValue(jumping);
+            jumpHeightField.SetValue(jumping, Math.Max(own, JumpHeight));
         }
     }
 }
