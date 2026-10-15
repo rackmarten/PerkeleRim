@@ -48,7 +48,9 @@ namespace PerkeleRim.Game
         readonly Island island = new Island();
         readonly InputFrame input = new InputFrame();
         readonly PunchButton punch = new PunchButton();
+        readonly BlockButton block = new BlockButton();
         int hitKey = (int)KeyCode.H;  // MSC's Hit binding, read once the player is found
+        int watchKey = (int)KeyCode.U;  // MSC's Watch binding, likewise
         Action<string> log;
         VehicleLink van, moped;
         VehicleLink[] vehicles;
@@ -99,6 +101,7 @@ namespace PerkeleRim.Game
         };
         CharacterController controller;
         PlayMakerFSM crouch;
+        PlayMakerFSM functions;  // PlayerFunctions (finger, fist, watch), on fpsCamera
 
         uint fixedFrame;
         CrashSensor crash;
@@ -156,8 +159,11 @@ namespace PerkeleRim.Game
             // doesn't start with a jump.
             input.Update(ref s);
             InputShim.Active = input.OwnsPlayer;
-            if (!input.OwnsPlayer) { punch.Reset(); return; }
-            punch.Apply(input.Keys, HandsFree(), hitKey, Time.realtimeSinceStartup);
+            if (!input.OwnsPlayer) { punch.Reset(); block.Reset(); return; }
+            var state = functions != null ? functions.ActiveStateName : null;
+            bool free = HandsFree(BlockButton.Watching(state));
+            block.Apply(input.Keys, free, watchKey, hitKey, state, Time.realtimeSinceStartup);
+            punch.Apply(input.Keys, free, hitKey, Time.realtimeSinceStartup);
             pocket.Keys(input.Keys);
 
             // The pocket keys are PerkeleRim's alone.
@@ -347,18 +353,23 @@ namespace PerkeleRim.Game
             crouch = null;
             foreach (var f in go.GetComponents<PlayMakerFSM>())
                 if (f.FsmName == "Crouch") crouch = f;
+            functions = null;
+            if (fpsCamera != null)
+                foreach (var f in fpsCamera.GetComponents<PlayMakerFSM>())
+                    if (f.FsmName == "PlayerFunctions") functions = f;
             haveLastFeet = false;
             motor = go.GetComponent("CharacterMotor") as Behaviour;
             motorDisabled = false;
-            ReadHitKey();
+            ReadBindings();
             log($"player: found PLAYER (controller {(controller != null)}, camera {(fpsCamera != null)}, view camera {(viewCamera != null ? viewCamera.name : "none")}, crouch fsm {(crouch != null)})");
             LogSurfaces();
             MotorBoost.Install(go, log);
         }
 
-        // For PunchButton: on foot, nothing in the hands (MSC drops what it carries on a click), no MSC
-        // prompt for what the crosshair is on and nothing there MSC would pick up.
-        static bool HandsFree()
+        // For PunchButton and BlockButton: on foot, nothing in the hands (MSC drops what it carries on
+        // a click), no MSC prompt for what the crosshair is on and nothing there MSC would pick up.
+        // watching: PlayerFunctions shows the watch, so the busy left hand is the guard itself.
+        static bool HandsFree(bool watching)
         {
             var g = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
             var text = g.FindFsmString("GUIinteraction");
@@ -367,25 +378,31 @@ namespace PerkeleRim.Game
             var right = g.FindFsmBool("PlayerHandRight");
             var vehicle = g.FindFsmString("PlayerCurrentVehicle");
             return (text == null || string.IsNullOrEmpty(text.Value)) && (use == null || !use.Value) &&
-                   (left == null || !left.Value) && (right == null || !right.Value) &&
+                   (watching || left == null || !left.Value) && (right == null || !right.Value) &&
                    (vehicle == null || string.IsNullOrEmpty(vehicle.Value)) &&
                    !PocketLink.Carrying() && PocketLink.Aimed() == null;  // an item MSC picks up shows no prompt (empty bottles)
         }
 
-        // The key MSC's Hit action (its punch) is bound to, H unless the player changed it.
-        void ReadHitKey()
+        // The keys MSC's Hit action (its punch) and Watch action are bound to, H and U unless the
+        // player changed them.
+        void ReadBindings()
         {
             try
             {
                 for (int i = 0; i < cInput.length; i++)
-                    if (cInput.GetText(i, 0) == "Hit")
+                {
+                    var action = cInput.GetText(i, 0);
+                    if (action == "Hit")
                         hitKey = (int)(KeyCode)Enum.Parse(typeof(KeyCode), cInput.GetText(i, 1), true);
+                    else if (action == "Watch")
+                        watchKey = (int)(KeyCode)Enum.Parse(typeof(KeyCode), cInput.GetText(i, 1), true);
+                }
             }
             catch (Exception e)
             {
-                log("player: could not read MSC's Hit binding, punching with H: " + e.Message);
+                log($"player: could not read MSC's Hit and Watch bindings, using {(KeyCode)hitKey} and {(KeyCode)watchKey}: " + e.Message);
             }
-            log($"player: left click with free hands punches (MSC's Hit key {(KeyCode)hitKey})");
+            log($"player: left click with free hands punches (MSC's Hit key {(KeyCode)hitKey}), right click guards (its Watch key {(KeyCode)watchKey})");
         }
 
         // Every ground surface MSC's map uses (tag + physics material, with friction), once, to pick
@@ -797,6 +814,7 @@ namespace PerkeleRim.Game
         {
             s.flags = Wire.PlayerValid;
             if (controller != null && controller.enabled && controller.isGrounded) s.flags |= Wire.PlayerGrounded;  // Skyrim's fall damage
+            if (block.Blocking) s.flags |= Wire.PlayerBlocking;  // Skyrim's block
             var pos = island.IslandToSkyrim(ToVec3(Feet()));
             s.position[0] = pos.x;
             s.position[1] = pos.y;

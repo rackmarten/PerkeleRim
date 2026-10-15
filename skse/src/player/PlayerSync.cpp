@@ -629,6 +629,8 @@ namespace PerkeleRim::PlayerSync
             Protocol::HandLayer hands{};
             HandView::Update(link.ReadHandLayer(hands) ? &hands : nullptr, a_delta);
             Combat::Update(a_player, state.generation, a_delta);
+            const bool menu = MenuHasInput();
+            Combat::Guard(a_player, valid && !seated && !menu && (pose.flags & Protocol::kPlayerBlocking) != 0, !menu);
             // Stream ahead of the player while it moves fast (driving).
             const RE::NiPoint3 velocity = valid ? RE::NiPoint3(pose.velocity[0], pose.velocity[1], pose.velocity[2]) : RE::NiPoint3();
             CollisionSampler::Update(a_player, velocity);

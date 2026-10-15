@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 21;
+    inline constexpr std::uint32_t kProtocolVersion = 22;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -108,6 +108,7 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPlayerCamera = 0x2;  // PlayerState.flags: eye, roll and fov are set
     inline constexpr std::uint32_t kPlayerNeeds = 0x4;   // PlayerState.flags: needs are set
     inline constexpr std::uint32_t kPlayerGrounded = 0x8;  // PlayerState.flags: MSC's player stands on something
+    inline constexpr std::uint32_t kPlayerBlocking = 0x10;  // PlayerState.flags: MSC's player guards (right click), Skyrim blocks
 
     // PlayerState.needs order, MSC's globals: PlayerThirst, PlayerHunger, PlayerStress, PlayerUrine,
     // PlayerFatigue, PlayerDirtiness (0..100, stress can go past it) and PlayerDrunk (0..8).

@@ -27,6 +27,14 @@ namespace PerkeleRim::Combat
     // camera, learned or not, with no Dragon Souls and no shout cooldown (MSC paces it).
     void OnMiddleFinger(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
 
-    // Skyrim has the player back: MSC's capsules go.
+    // Every frame MSC has the player: keeps its hands drawn (Skyrim only blocks with them out; fists
+    // unless something is equipped) and puts it in Skyrim's own block while a_block (MSC's guard,
+    // kPlayerBlocking), so the Block skill, stagger and power attacks work as in vanilla. a_draw
+    // false (a menu such as dialogue has the input) leaves sheathed hands sheathed. Skyrim's
+    // first-person model is hidden meanwhile: MSC's hands are the ones on screen.
+    void Guard(RE::PlayerCharacter* a_player, bool a_block, bool a_draw);
+
+    // Skyrim has the player back: MSC's capsules go, the block ends, hands this drew are sheathed and the
+    // first-person model shows again.
     void Stop();
 }

@@ -50,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Spike tools for the island (`scripts/spike.ps1`): `island show|hide` draws the collision island in MSC, flat-shaded and colored by slope (green flat, red 60 degrees and steeper, ramps blue); `island steps [m]` logs the steep triangles near the player; `island why [m]` logs what the ramp pass made of the steps where MSC's camera looks; `day on|off` holds MSC's sun at 12-14 so the island can be seen.
 - The middle finger shouts Fus (protocol v21, `MiddleFinger`): MSC's finger gesture (M), on foot or driving, casts the first word of Unrelenting Force in Skyrim along the camera, whether or not the player has learned it, with no Dragon Souls and its own 1.5 s cooldown instead of the shout's. MSC's swearing (N) stays in MSC.
 - A higher jump while handed over: MSC's jump is raised to at least 1.1 m, about Skyrim's, so ledges Skyrim's player can reach are reachable. MSC's own height comes back when Skyrim takes the player back.
+- Blocking (protocol v22, `kPlayerBlocking`): hold the right mouse button with empty hands and MSC's player raises the left arm (MSC's watch pose) while Skyrim's player blocks, Skyrim's own block with its skill, stagger and power attack rules. No punching while guarding. With an item in hand right click still throws, and U still shows the watch. Skyrim keeps the player's hands (fists) drawn while MSC has it, since it only blocks with them out, and hides its first-person model so only MSC's hands show.
 
 ### Changed
 

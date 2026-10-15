@@ -44,6 +44,10 @@ namespace PerkeleRim::Combat
             bool                          sent = false;  // a non-empty list went out
             float                         statTime = 0.0f;
             std::unordered_set<RE::FormID> logged;  // actors whose capsule size was logged
+            bool                          blocking = false;  // what Skyrim was last told
+            bool                          drew = false;      // Guard drew the hands, Stop sheathes them
+            int                           drawWait = 0;      // frames until drawing is tried again
+            bool                          culled = false;    // Guard hid the first-person model
         } state;
 
         const char* NameOf(RE::TESObjectREFR* a_ref)
@@ -196,6 +200,23 @@ namespace PerkeleRim::Combat
                     done = true;
                 }
                 it = done ? state.throws.erase(it) : it + 1;
+            }
+        }
+
+        // Skyrim's block. The graph refuses blockStart while MSC has the player (it never sees the hands
+        // drawn: iState stays 0), but the hit code only reads the graph's IsBlocking, so that is set on
+        // both graphs (third and first person). The event still goes, for the animation if it is taken.
+        void SetBlocking(RE::PlayerCharacter* a_player, bool a_block)
+        {
+            a_player->AsActorState()->actorState2.wantBlocking = a_block ? 1 : 0;
+            a_player->NotifyAnimationGraph(a_block ? "blockStart"sv : "blockStop"sv);
+            RE::BSTSmartPointer<RE::BSAnimationGraphManager> manager;
+            if (a_player->GetAnimationGraphManager(manager) && manager) {
+                for (auto& graph : manager->graphs) {
+                    if (graph) {
+                        graph->SetGraphVariableBool("IsBlocking"sv, a_block);
+                    }
+                }
             }
         }
 
@@ -402,8 +423,59 @@ namespace PerkeleRim::Combat
             a_player->data.angle.x);
     }
 
+    void Guard(RE::PlayerCharacter* a_player, bool a_block, bool a_draw)
+    {
+        auto* actorState = a_player->AsActorState();
+        if (!actorState) {
+            return;
+        }
+        // The drawn hands (fists, a weapon) would show in Skyrim's first person over MSC's own hands.
+        // Checked every frame: the model is rebuilt on equipment changes.
+        if (auto* firstPerson = a_player->Get3D(true); firstPerson && !firstPerson->GetAppCulled()) {
+            firstPerson->SetAppCulled(true);
+            state.culled = true;
+        }
+        // Drawing takes a moment; a block asked for meanwhile starts once the hands are out.
+        if (actorState->GetWeaponState() != RE::WEAPON_STATE::kDrawn) {
+            if (a_draw && actorState->GetWeaponState() == RE::WEAPON_STATE::kSheathed && --state.drawWait <= 0) {
+                state.drawWait = 60;
+                a_player->DrawWeaponMagicHands(true);
+                state.drew = true;
+                SKSE::log::info("combat: drawing the player's hands for MSC's guard");
+            }
+            a_block = false;
+        }
+        if (a_block != state.blocking) {
+            state.blocking = a_block;
+            SetBlocking(a_player, a_block);
+            SKSE::log::info("combat: the player {} blocking", a_block ? "starts" : "stops");
+            return;
+        }
+        // Put back if anything (a new graph after an equipment change) reset it.
+        bool graph = a_block;
+        if (a_player->GetGraphVariableBool("IsBlocking"sv, graph) && graph != a_block) {
+            SetBlocking(a_player, a_block);
+        }
+    }
+
     void Stop()
     {
+        if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+            if (state.blocking) {
+                SetBlocking(player, false);
+                SKSE::log::info("combat: the player stops blocking (Skyrim has it back)");
+            }
+            if (state.drew && !player->IsDead()) {
+                player->DrawWeaponMagicHands(false);
+            }
+            if (auto* firstPerson = player->Get3D(true); firstPerson && state.culled) {
+                firstPerson->SetAppCulled(false);
+            }
+        }
+        state.culled = false;
+        state.blocking = false;
+        state.drew = false;
+        state.drawWait = 0;
         state.throws.clear();
         if (!state.sent) {
             return;
