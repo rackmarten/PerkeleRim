@@ -40,6 +40,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
         } else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame) {
             PerkeleRim::Autoload::OnGameLoaded();
             PerkeleRim::SaveSync::OnGameLoaded();
+            PerkeleRim::Combat::OnGameLoaded();
         } else if (a_msg->type == SKSE::MessagingInterface::kSaveGame) {
             PerkeleRim::SaveSync::OnSaveGame(static_cast<const char*>(a_msg->data));
         }

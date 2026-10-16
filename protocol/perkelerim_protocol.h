@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 23;
+    inline constexpr std::uint32_t kProtocolVersion = 24;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -390,7 +390,8 @@ namespace PerkeleRim::Protocol
         PocketChange = 13,     // MSC -> Skyrim
         PocketCounts = 14,     // Skyrim -> MSC
         ImpactEvent = 15,      // MSC -> Skyrim
-        MiddleFinger = 16,     // MSC -> Skyrim
+        // 16 was MiddleFinger (until v23): the finger no longer shouts, Z is Skyrim's own shout key.
+        PlayerShout = 17,      // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -509,11 +510,17 @@ namespace PerkeleRim::Protocol
         float         direction[3];  // the way it moved, unit vector in Skyrim space
     };
 
-    // MiddleFinger: MSC's player started giving the finger (its Finger key, M), at most once per
-    // cooldown. Skyrim casts the first word of Unrelenting Force from the player along direction.
-    struct MiddleFinger
+    // PlayerShout: the player shouted in Skyrim while MSC had it (Z, Skyrim's own shout with its
+    // cooldown; Skyrim's shout voice is muted meanwhile). MSC yells instead: "Perkele!" for
+    // Unrelenting Force (kind kShoutUnrelentingForce), a swear for any other shout.
+    inline constexpr std::uint32_t kShoutOther = 0;  // PlayerShout.kind
+    inline constexpr std::uint32_t kShoutUnrelentingForce = 1;
+
+    struct PlayerShout
     {
-        float         direction[3];  // MSC's camera forward, unit vector in Skyrim space
+        std::uint32_t kind;   // kShout*
+        std::uint32_t shout;  // the shout's form id, for the log
+        std::uint32_t words;  // 1..3, how many words were shouted
         std::uint32_t reserved;
     };
 
@@ -744,8 +751,8 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(ImpactEvent) == 24);
     static_assert(offsetof(ImpactEvent, speed) == 8);
     static_assert(offsetof(ImpactEvent, direction) == 12);
-    static_assert(sizeof(MiddleFinger) == 16);
-    static_assert(offsetof(MiddleFinger, reserved) == 12);
+    static_assert(sizeof(PlayerShout) == 16);
+    static_assert(offsetof(PlayerShout, words) == 8);
     static_assert(sizeof(Consumed) == 8);
     static_assert(sizeof(PocketChange) == 16);
     static_assert(offsetof(PocketChange, delta) == 12);

@@ -290,7 +290,42 @@ for (uint i = 0; i < pocket.Length; i++)
     mod.MiscItems.Add(item);
     Console.WriteLine($"  {item.FormKey.ID:X3} {item.EditorID} (looks like {p.LooksLike})");
 }
-mod.ModHeader.Stats.NextFormID = 0x90F;  // after the pocket (0x906 + 7) and piss (0x90D, 0x90E)
+
+// ---- Finn shouts ----
+//
+// Fixed id the SKSE plugin looks up (skse/src/combat/Combat.cpp): 1 while MSC has the player. Every
+// line of the shout topics (Skyrim.esm quest 013E06: "Fus!", "Ro Dah!", "Yol!", ... picked by voice
+// type lists the player's voices are in) gets "not the player, or this global is 0" in front of its
+// conditions, so while handed over Skyrim's shout voice stays quiet and MSC yells instead. NPCs and
+// dragons keep their lines.
+var muteShouts = new GlobalShort(new FormKey(mod.ModKey, 0x90F), SkyrimRelease.SkyrimSE) { EditorID = "PerkeleRimMuteShouts", Data = 0 };
+mod.Globals.Add(muteShouts);
+Console.WriteLine($"  {muteShouts.FormKey.ID:X3} {muteShouts.EditorID}");
+var shoutQuest = new FormKey(skyrim.ModKey, 0x013E06);
+var playerNpc = new FormKey(skyrim.ModKey, 0x000007);
+int mutedLines = 0;
+foreach (var topic in skyrim.DialogTopics.Where(t => t.Quest.FormKey == shoutQuest))
+{
+    var lines = topic.Responses.ToList();
+    if (lines.Count == 0) continue;
+    var copy = mod.DialogTopics.GetOrAddAsOverride(topic);
+    copy.Responses.Clear();
+    foreach (var line in lines)
+    {
+        var info = line.DeepCopy();
+        var notPlayer = new GetIsIDConditionData();
+        notPlayer.Object.Link.SetTo(playerNpc);
+        var notMuted = new GetGlobalValueConditionData();
+        notMuted.Global.Link.SetTo(muteShouts.FormKey);
+        info.Conditions.Insert(0, new ConditionFloat { CompareOperator = CompareOperator.EqualTo, ComparisonValue = 0, Flags = Condition.Flag.OR, Data = notPlayer });
+        info.Conditions.Insert(1, new ConditionFloat { CompareOperator = CompareOperator.EqualTo, ComparisonValue = 0, Data = notMuted });
+        copy.Responses.Add(info);
+        mutedLines++;
+    }
+}
+Console.WriteLine($"  shout lines the player stays quiet on while handed over: {mutedLines}");
+
+mod.ModHeader.Stats.NextFormID = 0x910;  // after PerkeleRimMuteShouts (0x90F)
 
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
 mod.WriteToBinary(output);

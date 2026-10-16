@@ -580,15 +580,6 @@ namespace PerkeleRim::PlayerSync
                     Combat::OnImpact(a_player, a_data, a_size);
                     return;
                 }
-                if (a_type == Protocol::MessageType::MiddleFinger) {
-                    // A pausing menu stops this hook, so this catches the ones that don't (dialogue).
-                    if (MenuHasInput()) {
-                        SKSE::log::info("player sync: middle finger ignored, a menu has the input");
-                    } else {
-                        Combat::OnMiddleFinger(a_player, a_data, a_size);
-                    }
-                    return;
-                }
                 if (a_type == Protocol::MessageType::Consumed) {
                     Death::OnConsumed(a_player, a_data, a_size);
                     return;
@@ -650,6 +641,7 @@ namespace PerkeleRim::PlayerSync
             Combat::Update(a_player, state.generation, a_delta);
             const bool menu = MenuHasInput();
             Combat::Guard(a_player, valid && !seated && !menu && (pose.flags & Protocol::kPlayerBlocking) != 0, !menu);
+            Combat::Shouts(a_player);
             // Stream ahead of the player while it moves fast (driving).
             const RE::NiPoint3 velocity = valid ? RE::NiPoint3(pose.velocity[0], pose.velocity[1], pose.velocity[2]) : RE::NiPoint3();
             CollisionSampler::Update(a_player, velocity);

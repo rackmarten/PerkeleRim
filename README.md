@@ -25,8 +25,8 @@ F10 hands the player to My Summer Car and back. While MSC has the player you nev
 | Key | Action |
 |---|---|
 | Left / right click (free hands) | punch / guard (Skyrim blocks) |
-| V | middle finger, Skyrim shouts Fus |
-| Z | Skyrim's shout or power, as usual |
+| V | middle finger |
+| Z | Skyrim's shout or power, as usual, but Finn yells it (Unrelenting Force: "Perkele!") |
 | Alt (hold) | piss |
 | Middle click | swear |
 | C / B | smoke / zoom |

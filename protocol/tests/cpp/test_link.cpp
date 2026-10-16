@@ -251,23 +251,23 @@ TEST_CASE("what MSC's player consumed travels from MSC to Skyrim")
     CHECK(got == std::vector<std::uint32_t>(std::begin(kinds), std::end(kinds)));
 }
 
-TEST_CASE("MSC's middle finger travels from MSC to Skyrim with its direction")
+TEST_CASE("the player's shout travels from Skyrim to MSC with its kind")
 {
     Pair p;
     p.Tick(3);
     REQUIRE(p.msc->IsUp());
 
-    const MiddleFinger finger{ { 0.6f, 0.0f, -0.8f }, 0 };
-    REQUIRE(p.msc->Send(MessageType::MiddleFinger, &finger, sizeof(finger)));
+    const PlayerShout shout{ kShoutUnrelentingForce, 0x13E07, 3, 0 };
+    REQUIRE(p.skyrim->Send(MessageType::PlayerShout, &shout, sizeof(shout)));
     int count = 0;
-    p.skyrim->Receive([&](MessageType a_type, const std::uint8_t* a_data, std::uint32_t a_size) {
-        CHECK(a_type == MessageType::MiddleFinger);
-        REQUIRE(a_size == sizeof(MiddleFinger));
-        MiddleFinger got{};
+    p.msc->Receive([&](MessageType a_type, const std::uint8_t* a_data, std::uint32_t a_size) {
+        CHECK(a_type == MessageType::PlayerShout);
+        REQUIRE(a_size == sizeof(PlayerShout));
+        PlayerShout got{};
         std::memcpy(&got, a_data, sizeof(got));
-        CHECK(got.direction[0] == 0.6f);
-        CHECK(got.direction[1] == 0.0f);
-        CHECK(got.direction[2] == -0.8f);
+        CHECK(got.kind == kShoutUnrelentingForce);
+        CHECK(got.shout == 0x13E07u);
+        CHECK(got.words == 3u);
         count++;
     });
     CHECK(count == 1);

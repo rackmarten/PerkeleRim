@@ -3,6 +3,7 @@
 #include "damage.h"
 #include "link/LinkService.h"
 #include "player/PlayerSync.h"
+#include "shout.h"
 
 #include <unordered_set>
 
@@ -14,7 +15,7 @@ namespace PerkeleRim::Combat
         constexpr RE::FormID    kPunchSpell = 0x904;   // PerkeleRimPunch: damage, magnitude set per cast
         constexpr RE::FormID    kStaggerSpell = 0x905;  // PerkeleRimPunchStagger
         constexpr RE::FormID    kPissSpell = 0x90E;     // PerkeleRimPiss: poison, magnitude (per second) set per cast
-        constexpr RE::FormID    kUnrelentingForce = 0x13E07;  // Skyrim.esm's shout
+        constexpr RE::FormID    kMuteShouts = 0x90F;    // PerkeleRimMuteShouts: 1 keeps the player quiet on shout lines
         constexpr float         kListUnits = 2800.0f;   // actors within 40 m go to MSC
         constexpr float         kPunchMaxUnits = 400.0f;  // a punch further than this away is stale
         constexpr float         kWatchUnits = 1000.0f;  // attackers the per-second log follows
@@ -39,7 +40,10 @@ namespace PerkeleRim::Combat
             RE::SpellItem*                punch = nullptr;
             RE::SpellItem*                stagger = nullptr;
             RE::SpellItem*                piss = nullptr;
-            RE::SpellItem*                fus = nullptr;  // Unrelenting Force's first word
+            RE::TESGlobal*                muteShouts = nullptr;
+            bool                          muted = false;         // muteShouts is 1
+            Shout::Watch                  shouts;
+            bool                          watching = false;      // shouts has this handover's first value
             std::uint32_t                 frame = 0;
             bool                          sent = false;  // a non-empty list went out
             float                         statTime = 0.0f;
@@ -242,17 +246,25 @@ namespace PerkeleRim::Combat
         state.punch = data ? data->LookupForm<RE::SpellItem>(kPunchSpell, kPlugin) : nullptr;
         state.stagger = data ? data->LookupForm<RE::SpellItem>(kStaggerSpell, kPlugin) : nullptr;
         state.piss = data ? data->LookupForm<RE::SpellItem>(kPissSpell, kPlugin) : nullptr;
-        // Fus whether or not the player learned it: the word's spell, cast directly, needs no Dragon
-        // Souls and leaves the shout's own cooldown alone.
-        auto* shout = RE::TESForm::LookupByID<RE::TESShout>(kUnrelentingForce);
-        state.fus = shout ? shout->variations[RE::TESShout::VariationID::kOne].spell : nullptr;
-        SKSE::log::info("combat: middle finger shouts {}", state.fus ? state.fus->GetFullName() : "nothing (Unrelenting Force not found)");
+        state.muteShouts = data ? data->LookupForm<RE::TESGlobal>(kMuteShouts, kPlugin) : nullptr;
+        if (state.muteShouts) {
+            state.muteShouts->value = 0.0f;  // a save from back then may have kept 1
+        }
+        SKSE::log::info("combat: shout mute global {}", state.muteShouts ? "found" : "missing (PerkeleRim.esp not loaded or too old), Skyrim's shout voice stays");
         static HitSink hits;
         if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
             events->AddEventSink<RE::TESHitEvent>(&hits);
         }
         SKSE::log::info("combat: punch spells {}", state.punch && state.stagger ? "found" : "missing (PerkeleRim.esp not loaded or too old), punches and throws do nothing");
         SKSE::log::info("combat: piss spell {}", state.piss ? "found" : "missing (PerkeleRim.esp not loaded or too old), piss does nothing");
+    }
+
+    void OnGameLoaded()
+    {
+        if (state.muteShouts) {
+            state.muteShouts->value = 0.0f;
+        }
+        state.muted = false;
     }
 
     void Update(RE::PlayerCharacter* a_player, std::uint32_t a_generation, float a_delta)
@@ -401,26 +413,31 @@ namespace PerkeleRim::Combat
         SKSE::log::info("combat: the player's throw at {:.1f} m/s hit {} for {:.0f} of {:.0f} max health", impact.speed, NameOf(target), damage, max);
     }
 
-    void OnMiddleFinger(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
+    void Shouts(RE::PlayerCharacter* a_player)
     {
-        if (a_size < sizeof(Protocol::MiddleFinger)) {
-            SKSE::log::warn("combat: bad middle finger message ({} bytes)", a_size);
+        // PerkeleRim.esp's shout lines ("Fus!", "Ro Dah!", ...) need this global at 0 to be the player's.
+        if (!state.muted && state.muteShouts) {
+            state.muteShouts->value = 1.0f;
+            state.muted = true;
+            SKSE::log::info("combat: Skyrim's shout voice muted for the player");
+        }
+        if (!state.watching) {
+            state.shouts.Reset();
+            state.watching = true;
+        }
+        if (!state.shouts.Step(a_player->GetVoiceRecoveryTime())) {
             return;
         }
-        Protocol::MiddleFinger finger;
-        std::memcpy(&finger, a_data, sizeof(finger));
-        auto* caster = a_player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
-        if (!caster || !state.fus) {
-            return;
-        }
-        // Aimed along MSC's camera: the player already faces it (PlayerSync places it every frame),
-        // this frame's direction only makes it exact. Heading 0 is +Y, clockwise; pitch > 0 looks down.
-        const float x = finger.direction[0], y = finger.direction[1], z = std::clamp(finger.direction[2], -1.0f, 1.0f);
-        a_player->SetHeading(std::atan2(x, y));
-        a_player->data.angle.x = -std::asin(z);
-        caster->CastSpellImmediate(state.fus, false, nullptr, 1.0f, false, 0.0f, a_player);
-        SKSE::log::info("combat: the player's middle finger shouts Fus (heading {:.2f}, pitch {:.2f})", a_player->GetAngleZ(),
-            a_player->data.angle.x);
+        auto*                 shout = a_player->GetCurrentShout();
+        auto*                 process = a_player->GetActorRuntimeData().currentProcess;
+        const auto            variation = process && process->high ? process->high->currentShoutVariation : RE::TESShout::VariationID::kNone;
+        Protocol::PlayerShout message{};
+        message.shout = shout ? shout->GetFormID() : 0;
+        message.kind = Shout::KindOf(message.shout);
+        message.words = variation < RE::TESShout::VariationID::kTotal ? variation + 1 : 0;
+        const bool sent = LinkService::Get().Send(Protocol::MessageType::PlayerShout, &message, sizeof(message));
+        SKSE::log::info("combat: the player shouted {} ({:08X}, {} words){}", shout ? shout->GetFullName() : "?", message.shout,
+            message.words, sent ? "" : ", but the ring to MSC is full");
     }
 
     void Guard(RE::PlayerCharacter* a_player, bool a_block, bool a_draw)
@@ -472,6 +489,12 @@ namespace PerkeleRim::Combat
                 firstPerson->SetAppCulled(false);
             }
         }
+        if (state.muted && state.muteShouts) {
+            state.muteShouts->value = 0.0f;
+            SKSE::log::info("combat: Skyrim's shout voice is the player's again");
+        }
+        state.muted = false;
+        state.watching = false;
         state.culled = false;
         state.blocking = false;
         state.drew = false;

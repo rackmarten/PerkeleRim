@@ -54,6 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Keys that work without MSC's window: M opens Skyrim's map while handed over, MSC's middle finger (and its Fus) moves to V, Z is Skyrim's shout as usual, and on foot and driving alike Alt pisses (held), middle click swears, C smokes and B zooms. On foot Ctrl crouches, G pushes and T thumbs a ride; driving, Shift and Ctrl shift gears up and down, G and T stay MSC's shift up and boost, and 3 and 5 to 8 drink a beer and eat from the pocket. MSC's own keys still work and standalone MSC keeps its bindings. Key table in the README and [docs/PROTOCOL.md](docs/PROTOCOL.md#input).
 - Escape pauses both games (protocol v23, `kInputPaused`): while a Skyrim menu pauses Skyrim, MSC's time and sound stand still, so nothing rolls, drains or roars behind the menu.
 - The needs bars no longer show a health row of their own: Skyrim's health meter is the one to watch.
+- Finn yells the shouts (protocol v24, `PlayerShout`): Z is Skyrim's own shout with its words, cooldown and Dragon Souls, but while MSC has the player Skyrim's shout voice is muted (PerkeleRim.esp gates the shout lines on a global for the player) and MSC yells instead: Unrelenting Force is "Perkele!" (mostly the swear subtitled "God of thunder!"), any other shout another of its swears. The middle finger (V) no longer shouts Fus.
 
 ### Changed
 

@@ -358,6 +358,11 @@ namespace PerkeleRim.Spike
                     case "grunt":  // what Skyrim's PlayerDeath plays
                         PerkeleRim.Game.DeathGuard.PlayDeathSound();
                         break;
+                    case "shout":  // "shout 1": what Skyrim's PlayerShout plays for Unrelenting Force, "shout 0" for any other
+                        var shoutLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (shoutLink == null) SpikeLog.Write("cmd: no PlayerLink");
+                        else shoutLink.Yell(words.Length > 1 ? uint.Parse(words[1]) : 1u);
+                        break;
                     default:
                         SpikeLog.Write("cmd: unknown command");
                         break;

@@ -27,6 +27,7 @@ namespace PerkeleRim.Game
     //  - keeps MSC's player alive while handed over and sends what it would have died of as
     //    PlayerDamage (DeathGuard), plays MSC's death sound on PlayerDeath, and sends MSC's blood
     //    overlay for Skyrim's death ahead of time;
+    //  - yells "Perkele!" (or another swear) when the player shouts in Skyrim (ShoutVoice);
     //  - sends what the player drinks, smokes and eats for Skyrim to heal by (ConsumeWatch);
     //  - keeps MSC's state with Skyrim's saves and puts it back when one loads (SaveSync).
     public unsafe class PlayerLink : MonoBehaviour
@@ -61,7 +62,7 @@ namespace PerkeleRim.Game
         ModelSender models;
         ItemLink items;
         ActorLink actors;
-        FusLink fus;
+        ShoutVoice shouts;
         HandLayerSender hands;
         SaveSync saves;
         Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
@@ -125,7 +126,7 @@ namespace PerkeleRim.Game
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
             actors = new ActorLink(island, log);
-            fus = new FusLink(log);
+            shouts = new ShoutVoice(log);
             hands = new HandLayerSender(log);
             crash = new CrashSensor(log);
             DeathGuard.Install(log);
@@ -139,6 +140,9 @@ namespace PerkeleRim.Game
         // Spike command "pocket <key>": a pocket key press (Y, 3..8).
         public void PressPocketKey(int keyCode) => pocket.Press(keyCode);
         public void HoldPocketKind(int kind) => pocket.Hold(kind);
+
+        // Spike "shout 0|1": what PlayerShout plays (1 = Unrelenting Force).
+        public void Yell(uint kind) => shouts.Play(kind, "spike");
 
         // Spike commands "textures" (read an object's model and log it) and "items" (what Skyrim gets).
         public void InspectModel(string name) => models.Inspect(name);
@@ -266,7 +270,6 @@ namespace PerkeleRim.Game
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
             var driven = playing ? Driven() : null;
             actors.Update(link, playing, player, driven != null, driven != null ? driven.Body : null, viewCamera != null ? viewCamera.transform : null);
-            fus.Update(link, playing, fpsCamera, viewCamera != null ? viewCamera.transform : null);
             models.Update(link);
             hands.Update(link, playing, input.ScreenWidth, input.ScreenHeight);
             saves.Update();
@@ -354,6 +357,8 @@ namespace PerkeleRim.Game
                 pocket.OnCounts(payload, size);
             else if (type == MessageType.PlayerDeath)
                 DeathGuard.PlayDeathSound();
+            else if (type == MessageType.PlayerShout)
+                shouts.OnShout(payload, size);
             else if (type == MessageType.MscSave || type == MessageType.MscLoad)
                 saves.OnMessage(type, payload, size);
         }
