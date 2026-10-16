@@ -47,10 +47,16 @@ namespace PerkeleRim
             return bodies;
         }
 
+        // How high above its feet a punch or a push still reaches a small creature (a mudcrab, a
+        // skeever): its capsule counts up to here for the hand, so a standing player hits it looking a
+        // little down. Its collision stays its own size.
+        public const float ReachTop = 1.1f;  // meters
+
         // The body a punch from origin along direction (unit) lands on: the first whose capsule a fist
         // of radius fist touches within reach meters. -1 when it hits nothing; distance is how far
-        // along the punch the fist gets closest to that body's axis.
-        public static int Punch(Vec3 origin, Vec3 direction, float reach, float fist, IList<ActorBody> bodies, out float distance)
+        // along the punch the fist gets closest to that body's axis. topMin: each capsule's axis
+        // reaches at least this high above its feet (ReachTop for the hand, 0 for things thrown).
+        public static int Punch(Vec3 origin, Vec3 direction, float reach, float fist, IList<ActorBody> bodies, out float distance, float topMin = 0f)
         {
             int best = -1;
             distance = float.MaxValue;
@@ -58,12 +64,40 @@ namespace PerkeleRim
             for (int i = 0; i < bodies.Count; i++)
             {
                 float s, t;
-                float d = SegmentDistance(origin, end, bodies[i].Bottom, bodies[i].Top, out s, out t);
+                var b = bodies[i];
+                var top = b.Top;
+                if (top.y < b.Feet.y + topMin) top = new Vec3(top.x, b.Feet.y + topMin, top.z);
+                float d = SegmentDistance(origin, end, b.Bottom, top, out s, out t);
                 if (d > bodies[i].Radius + fist || s * reach >= distance) continue;
                 best = i;
                 distance = s * reach;
             }
             return best;
+        }
+
+        // MSC's push stance (both hands up): how far past the two capsules' edges the hands reach,
+        // how far in front (cosine of the angle off the way the player faces) and how far up or down.
+        public const float PushReach = 0.45f;     // meters
+        public const float PushInFront = 0.3f;    // about 70 degrees either side
+        public const float PushHeight = 1.5f;     // meters between the feet
+
+        // The bodies the hands touch while the player at feet (radius playerRadius) faces forward
+        // (level, unit) in the push stance, added to touched. Each comes with the level way from the
+        // player to it (unit), what it is shoved along.
+        public static void Touching(Vec3 feet, Vec3 forward, float playerRadius, IList<ActorBody> bodies, List<KeyValuePair<int, Vec3>> touched)
+        {
+            touched.Clear();
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                var b = bodies[i];
+                if (Math.Abs(b.Feet.y - feet.y) > PushHeight) continue;
+                float dx = b.Feet.x - feet.x, dz = b.Feet.z - feet.z;
+                float d = (float)Math.Sqrt(dx * dx + dz * dz);
+                if (d > playerRadius + b.Radius + PushReach) continue;
+                var way = d > 1e-4f ? new Vec3(dx / d, 0f, dz / d) : forward;
+                if (Dot(way, forward) < PushInFront) continue;
+                touched.Add(new KeyValuePair<int, Vec3>(i, way));
+            }
         }
 
         // Closest distance between segments p0-p1 and q0-q1; s and t are where on each (0..1).

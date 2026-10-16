@@ -4,10 +4,10 @@
 
 // Fighting while MSC has the player. Skyrim's actors near the player go to MSC as capsules
 // (ActorList) so MSC's player bumps into them, and MSC's punches that land on one (PunchEvent) hit
-// it as the player: PerkeleRim.esp's punch spells, a share of its max health (protocol/cpp/damage.h)
-// and a stagger. Being the player's hostile spells, the target fights back and an attack on someone
-// peaceful is assault. Also logs who attacks and hits the player, to see why enemies don't.
-// Main thread only.
+// it as the player: PerkeleRim.esp's punch spells, Skyrim's unarmed damage scaled
+// (protocol/cpp/damage.h) and a stagger. Being the player's hostile spells, the target fights back
+// and an attack on someone peaceful is assault. Also logs who attacks and hits the player, to see
+// why enemies don't. Main thread only.
 namespace PerkeleRim::Combat
 {
     void OnDataLoaded();
@@ -24,7 +24,7 @@ namespace PerkeleRim::Combat
 
     // An ImpactEvent message: a thrown item (hits like a punch, by its speed), the piss stream
     // (PerkeleRim.esp's poison) or the driven vehicle (knocked over, damage by speed) reached an
-    // actor.
+    // actor, or MSC's push (staggered aside, no hit).
     void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
 
     // A HornEvent message: the actors in the driven vehicle's way (Damage::InHornPath, all but huge
@@ -44,7 +44,17 @@ namespace PerkeleRim::Combat
     // first-person model is hidden meanwhile: MSC's hands are the ones on screen.
     void Guard(RE::PlayerCharacter* a_player, bool a_block, bool a_draw);
 
+    // Every frame MSC has the player: the drunker (a_drunk, MSC's level 0..8), the tougher. PerkeleRim.esp's
+    // drunk spells on the player, armor, max stamina and stamina regen by Damage::Drunk, recast as the
+    // level moves and before they run out (10 s, so a save taken meanwhile doesn't keep them).
+    void Drunk(RE::PlayerCharacter* a_player, float a_drunk, float a_delta);
+
+    // Every frame MSC has the player: Finn fights with his fists. A weapon, spell or scroll in either
+    // hand is unequipped at once, with a short notification.
+    void Disarm(RE::PlayerCharacter* a_player);
+
     // Skyrim has the player back: MSC's capsules go, the block ends, hands this drew are sheathed, the
-    // first-person model shows again and Skyrim's shouts and grunts are the player's again.
+    // drunk bonuses go, the first-person model shows again and Skyrim's shouts and grunts are the
+    // player's again.
     void Stop();
 }

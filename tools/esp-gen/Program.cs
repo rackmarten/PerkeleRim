@@ -378,6 +378,27 @@ piss.Effects[0].Data!.Duration = 5;
 foreach (var r in new IMajorRecordGetter[] { pissPoison, piss })
     Console.WriteLine($"  {r.FormKey.ID:X3} {r.EditorID}");
 
+// The drunker, the tougher, while MSC has the player: fortify armor rating, max stamina and stamina
+// regen on the player itself, magnitude set per cast (Damage::Drunk), recast while it lasts. The
+// duration is short so a save taken meanwhile doesn't keep them; Recover takes the bonus off at the end.
+// Active Effects lists each by its name and description (<mag> is the magnitude cast).
+(MagicEffect Effect, Spell Spell) DrunkBuff(uint id, string editorId, ActorValue value, string name, string description)
+{
+    var effect = Effect(id, editorId + "Effect", name, new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.ValueModifier) { ActorValue = value });
+    effect.Flags = MagicEffect.Flag.Recover | MagicEffect.Flag.NoArea;
+    effect.TargetType = TargetType.Self;
+    effect.Description = description;
+    var spell = Spell(id + 3, editorId, name, effect, 1f);
+    spell.TargetType = TargetType.Self;
+    spell.Effects[0].Data!.Duration = 10;  // kDrunkSeconds in skse/src/combat/Combat.cpp
+    return (effect, spell);
+}
+foreach (var (effect, spell) in new[] {
+    DrunkBuff(0x911, "PerkeleRimDrunkArmor", ActorValue.DamageResist, "Drunk: Thick Skin", "Armor rating is increased by <mag> points."),
+    DrunkBuff(0x912, "PerkeleRimDrunkStamina", ActorValue.Stamina, "Drunk: Liquid Courage", "Stamina is increased by <mag> points."),
+    DrunkBuff(0x913, "PerkeleRimDrunkStaminaRate", ActorValue.StaminaRateMult, "Drunk: Second Wind", "Stamina regenerates <mag>% faster.") })
+    Console.WriteLine($"  {effect.FormKey.ID:X3} {effect.EditorID}, {spell.FormKey.ID:X3} {spell.EditorID}");
+
 // ---- Pocket ----
 //
 // Fixed ids the SKSE plugin looks up (skse/src/pocket/Pocket.cpp): 0x906 + the protocol's kPocket*
@@ -489,7 +510,7 @@ foreach (var spot in stockSpots)
 mod.FormLists.Add(spotList);
 Console.WriteLine($"  910 {spotList.EditorID} ({spotList.Items.Count} spots)");
 
-mod.ModHeader.Stats.NextFormID = 0x911;  // after PerkeleRimShelfSpots (0x910)
+mod.ModHeader.Stats.NextFormID = 0x917;  // after PerkeleRimDrunkStaminaRate (0x916)
 
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
 mod.WriteToBinary(output, new Mutagen.Bethesda.Plugins.Binary.Parameters.BinaryWriteParameters

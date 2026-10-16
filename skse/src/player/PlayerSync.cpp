@@ -687,6 +687,8 @@ namespace PerkeleRim::PlayerSync
             HandView::Update(link.ReadHandLayer(hands) ? &hands : nullptr, a_delta);
             Combat::Update(a_player, state.generation, a_delta);
             const bool menu = MenuHasInput();
+            Combat::Disarm(a_player);
+            Combat::Drunk(a_player, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, a_delta);
             Combat::Guard(a_player, valid && !seated && !menu && (pose.flags & Protocol::kPlayerBlocking) != 0, !menu);
             Combat::Shouts(a_player);
             // Stream ahead of the player while it moves fast (driving).

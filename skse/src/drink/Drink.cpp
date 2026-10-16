@@ -8,8 +8,13 @@ namespace PerkeleRim::Drink
         // Fixed local form id, assigned by tools/esp-gen.
         constexpr RE::FormID kDrunkImod = 0x901;
 
-        // MSC's drunk bar is full at level 4; so is the blur. Below this strength it's off.
+        // MSC's drunk level climbs slowly (five beers are about 0.4, two dozen about 2.5) and MSC only
+        // wobbles its camera, which Skyrim's already follows. So the blur stays off until MSC slurs
+        // the player's speech (1.5) and only reaches kBlurMax at level 4, near blacking out. Below
+        // kMinStrength it's off.
+        constexpr float kBlurStart = 1.5f;
         constexpr float kFullDrunk = 4.0f;
+        constexpr float kBlurMax = 0.3f;
         constexpr float kMinStrength = 0.01f;
 
         struct State
@@ -35,7 +40,7 @@ namespace PerkeleRim::Drink
         if (!state.imod) {
             return;
         }
-        const float strength = std::clamp(a_level / kFullDrunk, 0.0f, 1.0f);
+        const float strength = std::clamp((a_level - kBlurStart) / (kFullDrunk - kBlurStart), 0.0f, 1.0f) * kBlurMax;
         if (strength < kMinStrength) {
             if (state.blurOn) {
                 RE::ImageSpaceModifierInstanceForm::Stop(state.imod);

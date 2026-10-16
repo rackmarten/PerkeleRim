@@ -20,12 +20,16 @@ namespace PerkeleRim.Game
     //  - The vehicle the player drives runs over the capsules its box touches (kImpactVehicle,
     //    RunOver); it passes through them, so it neither stops nor counts a crash, and the player
     //    swears (ranOver).
+    //  - While MSC's push stance is up (J), capsules the hands touch are shoved out of the way
+    //    (kImpactPush, Shove), again and again while the player walks into them.
     public unsafe class ActorLink
     {
         const float CarryOnMax = 0.25f;  // seconds a pose is carried on by its velocity at most
         const float PunchDelay = 0.15f;  // seconds from the key to the fist being out
-        const float PunchReach = 1.2f;   // meters from the camera
+        const float PunchReach = 2.0f;   // meters from the camera, a little past a sword's reach in Skyrim
         const float FistRadius = 0.15f;
+        const float PushEvery = 0.8f;    // seconds between shoves of one actor: one stumble each
+        const float PlayerRadius = 0.3f;
         const string FluidPath = "Pivot/AnimPivot/Camera/FPSCamera/Piss/Fluid";
         const int DropChecksMax = 64;    // piss drops looked at per frame
         // Without particles to read, the stream is an arc from Fluid along the camera at this speed.
@@ -51,6 +55,8 @@ namespace PerkeleRim.Game
         ParticleSystem.Particle[] drops = new ParticleSystem.Particle[256];
         readonly HitPacer pissPacer = new HitPacer(Throwing.PissEvery);
         readonly HitPacer runOverPacer = new HitPacer(RunOver.IgnoreSeconds);
+        readonly HitPacer pushPacer = new HitPacer(PushEvery);
+        readonly List<KeyValuePair<int, Vec3>> touched = new List<KeyValuePair<int, Vec3>>();
         Rigidbody boxOf;  // the vehicle boxMin..boxMax were measured on
         Vector3 boxMin, boxMax;
         readonly HashSet<uint> pissed = new HashSet<uint>();
@@ -76,8 +82,9 @@ namespace PerkeleRim.Game
 
         // Call every LateUpdate. playing: MSC owns the player and it stands on the current island;
         // driving: it sits in a vehicle (no punching), driven: that vehicle's body; view: MSC's
-        // rendering camera.
-        public void Update(Link link, bool playing, Transform player, bool driving, Rigidbody driven, Transform view)
+        // rendering camera; pushing: MSC's push stance is up (PlayerFunctions in On); feet: the
+        // player's.
+        public void Update(Link link, bool playing, Transform player, bool driving, Rigidbody driven, Transform view, bool pushing, Vector3 feet)
         {
             ActorList list;
             if (!playing || player == null || !link.ReadActors(out list))
@@ -89,6 +96,7 @@ namespace PerkeleRim.Game
                 flights.Clear();
                 pissPacer.Clear();
                 runOverPacer.Clear();
+                pushPacer.Clear();
                 return;
             }
             if (list.frame != listFrame)
@@ -103,6 +111,7 @@ namespace PerkeleRim.Game
             Throws(link, player, driving);
             Piss(link, player, view);
             RunOverBodies(link, driven);
+            if (pushing && !driving) Shove(link, player, view, feet);
         }
 
         // The driven vehicle's box: its own non-trigger colliders' bounds in its space, measured
@@ -379,7 +388,7 @@ namespace PerkeleRim.Game
             var from = view.position;
             var way = view.forward;
             float distance;
-            int hit = Actors.Punch(new Vec3(from.x, from.y, from.z), new Vec3(way.x, way.y, way.z), PunchReach, FistRadius, now, out distance);
+            int hit = Actors.Punch(new Vec3(from.x, from.y, from.z), new Vec3(way.x, way.y, way.z), PunchReach, FistRadius, now, out distance, Actors.ReachTop);
             if (hit < 0)
             {
                 log($"actors: punch hit nobody ({now.Count} actors near)");
@@ -396,6 +405,27 @@ namespace PerkeleRim.Game
             fixed (byte* p = payload) *(PunchEvent*)p = punch;
             bool sent = link.Send(MessageType.PunchEvent, payload, payload.Length);
             log($"actors: punch landed on {now[hit].Id:X8} at {distance:0.00} m{(sent ? "" : ", but the ring is full")}");
+        }
+
+        // MSC's push stance (J, both hands up): every capsule the hands touch in front is shoved away
+        // from the player (ImpactEvent, kImpactPush), again every PushEvery seconds while it stays in
+        // touch, so walking into someone moves them along.
+        void Shove(Link link, Transform player, Transform view, Vector3 feet)
+        {
+            if (bodies.Count == 0) return;
+            var facing = view != null ? view.forward : player.forward;
+            var level = new Vector3(facing.x, 0f, facing.z);
+            if (level.sqrMagnitude < 1e-6f) return;
+            level.Normalize();
+            var now = BodiesNow();
+            Actors.Touching(new Vec3(feet.x, feet.y, feet.z), new Vec3(level.x, 0f, level.z), PlayerRadius, now, touched);
+            foreach (var t in touched)
+            {
+                var b = now[t.Key];
+                if (!pushPacer.Ready(b.Id, Time.time)) continue;
+                bool sent = SendImpact(link, b.Id, Wire.ImpactPush, 0f, new Vector3(t.Value.x, 0f, t.Value.z));
+                log($"actors: shoved {b.Id:X8}{(sent ? "" : ", but the ring is full")}");
+            }
         }
     }
 }

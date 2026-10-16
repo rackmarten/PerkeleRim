@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 32;
+    inline constexpr std::uint32_t kProtocolVersion = 33;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -471,10 +471,12 @@ namespace PerkeleRim::Protocol
     // the latest ActorList: an item it threw (kImpactThrown, with its speed at the hit), its piss
     // stream (kImpactPiss, sent again every so often while the stream stays on that actor) or the
     // vehicle it drives (kImpactVehicle, with the vehicle's speed). Skyrim hits that actor as the
-    // player.
+    // player. kImpactPush: MSC's push key (J) on foot reached it; Skyrim shoves it out of the way
+    // along direction, no hit (no damage, no aggression).
     inline constexpr std::uint32_t kImpactThrown = 1;  // ImpactEvent.kind
     inline constexpr std::uint32_t kImpactPiss = 2;
     inline constexpr std::uint32_t kImpactVehicle = 3;
+    inline constexpr std::uint32_t kImpactPush = 4;
 
     struct ImpactEvent
     {

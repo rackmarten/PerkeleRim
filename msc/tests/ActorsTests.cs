@@ -96,6 +96,46 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void PushTouchesWhoIsCloseInFront()
+        {
+            var feet = new Vec3(0f, 0f, 0f);
+            var north = new Vec3(0f, 0f, 1f);
+            var bodies = new List<ActorBody>
+            {
+                Body(1, 0f, 0.9f),    // right in front, within 0.3 + 0.3 + 0.45
+                Body(2, 0f, 1.2f),    // too far
+                Body(3, 0f, -0.6f),   // behind
+                Body(4, 0.7f, 0.5f),  // ahead to the right, close
+            };
+            var touched = new List<KeyValuePair<int, Vec3>>();
+            Actors.Touching(feet, north, 0.3f, bodies, touched);
+            Assert.That(touched.ConvertAll(t => t.Key), Is.EqualTo(new List<int> { 0, 3 }));
+            Assert.That(touched[0].Value.z, Is.EqualTo(1f).Within(1e-4f));  // shoved away from the player
+            Assert.That(touched[1].Value.x, Is.GreaterThan(0.7f));
+
+            // On another floor: no.
+            var above = new List<ActorBody> { new ActorBody { Id = 5, Feet = new Vec3(0f, 3f, 0.8f), Radius = 0.3f, Height = 1.8f } };
+            Actors.Touching(feet, north, 0.3f, above, touched);
+            Assert.That(touched, Is.Empty);
+        }
+
+        [Test]
+        public void HandReachesSmallCreaturesLookingALittleDown()
+        {
+            var eye = new Vec3(0f, 1.6f, 0f);
+            var mudcrab = new List<ActorBody> { new ActorBody { Id = 5, Feet = new Vec3(0f, 0f, 0.8f), Radius = 0.3f, Height = 0.4f } };
+            var littleDown = new Vec3(0f, -0.3f, 0.954f);
+            float distance;
+            Assert.That(Actors.Punch(eye, littleDown, 1.2f, 0.15f, mudcrab, out distance), Is.EqualTo(-1));  // its own capsule is too low
+            Assert.That(Actors.Punch(eye, littleDown, 1.2f, 0.15f, mudcrab, out distance, Actors.ReachTop), Is.EqualTo(0));
+            Assert.That(Actors.Punch(eye, new Vec3(0f, 0f, 1f), 1.2f, 0.15f, mudcrab, out distance, Actors.ReachTop), Is.EqualTo(-1));  // straight over it
+
+            // People are tall enough already: the same as without.
+            var person = new List<ActorBody> { Body(1, 0f, 0.8f) };
+            Assert.That(Actors.Punch(new Vec3(0f, 3f, 0f), new Vec3(0f, 0f, 1f), 1.2f, 0.1f, person, out distance, Actors.ReachTop), Is.EqualTo(-1));
+        }
+
+        [Test]
         public void SegmentDistanceBasics()
         {
             float s, t;

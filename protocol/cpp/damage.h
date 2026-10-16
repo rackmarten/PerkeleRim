@@ -1,7 +1,7 @@
 // Damage rules while MSC has the player: what an MSC death costs Skyrim's health, Skyrim's own fall
-// damage, which doesn't run while MSC places the player, what MSC's attacks cost Skyrim actors, and
-// what MSC's drinks, cigarettes and food heal. Header-only and free of Skyrim types, so the protocol
-// tests cover it.
+// damage, which doesn't run while MSC places the player, what MSC's attacks cost Skyrim actors, how
+// being drunk toughens the player, and what MSC's drinks, cigarettes and food heal. Header-only and
+// free of Skyrim types, so the protocol tests cover it.
 
 #pragma once
 
@@ -22,35 +22,93 @@ namespace PerkeleRim::Damage
         return a_maxHealth * kCrashShare * (std::max)(0.0f, a_severity);
     }
 
-    // What the player's MSC attacks cost Skyrim actors: fun over RPG, so a share of the target's max
-    // health (no skills or perks), the same at any level. Dragons take a fraction of it.
-    inline constexpr float kPunchShare = 0.25f;  // a bandit goes down in four punches
-    inline constexpr float kDragonFactor = 0.25f;
-    // Drinking pays off in a fight (MSC's drunk camera wobble makes aiming hard): each MSC drunk level
-    // (0..8) adds this much, up to kDrunkPunchMax times the sober punch.
-    inline constexpr float kDrunkPunchPerLevel = 0.25f;
-    inline constexpr float kDrunkPunchMax = 2.0f;  // drunk 4: two punches drop a bandit
+    // What the player's MSC punch costs Skyrim actors: Skyrim's own unarmed damage, as Skyrim works it
+    // out (the race's, Fortify Unarmed, perks such as Fists of Steel, the difficulty; the plugin does
+    // that part), times kPunchScale, so fights scale like Skyrim's as the world levels up. Vanilla
+    // unarmed is weak (4 for most races, 10 Argonians, 22 Khajiit): scaled, a sober level 1 Nord
+    // punches about as hard as an iron sword hits (8), three for a wolf, six or seven for a soldier.
+    inline constexpr float kPunchScale = 2.0f;
+    // Drinking pays off in a fight (MSC's drunk camera wobble makes aiming hard). MSC's drunk level
+    // (0..8, by the player's weight) climbs slowly: five beers are about 0.4, two dozen leave Finn
+    // staggering around 2.5 (MSC's drowning risk), a few vodkas more black him out. Everything
+    // drunk scales up to kDrunkLevels: the punch to kDrunkPunchMax times the sober one, and the
+    // toughness (DrunkBuffs) to its max.
+    inline constexpr float kDrunkLevels = 3.0f;
+    inline constexpr float kDrunkPunchMax = 2.0f;
+
+    // How far along to full drunk, 0..1.
+    inline float DrunkShare(float a_drunk)
+    {
+        return (std::clamp)(a_drunk / kDrunkLevels, 0.0f, 1.0f);
+    }
 
     inline float DrunkPunch(float a_drunk)
     {
-        return (std::min)(kDrunkPunchMax, 1.0f + kDrunkPunchPerLevel * (std::max)(0.0f, a_drunk));
+        return 1.0f + (kDrunkPunchMax - 1.0f) * DrunkShare(a_drunk);
     }
 
-    inline float Punch(float a_targetMaxHealth, bool a_dragon, float a_drunk = 0.0f)
+    // a_unarmed: the player's unarmed damage as Skyrim works it out.
+    inline float Punch(float a_unarmed, float a_drunk = 0.0f)
     {
-        return (std::max)(0.0f, a_targetMaxHealth) * kPunchShare * (a_dragon ? kDragonFactor : 1.0f) * DrunkPunch(a_drunk);
+        return (std::max)(0.0f, a_unarmed) * kPunchScale * DrunkPunch(a_drunk);
     }
+
+    // The drunker, the tougher, while MSC has the player: temporary bonuses to armor rating (Skyrim's
+    // DamageResist, so it stacks with worn armor under Skyrim's cap), max stamina and stamina regen
+    // (StaminaRateMult, percent), rising with DrunkShare up to these.
+    inline constexpr float kDrunkArmorMax = 200.0f;        // about a quarter less physical damage
+    inline constexpr float kDrunkStaminaMax = 100.0f;
+    inline constexpr float kDrunkStaminaRateMax = 100.0f;  // twice the regen
+
+    struct DrunkBuffs
+    {
+        float armor = 0.0f;
+        float stamina = 0.0f;
+        float staminaRate = 0.0f;
+    };
+
+    inline DrunkBuffs Drunk(float a_drunk)
+    {
+        const float share = DrunkShare(a_drunk);
+        return { kDrunkArmorMax * share, kDrunkStaminaMax * share, kDrunkStaminaRateMax * share };
+    }
+
+    // Recast once the drunk level moves this much from what the bonuses were cast for.
+    inline constexpr float kDrunkBuffStep = 0.1f;  // drunk levels
 
     // A thrown item hits by its speed: nothing at kThrownSpeedMin, a sober punch from kThrownSpeedFull
     // on. MSC's own throw lands in between; a bottle, thrown twice as fast (msc/src/Link/Throwing.cs),
-    // hits like a punch from range.
+    // hits like a punch from range. a_punch: the player's sober Punch.
     inline constexpr float kThrownSpeedMin = 2.0f;    // meters per second
     inline constexpr float kThrownSpeedFull = 15.0f;
 
-    inline float Thrown(float a_targetMaxHealth, bool a_dragon, float a_speed)
+    inline float Thrown(float a_punch, float a_speed)
     {
         const float scale = (std::clamp)((a_speed - kThrownSpeedMin) / (kThrownSpeedFull - kThrownSpeedMin), 0.0f, 1.0f);
-        return Punch(a_targetMaxHealth, a_dragon) * scale;
+        return (std::max)(0.0f, a_punch) * scale;
+    }
+
+    // Shares of max health below (running over, piss) leave dragons this fraction.
+    inline constexpr float kDragonFactor = 0.25f;
+
+    // MSC's push (J) on an actor shoves it out of the way: Skyrim's stagger animation, no hit, so no
+    // damage and no aggression. Skyrim's graph variable staggerDirection is where the shove comes
+    // from, around the actor: 0 in front of it, 0.25 its right, 0.5 behind, 0.75 its left. a_heading:
+    // the actor's (radians, clockwise from +Y like Skyrim's angle Z); a_x, a_y: the way it is pushed.
+    inline constexpr float kPushStagger = 0.3f;  // staggerMagnitude, a small stumble
+
+    inline float StaggerDirection(float a_heading, float a_x, float a_y)
+    {
+        constexpr float kTwoPi = 6.2831853f;
+        if (a_x == 0.0f && a_y == 0.0f) {
+            return 0.0f;
+        }
+        const float from = std::atan2(-a_x, -a_y);  // where the push comes from, as a heading
+        float       turn = std::fmod(from - a_heading, kTwoPi) / kTwoPi;
+        if (turn < 0.0f) {
+            turn += 1.0f;
+        }
+        return turn >= 1.0f ? 0.0f : turn;
     }
 
     // Run over by the vehicle MSC's player drives: nothing below kRunOverSpeedMin (a nudge while
@@ -173,24 +231,25 @@ namespace PerkeleRim::Damage
         return (std::max)(0.0f, a_targetMaxHealth) * kPissSharePerSecond * (a_dragon ? kDragonFactor : 1.0f);
     }
 
-    // What one Consumed heals, as a share of the player's max health: fun over RPG, like the damage.
+    // What one Consumed heals, as a share of the player's max health. Finn drinks by the dozen, so a
+    // drink heals a little and a meal more.
     inline float HealShare(std::uint32_t a_kind)
     {
         switch (a_kind) {
         case Protocol::kConsumedBeer:
-            return 0.10f;
+            return 0.03f;
         case Protocol::kConsumedShot:
-            return 0.10f;
+            return 0.03f;
         case Protocol::kConsumedKilju:
-            return 0.15f;
-        case Protocol::kConsumedBooze:
-            return 0.20f;
-        case Protocol::kConsumedSpirit:
-            return 0.25f;
-        case Protocol::kConsumedCigarette:
             return 0.05f;
+        case Protocol::kConsumedBooze:
+            return 0.06f;
+        case Protocol::kConsumedSpirit:
+            return 0.08f;
+        case Protocol::kConsumedCigarette:
+            return 0.02f;
         case Protocol::kConsumedFood:
-            return 0.25f;
+            return 0.15f;
         default:
             return 0.0f;
         }

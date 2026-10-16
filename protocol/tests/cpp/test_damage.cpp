@@ -11,32 +11,76 @@ TEST_CASE("an MSC death costs half of Skyrim's max health")
     CHECK(Damage::Crash(200.0f, -1.0f) == 0.0f);
 }
 
-TEST_CASE("a punch costs a quarter of the target's max health, dragons less")
+TEST_CASE("a punch is Skyrim's unarmed damage, scaled")
 {
-    CHECK(Damage::Punch(100.0f, false) == doctest::Approx(25.0f));
-    CHECK(Damage::Punch(100.0f, false) * 4.0f >= 100.0f);  // four punches drop anyone
-    CHECK(Damage::Punch(3000.0f, true) == doctest::Approx(187.5f));
-    CHECK(Damage::Punch(-5.0f, false) == 0.0f);
+    CHECK(Damage::Punch(4.0f) == doctest::Approx(8.0f));  // a Nord, sober: an iron sword's hit
+    CHECK(Damage::Punch(22.0f) == doctest::Approx(44.0f));  // a Khajiit
+    CHECK(Damage::Punch(-5.0f) == 0.0f);
+    // Level 1 and sober, against vanilla health: a wolf (22) in three punches, a soldier (50) in
+    // six or seven.
+    CHECK(Damage::Punch(4.0f) * 2.0f < 22.0f);
+    CHECK(Damage::Punch(4.0f) * 3.0f >= 22.0f);
+    CHECK(Damage::Punch(4.0f) * 6.0f < 50.0f);
+    CHECK(Damage::Punch(4.0f) * 7.0f >= 50.0f);
 }
 
-TEST_CASE("drunk punches hit harder, up to twice as hard")
+TEST_CASE("drunk punches hit harder, up to twice as hard at MSC's drunk 3")
 {
-    CHECK(Damage::Punch(100.0f, false, 0.0f) == doctest::Approx(25.0f));
-    CHECK(Damage::Punch(100.0f, false, 2.0f) == doctest::Approx(37.5f));
-    CHECK(Damage::Punch(100.0f, false, 4.0f) * 2.0f >= 100.0f);  // two drunk punches drop anyone
-    CHECK(Damage::Punch(100.0f, false, 8.0f) == doctest::Approx(50.0f));
-    CHECK(Damage::Punch(100.0f, false, -1.0f) == doctest::Approx(25.0f));
+    CHECK(Damage::Punch(4.0f, 0.0f) == doctest::Approx(8.0f));
+    CHECK(Damage::Punch(4.0f, 0.4f) == doctest::Approx(8.0f * (1.0f + 0.4f / 3.0f)));  // five beers: a little
+    CHECK(Damage::Punch(4.0f, 1.5f) == doctest::Approx(12.0f));
+    CHECK(Damage::Punch(4.0f, 3.0f) == doctest::Approx(16.0f));
+    CHECK(Damage::Punch(4.0f, 8.0f) == doctest::Approx(16.0f));
+    CHECK(Damage::Punch(4.0f, -1.0f) == doctest::Approx(8.0f));
+}
+
+TEST_CASE("drunk makes the player tougher, up to MSC's drunk 3")
+{
+    const auto sober = Damage::Drunk(0.0f);
+    CHECK(sober.armor == 0.0f);
+    CHECK(sober.stamina == 0.0f);
+    CHECK(sober.staminaRate == 0.0f);
+    const auto half = Damage::Drunk(1.5f);
+    CHECK(half.armor == doctest::Approx(100.0f));
+    CHECK(half.stamina == doctest::Approx(50.0f));
+    CHECK(half.staminaRate == doctest::Approx(50.0f));
+    const auto wasted = Damage::Drunk(8.0f);
+    CHECK(wasted.armor == doctest::Approx(200.0f));
+    CHECK(wasted.stamina == doctest::Approx(100.0f));
+    CHECK(wasted.staminaRate == doctest::Approx(100.0f));
+    CHECK(Damage::Drunk(-1.0f).armor == 0.0f);
 }
 
 TEST_CASE("a thrown item hits by its speed, up to a sober punch")
 {
-    CHECK(Damage::Thrown(100.0f, false, 1.0f) == 0.0f);
-    CHECK(Damage::Thrown(100.0f, false, 2.0f) == 0.0f);
-    CHECK(Damage::Thrown(100.0f, false, 8.5f) == doctest::Approx(12.5f));
-    CHECK(Damage::Thrown(100.0f, false, 15.0f) == doctest::Approx(25.0f));
-    CHECK(Damage::Thrown(100.0f, false, 40.0f) == doctest::Approx(25.0f));
-    CHECK(Damage::Thrown(3000.0f, true, 15.0f) == doctest::Approx(187.5f));
-    CHECK(Damage::Thrown(-5.0f, false, 15.0f) == 0.0f);
+    const float punch = Damage::Punch(4.0f);
+    CHECK(Damage::Thrown(punch, 1.0f) == 0.0f);
+    CHECK(Damage::Thrown(punch, 2.0f) == 0.0f);
+    CHECK(Damage::Thrown(punch, 8.5f) == doctest::Approx(punch * 0.5f));
+    CHECK(Damage::Thrown(punch, 15.0f) == doctest::Approx(punch));
+    CHECK(Damage::Thrown(punch, 40.0f) == doctest::Approx(punch));
+    CHECK(Damage::Thrown(-5.0f, 15.0f) == 0.0f);
+}
+
+TEST_CASE("running someone over hits harder than a punch, a nudge softer")
+{
+    CHECK(Damage::RunOver(60.0f, false, 35.0f / 3.6f) > Damage::Punch(4.0f, 4.0f));  // a level 1 bandit at 35 km/h
+    CHECK(Damage::RunOver(60.0f, false, 2.5f) < Damage::Punch(4.0f));
+}
+
+TEST_CASE("a push staggers the actor away from where it comes from")
+{
+    constexpr float kPi = 3.14159265f;
+    CHECK(Damage::StaggerDirection(0.0f, 0.0f, -1.0f) == doctest::Approx(0.0f));   // facing +Y, pushed from the front
+    CHECK(Damage::StaggerDirection(0.0f, 0.0f, 1.0f) == doctest::Approx(0.5f));    // from behind
+    CHECK(Damage::StaggerDirection(0.0f, -1.0f, 0.0f) == doctest::Approx(0.25f));  // from its right (+X)
+    CHECK(Damage::StaggerDirection(0.0f, 1.0f, 0.0f) == doctest::Approx(0.75f));   // from its left
+    CHECK(Damage::StaggerDirection(kPi * 0.5f, -1.0f, 0.0f) == doctest::Approx(0.0f));  // facing +X, from the front
+    CHECK(Damage::StaggerDirection(-kPi * 0.5f, -1.0f, 0.0f) == doctest::Approx(0.5f));
+    CHECK(Damage::StaggerDirection(0.0f, 0.0f, 0.0f) == 0.0f);
+    const float any = Damage::StaggerDirection(12.0f, 0.3f, -0.7f);
+    CHECK(any >= 0.0f);
+    CHECK(any < 1.0f);
 }
 
 TEST_CASE("piss poisons for a share of max health per second, dragons less")
@@ -50,10 +94,10 @@ TEST_CASE("piss poisons for a share of max health per second, dragons less")
 TEST_CASE("drinks, cigarettes and food heal a share of max health, never past it")
 {
     using namespace PerkeleRim::Protocol;
-    CHECK(Damage::Heal(kConsumedBeer, 200.0f, 50.0f) == doctest::Approx(20.0f));
-    CHECK(Damage::Heal(kConsumedCigarette, 200.0f, 50.0f) == doctest::Approx(10.0f));
-    CHECK(Damage::Heal(kConsumedFood, 200.0f, 50.0f) == doctest::Approx(50.0f));
-    CHECK(Damage::Heal(kConsumedSpirit, 200.0f, 50.0f) == doctest::Approx(50.0f));
+    CHECK(Damage::Heal(kConsumedBeer, 200.0f, 50.0f) == doctest::Approx(6.0f));
+    CHECK(Damage::Heal(kConsumedCigarette, 200.0f, 50.0f) == doctest::Approx(4.0f));
+    CHECK(Damage::Heal(kConsumedFood, 200.0f, 50.0f) == doctest::Approx(30.0f));
+    CHECK(Damage::Heal(kConsumedSpirit, 200.0f, 50.0f) == doctest::Approx(16.0f));
     CHECK(Damage::Heal(kConsumedFood, 200.0f, 190.0f) == doctest::Approx(10.0f));  // capped at max
     CHECK(Damage::Heal(kConsumedBeer, 200.0f, 200.0f) == 0.0f);
     CHECK(Damage::Heal(kConsumedBeer, 200.0f, 250.0f) == 0.0f);  // fortified above max: no harm

@@ -297,7 +297,10 @@ namespace PerkeleRim.Game
             pocket.Update(link, playing, player != null);
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
             var driven = playing ? Driven() : null;
-            actors.Update(link, playing, player, driven != null, driven != null ? driven.Body : null, viewCamera != null ? viewCamera.transform : null);
+            // MSC's push stance (J toggles it): PlayerFunctions holds both hands up in its On state.
+            bool pushing = functions != null && functions.ActiveStateName == "On";
+            actors.Update(link, playing, player, driven != null, driven != null ? driven.Body : null, viewCamera != null ? viewCamera.transform : null,
+                pushing, player != null ? Feet() : Vector3.zero);
             horn.Update(link, driven, hornHeld);
             models.Update(link);
             hands.Update(link, playing, input.ScreenWidth, input.ScreenHeight);

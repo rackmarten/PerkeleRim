@@ -65,8 +65,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Screenshots of both games (protocol v32, `ScreenshotEvent`): F11 while MSC has the player saves Skyrim's frame and MSC's view as a matching pair (`<date>_<time>_skyrim.png`, `_msc.png`) in `Documents\My Games\PerkeleRim\Screenshots`, or the folder a `ScreenshotDir=` line in `Data\SKSE\Plugins\PerkeleRim.ini` names. MSC's view is rendered on its own, so it comes out whole with MSC's window minimized.
 - MSC's window as a debug view: while MSC has the player it shows the collision island it stands on, colored by slope, in midday light (only the light: MSC's clock runs on), instead of nothing. The spike's `day on|off` is gone; it moved MSC's clock.
 
+- Drinking toughens Finn while MSC has the player: up to +200 armor, +100 stamina and twice the stamina regen at MSC drunk 3, shown in Active Effects as "Drunk: Thick Skin", "Liquid Courage" and "Second Wind" (PerkeleRim.esp spells 0x914..0x916).
+- Pushing (protocol v33, `kImpactPush`): with MSC's push stance up (J or G), walking into someone shoves them aside with Skyrim's stagger stumble, again every 0.8 s while in touch: no damage, no bounty, no fight.
+- Finn fights with his fists: weapons, spells and scrolls are unequipped while MSC has the player, with a short notification.
+
 ### Changed
 
+- Punches deal Skyrim's own unarmed damage (race, Fortify Unarmed, perks such as Fists of Steel, difficulty) times 2 instead of a quarter of the target's max health, and up to twice that drunk; thrown items scale off the sober punch. The punch reaches 2 m and small creatures (mudcrabs, skeevers) can be hit standing.
+- Drunk scales to MSC's own slow drunk level (five beers about 0.4, two dozen about 2.5): Skyrim's drunk blur stays off below 1.5 and stays light. Drinks heal less (beer 3%, spirit 8%, food 15%).
 - Fuel is endless: every vehicle's tank is kept full, since Skyrim has no fuel stations yet and MSC's fuel gauge isn't visible there.
 - Vehicles plow through people and animals alike, bears, elk and cows too: only huge actors (2000 kg or more by their bounds: mammoths, every dragon) stop them. Heavy animals are now thrown like people. While the player drives, the light capsules are off entirely, so a person can never stop the van.
 

@@ -18,6 +18,13 @@ namespace PerkeleRim::Combat
         constexpr RE::FormID    kStaggerSpell = 0x905;  // PerkeleRimPunchStagger
         constexpr RE::FormID    kPissSpell = 0x90E;     // PerkeleRimPiss: poison, magnitude (per second) set per cast
         constexpr RE::FormID    kMuteVoice = 0x90F;     // PerkeleRimMuteVoice: 1 keeps the player quiet on shout and grunt lines
+        // PerkeleRimDrunkArmor, PerkeleRimDrunkStamina, PerkeleRimDrunkStaminaRate: fortify, magnitude set per cast, kDrunkSeconds.
+        constexpr RE::FormID    kDrunkSpells[] = { 0x914, 0x915, 0x916 };
+        constexpr float         kDrunkSeconds = 10.0f;  // their duration (esp-gen): a save taken meanwhile loses them soon after
+        constexpr float         kDrunkRecast = 5.0f;    // recast before they run out
+        static_assert(kDrunkRecast < kDrunkSeconds);
+        constexpr RE::FormID    kUnarmed = 0x1F4;       // Skyrim.esm's Unarmed weapon, for perk conditions
+        constexpr float         kRefuseQuiet = 3.0f;    // seconds between "fists only" notifications
         constexpr float         kListUnits = 2800.0f;   // actors within 40 m go to MSC
         constexpr float         kPunchMaxUnits = 400.0f;  // a punch further than this away is stale
         constexpr float         kWatchUnits = 1000.0f;  // attackers the per-second log follows
@@ -42,6 +49,13 @@ namespace PerkeleRim::Combat
             RE::SpellItem*                punch = nullptr;
             RE::SpellItem*                stagger = nullptr;
             RE::SpellItem*                piss = nullptr;
+            RE::SpellItem*                drunkSpells[3] = {};
+            float                         drunkApplied = 0.0f;   // drunk level the spells were cast for, 0 = none on
+            int                           drunkLogged = -1;      // tenth of full drunk last logged
+            float                         drunkAge = 0.0f;       // seconds since they were cast
+            float                         refusedAt = -100.0f;   // when the last "fists only" showed
+            float                         clock = 0.0f;
+            bool                          unarmedLogged = false;
             RE::TESGlobal*                muteVoice = nullptr;
             bool                          muted = false;         // muteVoice is 1
             Shout::Watch                  shouts;
@@ -66,6 +80,40 @@ namespace PerkeleRim::Combat
         {
             auto* race = a_actor->GetRace();
             return race && race->HasKeywordString("ActorTypeDragon"sv);
+        }
+
+        float Setting(const char* a_name, float a_default)
+        {
+            auto* settings = RE::GameSettingCollection::GetSingleton();
+            auto* setting = settings ? settings->GetSetting(a_name) : nullptr;
+            return setting ? setting->GetFloat() : a_default;
+        }
+
+        // The player's unarmed damage on a_target as Skyrim works it out for a fist: the race's and
+        // Fortify Unarmed (CalcUnarmedDamage), perks on attack damage with the Unarmed weapon (Fists
+        // of Steel's gauntlets, mods' perks) and the difficulty's multiplier on damage the player deals.
+        float Unarmed(RE::PlayerCharacter* a_player, RE::Actor* a_target)
+        {
+            const float calc = a_player->CalcUnarmedDamage();
+            auto*       values = a_player->AsActorValueOwner();
+            const float value = values ? values->GetActorValue(RE::ActorValue::kUnarmedDamage) : 0.0f;
+            auto*       race = a_player->GetRace();
+            const float raceDamage = race ? race->data.unarmedDamage : 0.0f;
+            float       damage = calc > 0.0f ? calc : value > 0.0f ? value : raceDamage > 0.0f ? raceDamage : 4.0f;
+            if (auto* fists = RE::TESForm::LookupByID<RE::TESObjectWEAP>(kUnarmed)) {
+                RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModAttackDamage, a_player, fists, a_target, &damage);
+            }
+            static constexpr const char* kDifficulty[] = { "fDiffMultHPByPCVE", "fDiffMultHPByPCE", "fDiffMultHPByPCN", "fDiffMultHPByPCH",
+                "fDiffMultHPByPCVH", "fDiffMultHPByPCL" };
+            const auto  difficulty = a_player->GetGameStatsData().difficulty;
+            const float mult = difficulty >= 0 && difficulty < 6 ? Setting(kDifficulty[difficulty], 1.0f) : 1.0f;
+            if (!state.unarmedLogged) {
+                state.unarmedLogged = true;
+                SKSE::log::info("combat: the player's unarmed damage: CalcUnarmedDamage {:.1f}, UnarmedDamage {:.1f}, race {:.1f}; {:.1f} after perks, "
+                                "difficulty {} x{:.2f}",
+                    calc, value, raceDamage, damage, difficulty, mult);
+            }
+            return (std::max)(0.0f, damage) * mult;
         }
 
         // Its weight guessed from its bounds; a dragon counts as huge whatever they say.
@@ -99,7 +147,7 @@ namespace PerkeleRim::Combat
             const float scale = a_actor->GetScale();
             float       height = (max.z - min.z) * scale;
             float       radius = (std::min)(max.x - min.x, max.y - min.y) * 0.5f * scale;
-            if (!(height > 40.0f && height < 2000.0f)) {
+            if (!(height > 8.0f && height < 2000.0f)) {  // small creatures stay small, MSC's hand reaches down to them
                 height = kDefaultHeight * scale;
             }
             if (!(radius > 8.0f && radius < 400.0f)) {
@@ -226,6 +274,25 @@ namespace PerkeleRim::Combat
             }
         }
 
+        void DispelDrunk(RE::PlayerCharacter* a_player)
+        {
+            if (auto* target = a_player->AsMagicTarget()) {
+                auto caster = a_player->GetHandle();
+                for (auto* spell : state.drunkSpells) {
+                    if (spell) {
+                        target->DispelEffect(spell, caster);
+                    }
+                }
+            }
+        }
+
+        void DrunkOff(RE::PlayerCharacter* a_player)
+        {
+            DispelDrunk(a_player);
+            state.drunkApplied = 0.0f;
+            state.drunkLogged = -1;
+        }
+
         class HitSink : public RE::BSTEventSink<RE::TESHitEvent>
         {
         public:
@@ -252,6 +319,12 @@ namespace PerkeleRim::Combat
         state.stagger = data ? data->LookupForm<RE::SpellItem>(kStaggerSpell, kPlugin) : nullptr;
         state.piss = data ? data->LookupForm<RE::SpellItem>(kPissSpell, kPlugin) : nullptr;
         state.muteVoice = data ? data->LookupForm<RE::TESGlobal>(kMuteVoice, kPlugin) : nullptr;
+        bool drunkSpells = true;
+        for (int i = 0; i < 3; i++) {
+            state.drunkSpells[i] = data ? data->LookupForm<RE::SpellItem>(kDrunkSpells[i], kPlugin) : nullptr;
+            drunkSpells = drunkSpells && state.drunkSpells[i];
+        }
+        SKSE::log::info("combat: drunk spells {}", drunkSpells ? "found" : "missing (PerkeleRim.esp not loaded or too old), drinking doesn't toughen the player");
         if (state.muteVoice) {
             state.muteVoice->value = 0.0f;  // a save from back then may have kept 1
         }
@@ -270,6 +343,8 @@ namespace PerkeleRim::Combat
             state.muteVoice->value = 0.0f;
         }
         state.muted = false;
+        state.drunkApplied = 0.0f;  // drunk spells in the save run out on their own
+        state.drunkLogged = -1;
     }
 
     void Update(RE::PlayerCharacter* a_player, std::uint32_t a_generation, float a_delta)
@@ -330,12 +405,13 @@ namespace PerkeleRim::Combat
         }
         auto*       values = target->AsActorValueOwner();
         const float max = values ? values->GetPermanentActorValue(RE::ActorValue::kHealth) : 0.0f;
-        const float damage = Damage::Punch(max, IsDragon(target), a_drunk);
+        const float unarmed = Unarmed(a_player, target);
+        const float damage = Damage::Punch(unarmed, a_drunk);
         const float health = values ? values->GetActorValue(RE::ActorValue::kHealth) : 0.0f;  // the spell lands next frame
         caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
-        SKSE::log::info("combat: the player punched {} for {:.0f} of {:.0f} max health (drunk {:.1f}), it had {:.0f}", NameOf(target), damage, max,
-            a_drunk, health);
+        SKSE::log::info("combat: the player punched {} for {:.0f} (unarmed {:.1f}, drunk {:.1f}), it had {:.0f} of {:.0f} max health", NameOf(target),
+            damage, unarmed, a_drunk, health, max);
     }
 
     void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
@@ -347,7 +423,10 @@ namespace PerkeleRim::Combat
         Protocol::ImpactEvent impact;
         std::memcpy(&impact, a_data, sizeof(impact));
         const bool  piss = impact.kind == Protocol::kImpactPiss;
-        const char* what = piss ? "piss" : impact.kind == Protocol::kImpactVehicle ? "run-over" : "throw";
+        const char* what = piss                                       ? "piss" :
+                           impact.kind == Protocol::kImpactVehicle ? "run-over" :
+                           impact.kind == Protocol::kImpactPush    ? "push" :
+                                                                     "throw";
         auto*       target = RE::TESForm::LookupByID<RE::Actor>(impact.actor);
         // A little past the listed range: the target may have moved on since the list.
         if (!target || !Standing(target) || target->GetPosition().GetDistance(a_player->GetPosition()) > kListUnits + kPunchMaxUnits) {
@@ -360,6 +439,21 @@ namespace PerkeleRim::Combat
             return;
         }
         const float max = values->GetPermanentActorValue(RE::ActorValue::kHealth);
+        if (impact.kind == Protocol::kImpactPush) {
+            // Skyrim's stagger stumble, sent to its graph: no hit, so no damage, no assault, no fight.
+            // Too heavy to shove (a bear, a giant) stays put.
+            if (target->GetPosition().GetDistance(a_player->GetPosition()) > kPunchMaxUnits ||
+                Damage::BulkOf(MassOf(target), IsDragon(target)) != Damage::Bulk::kLight) {
+                SKSE::log::info("combat: the player pushed {}, too far or too heavy to move", NameOf(target));
+                return;
+            }
+            const float direction = Damage::StaggerDirection(target->GetAngleZ(), impact.direction[0], impact.direction[1]);
+            target->SetGraphVariableFloat("staggerDirection"sv, direction);
+            target->SetGraphVariableFloat("staggerMagnitude"sv, Damage::kPushStagger);
+            const bool took = target->NotifyAnimationGraph("staggerStart"sv);
+            SKSE::log::info("combat: the player pushed {} aside (stagger from {:.2f}){}", NameOf(target), direction, took ? "" : ", but its graph refused");
+            return;
+        }
         if (piss) {
             if (!state.piss) {
                 return;
@@ -409,7 +503,7 @@ namespace PerkeleRim::Combat
         if (impact.kind != Protocol::kImpactThrown || !state.punch || !state.stagger) {
             return;
         }
-        const float damage = Damage::Thrown(max, IsDragon(target), impact.speed);
+        const float damage = Damage::Thrown(Damage::Punch(Unarmed(a_player, target)), impact.speed);
         if (damage <= 0.0f) {
             SKSE::log::info("combat: a throw at {:.1f} m/s bounced off {} harmlessly", impact.speed, NameOf(target));
             return;
@@ -533,9 +627,92 @@ namespace PerkeleRim::Combat
         }
     }
 
+    void Drunk(RE::PlayerCharacter* a_player, float a_drunk, float a_delta)
+    {
+        state.clock += a_delta;
+        state.drunkAge += a_delta;
+        const float level = (std::clamp)(a_drunk, 0.0f, Damage::kDrunkLevels);
+        const bool  on = state.drunkApplied > 0.0f;
+        if (level <= 0.0f && !on) {
+            return;
+        }
+        if (on && std::abs(level - state.drunkApplied) < Damage::kDrunkBuffStep && state.drunkAge < kDrunkRecast) {
+            return;
+        }
+        auto* caster = a_player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
+        if (!caster || !state.drunkSpells[0] || !state.drunkSpells[1] || !state.drunkSpells[2]) {
+            return;
+        }
+        if (level <= 0.0f) {
+            DrunkOff(a_player);
+            SKSE::log::info("combat: sober again, the drunk bonuses are off");
+            return;
+        }
+        // A recast adds a second copy next to the running one instead of replacing it (both stack
+        // until the old one runs out), so the old ones go first.
+        if (on) {
+            DispelDrunk(a_player);
+        }
+        const auto  buffs = Damage::Drunk(level);
+        const float magnitudes[] = { buffs.armor, buffs.stamina, buffs.staminaRate };
+        for (int i = 0; i < 3; i++) {
+            caster->CastSpellImmediate(state.drunkSpells[i], false, a_player, 1.0f, false, magnitudes[i], a_player);
+        }
+        // Logged per tenth of the way to full drunk. The values read are the player's before this
+        // cast lands, so they show the last one took.
+        const int tenth = static_cast<int>(Damage::DrunkShare(level) * 10.0f);
+        if (tenth != state.drunkLogged) {
+            state.drunkLogged = tenth;
+            auto* values = a_player->AsActorValueOwner();
+            SKSE::log::info("combat: drunk {:.2f}: casting armor +{:.0f}, stamina +{:.0f}, stamina regen +{:.0f}% (the player has armor {:.0f}, "
+                            "max stamina {:.0f}, stamina regen {:.0f}%)",
+                level, buffs.armor, buffs.stamina, buffs.staminaRate, values ? values->GetActorValue(RE::ActorValue::kDamageResist) : -1.0f,
+                values ? values->GetPermanentActorValue(RE::ActorValue::kStamina) + a_player->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, RE::ActorValue::kStamina) : -1.0f,
+                values ? values->GetActorValue(RE::ActorValue::kStaminaRateMult) : -1.0f);
+        }
+        state.drunkApplied = level;
+        state.drunkAge = 0.0f;
+    }
+
+    void Disarm(RE::PlayerCharacter* a_player)
+    {
+        auto* equip = RE::ActorEquipManager::GetSingleton();
+        if (!equip) {
+            return;
+        }
+        const char* refused = nullptr;
+        for (const bool left : { false, true }) {
+            auto* form = a_player->GetEquippedObject(left);
+            if (!form) {
+                continue;
+            }
+            if (auto* weapon = form->As<RE::TESObjectWEAP>(); weapon && weapon->GetFormID() != kUnarmed) {
+                equip->UnequipObject(a_player, weapon);
+                refused = "Fists only. Finn is a drunk, not a swordsman.";
+                SKSE::log::info("combat: unequipped {} from the player's {} hand (fists only while MSC has it)", weapon->GetName(), left ? "left" : "right");
+            } else if (auto* scroll = form->As<RE::ScrollItem>()) {
+                equip->UnequipObject(a_player, scroll);
+                refused = "Fists only. Finn doesn't do magic.";
+                SKSE::log::info("combat: unequipped scroll {} from the player's {} hand", scroll->GetName(), left ? "left" : "right");
+            } else if (auto* spell = form->As<RE::SpellItem>()) {
+                a_player->DeselectSpell(spell);
+                refused = "Fists only. Finn doesn't do magic.";
+                SKSE::log::info("combat: unequipped spell {} from the player's {} hand", spell->GetName(), left ? "left" : "right");
+            }
+        }
+        if (refused && state.clock - state.refusedAt >= kRefuseQuiet) {
+            state.refusedAt = state.clock;
+            RE::SendHUDMessage::ShowHUDMessage(refused);
+        }
+    }
+
     void Stop()
     {
         if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+            if (state.drunkApplied > 0.0f) {
+                DrunkOff(player);
+                SKSE::log::info("combat: the drunk bonuses are off (Skyrim has the player back)");
+            }
             if (state.blocking) {
                 SetBlocking(player, false);
                 SKSE::log::info("combat: the player stops blocking (Skyrim has it back)");
