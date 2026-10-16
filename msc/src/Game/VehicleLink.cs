@@ -48,6 +48,8 @@ namespace PerkeleRim.Game
         bool held;
         Vector3 heldVelocity, heldAngular;
         float nextGroundCheck;
+        float nextTopUp;
+        bool toppedUp;  // KeepFull logged its first top-up
         bool lastDriven;
         float nextFind;
         float nextReport;   // realtime of the next riding report
@@ -169,6 +171,18 @@ namespace PerkeleRim.Game
                 level.Value = capacity.Value;
                 log($"vehicle: filled the {driverName} tank ({level.Name} = {capacity.Name} = {capacity.Value:0.##})");
             }
+        }
+
+        // Fuel is endless: Skyrim has no fuel stations yet and MSC's gauge isn't drawn there, so the
+        // tank ran dry unseen. Topped up once a second.
+        void KeepFull()
+        {
+            HutongGames.PlayMaker.FsmFloat level, capacity;
+            FuelTank(out level, out capacity, null);
+            if (level == null || capacity == null || capacity.Value <= 0f || level.Value >= capacity.Value) return;
+            if (!toppedUp) log($"vehicle: {driverName} fuel kept full (was {level.Value:0.##} of {capacity.Value:0.##})");
+            toppedUp = true;
+            level.Value = capacity.Value;
         }
 
         // Newer MSC versions make you fetch the van key from your uncle first. Vehicles here are
@@ -466,6 +480,11 @@ namespace PerkeleRim.Game
             }
             Remember();
             tune.Update(driven);
+            if (Time.realtimeSinceStartup >= nextTopUp)
+            {
+                nextTopUp = Time.realtimeSinceStartup + 1f;
+                KeepFull();
+            }
 
             if (Time.realtimeSinceStartup >= nextGroundCheck)
             {

@@ -27,6 +27,10 @@ namespace PerkeleRim::Combat
     // actor.
     void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
 
+    // A HornEvent message: the actors in the driven vehicle's way (Damage::InHornPath, all but huge
+    // ones) dive aside out of its lane as ragdolls (Damage::HornDodge).
+    void OnHorn(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
+
     // Every frame MSC has the player: Skyrim's shouting (Z) works as in vanilla, aimed along MSC's
     // camera, but PerkeleRim.esp's shout and grunt lines aren't the player's while its
     // PerkeleRimMuteVoice global is 1, so Skyrim's shout voice and grunts are muted; each shout released goes to MSC (PlayerShout),

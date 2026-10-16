@@ -24,13 +24,13 @@ namespace PerkeleRim.Game
     //  - reports the physics items around the player (ItemLink), whose models ModelSender sends;
     //  - stocks the garage's shelves with store items once per save (ShelfStocker);
     //  - puts Skyrim's actors near the player on the island as capsules and sends MSC's punches
-    //    that land on them (ActorLink);
+    //    that land on them (ActorLink); H honks the driven vehicle, scattering them (VehicleHorn);
     //  - shares MSC's first-person layer (hands, drinks, tools in hand) with Skyrim (HandLayerSender);
     //  - keeps MSC's player alive while handed over and sends what it would have died of as
     //    PlayerDamage (DeathGuard), plays MSC's death sound on PlayerDeath, and sends MSC's blood
     //    overlay for Skyrim's death ahead of time;
     //  - yells "Perkele!" (or another swear) when the player shouts in Skyrim, grunts or swears when
-    //    Skyrim hurts it (PlayerVoice);
+    //    Skyrim hurts it or the van hits someone (PlayerVoice);
     //  - sends what the player drinks, smokes and eats for Skyrim to heal by (ConsumeWatch);
     //  - keeps MSC's state with Skyrim's saves and puts it back when one loads (SaveSync).
     public unsafe class PlayerLink : MonoBehaviour
@@ -68,6 +68,8 @@ namespace PerkeleRim.Game
         ItemLink items;
         ActorLink actors;
         PlayerVoice voice;
+        VehicleHorn horn;
+        bool hornHeld;  // H held while driving, read by FeedInput before it is kept from MSC
         HandLayerSender hands;
         SaveSync saves;
         Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
@@ -132,8 +134,9 @@ namespace PerkeleRim.Game
             pocket = new PocketLink(log);
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
-            actors = new ActorLink(island, log);
+            actors = new ActorLink(island, log, what => voice.Swear(what));
             voice = new PlayerVoice(log);
+            horn = new VehicleHorn(log);
             chase = new ChaseCamera(log);
             hands = new HandLayerSender(log);
             crash = new CrashSensor(log);
@@ -183,7 +186,11 @@ namespace PerkeleRim.Game
             bool free = HandsFree(BlockButton.Watching(state));
             block.Apply(input.Keys, free, watchKey, hitKey, state, Time.realtimeSinceStartup);
             punch.Apply(input.Keys, free, hitKey, Time.realtimeSinceStartup);
-            remap.Apply(input.Keys, Driven() != null);
+            bool driving = Driven() != null;
+            remap.Apply(input.Keys, driving);
+            // Driving, H is the horn (VehicleHorn) and never reaches MSC: as its Hit key it punched in the seat.
+            hornHeld = driving && input.Keys.Contains((int)VehicleHorn.Key);
+            if (driving) input.Keys.RemoveAll(k => k == (int)VehicleHorn.Key || k == hitKey);
             pocket.Keys(input.Keys);
 
             // The pocket keys are PerkeleRim's alone.
@@ -287,6 +294,7 @@ namespace PerkeleRim.Game
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
             var driven = playing ? Driven() : null;
             actors.Update(link, playing, player, driven != null, driven != null ? driven.Body : null, viewCamera != null ? viewCamera.transform : null);
+            horn.Update(link, driven, hornHeld);
             models.Update(link);
             hands.Update(link, playing, input.ScreenWidth, input.ScreenHeight);
             saves.Update();

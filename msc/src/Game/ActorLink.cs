@@ -8,16 +8,18 @@ namespace PerkeleRim.Game
     // Skyrim's actors near the player (ActorList) as capsules on the island, and MSC's punch.
     //  - One kinematic CapsuleCollider per listed actor, moved with Skyrim's pose (carried on by its
     //    velocity between lists), on a layer of its own that only collides with the player's: the
-    //    player bumps into people, while vehicles, their wheels and items pass through. Heavy
+    //    player bumps into people, while vehicles, their wheels and items pass through (and while
+    //    the player drives they are off, so nothing the seated player has can stop the van). Huge
     //    actors (RunOver.Solid) go on a second layer that collides with everything but the
-    //    capsules: a bear stops the van.
+    //    capsules: a mammoth stops the van.
     //  - MSC's Hit key (H) throws MSC's own punch; a moment later, when the fist is out, a fist-sized
     //    sweep from the camera finds the capsule it lands on and Skyrim gets a PunchEvent.
     //  - An item thrown out of the hand (right button) is followed until it passes through a capsule
     //    (ImpactEvent, kImpactThrown) or slows down; bottles fly twice as fast (Throwing).
     //  - While the piss stream is on, its drops inside a capsule hit that actor (kImpactPiss).
     //  - The vehicle the player drives runs over the capsules its box touches (kImpactVehicle,
-    //    RunOver); it passes through them, so it neither stops nor counts a crash.
+    //    RunOver); it passes through them, so it neither stops nor counts a crash, and the player
+    //    swears (ranOver).
     public unsafe class ActorLink
     {
         const float CarryOnMax = 0.25f;  // seconds a pose is carried on by its velocity at most
@@ -40,6 +42,7 @@ namespace PerkeleRim.Game
         }
 
         readonly Action<string> log;
+        readonly Action<string> ranOver;  // the driven vehicle hit someone, for the log
         readonly List<Rigidbody> held = new List<Rigidbody>();
         readonly List<Flight> flights = new List<Flight>();
         float throwButtonAt = -10f;
@@ -64,10 +67,11 @@ namespace PerkeleRim.Game
         float punchAt = -1f;  // when the pending punch's fist is out, -1 = none
         readonly Island island;
 
-        public ActorLink(Island island, Action<string> log)
+        public ActorLink(Island island, Action<string> log, Action<string> ranOver)
         {
             this.island = island;
             this.log = log;
+            this.ranOver = ranOver;
         }
 
         // Call every LateUpdate. playing: MSC owns the player and it stands on the current island;
@@ -94,7 +98,7 @@ namespace PerkeleRim.Game
                 bodies = Actors.FromList(ref list, island);
             }
             if (layer < 0) PickLayer(player.gameObject.layer);
-            Place();
+            Place(driving);
             Punch(link, driving, view);
             Throws(link, player, driving);
             Piss(link, player, view);
@@ -153,6 +157,7 @@ namespace PerkeleRim.Game
                 if (!runOverPacer.Ready(b.Id, Time.time)) continue;
                 bool sent = SendImpact(link, b.Id, Wire.ImpactVehicle, v.magnitude, v);
                 log($"actors: the {vehicle.name} ran over {b.Id:X8} at {v.magnitude * 3.6f:0} km/h{(sent ? "" : ", but the ring is full")}");
+                ranOver($"ran over {b.Id:X8}");
             }
         }
 
@@ -310,7 +315,8 @@ namespace PerkeleRim.Game
             log($"actors: capsules on layer {layer}, colliding with the player's layer {playerLayer} ({LayerMask.LayerToName(playerLayer)}) only; heavy ones on {solidLayer}, solid to vehicles");
         }
 
-        void Place()
+        // driving: the player sits in a vehicle, light capsules are off (RunOver hits them by its box).
+        void Place(bool driving)
         {
             float carry = Mathf.Min(Time.time - listTime, CarryOnMax);
             gone.Clear();
@@ -320,8 +326,10 @@ namespace PerkeleRim.Game
                 gone.Remove(b.Id);
                 CapsuleCollider capsule;
                 if (!capsules.TryGetValue(b.Id, out capsule)) capsule = capsules[b.Id] = Create(b.Id);
-                int want = RunOver.Solid(b) ? solidLayer : layer;
+                bool solid = RunOver.Solid(b);
+                int want = solid ? solidLayer : layer;
                 if (capsule.gameObject.layer != want) capsule.gameObject.layer = want;
+                if (capsule.enabled != (solid || !driving)) capsule.enabled = solid || !driving;
                 capsule.radius = b.Radius;
                 capsule.height = Mathf.Max(b.Height, b.Radius * 2f);
                 var feet = new Vector3(b.Feet.x, b.Feet.y, b.Feet.z) + new Vector3(b.Velocity.x, b.Velocity.y, b.Velocity.z) * carry;

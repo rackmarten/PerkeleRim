@@ -8,8 +8,9 @@ namespace PerkeleRim
     // CrashMeter never sees the hit; instead the vehicle's box (its colliders' bounds in its own
     // space) is checked against each capsule every frame while it moves at SpeedMin or faster. One
     // actor is hit once per IgnoreSeconds: Skyrim knocks it over, which takes it off the list, but
-    // the list lags a frame or two behind. An actor of HeavyMass or more (Damage::kHeavyMass: bears,
-    // cows, giants, dragons) is solid to vehicles instead: the vehicle stops on it as on a wall
+    // the list lags a frame or two behind. The vehicle plows through people and animals alike, a
+    // bear or an elk too; only an actor of HugeMass or more (Damage::kHugeMass: mammoths, every
+    // dragon) is solid to vehicles: the vehicle stops on it as on a wall
     // (and CrashMeter counts that), and the hit is sent at the speed from before the stop.
     // Unity-free.
     public static class RunOver
@@ -17,9 +18,9 @@ namespace PerkeleRim
         public const float SpeedMin = 2f;        // meters per second (Damage::kRunOverSpeedMin)
         public const float IgnoreSeconds = 2f;   // between two hits on one actor
         public const float Margin = 0.05f;       // meters around the box
-        public const float HeavyMass = 250f;     // kilograms
+        public const float HugeMass = 2000f;     // kilograms
 
-        public static bool Solid(ActorBody body) => body.Mass >= HeavyMass;
+        public static bool Solid(ActorBody body) => body.Mass >= HugeMass;
 
         // Whether a capsule (its axis bottom to top and radius, in the vehicle's space) touches the
         // box min..max. The axis is sampled at most half a radius apart.

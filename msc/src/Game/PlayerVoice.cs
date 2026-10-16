@@ -21,6 +21,8 @@ namespace PerkeleRim.Game
         Dictionary<string, AudioClip> clips;  // by MasterAudio variation name and by clip name, found on first use
         List<KeyValuePair<string, string>> lines;  // clip names with their subtitle line
         List<string> grunts;  // clip names
+        const float SwearEvery = 3f;
+        float nextSwear;
 
         public PlayerVoice(Action<string> log)
         {
@@ -56,6 +58,15 @@ namespace PerkeleRim.Game
             var sound = hurt.Decide(cause, damage, Time.realtimeSinceStartup, random.NextDouble());
             if (sound == HurtSound.None) log($"hurt: quiet for {what} (cooldown)");
             else Say(sound, what);
+        }
+
+        // The vehicle the player drives hit someone: a swear, at most one every SwearEvery seconds
+        // (plowing through a crowd is one outburst).
+        public void Swear(string what)
+        {
+            if (Time.realtimeSinceStartup < nextSwear) return;
+            nextSwear = Time.realtimeSinceStartup + SwearEvery;
+            Say(HurtSound.Swear, what);
         }
 
         // Every frame: a low health swear that waited for the hurt cooldown.

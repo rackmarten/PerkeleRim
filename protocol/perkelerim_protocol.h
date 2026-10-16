@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 30;
+    inline constexpr std::uint32_t kProtocolVersion = 31;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -364,6 +364,7 @@ namespace PerkeleRim::Protocol
         PlayerShout = 17,      // Skyrim -> MSC
         PlayerHurt = 18,       // Skyrim -> MSC
         StockShelves = 19,     // Skyrim -> MSC
+        HornEvent = 20,        // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -480,6 +481,14 @@ namespace PerkeleRim::Protocol
         std::uint32_t kind;          // kImpact*
         float         speed;         // meters per second (kImpactThrown, kImpactVehicle)
         float         direction[3];  // the way it moved, unit vector in Skyrim space
+    };
+
+    // HornEvent (v31): the player honked the vehicle it drives (H), sent on the press and again every
+    // second it stays held. Skyrim has the actors in its way dive aside (Damage::InHornPath).
+    struct HornEvent
+    {
+        float direction[3];  // where the vehicle heads, unit vector in Skyrim space (its nose when slow)
+        float speed;         // meters per second
     };
 
     // PlayerShout: the player shouted in Skyrim while MSC had it (Z, Skyrim's own shout with its
@@ -774,6 +783,8 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(MscSnapshot, length) == 8);
     static_assert(sizeof(PunchEvent) == 16);
     static_assert(offsetof(PunchEvent, direction) == 4);
+    static_assert(sizeof(HornEvent) == 16);
+    static_assert(offsetof(HornEvent, speed) == 12);
     static_assert(sizeof(ImpactEvent) == 24);
     static_assert(offsetof(ImpactEvent, speed) == 8);
     static_assert(offsetof(ImpactEvent, direction) == 12);

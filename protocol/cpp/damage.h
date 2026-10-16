@@ -55,10 +55,10 @@ namespace PerkeleRim::Damage
 
     // Run over by the vehicle MSC's player drives: nothing below kRunOverSpeedMin (a nudge while
     // parking), then a share of max health rising with speed, lethal from kRunOverSpeedLethal
-    // (50 km/h) on. Dragons take a fraction, so they survive. Every hit throws the target over
-    // (KnockOver; light and heavy ones), then a light one's ragdoll is thrown along the vehicle's way at kThrowShare of its speed
-    // plus kThrowLift of it upward: the vehicle has no collision in Skyrim, so without the throw
-    // the body would just drop and the van pass through it.
+    // (50 km/h) on. Dragons take a fraction, so they survive. Every hit but on a huge one knocks the
+    // target over (KnockOver), then its ragdoll is thrown along the vehicle's way at kThrowShare of
+    // its speed plus kThrowLift of it upward: the vehicle has no collision in Skyrim, so without the
+    // throw the body would just drop and the van pass through it.
     inline constexpr float kRunOverSpeedMin = 2.0f;      // meters per second, about 7 km/h
     inline constexpr float kRunOverSpeedLethal = 50.0f / 3.6f;  // 50 km/h
     inline constexpr float kRunOverLethalShare = 2.0f;   // past fortified health too
@@ -68,9 +68,9 @@ namespace PerkeleRim::Damage
     inline constexpr float kThrowLift = 0.35f;
 
     // What a vehicle does to an actor depends on its weight, guessed from its bounds (units, scale
-    // applied) with a person's density: light ones (people, wolves) are run over and flung, the
-    // vehicle passes through; heavy ones (bears, cows, horses) stop it like a wall and only fall
-    // over; huge ones (giants, mammoths, every dragon) stop it and don't even fall.
+    // applied) with a person's density: light ones (people, wolves) and heavy ones (bears, cows,
+    // horses, elk) are run over and flung, the vehicle passes through; huge ones (mammoths, every
+    // dragon) stop it like a wall and don't even fall.
     inline constexpr float kMassPerCubicUnit = 80.0f / (44.0f * 28.0f * 128.0f);  // a person's bounds weigh 80 kg
     inline constexpr float kHeavyMass = 250.0f;  // kilograms
     inline constexpr float kHugeMass = 2000.0f;
@@ -105,6 +105,62 @@ namespace PerkeleRim::Damage
     inline float KnockOver(float a_speed)
     {
         return (std::clamp)(a_speed * kKnockPerSpeed, 1.0f, kKnockMax);
+    }
+
+    // The horn (HornEvent): actors in the vehicle's way dive aside (HornDodge), so they stop
+    // strolling under its wheels. In its way: within kHornUnits and either closer than kHornNearUnits or ahead of
+    // it (a_way, flat) no further than kHornLaneUnits off its line. a_dx, a_dy: actor minus vehicle.
+    inline constexpr float kHornUnits = 800.0f;      // about 11 m
+    inline constexpr float kHornNearUnits = 350.0f;  // 5 m
+    inline constexpr float kHornLaneUnits = 500.0f;  // 7 m either side
+
+    inline bool InHornPath(float a_dx, float a_dy, float a_wayX, float a_wayY)
+    {
+        const float distance = std::hypot(a_dx, a_dy);
+        if (distance > kHornUnits) {
+            return false;
+        }
+        const float way = std::hypot(a_wayX, a_wayY);
+        if (distance < kHornNearUnits || way < 1e-4f) {
+            return true;
+        }
+        const float ahead = (a_dx * a_wayX + a_dy * a_wayY) / way;
+        const float aside = std::abs(a_dx * a_wayY - a_dy * a_wayX) / way;
+        return ahead > 0.0f && aside <= kHornLaneUnits;
+    }
+
+    // An actor the horn reaches dives aside (a Skyrim fear spell moved nobody and was the likely
+    // cause of some dying later): knocked down lightly (kHornDiveKnock) and its ragdoll thrown
+    // square to the vehicle's way, toward the side it already stands on, plus kHornDiveLift upward. It lands kHornDiveShare of the way to
+    // kHornClearUnits past the lane (at least kHornDodgeMinUnits), flying about kHornDiveSeconds.
+    // Returns that move, flat, in units; a_dx, a_dy as for InHornPath. No way: away from the vehicle.
+    inline constexpr float kHornDiveSeconds = 0.6f;
+    inline constexpr float kHornDiveLift = 3.0f;    // meters per second, upward
+    inline constexpr float kHornDiveKnock = 1.0f;   // KnockExplosion magnitude, the least there is
+    inline constexpr float kHornDiveShare = 1.0f / 3.0f;
+    inline constexpr float kHornClearUnits = 100.0f;
+    inline constexpr float kHornDodgeMinUnits = 50.0f;
+
+    inline void HornDodge(float a_dx, float a_dy, float a_wayX, float a_wayY, float& a_outX, float& a_outY)
+    {
+        const float way = std::hypot(a_wayX, a_wayY);
+        float       sideX, sideY, aside;
+        if (way < 1e-4f) {
+            const float distance = std::hypot(a_dx, a_dy);
+            sideX = distance > 1e-4f ? a_dx / distance : 1.0f;
+            sideY = distance > 1e-4f ? a_dy / distance : 0.0f;
+            aside = distance;
+        } else {
+            // Right of the way is (y, -x); the actor's side by the sign of its cross product.
+            const float cross = a_dx * a_wayY - a_dy * a_wayX;
+            const float sign = cross >= 0.0f ? 1.0f : -1.0f;
+            sideX = sign * a_wayY / way;
+            sideY = -sign * a_wayX / way;
+            aside = std::abs(cross) / way;
+        }
+        const float move = (std::max)(kHornDodgeMinUnits, (kHornLaneUnits + kHornClearUnits - aside) * kHornDiveShare);
+        a_outX = sideX * move;
+        a_outY = sideY * move;
     }
 
     // Piss is poison: while the stream stays on an actor it gets a damage over time, a share of its

@@ -613,6 +613,10 @@ namespace PerkeleRim::PlayerSync
                     Combat::OnImpact(a_player, a_data, a_size);
                     return;
                 }
+                if (a_type == Protocol::MessageType::HornEvent) {
+                    Combat::OnHorn(a_player, a_data, a_size);
+                    return;
+                }
                 if (a_type == Protocol::MessageType::Consumed) {
                     Death::OnConsumed(a_player, a_data, a_size);
                     return;

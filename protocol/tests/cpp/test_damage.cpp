@@ -91,6 +91,36 @@ TEST_CASE("weight from bounds sorts actors into light, heavy and huge")
     CHECK(Damage::BulkOf(10.0f, true) == Damage::Bulk::kHuge);  // a dragon, whatever its bounds say
 }
 
+TEST_CASE("the horn scatters whoever is in the vehicle's way")
+{
+    // Heading +Y.
+    CHECK(Damage::InHornPath(0.0f, 600.0f, 0.0f, 1.0f));       // ahead on its line
+    CHECK(Damage::InHornPath(450.0f, 600.0f, 0.0f, 1.0f));     // ahead, off to the side within the lane
+    CHECK_FALSE(Damage::InHornPath(600.0f, 500.0f, 0.0f, 1.0f));  // ahead but well clear
+    CHECK_FALSE(Damage::InHornPath(0.0f, -600.0f, 0.0f, 1.0f));   // behind
+    CHECK(Damage::InHornPath(0.0f, -300.0f, 0.0f, 1.0f));       // right next to it, behind or not
+    CHECK_FALSE(Damage::InHornPath(0.0f, 900.0f, 0.0f, 1.0f));    // out of earshot
+    CHECK(Damage::InHornPath(500.0f, 500.0f, 0.0f, 0.0f));    // no heading: everyone in range
+    CHECK(Damage::InHornPath(0.0f, 600.0f, 0.0f, 3.0f));       // the way needn't be a unit vector
+}
+
+TEST_CASE("the horn's dive heads out of the lane on the actor's own side")
+{
+    float x = 0.0f, y = 0.0f;
+    Damage::HornDodge(100.0f, 1000.0f, 0.0f, 1.0f, x, y);  // heading +Y, a bit to the right
+    CHECK(x == doctest::Approx(500.0f / 3.0f));            // a third of the way to 600 off the line
+    CHECK(y == doctest::Approx(0.0f));
+    Damage::HornDodge(-100.0f, 1000.0f, 0.0f, 2.0f, x, y);  // a bit to the left
+    CHECK(x == doctest::Approx(-500.0f / 3.0f));
+    Damage::HornDodge(0.0f, 1000.0f, 0.0f, 1.0f, x, y);     // dead ahead: some side, the whole way
+    CHECK(std::abs(x) == doctest::Approx(200.0f));
+    Damage::HornDodge(550.0f, 1000.0f, 0.0f, 1.0f, x, y);   // nearly clear: still a step
+    CHECK(x == doctest::Approx(Damage::kHornDodgeMinUnits));
+    Damage::HornDodge(0.0f, 200.0f, 0.0f, 0.0f, x, y);      // no way: away from the vehicle
+    CHECK(x == doctest::Approx(0.0f));
+    CHECK(y == doctest::Approx(400.0f / 3.0f));
+}
+
 TEST_CASE("fall damage follows Skyrim's formula")
 {
     CHECK(Damage::Fall(600.0f) == 0.0f);  // up to fJumpFallHeightMin is free

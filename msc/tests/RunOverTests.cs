@@ -35,10 +35,11 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
-        public void HeavyActorsAreSolidToVehicles()
+        public void OnlyHugeActorsAreSolidToVehicles()
         {
             Assert.That(RunOver.Solid(new ActorBody { Mass = 80f }), Is.False);   // a guard
-            Assert.That(RunOver.Solid(new ActorBody { Mass = 470f }), Is.True);   // a cow
+            Assert.That(RunOver.Solid(new ActorBody { Mass = 470f }), Is.False);  // a cow
+            Assert.That(RunOver.Solid(new ActorBody { Mass = 631f }), Is.False);  // an elk
             Assert.That(RunOver.Solid(new ActorBody { Mass = 2000f }), Is.True);  // a dragon
         }
 

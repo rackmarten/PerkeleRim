@@ -1,5 +1,6 @@
 #include "combat/Combat.h"
 
+#include "coords.h"
 #include "damage.h"
 #include "death/Death.h"
 #include "link/LinkService.h"
@@ -376,7 +377,8 @@ namespace PerkeleRim::Combat
             }
             // Knocked over first unless huge, away along the vehicle's way: the knock comes from
             // just behind the target's feet. Then the damage, the player's hostile spell like a
-            // punch (assault). Only a light one is thrown (Throws), a heavy one stopped the vehicle.
+            // punch (assault). Light and heavy ones are thrown (Throws): the vehicle plowed through
+            // them; a huge one stopped it.
             const auto   bulk = Damage::BulkOf(MassOf(target), IsDragon(target));
             const float  knock = bulk == Damage::Bulk::kHuge ? 0.0f : Damage::KnockOver(impact.speed);
             RE::NiPoint3 from = target->GetPosition();
@@ -394,7 +396,7 @@ namespace PerkeleRim::Combat
             SKSE::log::info("combat: the player ran {} over at {:.0f} km/h for {:.0f} of {:.0f} max health (it had {:.0f}), {}, knock {:.1f}",
                 NameOf(target), impact.speed * 3.6f, damage, max, health,
                 bulk == Damage::Bulk::kLight ? "light" : bulk == Damage::Bulk::kHeavy ? "heavy" : "huge", knock);
-            if (bulk != Damage::Bulk::kLight) {
+            if (bulk == Damage::Bulk::kHuge) {
                 return;
             }
             // Havok units are meters, near enough: the vehicle's speed carries over as is.
@@ -415,6 +417,58 @@ namespace PerkeleRim::Combat
         caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
         SKSE::log::info("combat: the player's throw at {:.1f} m/s hit {} for {:.0f} of {:.0f} max health", impact.speed, NameOf(target), damage, max);
+    }
+
+    void OnHorn(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
+    {
+        if (a_size < sizeof(Protocol::HornEvent)) {
+            SKSE::log::warn("combat: bad horn message ({} bytes)", a_size);
+            return;
+        }
+        Protocol::HornEvent horn;
+        std::memcpy(&horn, a_data, sizeof(horn));
+        auto* lists = RE::ProcessLists::GetSingleton();
+        if (!lists) {
+            return;
+        }
+        // The player sits in the vehicle, so everything is measured from it. Each actor in the way
+        // dives aside out of the lane (Damage::HornDodge, its ragdoll thrown by Throws).
+        const auto at = a_player->GetPosition();
+        int        scared = 0;
+        for (auto& handle : lists->highActorHandles) {
+            auto actor = handle.get();
+            if (!Standing(actor.get())) {
+                continue;
+            }
+            const auto pos = actor->GetPosition();
+            const float dx = pos.x - at.x, dy = pos.y - at.y;
+            if (!Damage::InHornPath(dx, dy, horn.direction[0], horn.direction[1]) ||
+                Damage::BulkOf(MassOf(actor.get()), IsDragon(actor.get())) == Damage::Bulk::kHuge) {
+                continue;
+            }
+            // A dive already asked for (not a ragdoll yet, so still Standing) isn't asked again.
+            const bool diving = std::any_of(state.throws.begin(), state.throws.end(),
+                [&](const Throw& a_throw) { return a_throw.actor.get().get() == actor.get(); });
+            auto* process = actor->GetActorRuntimeData().currentProcess;
+            if (!diving && process) {
+                float moveX, moveY;
+                Damage::HornDodge(dx, dy, horn.direction[0], horn.direction[1], moveX, moveY);
+                const float move = std::hypot(moveX, moveY);
+                // Knocked from its side nearest the vehicle's line, then thrown over the move in
+                // kHornDiveSeconds (Havok units are meters, near enough).
+                RE::NiPoint3 from = pos;
+                from.x -= moveX / move * 100.0f;
+                from.y -= moveY / move * 100.0f;
+                process->KnockExplosion(actor.get(), from, Damage::kHornDiveKnock);
+                const float perSecond = static_cast<float>(Coords::kMetersPerUnit) / Damage::kHornDiveSeconds;
+                state.throws.push_back({ actor->CreateRefHandle(), RE::hkVector4(moveX * perSecond, moveY * perSecond, Damage::kHornDiveLift, 0.0f) });
+            }
+            if (scared++ < 4) {
+                SKSE::log::info("combat: the horn makes {} dive aside, {:.0f} units away{}", NameOf(actor.get()), pos.GetDistance(at),
+                    diving ? " (already diving)" : "");
+            }
+        }
+        SKSE::log::info("combat: the player honked at {:.0f} km/h, {} actors in the way", horn.speed * 3.6f, scared);
     }
 
     void Shouts(RE::PlayerCharacter* a_player)
