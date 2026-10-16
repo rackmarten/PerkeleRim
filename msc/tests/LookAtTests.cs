@@ -61,6 +61,19 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void ChaseCameraSendsItsOwnDirection()
+        {
+            var s = new PlayerState { flags = Wire.PlayerValid | Wire.PlayerCamera, heading = 1f, pitch = 0.2f };
+            // Looking east (Unity yaw 90) and 10 degrees up (pitch 350).
+            CameraPose.Chase(ref s, 90f, 350f);
+            Assert.That(s.flags, Is.EqualTo(Wire.PlayerValid | Wire.PlayerCamera | Wire.PlayerChaseCamera));
+            Assert.That(s.viewHeading, Is.EqualTo(Math.PI / 2).Within(1e-5));
+            Assert.That(s.viewPitch, Is.EqualTo(-10.0 * Math.PI / 180.0).Within(1e-5));
+            Assert.That(s.heading, Is.EqualTo(1f));  // the player's own stay
+            Assert.That(s.pitch, Is.EqualTo(0.2f));
+        }
+
+        [Test]
         public void TiltingRightIsPositiveRoll()
         {
             double a = 30.0 * Math.PI / 180.0;

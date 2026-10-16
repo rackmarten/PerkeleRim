@@ -32,6 +32,7 @@ F10 hands the player to My Summer Car and back. While MSC has the player you nev
 | C / B | smoke / zoom |
 | Ctrl / G / T (on foot) | crouch / push / hitchhike thumb |
 | Shift / Ctrl (driving) | shift up / down |
+| F8 (driving) | chase camera for filming, on / off (hides the HUD) |
 | Y, 3 to 8 | pocket (Skyrim's inventory); driving, 3 and 5 to 8 drink and eat |
 
 Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, P, O, J, I, ...) still work. Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).

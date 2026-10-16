@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 25;
+        public const uint ProtocolVersion = 26;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -34,6 +34,7 @@ namespace PerkeleRim.Protocol
         public const uint PlayerNeeds = 0x4;
         public const uint PlayerGrounded = 0x8;
         public const uint PlayerBlocking = 0x10;
+        public const uint PlayerChaseCamera = 0x20;
         public const uint NeedThirst = 0;
         public const uint NeedHunger = 1;
         public const uint NeedStress = 2;
@@ -248,6 +249,8 @@ namespace PerkeleRim.Protocol
         public float roll;
         public float fov;
         public fixed float needs[7];
+        public float viewHeading;
+        public float viewPitch;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -256,7 +259,7 @@ namespace PerkeleRim.Protocol
         public uint seq;
         public uint reserved;
         public PlayerState value;
-        public fixed byte pad[24];
+        public fixed byte pad[16];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

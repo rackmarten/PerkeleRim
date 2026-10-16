@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 25;
+    inline constexpr std::uint32_t kProtocolVersion = 26;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -110,6 +110,7 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPlayerNeeds = 0x4;   // PlayerState.flags: needs are set
     inline constexpr std::uint32_t kPlayerGrounded = 0x8;  // PlayerState.flags: MSC's player stands on something
     inline constexpr std::uint32_t kPlayerBlocking = 0x10;  // PlayerState.flags: MSC's player guards (right click), Skyrim blocks
+    inline constexpr std::uint32_t kPlayerChaseCamera = 0x20;  // PlayerState.flags: MSC's chase camera (its F9, in a vehicle) is on: eye, roll and fov are that camera's, view* its direction
 
     // PlayerState.needs order, MSC's globals: PlayerThirst, PlayerHunger, PlayerStress, PlayerUrine,
     // PlayerFatigue, PlayerDirtiness (0..100, stress can go past it) and PlayerDrunk (0..8).
@@ -140,6 +141,10 @@ namespace PerkeleRim::Protocol
         float roll;    // radians about the view direction, positive tilts the view right (right ear down)
         float fov;     // vertical field of view, degrees (MSC's Ctrl zoom narrows it)
         float needs[7];  // kNeedCount values in kNeed* order, with kPlayerNeeds
+        // With kPlayerChaseCamera: where the chase camera looks, like heading and pitch (the
+        // player's own heading and pitch don't turn it).
+        float viewHeading;  // radians
+        float viewPitch;    // radians, positive looks down
     };
 
     struct PlayerSlot
@@ -147,7 +152,7 @@ namespace PerkeleRim::Protocol
         std::uint32_t seq;
         std::uint32_t reserved;
         PlayerState   value;
-        std::uint8_t  pad[24];
+        std::uint8_t  pad[16];
     };
 
     inline constexpr std::uint32_t kVehicleValid = 0x1;   // VehicleState.flags: the vehicle is on the current island
@@ -685,7 +690,7 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(InputState, screenWidth) == 104);
     static_assert(sizeof(InputSlot) == 128);
     static_assert(offsetof(InputSlot, value) == 8);
-    static_assert(sizeof(PlayerState) == 96);
+    static_assert(sizeof(PlayerState) == 104);
     static_assert(offsetof(PlayerState, position) == 8);
     static_assert(offsetof(PlayerState, velocity) == 20);
     static_assert(offsetof(PlayerState, heading) == 32);
@@ -696,6 +701,8 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(PlayerState, roll) == 60);
     static_assert(offsetof(PlayerState, fov) == 64);
     static_assert(offsetof(PlayerState, needs) == 68);
+    static_assert(offsetof(PlayerState, viewHeading) == 96);
+    static_assert(offsetof(PlayerState, viewPitch) == 100);
     static_assert(sizeof(PlayerSlot) == 128);
     static_assert(offsetof(PlayerSlot, value) == 8);
     static_assert(sizeof(VehicleState) == 80);

@@ -23,7 +23,8 @@ TEST_CASE("scan codes map to Unity key codes")
     CHECK(KeyFromScanCode(0x39) == KeyCode::Space);
     CHECK(KeyFromScanCode(0x1C) == 13);   // Return (enter/exit vehicle)
     CHECK(KeyFromScanCode(0x3B) == 282);  // F1
-    CHECK(KeyFromScanCode(0x42) == 289);  // F8
+    CHECK(KeyFromScanCode(0x41) == 288);  // F7
+    CHECK(KeyFromScanCode(kDikF8) == 290);  // F8 is MSC's F9 (chase camera)
     CHECK(KeyFromScanCode(0x57) == 292);  // F11
     CHECK(KeyFromScanCode(0xC8) == KeyCode::UpArrow);
 }

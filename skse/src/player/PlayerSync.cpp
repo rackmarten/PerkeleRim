@@ -84,6 +84,7 @@ namespace PerkeleRim::PlayerSync
             float         vanShift = 0.0f;  // most the van was moved off MSC's pose to stay around the camera, units
 
             bool         cameraSeatKnown = false;
+            bool         chase = false;  // MSC's chase camera was on last frame
             // Skyrim's camera in the driven van's local frame, units. Kept across seatings and
             // handovers: it is the same seat, and a van carried to a new anchor may still be rolling.
             RE::NiPoint3 cameraSeat;
@@ -192,6 +193,7 @@ namespace PerkeleRim::PlayerSync
                 SetSimulated(player, true);
             }
             state.seated = false;
+            state.chase = false;
             state.eye = {};
             if (state.savedFov > 0.0f) {
                 if (auto* camera = RE::PlayerCamera::GetSingleton()) {
@@ -420,6 +422,8 @@ namespace PerkeleRim::PlayerSync
         // builds its camera before this hook (from the previous frame's placement, pivoting around
         // the head, smoothed), so this overrides the finished camera node; a_fromHeading and
         // a_fromPitch are the angles Skyrim built it for. MSC's zoom becomes Skyrim's field of view.
+        // MSC's chase camera (kPlayerChaseCamera) comes the same way, far from the feet and turned
+        // its own way.
         void PoseCamera(const Protocol::PlayerState& a_pose, float a_fromHeading, float a_fromPitch)
         {
             auto* camera = RE::PlayerCamera::GetSingleton();
@@ -435,7 +439,9 @@ namespace PerkeleRim::PlayerSync
                     built[r][c] = root->world.rotate.entry[r][c];
                 }
             }
-            Camera::Retarget(built, a_fromHeading, a_fromPitch, a_pose.heading, a_pose.pitch, a_pose.roll, posed);
+            const bool chase = (a_pose.flags & Protocol::kPlayerChaseCamera) != 0;
+            Camera::Retarget(built, a_fromHeading, a_fromPitch, chase ? a_pose.viewHeading : a_pose.heading,
+                chase ? a_pose.viewPitch : a_pose.pitch, a_pose.roll, posed);
             RE::NiMatrix3 rotate;
             for (int r = 0; r < 3; r++) {
                 for (int c = 0; c < 3; c++) {
@@ -627,7 +633,13 @@ namespace PerkeleRim::PlayerSync
                 Die(a_player);
                 return;
             }
-            if (seated) {
+            // With MSC's chase camera on, the camera is outside and the van is drawn where MSC has it.
+            const bool chase = valid && (pose.flags & Protocol::kPlayerChaseCamera) != 0;
+            if (chase != state.chase) {
+                state.chase = chase;
+                SKSE::log::info("player sync: chase camera {}", chase ? "on" : "off");
+            }
+            if (seated && !chase) {
                 LockVanToCamera(vehicle, pose.roll);
             }
             Protocol::VehicleParts parts{};
@@ -651,7 +663,7 @@ namespace PerkeleRim::PlayerSync
             state.statTime += a_delta;
             const bool second = state.statTime >= 1.0f;
             Hud::View hud;
-            hud.show = true;
+            hud.show = !chase;  // clean shots
             hud.label = state.lookAt;
             hud.hand = state.lookAtUse;
             hud.subtitle = state.subtitle;

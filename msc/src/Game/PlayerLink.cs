@@ -12,7 +12,8 @@ namespace PerkeleRim.Game
     //  - holds the player at a new anchor until the ground there has arrived, then puts it down;
     //  - writes PlayerState (Skyrim world space) every frame, valid only while Skyrim has handed
     //    the player over and the player stands on the current anchor's island, with the camera's
-    //    pose (lean, reach, zoom) for Skyrim's first-person camera;
+    //    pose (lean, reach, zoom) for Skyrim's first-person camera, or MSC's chase camera's
+    //    (ChaseCamera, F8 in Skyrim) while that is on;
     //  - sends MSC's interaction text (LookAtText) and subtitle line (Subtitle) to Skyrim when they
     //    change, and its needs with every pose;
     //  - runs the vehicles (VehicleLink) on the same island: the van (drawn in Skyrim) on the
@@ -53,6 +54,7 @@ namespace PerkeleRim.Game
         readonly BlockButton block = new BlockButton();
         readonly KeyRemap remap = new KeyRemap();
         readonly PauseClock clock = new PauseClock();
+        ChaseCamera chase;
         int hitKey = (int)KeyCode.H;  // MSC's Hit binding, read once the player is found
         int watchKey = (int)KeyCode.U;  // MSC's Watch binding, likewise
         Action<string> log;
@@ -128,6 +130,7 @@ namespace PerkeleRim.Game
             items = new ItemLink(island, models, ground, log);
             actors = new ActorLink(island, log);
             voice = new PlayerVoice(log);
+            chase = new ChaseCamera(log);
             hands = new HandLayerSender(log);
             crash = new CrashSensor(log);
             DeathGuard.Install(log);
@@ -250,6 +253,7 @@ namespace PerkeleRim.Game
 
             var state = new PlayerState { frame = fixedFrame };
             if (owned) CloseMenu();
+            chase.Update(owned);
 
             playing = owned && player != null && island.HasAnchor && placedGeneration == island.Generation;
             if (playing) CatchFall();
@@ -864,10 +868,13 @@ namespace PerkeleRim.Game
                 s.pitch = pitch * Mathf.Deg2Rad;
             }
             s.stance = Stance.FromCrouchState(crouch != null ? crouch.ActiveStateName : null);
-            if (viewCamera != null)
+            var tv = chase.Active;
+            var view = tv != null ? tv : viewCamera;
+            if (view != null)
             {
-                var cam = viewCamera.transform;
-                CameraPose.Fill(ref s, ToVec3(cam.position - Feet()), ToVec3(cam.right), ToVec3(cam.up), viewCamera.fieldOfView);
+                var cam = view.transform;
+                CameraPose.Fill(ref s, ToVec3(cam.position - Feet()), ToVec3(cam.right), ToVec3(cam.up), view.fieldOfView);
+                if (tv != null) CameraPose.Chase(ref s, cam.eulerAngles.y, cam.eulerAngles.x);
             }
             FillNeeds(ref s);
         }

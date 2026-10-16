@@ -20,6 +20,16 @@ namespace PerkeleRim
             s.flags |= Wire.PlayerCamera;
         }
 
+        // MSC's chase camera is on: Fill has its pose, and this where it looks (Unity yaw and pitch
+        // in degrees, its transform's eulerAngles y and x).
+        public static void Chase(ref PlayerState s, float yaw, float pitch)
+        {
+            if (pitch > 180f) pitch -= 360f;
+            s.viewHeading = Coords.UnityAngleToSkyrim(yaw);
+            s.viewPitch = pitch * (float)(Math.PI / 180.0);
+            s.flags |= Wire.PlayerChaseCamera;
+        }
+
         // Tilt about the view direction, positive to the right: tilting right drops the camera's
         // right vector below the horizon (Unity is left-handed, so from behind that's clockwise).
         public static float Roll(Vec3 right, Vec3 up) => (float)Math.Atan2(-right.y, up.y);
