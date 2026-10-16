@@ -36,6 +36,8 @@ F10 hands the player to My Summer Car and back. While MSC has the player you nev
 
 Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, P, O, J, I, ...) still work. Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).
 
+Tip: make your character a male Nord. While MSC has the player, Skyrim's own voice is muted and Finn does the yelling, grunting and swearing, so a Nord fits best whenever Skyrim has the player back.
+
 ## Requirements (planned)
 
 - Windows 10/11
