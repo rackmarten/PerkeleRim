@@ -31,6 +31,8 @@ namespace PerkeleRim.Spike
     //   island why [m]       what the ramp pass made of the steep triangles within m (2) of where MSC's camera looks
     //   day on|off          hold MSC at midday (12-14) for testing; the clock jumps back every 2 h
     //   global <name> <v>    set a global PlayMaker float or int (global PlayerUrine 100, global PlayerCigarettes 20)
+    //   fsmvar <object> <fsm> <var> <v>  set a float, int or bool of every FSM of that name on objects of
+    //                        that name (fsmvar FPSCamera Hangover TimeLeft 0 ends MSC's hangover shaking)
     //   spawn <product> [n]  a shop product in front of the player, from its Spawner/CreateItems FSM
     //                        (spawn Sausages 2; Pizza, Chips, MacaronBox, Cigarettes, Beer, ...)
     //   event <NAME>         broadcast a global PlayMaker event (DRINKBEER: the beer drinking animation)
@@ -316,6 +318,24 @@ namespace PerkeleRim.Spike
                         break;
                     case "event":  // a global PlayMaker event, e.g. "event DRINKBEER" plays the beer drinking animation
                         if (words.Length > 1) PlayMakerFSM.BroadcastEvent(words[1]);
+                        break;
+                    case "fsmvar":  // set an FSM's float, int or bool, e.g. "fsmvar FPSCamera Hangover TimeLeft 0"
+                        if (words.Length < 5) { SpikeLog.Write("cmd: fsmvar <object name> <fsm name> <variable> <value>"); break; }
+                        int fsmSet = 0;
+                        foreach (PlayMakerFSM fsm in Resources.FindObjectsOfTypeAll(typeof(PlayMakerFSM)))
+                        {
+                            if (fsm == null || fsm.gameObject.name != words[1] || fsm.FsmName != words[2]) continue;
+                            var vars = fsm.FsmVariables;
+                            var fsmFloat = vars.FindFsmFloat(words[3]);
+                            var fsmInt = fsmFloat == null ? vars.FindFsmInt(words[3]) : null;
+                            var fsmBool = fsmFloat == null && fsmInt == null ? vars.FindFsmBool(words[3]) : null;
+                            if (fsmFloat != null) fsmFloat.Value = float.Parse(words[4], CultureInfo.InvariantCulture);
+                            else if (fsmInt != null) fsmInt.Value = int.Parse(words[4], CultureInfo.InvariantCulture);
+                            else if (fsmBool != null) fsmBool.Value = bool.Parse(words[4]);
+                            else continue;
+                            fsmSet++;
+                        }
+                        SpikeLog.Write($"cmd: {words[1]} :: {words[2]} {words[3]} = {words[4]} in {fsmSet} FSMs");
                         break;
                     case "global":  // set a global PlayMaker float or int, e.g. "global PlayerUrine 100"
                         var globals = HutongGames.PlayMaker.FsmVariables.GlobalVariables;

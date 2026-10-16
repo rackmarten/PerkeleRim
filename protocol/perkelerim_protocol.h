@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 29;
+    inline constexpr std::uint32_t kProtocolVersion = 30;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -141,8 +141,9 @@ namespace PerkeleRim::Protocol
         float roll;    // radians about the view direction, positive tilts the view right (right ear down)
         float fov;     // vertical field of view, degrees (MSC's Ctrl zoom narrows it)
         float needs[7];  // kNeedCount values in kNeed* order, with kPlayerNeeds
-        // With kPlayerChaseCamera: where the chase camera looks, like heading and pitch (the
-        // player's own heading and pitch don't turn it).
+        // Where MSC's camera looks, like heading and pitch but from the camera itself (v30; before,
+        // only with kPlayerChaseCamera): heading and pitch are the player's body and stop matching
+        // the view once the vehicle it sits in is rolled. Skyrim's first-person camera turns to these.
         float viewHeading;  // radians
         float viewPitch;    // radians, positive looks down
     };
@@ -157,6 +158,7 @@ namespace PerkeleRim::Protocol
 
     inline constexpr std::uint32_t kVehicleValid = 0x1;   // VehicleState.flags: the vehicle is on the current island
     inline constexpr std::uint32_t kVehicleDriven = 0x2;  // VehicleState.flags: the player sits in it
+    inline constexpr std::uint32_t kVehicleSeat = 0x4;    // VehicleState.flags: seat holds MSC's camera (driven)
 
     inline constexpr std::uint32_t kVehicleHayosiko = 1;  // VehicleState.vehicle: the Hayosiko van
     inline constexpr std::uint32_t kVehicleJonnez = 2;    // VehicleState.vehicle: the Jonnez moped
@@ -178,6 +180,11 @@ namespace PerkeleRim::Protocol
         float         steer;         // front wheel angle, radians, positive turns right
         float         wheelSpin[4];  // radians about the axle, in [-pi, pi], positive rolls forward:
                                      // front left, front right, rear left, rear right
+        // With kVehicleSeat (v30): where MSC's camera is in the vehicle this same frame, in the
+        // vehicle's frame (Skyrim axes and units: rotation^-1 * (camera - position)). Skyrim hangs the
+        // driven vehicle around its camera by it, so leaning, the moped's head joint and a tilted
+        // vehicle keep the controls where MSC has them.
+        float         seat[3];
         std::uint32_t reserved;
     };
 
@@ -186,7 +193,7 @@ namespace PerkeleRim::Protocol
         std::uint32_t seq;
         std::uint32_t reserved;
         VehicleState  value;
-        std::uint8_t  pad[40];
+        std::uint8_t  pad[28];
     };
 
     inline constexpr std::uint32_t kVehiclePartCapacity = 256;  // VehicleParts.parts
@@ -696,13 +703,14 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(PlayerState, viewPitch) == 100);
     static_assert(sizeof(PlayerSlot) == 128);
     static_assert(offsetof(PlayerSlot, value) == 8);
-    static_assert(sizeof(VehicleState) == 80);
+    static_assert(sizeof(VehicleState) == 92);
     static_assert(offsetof(VehicleState, generation) == 12);
     static_assert(offsetof(VehicleState, position) == 16);
     static_assert(offsetof(VehicleState, rotation) == 28);
     static_assert(offsetof(VehicleState, velocity) == 44);
     static_assert(offsetof(VehicleState, steer) == 56);
     static_assert(offsetof(VehicleState, wheelSpin) == 60);
+    static_assert(offsetof(VehicleState, seat) == 76);
     static_assert(sizeof(VehicleSlot) == 128);
     static_assert(offsetof(VehicleSlot, value) == 8);
     static_assert(sizeof(VehiclePart) == 32);

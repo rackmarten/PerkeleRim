@@ -74,6 +74,18 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void FirstPersonViewIsTheCameraOwnDirection()
+        {
+            var s = new PlayerState { flags = Wire.PlayerValid | Wire.PlayerCamera, heading = 1f, pitch = 0.2f };
+            // Seated in a rolled vehicle the camera looks elsewhere than the player's yaw.
+            CameraPose.View(ref s, 100f, 40f);
+            Assert.That(s.flags, Is.EqualTo(Wire.PlayerValid | Wire.PlayerCamera));  // not the chase camera
+            Assert.That(s.viewHeading, Is.EqualTo(100.0 * Math.PI / 180.0).Within(1e-5));
+            Assert.That(s.viewPitch, Is.EqualTo(40.0 * Math.PI / 180.0).Within(1e-5));
+            Assert.That(s.heading, Is.EqualTo(1f));
+        }
+
+        [Test]
         public void TiltingRightIsPositiveRoll()
         {
             double a = 30.0 * Math.PI / 180.0;

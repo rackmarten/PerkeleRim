@@ -20,13 +20,21 @@ namespace PerkeleRim
             s.flags |= Wire.PlayerCamera;
         }
 
-        // MSC's chase camera is on: Fill has its pose, and this where it looks (Unity yaw and pitch
-        // in degrees, its transform's eulerAngles y and x).
-        public static void Chase(ref PlayerState s, float yaw, float pitch)
+        // Where the camera looks (Unity yaw and pitch in degrees, its transform's eulerAngles y and
+        // x). With roll that is its whole rotation (Unity turns by z, then x, then y, as Skyrim's
+        // Camera::Basis); the player's yaw and its camera's pitch are not, once the vehicle the
+        // player sits in is rolled: looking down at the controls the view was off by degrees.
+        public static void View(ref PlayerState s, float yaw, float pitch)
         {
             if (pitch > 180f) pitch -= 360f;
             s.viewHeading = Coords.UnityAngleToSkyrim(yaw);
             s.viewPitch = pitch * (float)(Math.PI / 180.0);
+        }
+
+        // MSC's chase camera is on: Fill has its pose, and this where it looks.
+        public static void Chase(ref PlayerState s, float yaw, float pitch)
+        {
+            View(ref s, yaw, pitch);
             s.flags |= Wire.PlayerChaseCamera;
         }
 

@@ -149,6 +149,7 @@ TEST_CASE("input and player slots carry the latest value")
     vehicle.vehicle = kVehicleHayosiko;
     vehicle.rotation[3] = 1.0f;
     vehicle.wheelSpin[3] = 2.5f;
+    vehicle.seat[2] = 60.0f;
     p.msc->WriteVehicle(vehicle);
     VehicleState vehicleOut{};
     REQUIRE(p.skyrim->ReadVehicle(kVehicleHayosiko, vehicleOut));

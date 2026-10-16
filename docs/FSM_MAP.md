@@ -141,6 +141,8 @@ Per-vehicle driving trigger (FSM `PlayerTrigger` on the `DriveTrigger` object):
 | Taxi (Kuski) | `NPC_CARS/KUSKI/PlayerTrigger/DriveTrigger` | `EDM` | passenger |
 | Kylajani | `NPC_CARS/Amikset/KYLAJANI/LOD/PlayerFunctions/PlayerTrigger/DriveTrigger` | index only | passenger (unverified) |
 
+The moped is a narrow four-wheeler (`Wheels/Moped_wheelFL/FR/RL/RR`) that MSC balances by moving its `CoG` object (CarDynamics copies it onto the body every physics step), dumped live: `LOD/PlayerTrigger :: PlayerTrigger` holds it at y 0.2 every frame while nobody sits on it and drops it to -0.1 when the player gets on; `LOD/Simulation/Tipping :: Tipping1` turns the `Wheels` object level (world z 0) every frame while its speedometer reads above 2 (unit unverified), and past 40 degrees of roll tips over (CoG 0.2, `Brake`), getting up below 0.5 (CoG -0.1, swears); `Tipping2` raises it to 0.4 above 4 m/s forward; `Kickstand :: Use` shifts it x -0.01 on the stand. `Starter :: Starter` stalls the engine when its RPM falls to 50.
+
 Common state flow (Satsuma shown, others similar; the index lists the same state names: Wait for player, Press return, Player in car, Create player, Check speed, Passout, Reset view, plus Seatbelt/Death/Speed in some):
 - `Wait for player`: sends `DRIVEOFF`, `Entering = false`. Player enters trigger -> `Press return` (prompt, `Entering = true`).
 - `Key DOWN` -> `Check seat` (Satsuma: needs seat part installed via `db_Required1 = Seat_Driver` or `db_Required2 = Bucket Seat Driver`, else back to `Wait for player`) -> `Regular seat` / `Racing seat` -> `Reset view` (sends `DRIVE`) -> `Player in car`.

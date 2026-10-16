@@ -50,6 +50,8 @@ namespace PerkeleRim.Game
         float nextGroundCheck;
         bool lastDriven;
         float nextFind;
+        float nextReport;   // realtime of the next riding report
+        float reportUntil;  // reports every half second until then (after righting it)
         // Where it was left in Skyrim (pose and worldspace or interior), kept up to date while it is
         // on the island; null until it was first placed. A new anchor elsewhere puts it away.
         Snapshot.Body home;
@@ -411,11 +413,14 @@ namespace PerkeleRim.Game
             if (!ground.HasValue) return false;
             SetUpright(ground.Value);
             log($"vehicle: put the {driverName} back on its wheels ({distance:0.0} m from the player)");
+            reportUntil = Time.realtimeSinceStartup + 3f;
+            nextReport = 0f;
             return true;
         }
 
-        // Call every LateUpdate. playing: MSC owns the player and it stands on the current island.
-        public void Update(bool playing, Transform player, Vector3 playerFeet)
+        // Call every LateUpdate, after the player's pose was taken. playing: MSC owns the player and
+        // it stands on the current island. view: MSC's first-person camera (its seat goes out while driven).
+        public void Update(bool playing, Transform player, Vector3 playerFeet, Transform view)
         {
             var link = LinkHost.Current;
             var state = new VehicleState { vehicle = wireId, generation = island.Generation };
@@ -460,7 +465,7 @@ namespace PerkeleRim.Game
                 return;
             }
             Remember();
-            tune.Update();
+            tune.Update(driven);
 
             if (Time.realtimeSinceStartup >= nextGroundCheck)
             {
@@ -470,8 +475,10 @@ namespace PerkeleRim.Game
                 if (ground.HasValue && ground.Value.y - car.position.y > FellThroughDepth) PutBackOnTop(ground.Value);
             }
 
+            Report(driven);
             state.flags = Wire.VehicleValid | (driven ? Wire.VehicleDriven : 0);
             Fill(ref state);
+            if (driven && view != null) FillSeat(ref state, view);
             partState.frame = (uint)Time.frameCount;
             model.Fill(car, ref partState);
             if (link != null && wireId != 0)
@@ -625,6 +632,36 @@ namespace PerkeleRim.Game
             s.velocity[1] = sv.y;
             s.velocity[2] = sv.z;
             FillWheels(ref s);
+        }
+
+        // How it rides (every 2 s while driven, every half second for a while after righting it):
+        // speed, tilt, MSC's center of mass and the frame time, to tell a tip-over or a stall apart.
+        void Report(bool driven)
+        {
+            float now = Time.realtimeSinceStartup;
+            bool righted = now < reportUntil;
+            if ((!driven && !righted) || now < nextReport || body == null) return;
+            nextReport = now + (righted ? 0.5f : 2f);
+            var e = car.eulerAngles;
+            float roll = e.z > 180f ? e.z - 360f : e.z;
+            float pitch = e.x > 180f ? e.x - 360f : e.x;
+            var speed = held ? heldVelocity : body.velocity;
+            log($"vehicle: {driverName} {(driven ? "ridden" : "righted")} {speed.magnitude * 3.6f:0} km/h, roll {roll:0}, pitch {pitch:0}, " +
+                $"center of mass {body.centerOfMass}, {(body.isKinematic ? "kinematic, " : "")}frame {Time.deltaTime * 1000f:0} ms, {body.mass:0} kg");
+        }
+
+        // Where MSC's camera is in the vehicle right now (Skyrim axes and units in the vehicle's frame):
+        // Skyrim hangs the driven vehicle around its own camera by this. A seat Skyrim learned while
+        // stopped went stale whenever the camera moved in the vehicle (leaning, the moped's head
+        // joint, its kickstand tilt), and the controls were drawn off from where MSC picks them.
+        void FillSeat(ref VehicleState s, Transform view)
+        {
+            var local = Quaternion.Inverse(car.rotation) * (view.position - car.position);
+            var seat = Coords.UnityToSkyrim(Vec3From(local));
+            s.seat[0] = seat.x;
+            s.seat[1] = seat.y;
+            s.seat[2] = seat.z;
+            s.flags |= Wire.VehicleSeat;
         }
 
         // Steer and spin from where MSC turned the wheel models, relative to the car (their rest pose

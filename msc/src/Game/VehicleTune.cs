@@ -5,7 +5,9 @@ namespace PerkeleRim.Game
 {
     // Makes an MSC vehicle hold Skyrim's roads (MSC's cars are UnityCar: CarDynamics on the root,
     // Axles copied onto raycast Wheels): heavier, a lower center of mass, a softer and longer
-    // suspension. None of this is in MSC's save, so nothing is put back.
+    // suspension. None of this is in MSC's save, so nothing is put back. The center of mass goes
+    // down from wherever MSC puts it: MSC moves some on purpose (the moped's FSMs balance it that
+    // way), and a fixed center put back over theirs left the ridden moped top-heavy.
     public class VehicleTune
     {
         public struct Settings
@@ -17,13 +19,22 @@ namespace PerkeleRim.Game
             public float BottomLift;  // meters the body collider's bottom goes up
             public float Power;       // engine torque times this (Drivetrain.powerMultiplier), 0 = as MSC has it
             public float Grip;        // tire forward grip times this, 0 = as MSC has it
+            public float Bump;        // compression damping times this on top, 0 = 1
+            public float Rebound;     // rebound damping times this on top, 0 = 1
+            public bool Air;          // lands its jumps while ridden (AirAssist)
         }
 
         // The van's wheels sit far behind its bumpers, so the body's overhang reached a lip or a ramp
         // before the wheels and stopped the van dead. With its bottom lifted the overhang clips into
         // the ground instead and the wheels climb.
         public static readonly Settings Van = new Settings { Mass = 1.2f, CenterDrop = 0.2f, Spring = 0.85f, Travel = 1.2f, BottomLift = 0.25f };
-        public static readonly Settings Moped = new Settings { Mass = 1.2f, CenterDrop = 0.1f, Spring = 1f, Travel = 1f };
+        // The moped keeps MSC's mass and center of mass: MSC balances it by moving the center (-0.1 m while
+        // ridden, 0.4 m at speed, 0.2 m tipped over or left alone, a bit to the side on its
+        // kickstand), and the extra mass stalled its little engine pulling away. Its 8 cm of travel
+        // bottomed out in Skyrim's road holes and UnityCar's bump stop threw it up and onto its side,
+        // and the fork sprang back from a bump and threw the rider over the handlebar: softer and
+        // twice as long, giving way to a bump and slow to spring back.
+        public static readonly Settings Moped = new Settings { Mass = 1f, CenterDrop = 0f, Spring = 0.6f, Travel = 2f, Bump = 0.8f, Rebound = 1.5f, Air = true };
         // Skyrim is all hills: the tractor gets the van's softer, longer suspension, twice the engine
         // torque (it barely got rolling uphill even in low first) and more grip to put it down.
         public static readonly Settings Kekmet = new Settings { Mass = 1.2f, CenterDrop = 0.1f, Spring = 0.85f, Travel = 1.2f, Power = 2f, Grip = 1.3f };
@@ -38,12 +49,13 @@ namespace PerkeleRim.Game
         Transform car;
         Rigidbody body;
         ContactProbe probe;
+        AirAssist air;
         float tuneAt, nextWatch;
         bool tuned;
         float mass0, tunedMass;
         float power0, tunedPower;  // Drivetrain.powerMultiplier as MSC had it and as tuned, 0 = not tuned
         Vector3 tunedCenter;
-        int resets;
+        int resets, moves;
 
         public VehicleTune(Settings settings, string name, Action<string> log)
         {
@@ -59,17 +71,26 @@ namespace PerkeleRim.Game
             tuned = false;
             probe = car.GetComponent<ContactProbe>();
             if (probe == null) probe = car.gameObject.AddComponent<ContactProbe>();
+            air = null;
+            if (settings.Air)
+            {
+                air = car.GetComponent<AirAssist>();
+                if (air == null) air = car.gameObject.AddComponent<AirAssist>();
+                air.Log = log;
+            }
             tuneAt = Time.realtimeSinceStartup + TuneDelay;
         }
 
         // What the vehicle last touched, if within the last seconds (for the crash log), else null.
         public string Contact(float within) => probe != null ? probe.Recent(within) : null;
 
-        // Every frame the vehicle is on the island.
-        public void Update()
+        // Every frame the vehicle is on the island; riding: the player sits in it.
+        public void Update(bool riding)
         {
+            if (air != null) air.Riding = riding;
             if (car == null || body == null || Time.realtimeSinceStartup < tuneAt) return;
             if (!tuned) Tune();
+            FollowCenter();
             if (Time.realtimeSinceStartup >= nextWatch)
             {
                 nextWatch = Time.realtimeSinceStartup + WatchEvery;
@@ -87,7 +108,7 @@ namespace PerkeleRim.Game
             if (settings.BottomLift > 0) LiftBottom();
             var center0 = body.centerOfMass;
             tunedCenter = center0 - Vector3.up * settings.CenterDrop;
-            SetCenter(dynamics);
+            if (settings.CenterDrop > 0f) SetCenter(dynamics);
             var sb = new System.Text.StringBuilder();
             var axles = car.GetComponent<Axles>();
             if (dynamics != null && axles != null)
@@ -119,8 +140,8 @@ namespace PerkeleRim.Game
         {
             axle.suspensionTravel *= settings.Travel;
             axle.suspensionRate *= settings.Mass * settings.Spring;
-            axle.bumpRate *= damping;
-            axle.reboundRate *= damping;
+            axle.bumpRate *= damping * (settings.Bump > 0f ? settings.Bump : 1f);
+            axle.reboundRate *= damping * (settings.Rebound > 0f ? settings.Rebound : 1f);
             if (settings.Grip > 0f) axle.forwardGripFactor *= settings.Grip;
         }
 
@@ -192,22 +213,32 @@ namespace PerkeleRim.Game
             else body.centerOfMass = tunedCenter;
         }
 
-        // MSC (or Unity, when colliders change) may put the mass or center of mass back; tune them
+        // Every frame: MSC moved the center of mass (CarDynamics copies its CoG object onto the body
+        // each physics step), so it goes down by CenterDrop from MSC's new spot.
+        void FollowCenter()
+        {
+            if (settings.CenterDrop <= 0f) return;
+            var center = body.centerOfMass;
+            if ((center - tunedCenter).sqrMagnitude <= 1e-6f) return;
+            tunedCenter = center - Vector3.up * settings.CenterDrop;
+            SetCenter(car.GetComponent<CarDynamics>());
+            if (++moves <= 5) log($"vehicle tune: {name} center of mass moved by MSC to {center}, now {tunedCenter}");
+        }
+
+        // MSC (or Unity, when colliders change) may put the mass or engine power back; tune them
         // again and say so, to learn when it happens.
         void Watch()
         {
             if (!tuned) return;
             bool mass = Mathf.Abs(body.mass - tunedMass) > 0.5f && Mathf.Abs(body.mass - mass0) < 0.5f;
-            bool center = (body.centerOfMass - tunedCenter).sqrMagnitude > 1e-6f;
             var drivetrain = tunedPower > 0f ? car.GetComponent<Drivetrain>() : null;
             bool power = drivetrain != null && Mathf.Abs(drivetrain.powerMultiplier - tunedPower) > 1e-3f;
-            if (!mass && !center && !power) return;
+            if (!mass && !power) return;
             if (mass) body.mass = tunedMass;
-            if (center) SetCenter(car.GetComponent<CarDynamics>());
             float set = power ? drivetrain.powerMultiplier : 0f;
             if (power) SetPower(drivetrain, set * settings.Power);  // MSC changed it: tune its new value
             if (++resets <= 5)
-                log($"vehicle tune: {name} {(mass ? "mass " : "")}{(center ? "center of mass " : "")}{(power ? $"engine power (MSC set x{set:0.##}) " : "")}was put back, tuned again");
+                log($"vehicle tune: {name} {(mass ? "mass " : "")}{(power ? $"engine power (MSC set x{set:0.##}) " : "")}was put back, tuned again");
         }
     }
 

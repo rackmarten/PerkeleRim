@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 29;
+        public const uint ProtocolVersion = 30;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -45,6 +45,7 @@ namespace PerkeleRim.Protocol
         public const uint NeedCount = 7;
         public const uint VehicleValid = 0x1;
         public const uint VehicleDriven = 0x2;
+        public const uint VehicleSeat = 0x4;
         public const uint VehicleHayosiko = 1;
         public const uint VehicleJonnez = 2;
         public const uint VehicleKekmet = 3;
@@ -231,6 +232,7 @@ namespace PerkeleRim.Protocol
         public fixed float velocity[3];
         public float steer;
         public fixed float wheelSpin[4];
+        public fixed float seat[3];
         public uint reserved;
     }
 
@@ -240,7 +242,7 @@ namespace PerkeleRim.Protocol
         public uint seq;
         public uint reserved;
         public VehicleState value;
-        public fixed byte pad[40];
+        public fixed byte pad[28];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

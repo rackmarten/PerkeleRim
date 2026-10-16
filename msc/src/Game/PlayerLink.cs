@@ -275,7 +275,7 @@ namespace PerkeleRim.Game
             link.WritePlayer(ref state);
             SendLookAt(link, playing);
             SendSubtitle(link, playing);
-            foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero);
+            foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero, viewCamera != null ? viewCamera.transform : null);
             foreach (var v in vehicles) v.SendModel(models, player);
             if (playing && Driven() == null && cInput.GetKeyDown("Push"))
                 foreach (var v in vehicles) if (v.RightIfRolled(player)) break;
@@ -888,6 +888,7 @@ namespace PerkeleRim.Game
                 var cam = view.transform;
                 CameraPose.Fill(ref s, ToVec3(cam.position - Feet()), ToVec3(cam.right), ToVec3(cam.up), view.fieldOfView);
                 if (tv != null) CameraPose.Chase(ref s, cam.eulerAngles.y, cam.eulerAngles.x);
+                else CameraPose.View(ref s, cam.eulerAngles.y, cam.eulerAngles.x);
             }
             FillNeeds(ref s);
         }

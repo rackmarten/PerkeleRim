@@ -93,12 +93,14 @@ namespace PerkeleRim.Tests
             var vehicle = new VehicleState { frame = 9, flags = Wire.VehicleValid | Wire.VehicleDriven, vehicle = Wire.VehicleHayosiko };
             vehicle.rotation[3] = 1f;
             vehicle.wheelSpin[3] = 2.5f;
+            vehicle.seat[2] = 60f;
             p.Msc.WriteVehicle(ref vehicle);
             Assert.That(p.Skyrim.ReadVehicle(Wire.VehicleHayosiko, out var vback), Is.True);
             Assert.That(vback.frame, Is.EqualTo(9));
             Assert.That(vback.flags, Is.EqualTo(Wire.VehicleValid | Wire.VehicleDriven));
             Assert.That(vback.rotation[3], Is.EqualTo(1f));
             Assert.That(vback.wheelSpin[3], Is.EqualTo(2.5f));
+            Assert.That(vback.seat[2], Is.EqualTo(60f));
             // Each vehicle has its own slot; unknown ids are neither written nor read.
             Assert.That(p.Skyrim.ReadVehicle(Wire.VehicleJonnez, out _), Is.False);
             var kekmet = new VehicleState { frame = 11, vehicle = Wire.VehicleKekmet };

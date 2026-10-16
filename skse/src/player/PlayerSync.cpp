@@ -85,20 +85,7 @@ namespace PerkeleRim::PlayerSync
             float         vanShift = 0.0f;  // most the van was moved off MSC's pose to stay around the camera, units
 
             bool chase = false;  // MSC's chase camera was on last frame
-            // Skyrim's camera in each driven vehicle's local frame, units, by vehicle id - 1. Kept
-            // across seatings and handovers: it is the same seat, and a vehicle carried to a new
-            // anchor may still be rolling.
-            std::array<bool, Protocol::kVehicleCount>         cameraSeatKnown{};
-            std::array<RE::NiPoint3, Protocol::kVehicleCount> cameraSeat{};
         } state;
-
-        // The camera seat is learned only while the van is this slow (m/s), so the camera's lag at
-        // speed never ends up in it.
-        constexpr float kCameraSeatLearnSpeed = 0.5f;
-        constexpr float kCameraSeatBlend = 0.1f;
-        // ...and while the view is level: MSC moves the seated player when it leans (Q/E), and a lean
-        // learned into the seat would shift the van under the camera and stay there once driving.
-        constexpr float kCameraSeatLearnRoll = 0.03f;  // radians against the van, about 2 degrees
 
         bool Finite(const Protocol::PlayerState& a_pose)
         {
@@ -465,15 +452,17 @@ namespace PerkeleRim::PlayerSync
         // builds its camera before this hook (from the previous frame's placement, pivoting around
         // the head, smoothed), so this overrides the finished camera node; a_fromHeading and
         // a_fromPitch are the angles Skyrim built it for. MSC's zoom becomes Skyrim's field of view.
-        // MSC's chase camera (kPlayerChaseCamera) comes the same way, far from the feet and turned
-        // its own way.
-        void PoseCamera(const Protocol::PlayerState& a_pose, float a_fromHeading, float a_fromPitch)
+        // It turns to where MSC's camera looks (viewHeading, viewPitch, roll), not to the player's
+        // heading and pitch, which miss the view once the vehicle the player sits in is rolled.
+        // MSC's chase camera (kPlayerChaseCamera) comes the same way, far from the feet. Returns
+        // whether the camera was posed.
+        bool PoseCamera(const Protocol::PlayerState& a_pose, float a_fromHeading, float a_fromPitch)
         {
             auto* camera = RE::PlayerCamera::GetSingleton();
             auto* root = camera ? camera->cameraRoot.get() : nullptr;
             if (!root || !camera->IsInFirstPerson()) {
                 state.eye = {};
-                return;
+                return false;
             }
 
             Camera::Matrix built, posed;
@@ -482,9 +471,7 @@ namespace PerkeleRim::PlayerSync
                     built[r][c] = root->world.rotate.entry[r][c];
                 }
             }
-            const bool chase = (a_pose.flags & Protocol::kPlayerChaseCamera) != 0;
-            Camera::Retarget(built, a_fromHeading, a_fromPitch, chase ? a_pose.viewHeading : a_pose.heading,
-                chase ? a_pose.viewPitch : a_pose.pitch, a_pose.roll, posed);
+            Camera::Retarget(built, a_fromHeading, a_fromPitch, a_pose.viewHeading, a_pose.viewPitch, a_pose.roll, posed);
             RE::NiMatrix3 rotate;
             for (int r = 0; r < 3; r++) {
                 for (int c = 0; c < 3; c++) {
@@ -518,24 +505,24 @@ namespace PerkeleRim::PlayerSync
                 }
                 data.worldFOV = Camera::SkyrimFov(a_pose.fov);
             }
+            return true;
         }
 
         // Skyrim builds its camera before this hook, from where the player was put the frame before,
         // and smooths small moves on top, so a driven van drawn at MSC's pose jittered around it and
-        // fell behind at speed. Instead the van is hung around the camera, at the camera's spot in
-        // the van learned while it is nearly stopped: like a rider on a horse, the camera can't move
-        // inside it. What is learned is the camera minus MSC's eye (PoseCamera), never while leaning, so
-        // leaning moves the camera inside the van instead of dragging the van along. Same for the
-        // moped and the Kekmet, each with its own seat.
-        void LockVehicleToCamera(Protocol::VehicleState& a_vehicle, float a_roll)
+        // fell behind at speed. Instead the vehicle is hung around the posed camera, at the spot MSC
+        // has its camera in the vehicle this same frame (VehicleState.seat): the controls are drawn
+        // where MSC picks them, also while leaning, on the moped's wobbly head joint and tilted. A
+        // seat learned in Skyrim while stopped (before v30) went stale whenever the camera moved in
+        // the vehicle, and the controls twitched and drifted off the crosshair.
+        void LockVehicleToCamera(Protocol::VehicleState& a_vehicle)
         {
             auto* camera = RE::PlayerCamera::GetSingleton();
-            if (!camera || !camera->cameraRoot || a_vehicle.vehicle < 1 || a_vehicle.vehicle > Protocol::kVehicleCount) {
+            if (!camera || !camera->cameraRoot || (a_vehicle.flags & Protocol::kVehicleSeat) == 0) {
                 return;
             }
-            auto& seat = state.cameraSeat[a_vehicle.vehicle - 1];
-            auto& seatKnown = state.cameraSeatKnown[a_vehicle.vehicle - 1];
-            const auto         at = camera->cameraRoot->world.translate - state.eye;
+            const auto         at = camera->cameraRoot->world.translate;
+            const RE::NiPoint3 seat(a_vehicle.seat[0], a_vehicle.seat[1], a_vehicle.seat[2]);
             const RE::NiPoint3 van(a_vehicle.position[0], a_vehicle.position[1], a_vehicle.position[2]);
             float              m[3][3];
             Coords::ToMatrix({ a_vehicle.rotation[0], a_vehicle.rotation[1], a_vehicle.rotation[2], a_vehicle.rotation[3] }, m);
@@ -544,20 +531,6 @@ namespace PerkeleRim::PlayerSync
                 for (int c = 0; c < 3; c++) {
                     rotate.entry[r][c] = m[r][c];
                 }
-            }
-
-            const float speed = std::hypot(a_vehicle.velocity[0], a_vehicle.velocity[1], a_vehicle.velocity[2]) *
-                                static_cast<float>(Coords::kMetersPerUnit);
-            // Leaning = the view tilted against the van (the van may stand on a slope): its right side
-            // dropping is a tilt to the right, like PlayerState roll.
-            const float vanRoll = std::asin(std::clamp(-m[2][0], -1.0f, 1.0f));
-            if (speed < kCameraSeatLearnSpeed && std::abs(a_roll - vanRoll) < kCameraSeatLearnRoll) {
-                const auto local = rotate.Transpose() * (at - van);
-                seat = seatKnown ? seat + (local - seat) * kCameraSeatBlend : local;
-                seatKnown = true;
-            }
-            if (!seatKnown) {
-                return;
             }
             const auto locked = at - rotate * seat;
             state.vanShift = (std::max)(state.vanShift, locked.GetDistance(van));
@@ -661,6 +634,7 @@ namespace PerkeleRim::PlayerSync
                     state.lookAtUse = (text->flags & Protocol::kLookAtUse) != 0;
                 }
             });
+            bool posed = false;  // Skyrim's first-person camera sits at MSC's this frame
             if (valid) {
                 // The angles Skyrim built this frame's camera for, before Place changes them.
                 const float fromHeading = a_player->GetAngleZ();
@@ -671,7 +645,7 @@ namespace PerkeleRim::PlayerSync
                     state.hasNeeds = true;
                 }
                 if ((pose.flags & Protocol::kPlayerCamera) != 0) {
-                    PoseCamera(pose, fromHeading, fromPitch);
+                    posed = PoseCamera(pose, fromHeading, fromPitch);
                 } else {
                     state.eye = {};
                 }
@@ -692,8 +666,8 @@ namespace PerkeleRim::PlayerSync
                 state.chase = chase;
                 SKSE::log::info("player sync: chase camera {}", chase ? "on" : "off");
             }
-            if (seated && !chase) {
-                LockVehicleToCamera(*driven, pose.roll);
+            if (seated && !chase && posed) {
+                LockVehicleToCamera(*driven);
             }
             Protocol::VehicleParts parts{};
             for (std::uint32_t i = 0; i < Protocol::kVehicleCount; i++) {
