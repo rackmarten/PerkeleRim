@@ -441,6 +441,25 @@ namespace PerkeleRim.Game
             }
         }
 
+        // Roughly where a vehicle's wheels touch, relative to its middle (meters).
+        static readonly Vector3[] WheelCorners =
+        {
+            new Vector3(0.7f, 0f, 1.2f), new Vector3(-0.7f, 0f, 1.2f), new Vector3(0.7f, 0f, -1.2f), new Vector3(-0.7f, 0f, -1.2f),
+        };
+
+        // The highest ground under the wheels around spot: a vehicle parked over a gap (the garage's
+        // pit) stands on its sides, not on whatever is under its middle. Null when none has arrived.
+        Vector3? GroundUnderWheels(Vector3 spot, Quaternion yaw)
+        {
+            float? top = null;
+            foreach (var corner in WheelCorners)
+            {
+                var g = findGround(spot + yaw * corner);
+                if (g.HasValue && (!top.HasValue || g.Value.y > top.Value)) top = g.Value.y;
+            }
+            return top.HasValue ? new Vector3(spot.x, top.Value, spot.z) : (Vector3?)null;
+        }
+
         void Park(Transform player, Vector3 feet)
         {
             var below = ColliderBelow(car);
@@ -454,7 +473,7 @@ namespace PerkeleRim.Game
                 var at = island.SkyrimToIsland(this.spot);
                 spot = new Vector3(at.x, at.y, at.z);
                 yaw = Quaternion.Euler(0f, Coords.SkyrimAngleToUnity(spotHeading), 0f);
-                ground = findGround(spot);
+                ground = GroundUnderWheels(spot, yaw) ?? findGround(spot);
             }
             else
             {

@@ -63,8 +63,8 @@ loads it any more.
 ## Garage ESP
 
 `esp-gen/` (C#, .NET 8, [Mutagen](https://github.com/Mutagen-Modding/Mutagen) 0.53) writes
-`PerkeleRim.esp`: the garage near Whiterun built from vanilla pieces, a spawn marker in front of it
-and a marker where the van parks. It reads only your own `Skyrim.esm` (base objects, the Tamriel cell
+`PerkeleRim.esp`: the garage near Whiterun built from vanilla pieces, with a pit and shelves, the
+shack next to it, a spawn marker in front of it and a marker where the van parks. It reads only your own `Skyrim.esm` (base objects, the Tamriel cell
 to add to, terrain height there) and writes the same bytes every time. **This folder is GPL-3.0**
 (Mutagen is), unlike the rest of the repository; see `esp-gen/LICENSE`.
 
@@ -81,9 +81,24 @@ What it places (layout constants at the top of `esp-gen/Program.cs`):
   cell (3, -4), open end facing 31.7 degrees east of north, raised 10 units above the highest
   ground under it so the van clears the beams.
 - Eight `ShackWall01/02/05` plank walls closing the back and both long sides.
+- The pit: four `Stonewall01` (two per side, x -216..216), each side topped by a flat `RTDockRamp01`
+  plank track 63 units above the highest ground under the shed. The tracks are 60 units apart, so
+  the van stands on them and Finn crouches in the gap under it (the walls' tops are rounded, too
+  far apart on their own: the van fell between them); two more planks tilted up from the front. The shed is raised by the
+  same 63 units so the van on the pit clears its beams.
+- `CommonShelf01` (parts), `CommonShelf03` and `CommonShelf04` along the back wall; the last two get
+  three spot markers each on their top board (`PerkeleRimShelfSpot0..5`, listed in that order in
+  the FormList `PerkeleRimShelfSpots`, `0x910`), where MSC puts its store items.
+- The shack on the garage's right side (-Y): two ShackKit tiles in a row with plank walls, a window,
+  a doorway in the +X end (the way the garage opens), a gable roof, and a `CommonBed01` in the back
+  tile.
 - Two persistent `XMarkerHeading`s in Tamriel's persistent cell at fixed local form ids the SKSE
-  plugin looks up: `0x800` the spawn point 620 units in front of the opening, facing in, and
-  `0x801` the van's spot in the middle, nose out.
+  plugin looks up: `0x800` the spawn point 620 units in front of the opening, facing in (only used
+  with an ESP from before the shack), and `0x801` the van's spot in the middle on top of the pit,
+  nose out.
+- `0x80B`, the persistent marker next to the bed facing the doorway, where the first handover of a
+  save wakes Finn up. Pieces added later get ids after the existing ones, so older saves keep
+  theirs.
 
 To move or change the garage, edit those constants and rebuild. The pieces were picked by rendering
 the vanilla meshes in Blender; the spot comes from the terrain heights (flat to about 50 units) and

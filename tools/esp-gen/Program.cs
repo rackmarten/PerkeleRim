@@ -1,6 +1,8 @@
 // Writes PerkeleRim.esp: the garage near Whiterun (vanilla pieces) with the player's spawn marker in
-// front of it and a marker where the van parks inside, the mead and ale that become MSC beer, the
-// drunk blur and the pocket's items (MSC's beer, bottles, food and cigarettes). Reads only the
+// front of it, a marker where the van parks inside on its pit, shelves with spots MSC stocks, and the
+// shack next to it with a bed and the marker the first handover wakes up at; the mead and ale that
+// become MSC beer, the drunk blur and the pocket's items (MSC's beer, bottles, food and
+// cigarettes). Reads only the
 // player's own Skyrim.esm (for the vanilla base objects, the Tamriel cells to add to and the terrain
 // height there). Also the spells MSC's punch lands as.
 //
@@ -49,9 +51,25 @@ var center = (X: 15170f, Y: -14516f);
 // is heading 90 degrees at yaw 0.
 const float yaw = (31.7f - 90f) * MathF.PI / 180f;
 
+// The pit: two low stone walls (Stonewall01: 256 long, 138 wide, 174 tall from its origin), each
+// topped by a flat plank track (RTDockRamp01: 445 long, 126 wide, its top 19 above its origin) the
+// van stands on with a wheel on each, plinthHeight above the highest ground under the shed. The
+// tracks are pitHalfWidth apart from the middle, closer than the van's wheels (about 0.7 m out):
+// the walls' tops are rounded, so the van fell between bare walls. Finn crouches in the gap under
+// the van. Sunk into the ground, so no terrain hole is needed. Tilted planks lead up from the front.
+const float plinthHeight = 63f;
+const float pitHalfWidth = 30f;  // the gap between the tracks is twice this
+const float railHalfWidth = 69f;
+const float railTall = 174f;
+var railX = new[] { -88f, 88f };  // the two pieces of each wall, overlapping: x -216..216
+const float railFront = 221f;     // the tracks' front end, where the ramps start
+const float rampLength = 445f;
+const float rampTop = 19f;
+
 // SFarmShed01: a 720 x 496 open pole shed whose posts reach 160 below its origin. Raised a little
-// above the highest ground under it so the van (about 150 tall) clears the beams.
-const float shedRaise = 10f;
+// above the highest ground under it, plus the plinth, so the van (about 150 tall) on the pit clears
+// the beams.
+const float shedRaise = 10f + plinthHeight;
 // ShackKit walls: 256 long (X), 192 tall from their origin, standing on the +Y edge (y 119..136)
 // of the 256 square around it. Sunk a little below the lowest ground so they never float.
 const float wallSink = 10f;
@@ -70,8 +88,41 @@ var walls = new (string Wall, float X, float Y, float Rot)[]
     ("ShackWall01", 248f, -104f, MathF.PI),
 };
 var footprint = (HalfX: 380f, HalfY: 260f);
-var vanSpot = (X: 0f, Y: 0f);     // the van's middle, nose out of the front
-var spawnSpot = (X: 620f, Y: 0f);  // in front of the opening, looking in
+var vanSpot = (X: 0f, Y: 0f);     // the van's middle on the pit, nose out of the front
+var spawnSpot = (X: 620f, Y: 0f);  // in front of the opening, looking in (between the ramps)
+
+// Shelves along the back wall (its planks' inner face at x -341), long side along it: one tall one
+// for parts, two lower ones MSC stocks with beer and food. CommonShelf01/03/04: 134 wide, 54 deep,
+// 153/112/63 tall. Each stocked shelf gets three spots on its top board, a little above it so the
+// item drops onto it.
+const float shelfX = -311f;
+var shelves = new (string Shelf, float Y, float Top, bool Stocked)[]
+{
+    ("CommonShelf01", 150f, 153f, false),
+    ("CommonShelf03", 0f, 112f, true),
+    ("CommonShelf04", -150f, 63f, true),
+};
+var stockOffsets = new[] { -40f, 0f, 40f };  // along the shelf
+const float stockDrop = 6f;
+
+// The shack next to the garage (right side, -Y) where the first handover of a save wakes Finn up:
+// two ShackKit tiles (256 square each, walls on their edges, a gable roof up to 317 above their
+// origin) in a row along X, the doorway in the +X end, so walking out faces the way the garage
+// opens. Same pieces and orientation rules as the garage's walls; ShackRoofSide pieces cover the
+// +Y half of a tile at rotation 0 and ShackWallTop gables the +X edge.
+const float shackY = -423f;  // a 40 unit gap to the shed's roof edge
+var shackTiles = new[] { -16f, 240f };
+var shack = new (string Piece, int Tile, float Rot)[]
+{
+    ("ShackWall01", 0, 0f), ("ShackWall05", 0, MathF.PI), ("ShackWall02", 0, -MathF.PI / 2),
+    ("ShackRoofSide01", 0, 0f), ("ShackRoofSide03", 0, MathF.PI), ("ShackWallTop01", 0, MathF.PI),
+    ("ShackWallWindow01", 1, 0f), ("ShackWall02", 1, MathF.PI), ("ShackWallDoor01", 1, MathF.PI / 2),
+    ("ShackRoofSide02", 1, 0f), ("ShackRoofSide04", 1, MathF.PI), ("ShackWallTop01", 1, 0f),
+};
+// CommonBed01 (171 x 176) in the back tile against the +Y wall; Finn wakes up standing next to it,
+// facing the doorway.
+var bedSpot = (X: -16f, Y: shackY + 28f);
+var wakeSpot = (X: 99f, Y: shackY - 30f);
 
 // ---- Placement helpers ----
 
@@ -100,14 +151,48 @@ FormKey Base<T>(IEnumerable<T> records, string editorId) where T : IMajorRecordG
     records.FirstOrDefault(r => r.EditorID == editorId)?.FormKey ?? throw new InvalidOperationException($"{editorId} not in Skyrim.esm");
 var marker = new FormKey(skyrim.ModKey, 0x000034);  // XMarkerHeading
 
+(float Low, float High) GroundUnder(float x0, float x1, float y0, float y1)
+{
+    float low = float.MaxValue, high = float.MinValue;
+    for (float x = x0; x <= x1; x += 32f)
+    for (float y = y0; y <= y1; y += 32f)
+    {
+        var w = World(x, y);
+        float h = terrain.HeightAt(w.X, w.Y);
+        low = Math.Min(low, h);
+        high = Math.Max(high, h);
+    }
+    return (low, high);
+}
+float GroundAt(float x, float y)
+{
+    var w = World(x, y);
+    return terrain.HeightAt(w.X, w.Y);
+}
+
+// A reference's angles turn it about the world axes, Z first, then Y, then X (the engine's
+// NiMatrix3::SetEulerAnglesXYZ; CommonLib's MoveToNode inverts it with ToEulerAnglesXYZ). So a piece
+// turned to heading a and then tilted about its own Y axis by pitch (positive raises its +X end)
+// needs all three: build its axes and read the angles back the way ToEulerAnglesXYZ does.
+static P3Float Angles(float a, float pitch)
+{
+    if (pitch == 0f) return new P3Float(0f, 0f, a);
+    float ca = MathF.Cos(a), sa = MathF.Sin(a), cp = MathF.Cos(pitch), sp = MathF.Sin(pitch);
+    // Axes in world space: x = (cp*ca, -cp*sa, sp), y = (sa, ca, 0), z = (-sp*ca, sp*sa, cp).
+    float ry = MathF.Asin(sp * ca);
+    float rx = -MathF.Atan2(-sp * sa, cp);
+    float rz = -MathF.Atan2(-sa, cp * ca);
+    return new P3Float(rx, ry, Normalize(rz));
+}
+
 uint nextId = 0x800;
-PlacedObject Place(FormKey baseObject, float x, float y, float z, float rot, bool persistent = false)
+PlacedObject Place(FormKey baseObject, float x, float y, float z, float rot, bool persistent = false, float pitch = 0f)
 {
     var w = World(x, y);
     var placed = new PlacedObject(new FormKey(mod.ModKey, nextId++), SkyrimRelease.SkyrimSE)
     {
         Base = new FormLinkNullable<IPlaceableObjectGetter>(baseObject),
-        Placement = new Placement { Position = new P3Float(w.X, w.Y, z), Rotation = new P3Float(0f, 0f, Normalize(rot + yaw)) },
+        Placement = new Placement { Position = new P3Float(w.X, w.Y, z), Rotation = Angles(Normalize(rot + yaw), pitch) },
     };
     if (persistent) placed.MajorRecordFlagsRaw |= (int)PlacedObject.StaticMajorFlag.Persistent;
     return placed;
@@ -115,12 +200,13 @@ PlacedObject Place(FormKey baseObject, float x, float y, float z, float rot, boo
 
 // Markers first, at the fixed ids the SKSE plugin looks up (skse/src/garage/Garage.cpp). Persistent,
 // so they exist while their cell isn't loaded: the plugin moves the player to the spawn marker.
+// The van's marker is on top of the pit's walls.
+float railTop = groundHigh + plinthHeight;
 var spawnWorld = World(spawnSpot.X, spawnSpot.Y);
-var vanWorld = World(vanSpot.X, vanSpot.Y);
 var markers = new List<PlacedObject>
 {
     Place(marker, spawnSpot.X, spawnSpot.Y, terrain.HeightAt(spawnWorld.X, spawnWorld.Y), Heading(-1f, 0f) - yaw, persistent: true),  // 0x800
-    Place(marker, vanSpot.X, vanSpot.Y, terrain.HeightAt(vanWorld.X, vanWorld.Y), Heading(1f, 0f) - yaw, persistent: true),        // 0x801
+    Place(marker, vanSpot.X, vanSpot.Y, railTop, Heading(1f, 0f) - yaw, persistent: true),                                          // 0x801
 };
 markers[0].EditorID = "PerkeleRimGarageSpawnMarker";
 markers[1].EditorID = "PerkeleRimGarageVanMarker";
@@ -128,6 +214,50 @@ markers[1].EditorID = "PerkeleRimGarageVanMarker";
 var pieces = new List<PlacedObject> { Place(Base(skyrim.Statics, "SFarmShed01"), 0f, 0f, groundHigh + shedRaise, 0f) };
 foreach (var (wall, x, y, rot) in walls)
     pieces.Add(Place(Base(skyrim.Statics, wall), x, y, groundLow - wallSink, rot));
+
+// Everything added since comes after, so the ids above stay what older saves know. First the
+// persistent markers: where the first handover wakes Finn up (0x80B), then the shelf spots (the
+// plugin reads them in order from the PerkeleRimShelfSpots list).
+markers.Add(Place(marker, wakeSpot.X, wakeSpot.Y, GroundAt(wakeSpot.X, wakeSpot.Y), Heading(1f, 0f) - yaw, persistent: true));
+markers[^1].EditorID = "PerkeleRimShackWakeMarker";
+var stockSpots = new List<PlacedObject>();
+foreach (var shelf in shelves.Where(s => s.Stocked))
+foreach (var dy in stockOffsets)
+{
+    var spot = Place(marker, shelfX, shelf.Y + dy, GroundAt(shelfX, shelf.Y) + shelf.Top + stockDrop, Heading(1f, 0f) - yaw, persistent: true);
+    spot.EditorID = $"PerkeleRimShelfSpot{stockSpots.Count}";
+    stockSpots.Add(spot);
+    markers.Add(spot);
+}
+
+// The pit: two pieces per wall under each track, the second set out 2 so overlapping stones don't
+// flicker, the track on top, and a plank ramp per track from the ground in front up to its top
+// (tilted, its +X end down).
+const float trackHalfWidth = 63f;
+foreach (float side in new[] { 1f, -1f })
+{
+    for (int i = 0; i < railX.Length; i++)
+        pieces.Add(Place(Base(skyrim.Statics, "Stonewall01"), railX[i], side * (pitHalfWidth + railHalfWidth + i * 2f), railTop - rampTop - railTall, 0f));
+    pieces.Add(Place(Base(skyrim.Statics, "RTDockRamp01"), 0f, side * (pitHalfWidth + trackHalfWidth), railTop - rampTop, 0f));
+}
+foreach (float side in new[] { 1f, -1f })
+{
+    float y = side * (pitHalfWidth + trackHalfWidth);
+    float low = GroundAt(railFront + rampLength, y);
+    float pitch = MathF.Asin(Math.Clamp((railTop - low) / rampLength, 0f, 0.5f));
+    float run = rampLength * MathF.Cos(pitch);
+    pieces.Add(Place(Base(skyrim.Statics, "RTDockRamp01"), railFront + run / 2f, y, (railTop + low) / 2f - rampTop, 0f, pitch: -pitch));
+    Console.WriteLine($"ramp at y {y:0}: rises {railTop - low:0} at {pitch * 180f / MathF.PI:0.0} degrees");
+}
+foreach (var shelf in shelves)
+    pieces.Add(Place(Base(skyrim.Statics, shelf.Shelf), shelfX, shelf.Y, GroundAt(shelfX, shelf.Y), MathF.PI / 2));
+
+// The shack, all pieces from one origin height like the garage's walls, and the bed.
+var shackGround = GroundUnder(shackTiles[0] - 136f, shackTiles[^1] + 136f, shackY - 136f, shackY + 136f);
+Console.WriteLine($"ground under the shack: {shackGround.Low:0} .. {shackGround.High:0}");
+foreach (var (piece, tile, rot) in shack)
+    pieces.Add(Place(Base(skyrim.Statics, piece), shackTiles[tile], shackY, shackGround.Low - wallSink, rot));
+pieces.Add(Place(Base(skyrim.Furniture, "CommonBed01"), bedSpot.X, bedSpot.Y, GroundAt(bedSpot.X, bedSpot.Y), 0f));
 mod.ModHeader.Stats.NextFormID = nextId;
 
 // ---- Cells ----
@@ -349,7 +479,17 @@ foreach (var (topic, lines) in voiceTopics.Values)
 }
 Console.WriteLine($"  lines the player stays quiet on while handed over: {mutedShouts} shout, {mutedGrunts} grunt and breath ({voiceTopics.Count} topics from {voiceMods.Count} masters)");
 
-mod.ModHeader.Stats.NextFormID = 0x910;  // after PerkeleRimMuteVoice (0x90F)
+// ---- Shelf spots ----
+//
+// Fixed id the SKSE plugin looks up (skse/src/garage/Garage.cpp): the shelf spot markers in order,
+// one MSC store item each (which one by index, msc/src/Link/ShelfStock.cs).
+var spotList = new FormList(new FormKey(mod.ModKey, 0x910), SkyrimRelease.SkyrimSE) { EditorID = "PerkeleRimShelfSpots" };
+foreach (var spot in stockSpots)
+    spotList.Items.Add(new FormLink<ISkyrimMajorRecordGetter>(spot.FormKey));
+mod.FormLists.Add(spotList);
+Console.WriteLine($"  910 {spotList.EditorID} ({spotList.Items.Count} spots)");
+
+mod.ModHeader.Stats.NextFormID = 0x911;  // after PerkeleRimShelfSpots (0x910)
 
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
 mod.WriteToBinary(output, new Mutagen.Bethesda.Plugins.Binary.Parameters.BinaryWriteParameters

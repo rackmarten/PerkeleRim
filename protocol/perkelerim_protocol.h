@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 27;
+    inline constexpr std::uint32_t kProtocolVersion = 28;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -352,6 +352,7 @@ namespace PerkeleRim::Protocol
         // 16 was MiddleFinger (until v23): the finger no longer shouts, Z is Skyrim's own shout key.
         PlayerShout = 17,      // Skyrim -> MSC
         PlayerHurt = 18,       // Skyrim -> MSC
+        StockShelves = 19,     // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -500,6 +501,25 @@ namespace PerkeleRim::Protocol
         float         damage;  // share of max health it cost, 0..1 (0 when not known: hits)
         float         health;  // share of max health left, 0..1
         std::uint32_t reserved;
+    };
+
+    // StockShelves: the garage's shelves (PerkeleRim.esp) get MSC's store items, once per save (the
+    // cosave remembers it). Sent right after the anchor of a handover near the garage; MSC spawns
+    // the items the way its store does and puts one on each spot once the anchor's island has ground
+    // there. Which item goes on which spot is MSC's (msc/src/Link/ShelfStock.cs, by spot index).
+    inline constexpr std::uint32_t kStockSpotsMax = 16;
+
+    struct StockSpot
+    {
+        float position[3];  // Skyrim world space, a little above the shelf board
+        float heading;      // radians, clockwise from north: the way the item faces
+    };
+
+    struct StockShelves
+    {
+        std::uint32_t generation;  // the anchor (WorldspaceChange) these spots are for
+        std::uint32_t count;       // <= kStockSpotsMax
+        StockSpot     spots[16];   // kStockSpotsMax
     };
 
     // Consumed: MSC's player finished an alcoholic drink, lit a cigarette or ate something. Skyrim
@@ -749,6 +769,11 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(PlayerShout, words) == 8);
     static_assert(sizeof(PlayerHurt) == 16);
     static_assert(offsetof(PlayerHurt, health) == 8);
+    static_assert(sizeof(StockSpot) == 16);
+    static_assert(offsetof(StockSpot, heading) == 12);
+    static_assert(sizeof(StockShelves) == 264);
+    static_assert(offsetof(StockShelves, count) == 4);
+    static_assert(offsetof(StockShelves, spots) == 8);
     static_assert(sizeof(Consumed) == 8);
     static_assert(sizeof(PocketChange) == 16);
     static_assert(offsetof(PocketChange, delta) == 12);
@@ -794,6 +819,7 @@ namespace PerkeleRim::Protocol
     static_assert(kOffsetRingToMsc == kOffsetActorSlot + sizeof(ActorSlot));
     static_assert(sizeof(ItemState::items) / sizeof(ItemPose) == kItemCapacity);
     static_assert(sizeof(ActorList::actors) / sizeof(ActorPose) == kActorCapacity);
+    static_assert(sizeof(StockShelves::spots) / sizeof(StockSpot) == kStockSpotsMax);
     static_assert(kOffsetRingToSkyrim == kOffsetRingToMsc + sizeof(RingHeader) + kRingToMscCapacity);
     static_assert(kMappingSize == kOffsetRingToSkyrim + sizeof(RingHeader) + kRingToSkyrimCapacity);
     static_assert(sizeof(VehicleParts::parts) / sizeof(VehiclePart) == kVehiclePartCapacity);

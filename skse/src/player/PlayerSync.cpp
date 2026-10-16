@@ -68,6 +68,7 @@ namespace PerkeleRim::PlayerSync
             bool           seated = false;
             RE::NiPoint3   eye;               // Skyrim's camera relative to the placed feet (MSC's eye), 0 when not posed
             float          savedFov = 0.0f;   // Skyrim's worldFOV before MSC's took over, 0 = untouched
+            bool           wasThirdPerson = false;  // Skyrim's camera was third person at the handover
             std::string    lookAt;            // MSC's interaction text
             bool           lookAtUse = false; // MSC shows its hand icon
             std::string    subtitle;          // MSC's subtitle line
@@ -201,6 +202,12 @@ namespace PerkeleRim::PlayerSync
                 }
                 state.savedFov = 0.0f;
             }
+            if (state.wasThirdPerson) {
+                if (auto* camera = RE::PlayerCamera::GetSingleton()) {
+                    camera->ForceThirdPerson();
+                }
+                state.wasThirdPerson = false;
+            }
             state.lookAt.clear();
             state.lookAtUse = false;
             state.subtitle.clear();
@@ -269,6 +276,31 @@ namespace PerkeleRim::PlayerSync
             return true;
         }
 
+        // The garage's shelves get MSC's store items once per save, at the first handover near it
+        // (Garage::StockDue), on the anchor just sent.
+        void Stock(RE::PlayerCharacter* a_player)
+        {
+            if (!Garage::StockDue(a_player->GetPosition())) {
+                return;
+            }
+            const auto&             spots = Garage::ShelfSpots();
+            Protocol::StockShelves  stock{};
+            stock.generation = state.generation;
+            stock.count = static_cast<std::uint32_t>(std::min<std::size_t>(spots.size(), Protocol::kStockSpotsMax));
+            for (std::uint32_t i = 0; i < stock.count; i++) {
+                stock.spots[i].position[0] = spots[i].position.x;
+                stock.spots[i].position[1] = spots[i].position.y;
+                stock.spots[i].position[2] = spots[i].position.z;
+                stock.spots[i].heading = spots[i].heading;
+            }
+            if (!LinkService::Get().Send(Protocol::MessageType::StockShelves, &stock, sizeof(stock))) {
+                SKSE::log::warn("player sync: could not send the shelf spots to MSC");
+                return;
+            }
+            Garage::Stocked();
+            SKSE::log::info("player sync: {} shelf spots to MSC for gen {}", stock.count, stock.generation);
+        }
+
         void TakeOver(RE::PlayerCharacter* a_player, const Garage::Spot* a_van = nullptr)
         {
             if (!LinkService::Get().IsUp()) {
@@ -279,6 +311,12 @@ namespace PerkeleRim::PlayerSync
                 return;
             }
 
+            // MSC's view is first person (PoseCamera only works there); in third person both Finn's
+            // hands and the whole Skyrim character showed. Back to third person at the release.
+            if (auto* camera = RE::PlayerCamera::GetSingleton(); camera && !camera->IsInFirstPerson()) {
+                state.wasThirdPerson = camera->IsInThirdPerson();
+                camera->ForceFirstPerson();
+            }
             state.owned = true;
             Death::Hide();
             Death::OnHandover();
@@ -286,10 +324,11 @@ namespace PerkeleRim::PlayerSync
             state.frames = state.placed = state.newPoses = 0;
             Publish();
             SKSE::log::info("player sync: MSC owns the player");
+            Stock(a_player);
         }
 
-        // A save's first handover starts at the garage: move the player to its spawn marker, and
-        // hand over once it has arrived (TravelToGarage).
+        // A save's first handover starts at the garage: move the player to the shack's wake-up
+        // marker (or the garage's spawn marker), and hand over once it has arrived (TravelToGarage).
         void HandOver(RE::PlayerCharacter* a_player)
         {
             auto* marker = Garage::FirstVisit();
@@ -319,6 +358,9 @@ namespace PerkeleRim::PlayerSync
             auto*      cell = a_player->GetParentCell();
             const bool there = cell && cell->IsAttached() && a_player->Is3DLoaded() &&
                                a_player->GetPosition().GetDistance(state.garage->GetPosition()) < kGarageArrivedUnits;
+            if (there && state.garageFrames == 0) {
+                Garage::WakeUp(state.garage);  // fades up from black while the handover settles
+            }
             if (!there || ++state.garageFrames < kGarageSettleFrames) {
                 return;
             }
@@ -904,6 +946,7 @@ namespace PerkeleRim::PlayerSync
 
     void OnGameLoad()
     {
+        state.wasThirdPerson = false;  // the loaded save has its own camera
         Release("game loading");
         state.garage = nullptr;
         state.resume = false;

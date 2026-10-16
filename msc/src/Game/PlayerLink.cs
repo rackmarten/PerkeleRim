@@ -22,6 +22,7 @@ namespace PerkeleRim.Game
     //  - puts what the player carries into Skyrim's inventory and uses it from there (Y, keys 3 to 8),
     //    and keeps MSC's cigarettes and Skyrim's the same (PocketLink);
     //  - reports the physics items around the player (ItemLink), whose models ModelSender sends;
+    //  - stocks the garage's shelves with store items once per save (ShelfStocker);
     //  - puts Skyrim's actors near the player on the island as capsules and sends MSC's punches
     //    that land on them (ActorLink);
     //  - shares MSC's first-person layer (hands, drinks, tools in hand) with Skyrim (HandLayerSender);
@@ -61,6 +62,7 @@ namespace PerkeleRim.Game
         VehicleLink van, moped;
         VehicleLink[] vehicles;
         BeerGift beer;  // spike "beer" only
+        ShelfStocker shelves;
         PocketLink pocket;
         ModelSender models;
         ItemLink items;
@@ -125,6 +127,7 @@ namespace PerkeleRim.Game
             moped = new VehicleLink("JONNEZ ES(Clone)", "Jonnez", new Vector3(-2.5f, 0f, 1.5f), 0, null, VehicleTune.Moped, island, ground, log);
             vehicles = new[] { van, moped };
             beer = new BeerGift(log);
+            shelves = new ShelfStocker(island, ground, log);
             pocket = new PocketLink(log);
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
@@ -276,6 +279,7 @@ namespace PerkeleRim.Game
             if (playing && Driven() == null && cInput.GetKeyDown("Push"))
                 foreach (var v in vehicles) if (v.RightIfRolled(player)) break;
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
+            shelves.Update(playing);
             pocket.Update(link, playing, player != null);
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
             var driven = playing ? Driven() : null;
@@ -371,6 +375,8 @@ namespace PerkeleRim.Game
                 voice.OnShout(payload, size);
             else if (type == MessageType.PlayerHurt)
                 voice.OnHurt(payload, size);
+            else if (type == MessageType.StockShelves)
+                shelves.OnMessage(payload, size);
             else if (type == MessageType.MscSave || type == MessageType.MscLoad)
                 saves.OnMessage(type, payload, size);
         }
@@ -819,6 +825,9 @@ namespace PerkeleRim.Game
                     log($"player: seated in the {carrier.Name} but {away:0.0} m from it, path {ItemLink.Path(player)}");
                 }
             }
+            // Standing on something isn't falling, even where the rays below miss the floor (next to
+            // the garage's shelves they did, and the player was put on the shed's beams).
+            if (carrier == null && controller != null && controller.isGrounded) return;
             var heights = IslandSurfaces(feet);
             if (heights.Count == 0 || heights[heights.Count - 1] <= feet.y + FallSlack) return;  // ground below, or no island here
             float above = heights[heights.Count - 1];  // the lowest, all of them above the feet

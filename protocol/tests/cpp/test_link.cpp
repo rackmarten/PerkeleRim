@@ -258,6 +258,33 @@ TEST_CASE("the player's shout travels from Skyrim to MSC with its kind")
     CHECK(count == 1);
 }
 
+TEST_CASE("the shelf spots travel from Skyrim to MSC with their anchor generation")
+{
+    Pair p;
+    p.Tick(3);
+    REQUIRE(p.msc->IsUp());
+
+    StockShelves stock{};
+    stock.generation = 7;
+    stock.count = 2;
+    stock.spots[0] = { { 15000.0f, -14600.0f, -2900.0f }, 1.0f };
+    stock.spots[1] = { { 15010.0f, -14610.0f, -2850.0f }, 2.0f };
+    REQUIRE(p.skyrim->Send(MessageType::StockShelves, &stock, sizeof(stock)));
+    int count = 0;
+    p.msc->Receive([&](MessageType a_type, const std::uint8_t* a_data, std::uint32_t a_size) {
+        CHECK(a_type == MessageType::StockShelves);
+        REQUIRE(a_size == sizeof(StockShelves));
+        StockShelves got{};
+        std::memcpy(&got, a_data, sizeof(got));
+        CHECK(got.generation == 7u);
+        CHECK(got.count == 2u);
+        CHECK(got.spots[1].position[2] == -2850.0f);
+        CHECK(got.spots[1].heading == 2.0f);
+        count++;
+    });
+    CHECK(count == 1);
+}
+
 TEST_CASE("look-at text is cut at a character and malformed payloads are refused")
 {
     std::string long_text(kLookAtTextMax - 1, 'a');

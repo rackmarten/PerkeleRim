@@ -105,7 +105,8 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 
 | Feature | Implementation |
 |---|---|
-| Garage near Whiterun | Generated ESP (`tools/esp-gen`, Mutagen) with an open shed and plank walls from vanilla pieces, spawn point in front, van marker inside. The first handover of a save moves the player there. |
+| Garage near Whiterun | Generated ESP (`tools/esp-gen`, Mutagen) with an open shed and plank walls from vanilla pieces, a pit on a low plinth the van parks on (stone walls, plank ramps), shelves at the back, spawn point in front, van marker on the pit. |
+| Finn's home | A plank shack with a usable bed next to the garage, in the exterior worldspace (no load screen). The first handover of a save wakes Finn up by the bed with Skyrim's fade up from black; the van waits on the pit. The first handover near the garage has MSC stock the shelves once per save (beer cases and food from MSC's store spawner, `StockShelves`); the SKSE cosave remembers both. |
 | Pre-built car | Save with a finished Satsuma, or start with Hayosiko van / Gifu / Kekmet, which are drivable from the start. |
 | Beer and emotes | MSC simulates; Skyrim draws arms/particles; drunk level drives Skyrim image-space effects (Skooma-style blur). |
 | Crouch = sneak | MSC crouch → Skyrim player sneak state. |
