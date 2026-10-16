@@ -17,8 +17,14 @@ namespace PerkeleRim::Death
     // A Consumed message.
     void OnConsumed(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
 
+    // Someone hit the player while MSC has it (Skyrim's hit event; the damage is Skyrim's own).
+    void OnHit(RE::PlayerCharacter* a_player, bool a_blocked);
+
+    // MSC just got the player.
+    void OnHandover();
+
     // Every frame MSC has the player: its pose when there is a valid one for the current anchor
-    // (else null) and whether it sits in a vehicle. Lands falls.
+    // (else null) and whether it sits in a vehicle. Lands falls, notices health dropping low.
     void OnPose(RE::PlayerCharacter* a_player, const Protocol::PlayerState* a_pose, bool a_seated);
 
     // A hit that would kill came in: PlayerSync takes the player back, then calls Kill.

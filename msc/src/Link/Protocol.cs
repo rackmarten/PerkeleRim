@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 24;
+        public const uint ProtocolVersion = 25;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -76,6 +76,11 @@ namespace PerkeleRim.Protocol
         public const uint ImpactVehicle = 3;
         public const uint ShoutOther = 0;
         public const uint ShoutUnrelentingForce = 1;
+        public const uint HurtHit = 0;
+        public const uint HurtBlocked = 1;
+        public const uint HurtFall = 2;
+        public const uint HurtCrash = 3;
+        public const uint HurtLow = 4;
         public const uint PocketBeer = 0;
         public const uint PocketBottle = 1;
         public const uint PocketSausages = 2;
@@ -162,6 +167,7 @@ namespace PerkeleRim.Protocol
         PocketCounts = 14,
         ImpactEvent = 15,
         PlayerShout = 17,
+        PlayerHurt = 18,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -520,6 +526,15 @@ namespace PerkeleRim.Protocol
         public uint kind;
         public uint shout;
         public uint words;
+        public uint reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct PlayerHurt
+    {
+        public uint cause;
+        public float damage;
+        public float health;
         public uint reserved;
     }
 

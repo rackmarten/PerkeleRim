@@ -1,6 +1,7 @@
 #include "combat/Combat.h"
 
 #include "damage.h"
+#include "death/Death.h"
 #include "link/LinkService.h"
 #include "player/PlayerSync.h"
 #include "shout.h"
@@ -15,7 +16,7 @@ namespace PerkeleRim::Combat
         constexpr RE::FormID    kPunchSpell = 0x904;   // PerkeleRimPunch: damage, magnitude set per cast
         constexpr RE::FormID    kStaggerSpell = 0x905;  // PerkeleRimPunchStagger
         constexpr RE::FormID    kPissSpell = 0x90E;     // PerkeleRimPiss: poison, magnitude (per second) set per cast
-        constexpr RE::FormID    kMuteShouts = 0x90F;    // PerkeleRimMuteShouts: 1 keeps the player quiet on shout lines
+        constexpr RE::FormID    kMuteVoice = 0x90F;     // PerkeleRimMuteVoice: 1 keeps the player quiet on shout and grunt lines
         constexpr float         kListUnits = 2800.0f;   // actors within 40 m go to MSC
         constexpr float         kPunchMaxUnits = 400.0f;  // a punch further than this away is stale
         constexpr float         kWatchUnits = 1000.0f;  // attackers the per-second log follows
@@ -40,8 +41,8 @@ namespace PerkeleRim::Combat
             RE::SpellItem*                punch = nullptr;
             RE::SpellItem*                stagger = nullptr;
             RE::SpellItem*                piss = nullptr;
-            RE::TESGlobal*                muteShouts = nullptr;
-            bool                          muted = false;         // muteShouts is 1
+            RE::TESGlobal*                muteVoice = nullptr;
+            bool                          muted = false;         // muteVoice is 1
             Shout::Watch                  shouts;
             bool                          watching = false;      // shouts has this handover's first value
             std::uint32_t                 frame = 0;
@@ -230,10 +231,13 @@ namespace PerkeleRim::Combat
             RE::BSEventNotifyControl ProcessEvent(const RE::TESHitEvent* a_event, RE::BSTEventSource<RE::TESHitEvent>*) override
             {
                 if (a_event && PlayerSync::Owned() && a_event->target && a_event->target->IsPlayerRef()) {
-                    auto* source = RE::TESForm::LookupByID(a_event->source);
+                    auto*      source = RE::TESForm::LookupByID(a_event->source);
+                    const bool blocked = a_event->flags.any(RE::TESHitEvent::Flag::kHitBlocked);
                     SKSE::log::info("combat: {} hit the player with {} ({:08X}){}", NameOf(a_event->cause.get()),
-                        source ? source->GetName() : "?", a_event->source,
-                        a_event->flags.any(RE::TESHitEvent::Flag::kHitBlocked) ? ", blocked" : "");
+                        source ? source->GetName() : "?", a_event->source, blocked ? ", blocked" : "");
+                    if (auto* player = RE::PlayerCharacter::GetSingleton(); player && a_event->cause && !a_event->cause->IsPlayerRef()) {
+                        Death::OnHit(player, blocked);
+                    }
                 }
                 return RE::BSEventNotifyControl::kContinue;
             }
@@ -246,11 +250,11 @@ namespace PerkeleRim::Combat
         state.punch = data ? data->LookupForm<RE::SpellItem>(kPunchSpell, kPlugin) : nullptr;
         state.stagger = data ? data->LookupForm<RE::SpellItem>(kStaggerSpell, kPlugin) : nullptr;
         state.piss = data ? data->LookupForm<RE::SpellItem>(kPissSpell, kPlugin) : nullptr;
-        state.muteShouts = data ? data->LookupForm<RE::TESGlobal>(kMuteShouts, kPlugin) : nullptr;
-        if (state.muteShouts) {
-            state.muteShouts->value = 0.0f;  // a save from back then may have kept 1
+        state.muteVoice = data ? data->LookupForm<RE::TESGlobal>(kMuteVoice, kPlugin) : nullptr;
+        if (state.muteVoice) {
+            state.muteVoice->value = 0.0f;  // a save from back then may have kept 1
         }
-        SKSE::log::info("combat: shout mute global {}", state.muteShouts ? "found" : "missing (PerkeleRim.esp not loaded or too old), Skyrim's shout voice stays");
+        SKSE::log::info("combat: voice mute global {}", state.muteVoice ? "found" : "missing (PerkeleRim.esp not loaded or too old), Skyrim's shouts and grunts stay");
         static HitSink hits;
         if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
             events->AddEventSink<RE::TESHitEvent>(&hits);
@@ -261,8 +265,8 @@ namespace PerkeleRim::Combat
 
     void OnGameLoaded()
     {
-        if (state.muteShouts) {
-            state.muteShouts->value = 0.0f;
+        if (state.muteVoice) {
+            state.muteVoice->value = 0.0f;
         }
         state.muted = false;
     }
@@ -415,11 +419,11 @@ namespace PerkeleRim::Combat
 
     void Shouts(RE::PlayerCharacter* a_player)
     {
-        // PerkeleRim.esp's shout lines ("Fus!", "Ro Dah!", ...) need this global at 0 to be the player's.
-        if (!state.muted && state.muteShouts) {
-            state.muteShouts->value = 1.0f;
+        // PerkeleRim.esp's shout and grunt lines ("Fus!", "Ro Dah!", "Gah!", ...) need this global at 0 to be the player's.
+        if (!state.muted && state.muteVoice) {
+            state.muteVoice->value = 1.0f;
             state.muted = true;
-            SKSE::log::info("combat: Skyrim's shout voice muted for the player");
+            SKSE::log::info("combat: Skyrim's shouts and grunts muted for the player");
         }
         if (!state.watching) {
             state.shouts.Reset();
@@ -489,9 +493,9 @@ namespace PerkeleRim::Combat
                 firstPerson->SetAppCulled(false);
             }
         }
-        if (state.muted && state.muteShouts) {
-            state.muteShouts->value = 0.0f;
-            SKSE::log::info("combat: Skyrim's shout voice is the player's again");
+        if (state.muted && state.muteVoice) {
+            state.muteVoice->value = 0.0f;
+            SKSE::log::info("combat: Skyrim's shouts and grunts are the player's again");
         }
         state.muted = false;
         state.watching = false;

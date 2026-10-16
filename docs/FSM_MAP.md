@@ -226,6 +226,17 @@ Watch (dumped 2026-10-15): `PlayerFunctions` `Watch` key `U`. `Initiate` (`GetBu
 
 Eating: each food item's `Use` FSM (`pizza`, `macaron box`, `sausages`, `potato chips`, `pike`, `moosemeat`) goes `Wait button` / `Wait button 2` → `USE` → `Eat` / `Eat 2` → `FINISHED` → `Destroy` (`STOP` → back to waiting). A single sausage (`sausage0 :: Use`): `USE` → `State 2` → `1` → `Grilled` or `2` → `Fresh` → `Destroy`. Bottles (`booze`, `milk`, `spirit`) pass `Eat 2` too, then `Play anim` → `Check drink`, which sends the `Drink` FSM's event. The item FSMs' actions are not readable ("actions failed"), so the hunger each food takes off is unknown.
 
+## 7. The player's voice (MasterAudio)
+
+Dumped 2026-10-16 with the spike's `voices` (lists every group under `MasterAudio` with its variations and clips; `voices <word>` only matching groups and clips). The player's own sounds, by group (variation = clip unless noted):
+
+- `Swearing` (16): `swear01`..`swear16` (variations `1`..`16`), subtitled by a 16-line table in level2 ("Oh pussy!", "Oh satan!", ..., `swear09` "God of thunder!", see `ShoutLine.SwearLines`). MSC's stress swearing and the swear key.
+- `PlayerMisc` (37): pain grunts `ouch1`..`ouch10` (variations `ouch0`..`ouch9`, `ouch0` = clip `ouch10`), `wasp_sting`, `puke01`..`03`, `yawn01`, `tosleep`, `breathtest3`, `can_empty`, eating/drinking (`eating`, `eat_chips`, `drinking`), and foley (`punch01`..`05`, `fisthit`, `swing_axe`, `swing_sledgehammer`, `helmet_on/off/hit`, `cigarette_lightup`, `pocket`, `meat_chop1`..`3`).
+- `Fuck` (11): `fuck01`..`fuck11`, the middle finger's lines. `Shit` (7): `shit01`..`shit07`. `Drunk` (13): `drunk01`..`drunk13`. `Hangover` (7). `Burb` (3). `Yes` (27). `Death` (5): `death01`..`death05`, the death grunt (DeathGuard).
+- Not under `MasterAudio`: the `Pieno-soundbank` `Human_` clips (`Human_Perkele`, `Human_Saatana`, `Human_Vittu`, `Human_Kyrpa`, also snores, burps, sneezes and farts), no subtitles.
+
+PerkeleRim uses `swear01`..`16` and the `Human_` swears for shouts and for being hurt, `ouch1`..`10` as the hurt grunts and `Death` for Skyrim's death. Other people's voices are their own groups (`Teimo`, `Fleetari`, `Suski`, `Fighter` with `fighter_hit01`.., `Drunks`, ...).
+
 ## Global variables of interest
 
 | Name | Type | Meaning (seen in dump) |

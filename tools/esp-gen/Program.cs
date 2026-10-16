@@ -291,43 +291,72 @@ for (uint i = 0; i < pocket.Length; i++)
     Console.WriteLine($"  {item.FormKey.ID:X3} {item.EditorID} (looks like {p.LooksLike})");
 }
 
-// ---- Finn shouts ----
+// ---- Finn's voice ----
 //
 // Fixed id the SKSE plugin looks up (skse/src/combat/Combat.cpp): 1 while MSC has the player. Every
-// line of the shout topics (Skyrim.esm quest 013E06: "Fus!", "Ro Dah!", "Yol!", ... picked by voice
-// type lists the player's voices are in) gets "not the player, or this global is 0" in front of its
-// conditions, so while handed over Skyrim's shout voice stays quiet and MSC yells instead. NPCs and
-// dragons keep their lines.
-var muteShouts = new GlobalShort(new FormKey(mod.ModKey, 0x90F), SkyrimRelease.SkyrimSE) { EditorID = "PerkeleRimMuteShouts", Data = 0 };
-mod.Globals.Add(muteShouts);
-Console.WriteLine($"  {muteShouts.FormKey.ID:X3} {muteShouts.EditorID}");
+// line of the player's own voice topics gets "not the player, or this global is 0" in front of its
+// conditions, so while handed over Skyrim's player stays quiet, whatever its race and voice, and MSC
+// yells, grunts and swears instead. NPCs, creatures and dragons keep their lines (they aren't the
+// player). The topics:
+// - the shout topics (quest 013E06: "Fus!", "Ro Dah!", "Yol!", ... picked by voice type lists the
+//   player's voices are in), the DLC shouts' lines included;
+// - the combat grunts and the player's breathing, by the topic's subtype code (SNAM; the subtype
+//   enum read from DATA doesn't match what the topics hold): HIT_ ("Agh!", "Oof!", "Nargh!"), BLOC
+//   ("Gah!", "Unf!"), ATCK, POAT, BASH, DETH ("Agh...", "Ugh..."), BLED, and BREA, OUTB, ENBZ, EXBZ,
+//   GRNT, LWBS (sprint, heavy and bow zoom breathing, the exhale after casting), in whichever quest.
+// Each line as the last official master has it (Update.esm and the DLCs edit some and add more).
+var muteVoice = new GlobalShort(new FormKey(mod.ModKey, 0x90F), SkyrimRelease.SkyrimSE) { EditorID = "PerkeleRimMuteVoice", Data = 0 };
+mod.Globals.Add(muteVoice);
+Console.WriteLine($"  {muteVoice.FormKey.ID:X3} {muteVoice.EditorID}");
 var shoutQuest = new FormKey(skyrim.ModKey, 0x013E06);
 var playerNpc = new FormKey(skyrim.ModKey, 0x000007);
-int mutedLines = 0;
-foreach (var topic in skyrim.DialogTopics.Where(t => t.Quest.FormKey == shoutQuest))
+var gruntCodes = new HashSet<string> { "HIT_", "BLOC", "ATCK", "POAT", "BASH", "DETH", "BLED", "BREA", "OUTB", "ENBZ", "EXBZ", "GRNT", "LWBS" };
+var voiceTopics = new Dictionary<FormKey, (IDialogTopicGetter Topic, Dictionary<FormKey, IDialogResponsesGetter> Lines)>();
+var voiceMods = new List<ISkyrimModDisposableGetter> { skyrim };
+foreach (var name in new[] { "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm" })
+    if (File.Exists(Path.Combine(data, name))) voiceMods.Add(SkyrimMod.CreateFromBinaryOverlay(Path.Combine(data, name), SkyrimRelease.SkyrimSE));
+foreach (var source in voiceMods)
 {
-    var lines = topic.Responses.ToList();
+    foreach (var topic in source.DialogTopics)
+    {
+        bool shout = topic.Quest.FormKey == shoutQuest;
+        if (!shout && !gruntCodes.Contains(topic.SubtypeName.Type)) continue;
+        if (!voiceTopics.TryGetValue(topic.FormKey, out var entry)) entry = (topic, new Dictionary<FormKey, IDialogResponsesGetter>());
+        foreach (var line in topic.Responses) entry.Lines[line.FormKey] = line;  // later masters win
+        voiceTopics[topic.FormKey] = (topic, entry.Lines);
+    }
+}
+int mutedShouts = 0, mutedGrunts = 0;
+foreach (var (topic, lines) in voiceTopics.Values)
+{
     if (lines.Count == 0) continue;
-    var copy = mod.DialogTopics.GetOrAddAsOverride(topic);
+    bool shout = topic.Quest.FormKey == shoutQuest;
+    var copy = topic.DeepCopy();
     copy.Responses.Clear();
-    foreach (var line in lines)
+    foreach (var line in lines.Values)
     {
         var info = line.DeepCopy();
         var notPlayer = new GetIsIDConditionData();
         notPlayer.Object.Link.SetTo(playerNpc);
         var notMuted = new GetGlobalValueConditionData();
-        notMuted.Global.Link.SetTo(muteShouts.FormKey);
+        notMuted.Global.Link.SetTo(muteVoice.FormKey);
         info.Conditions.Insert(0, new ConditionFloat { CompareOperator = CompareOperator.EqualTo, ComparisonValue = 0, Flags = Condition.Flag.OR, Data = notPlayer });
         info.Conditions.Insert(1, new ConditionFloat { CompareOperator = CompareOperator.EqualTo, ComparisonValue = 0, Data = notMuted });
         copy.Responses.Add(info);
-        mutedLines++;
+        if (shout) mutedShouts++; else mutedGrunts++;
     }
+    mod.DialogTopics.Add(copy);
 }
-Console.WriteLine($"  shout lines the player stays quiet on while handed over: {mutedLines}");
+Console.WriteLine($"  lines the player stays quiet on while handed over: {mutedShouts} shout, {mutedGrunts} grunt and breath ({voiceTopics.Count} topics from {voiceMods.Count} masters)");
 
-mod.ModHeader.Stats.NextFormID = 0x910;  // after PerkeleRimMuteShouts (0x90F)
+mod.ModHeader.Stats.NextFormID = 0x910;  // after PerkeleRimMuteVoice (0x90F)
 
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
-mod.WriteToBinary(output);
+mod.WriteToBinary(output, new Mutagen.Bethesda.Plugins.Binary.Parameters.BinaryWriteParameters
+{
+    // Masters in Skyrim's own order (Skyrim.esm, Update.esm, the DLCs), whichever the voice lines need.
+    MastersListOrdering = new Mutagen.Bethesda.Plugins.Binary.Parameters.MastersListOrderingByLoadOrder(voiceMods.Select(m => m.ModKey)),
+});
+foreach (var m in voiceMods.Skip(1)) m.Dispose();
 Console.WriteLine($"wrote {output}");
 return 0;

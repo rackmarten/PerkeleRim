@@ -92,6 +92,28 @@ namespace PerkeleRim.Spike
             if (n == 0) SpikeLog.Write("cmd: inspect: nothing named like " + text);
         }
 
+        // MSC's MasterAudio groups (direct children of MasterAudio) with their clips, filtered by a
+        // word in the group or clip name; also loose AudioClips named like it (soundbanks).
+        static void Voices(string text)
+        {
+            var master = GameObject.Find("MasterAudio");
+            if (master == null) { SpikeLog.Write("cmd: voices: no MasterAudio"); return; }
+            foreach (Transform group in master.transform)
+            {
+                var clips = new List<string>();
+                foreach (var source in group.GetComponentsInChildren<AudioSource>(true))
+                    if (source.clip != null) clips.Add($"{source.gameObject.name}={source.clip.name}");
+                string all = group.name + " " + string.Join(" ", clips.ToArray());
+                if (text.Length > 0 && all.IndexOf(text, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                SpikeLog.Write($"cmd: voices {group.name} ({clips.Count}): {string.Join(", ", clips.ToArray())}");
+            }
+            if (text.Length == 0) return;
+            var loose = new List<string>();
+            foreach (var clip in Resources.FindObjectsOfTypeAll<AudioClip>())
+                if (clip != null && clip.name.IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0) loose.Add(clip.name);
+            SpikeLog.Write($"cmd: voices clips like {text}: {string.Join(", ", loose.ToArray())}");
+        }
+
         static System.Collections.IEnumerator KeepFresh(PlayMakerFSM use)
         {
             for (float until = Time.realtimeSinceStartup + 3f; Time.realtimeSinceStartup < until && use != null; )
@@ -355,6 +377,9 @@ namespace PerkeleRim.Spike
                         dayLock = words.Length < 2 || words[1].ToLower() != "off";
                         SpikeLog.Write($"cmd: day lock {(dayLock ? "on" : "off")}");
                         break;
+                    case "voices":  // "voices" lists every MasterAudio group, "voices hurt" only those (and clips) named like it
+                        Voices(lines[0].Trim().Substring(6).Trim());
+                        break;
                     case "grunt":  // what Skyrim's PlayerDeath plays
                         PerkeleRim.Game.DeathGuard.PlayDeathSound();
                         break;
@@ -362,6 +387,11 @@ namespace PerkeleRim.Spike
                         var shoutLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
                         if (shoutLink == null) SpikeLog.Write("cmd: no PlayerLink");
                         else shoutLink.Yell(words.Length > 1 ? uint.Parse(words[1]) : 1u);
+                        break;
+                    case "hurt":  // "hurt 0": what Skyrim's PlayerHurt plays for a hit (1 blocked, 2 fall, 3 crash, 4 low health), "hurt 2 0.3" a bad fall
+                        var hurtLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (hurtLink == null) SpikeLog.Write("cmd: no PlayerLink");
+                        else hurtLink.Hurt(words.Length > 1 ? uint.Parse(words[1]) : 0u, words.Length > 2 ? float.Parse(words[2], CultureInfo.InvariantCulture) : 0f);
                         break;
                     default:
                         SpikeLog.Write("cmd: unknown command");

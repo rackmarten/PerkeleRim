@@ -55,6 +55,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Escape pauses both games (protocol v23, `kInputPaused`): while a Skyrim menu pauses Skyrim, MSC's time and sound stand still, so nothing rolls, drains or roars behind the menu.
 - The needs bars no longer show a health row of their own: Skyrim's health meter is the one to watch.
 - Finn yells the shouts (protocol v24, `PlayerShout`): Z is Skyrim's own shout with its words, cooldown and Dragon Souls, but while MSC has the player Skyrim's shout voice is muted (PerkeleRim.esp gates the shout lines on a global for the player) and MSC yells instead: Unrelenting Force is "Perkele!" (mostly the swear subtitled "God of thunder!"), any other shout another of its swears. The middle finger (V) no longer shouts Fus.
+- Finn's voice when hurt (protocol v25, `PlayerHurt`): while MSC has the player Skyrim's player grunts are muted too (PerkeleRim.esp gates the player's combat grunt and breathing lines on the same global as the shouts, now `PerkeleRimMuteVoice`) and MSC's player speaks instead: mostly grunts in a fight (a blocked hit mostly swears), mostly swears after a fall or crash (a bad one always) and swears when health first drops low, with a short cooldown so a fight doesn't spam it. The DLC shouts' lines are muted too.
 
 ### Changed
 

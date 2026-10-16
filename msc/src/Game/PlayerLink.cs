@@ -27,7 +27,8 @@ namespace PerkeleRim.Game
     //  - keeps MSC's player alive while handed over and sends what it would have died of as
     //    PlayerDamage (DeathGuard), plays MSC's death sound on PlayerDeath, and sends MSC's blood
     //    overlay for Skyrim's death ahead of time;
-    //  - yells "Perkele!" (or another swear) when the player shouts in Skyrim (ShoutVoice);
+    //  - yells "Perkele!" (or another swear) when the player shouts in Skyrim, grunts or swears when
+    //    Skyrim hurts it (PlayerVoice);
     //  - sends what the player drinks, smokes and eats for Skyrim to heal by (ConsumeWatch);
     //  - keeps MSC's state with Skyrim's saves and puts it back when one loads (SaveSync).
     public unsafe class PlayerLink : MonoBehaviour
@@ -62,7 +63,7 @@ namespace PerkeleRim.Game
         ModelSender models;
         ItemLink items;
         ActorLink actors;
-        ShoutVoice shouts;
+        PlayerVoice voice;
         HandLayerSender hands;
         SaveSync saves;
         Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
@@ -126,7 +127,7 @@ namespace PerkeleRim.Game
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
             actors = new ActorLink(island, log);
-            shouts = new ShoutVoice(log);
+            voice = new PlayerVoice(log);
             hands = new HandLayerSender(log);
             crash = new CrashSensor(log);
             DeathGuard.Install(log);
@@ -142,7 +143,10 @@ namespace PerkeleRim.Game
         public void HoldPocketKind(int kind) => pocket.Hold(kind);
 
         // Spike "shout 0|1": what PlayerShout plays (1 = Unrelenting Force).
-        public void Yell(uint kind) => shouts.Play(kind, "spike");
+        public void Yell(uint kind) => voice.Shout(kind, "spike");
+
+        // Spike "hurt <cause> [damage]": what PlayerHurt plays (Wire.Hurt*: 0 hit, 1 blocked, 2 fall, 3 crash, 4 low).
+        public void Hurt(uint cause, float damage) => voice.Hurt(cause, damage, "spike");
 
         // Spike commands "textures" (read an object's model and log it) and "items" (what Skyrim gets).
         public void InspectModel(string name) => models.Inspect(name);
@@ -225,6 +229,7 @@ namespace PerkeleRim.Game
             var link = LinkHost.Current;
             if (link == null) return;
             link.Receive(OnMessage);
+            voice.Update();
             FindPlayer();
             foreach (var v in vehicles) v.Find();
             UseGround();
@@ -358,7 +363,9 @@ namespace PerkeleRim.Game
             else if (type == MessageType.PlayerDeath)
                 DeathGuard.PlayDeathSound();
             else if (type == MessageType.PlayerShout)
-                shouts.OnShout(payload, size);
+                voice.OnShout(payload, size);
+            else if (type == MessageType.PlayerHurt)
+                voice.OnHurt(payload, size);
             else if (type == MessageType.MscSave || type == MessageType.MscLoad)
                 saves.OnMessage(type, payload, size);
         }

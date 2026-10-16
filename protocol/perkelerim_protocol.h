@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 24;
+    inline constexpr std::uint32_t kProtocolVersion = 25;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -392,6 +392,7 @@ namespace PerkeleRim::Protocol
         ImpactEvent = 15,      // MSC -> Skyrim
         // 16 was MiddleFinger (until v23): the finger no longer shouts, Z is Skyrim's own shout key.
         PlayerShout = 17,      // Skyrim -> MSC
+        PlayerHurt = 18,       // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -521,6 +522,24 @@ namespace PerkeleRim::Protocol
         std::uint32_t kind;   // kShout*
         std::uint32_t shout;  // the shout's form id, for the log
         std::uint32_t words;  // 1..3, how many words were shouted
+        std::uint32_t reserved;
+    };
+
+    // PlayerHurt: something hurt the player in Skyrim while MSC had it (Skyrim's own grunts are
+    // muted meanwhile). MSC grunts or swears instead (msc/src/Link/HurtLine.cs). Hits come as
+    // Skyrim's hit events, falls and crashes as the damage Skyrim takes off for them, kHurtLow once
+    // when health first drops low (protocol/cpp/hurt.h). A lethal one isn't sent: PlayerDeath is.
+    inline constexpr std::uint32_t kHurtHit = 0;      // PlayerHurt.cause: someone hit the player
+    inline constexpr std::uint32_t kHurtBlocked = 1;  // the same, but the player's guard took it
+    inline constexpr std::uint32_t kHurtFall = 2;     // fall damage
+    inline constexpr std::uint32_t kHurtCrash = 3;    // a crash MSC's player survived
+    inline constexpr std::uint32_t kHurtLow = 4;      // health just dropped low
+
+    struct PlayerHurt
+    {
+        std::uint32_t cause;   // kHurt*
+        float         damage;  // share of max health it cost, 0..1 (0 when not known: hits)
+        float         health;  // share of max health left, 0..1
         std::uint32_t reserved;
     };
 
@@ -753,6 +772,8 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ImpactEvent, direction) == 12);
     static_assert(sizeof(PlayerShout) == 16);
     static_assert(offsetof(PlayerShout, words) == 8);
+    static_assert(sizeof(PlayerHurt) == 16);
+    static_assert(offsetof(PlayerHurt, health) == 8);
     static_assert(sizeof(Consumed) == 8);
     static_assert(sizeof(PocketChange) == 16);
     static_assert(offsetof(PocketChange, delta) == 12);

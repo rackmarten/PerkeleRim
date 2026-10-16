@@ -1,6 +1,8 @@
 #include "death/Death.h"
 
 #include "damage.h"
+#include "hurt.h"
+#include "link/LinkService.h"
 #include "model/ModelView.h"
 
 namespace PerkeleRim::Death
@@ -23,6 +25,7 @@ namespace PerkeleRim::Death
         struct State
         {
             Damage::FallTracker       fall;
+            Hurt::LowHealth           low;
             bool                      lethal = false;
             float                     lethalDamage = 0.0f;
             RE::NiPointer<RE::NiNode> overlay;  // kept and reused: nodes built here are never destroyed
@@ -66,9 +69,23 @@ namespace PerkeleRim::Death
             return setting ? setting->GetFloat() : a_default;
         }
 
+        // Tells MSC, which grunts or swears for it (PlayerHurt).
+        void Send(RE::PlayerCharacter* a_player, std::uint32_t a_cause, float a_damage)
+        {
+            auto*       values = a_player->AsActorValueOwner();
+            const float max = values->GetPermanentActorValue(RE::ActorValue::kHealth);
+            Protocol::PlayerHurt hurt{};
+            hurt.cause = a_cause;
+            hurt.damage = max > 0.0f ? a_damage / max : 0.0f;
+            hurt.health = max > 0.0f ? values->GetActorValue(RE::ActorValue::kHealth) / max : 0.0f;
+            if (!LinkService::Get().Send(Protocol::MessageType::PlayerHurt, &hurt, sizeof(hurt))) {
+                SKSE::log::warn("death: the ring to MSC is full, no hurt sound (cause {})", a_cause);
+            }
+        }
+
         // Takes a_amount off Skyrim's health; a hit that would kill is left to PlayerSync (Lethal),
         // which first takes the player back from MSC so Skyrim's death can ragdoll it.
-        void Hurt(RE::PlayerCharacter* a_player, float a_amount, const char* a_what)
+        void Hurt(RE::PlayerCharacter* a_player, float a_amount, std::uint32_t a_cause, const char* a_what)
         {
             if (a_amount <= 0.0f) {
                 return;
@@ -83,6 +100,7 @@ namespace PerkeleRim::Death
                 return;
             }
             values->DamageActorValue(RE::ActorValue::kHealth, a_amount);
+            Send(a_player, a_cause, a_amount);
         }
 
         const char* ConsumedName(std::uint32_t a_kind)
@@ -199,7 +217,7 @@ namespace PerkeleRim::Death
         }
         std::memcpy(&damage, a_data, sizeof(damage));
         const float max = a_player->AsActorValueOwner()->GetPermanentActorValue(RE::ActorValue::kHealth);
-        Hurt(a_player, Damage::Crash(max, damage.severity),
+        Hurt(a_player, Damage::Crash(max, damage.severity), Protocol::kHurtCrash,
             damage.cause == Protocol::kDamageCrash ? "an MSC crash" : "an MSC death (not a crash)");
     }
 
@@ -221,8 +239,21 @@ namespace PerkeleRim::Death
         }
     }
 
+    void OnHit(RE::PlayerCharacter* a_player, bool a_blocked)
+    {
+        Send(a_player, a_blocked ? Protocol::kHurtBlocked : Protocol::kHurtHit, 0.0f);
+    }
+
+    void OnHandover() { state.low.Reset(); }
+
     void OnPose(RE::PlayerCharacter* a_player, const Protocol::PlayerState* a_pose, bool a_seated)
     {
+        auto*       values = a_player->AsActorValueOwner();
+        const float max = values->GetPermanentActorValue(RE::ActorValue::kHealth);
+        if (max > 0.0f && state.low.Step(values->GetActorValue(RE::ActorValue::kHealth) / max)) {
+            SKSE::log::info("death: the player's health dropped low");
+            Send(a_player, Protocol::kHurtLow, 0.0f);
+        }
         if (!a_pose || a_seated) {
             state.fall.Reset();  // a crash in a vehicle comes as PlayerDamage instead
             return;
@@ -235,7 +266,7 @@ namespace PerkeleRim::Death
             Setting("fJumpFallHeightExponent", 1.45f) };
         const float damage = Damage::Fall(fallen, settings);
         if (damage > 0.0f) {
-            Hurt(a_player, damage, std::format("a {:.0f} unit fall", fallen).c_str());
+            Hurt(a_player, damage, Protocol::kHurtFall, std::format("a {:.0f} unit fall", fallen).c_str());
         }
     }
 

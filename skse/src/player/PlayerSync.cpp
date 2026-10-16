@@ -279,6 +279,7 @@ namespace PerkeleRim::PlayerSync
 
             state.owned = true;
             Death::Hide();
+            Death::OnHandover();
             state.statTime = 0.0f;
             state.frames = state.placed = state.newPoses = 0;
             Publish();
