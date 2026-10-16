@@ -15,6 +15,7 @@
 #include "look_at.h"
 #include "model/ModelView.h"
 #include "pocket/Pocket.h"
+#include "shot/Shot.h"
 #include "vehicle/VehicleView.h"
 
 namespace PerkeleRim::PlayerSync
@@ -832,6 +833,12 @@ namespace PerkeleRim::PlayerSync
                         if (code == Input::kDikF10) {
                             if (button->IsDown()) {
                                 Toggle();
+                            }
+                            continue;
+                        }
+                        if (code == Input::kDikF11) {
+                            if (button->IsDown() && state.owned) {
+                                Shot::Take();
                             }
                             continue;
                         }

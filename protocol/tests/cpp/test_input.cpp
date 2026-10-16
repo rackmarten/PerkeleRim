@@ -25,7 +25,7 @@ TEST_CASE("scan codes map to Unity key codes")
     CHECK(KeyFromScanCode(0x3B) == 282);  // F1
     CHECK(KeyFromScanCode(0x41) == 288);  // F7
     CHECK(KeyFromScanCode(kDikF8) == 290);  // F8 is MSC's F9 (chase camera)
-    CHECK(KeyFromScanCode(0x57) == 292);  // F11
+    CHECK(KeyFromScanCode(0x58) == 293);  // F12
     CHECK(KeyFromScanCode(0xC8) == KeyCode::UpArrow);
 }
 
@@ -37,6 +37,7 @@ TEST_CASE("keys that stay with Skyrim never reach MSC")
     CHECK(KeyFromScanCode(kDikF5) == KeyCode::None);  // quicksave
     CHECK(KeyFromScanCode(kDikF9) == KeyCode::None);  // quickload
     CHECK(KeyFromScanCode(kDikF10) == KeyCode::None);
+    CHECK(KeyFromScanCode(kDikF11) == KeyCode::None);  // screenshot
     CHECK(KeyFromScanCode(kDikM) == KeyCode::None);  // Skyrim's map
 }
 

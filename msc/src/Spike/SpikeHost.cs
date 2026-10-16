@@ -26,10 +26,10 @@ namespace PerkeleRim.Spike
     //                        handlayer light <ambient> <sun> sets its neutral lighting (0.5 0.8)
     //   snapshot save|load <name>  what Skyrim's MscSave / MscLoad do (SaveSync), with the snapshot in
     //                        <MSC>/PerkeleRim_snapshots/<name> and key 1
-    //   island show|hide     draw the collision island, colored by slope, roads bluish green (PlayerLink)
+    //   island show|hide     draw the collision island, colored by slope, roads bluish green (PlayerLink;
+    //                        shown by itself while MSC has the player, DebugView)
     //   island steps [m]     log the island triangles over 30 degrees within m (8) of the player whose top is within 1 m of the feet
     //   island why [m]       what the ramp pass made of the steep triangles within m (2) of where MSC's camera looks
-    //   day on|off          hold MSC at midday (12-14) for testing; the clock jumps back every 2 h
     //   global <name> <v>    set a global PlayMaker float or int (global PlayerUrine 100, global PlayerCigarettes 20)
     //   fsmvar <object> <fsm> <var> <v>  set a float, int or bool of every FSM of that name on objects of
     //                        that name (fsmvar FPSCamera Hangover TimeLeft 0 ends MSC's hangover shaking)
@@ -37,6 +37,7 @@ namespace PerkeleRim.Spike
     //                        (spawn Sausages 2; Pizza, Chips, MacaronBox, Cigarettes, Beer, ...)
     //   event <NAME>         broadcast a global PlayMaker event (DRINKBEER: the beer drinking animation)
     //   textures <name>      read an object's model (GameObject.Find) without sending it and log it
+    //   shot                 MSC's view to <MSC>/PerkeleRim_shot.png, the way F11 saves it (ViewShot)
     //   override on|off      InputShim on/off with nothing pressed (on: the link no longer feeds it)
     //   script               following lines are steps: "<seconds>; <token>; <token>..."
     //                        token = KeyCode name (W, LeftShift, Mouse0), axis "Mouse X=3",
@@ -175,7 +176,6 @@ namespace PerkeleRim.Spike
             LogProbe();
             updates = fixedUpdates = 0;
             PollCommand();
-            HoldDay();
 
             if (!autoloadDone && Application.loadedLevelName == "MainMenu" && Time.timeSinceLevelLoad > 2f
                 && File.Exists(Path.Combine(SpikeLog.GameDir, "PerkeleRim_autoload.txt")))
@@ -224,31 +224,6 @@ namespace PerkeleRim.Spike
             SpikeLog.Write($"probe fps={updates} fixed={fixedUpdates} focused={focused} minimized={minimized} " +
                            $"rib={Application.runInBackground} ts={Time.timeScale:0.##} scene={Application.loadedLevelName} " +
                            $"override={InputShim.Active} {pose}");
-        }
-
-        bool dayLock;
-
-        // Spike "day on": MAP/SUN/Pivot/SUN's Color FSM steps through two-hour states, each setting
-        // the sun's rotation, the light and GlobalHour as it starts, and its Clock FSM follows it on
-        // WAKEUP. Once a second, put Color back into 12-14 when it has moved on. Only from an hour
-        // state, so a save still loads its own time first.
-        void HoldDay()
-        {
-            if (!dayLock || Application.loadedLevelName != "GAME") return;
-            var sun = GameObject.Find("MAP/SUN/Pivot/SUN");
-            if (sun == null) return;
-            PlayMakerFSM color = null, clock = null;
-            foreach (var f in sun.GetComponents<PlayMakerFSM>())
-            {
-                if (f.FsmName == "Color") color = f;
-                if (f.FsmName == "Clock") clock = f;
-            }
-            if (color == null) return;
-            var state = color.ActiveStateName;
-            if (state == "12-14" || state == null || state.Length != 5 || state[2] != '-') return;
-            PerkeleRim.Game.SaveSync.SwitchState.Invoke(color.Fsm, new object[] { color.Fsm.GetState("12-14") });
-            if (clock != null) clock.SendEvent("WAKEUP");
-            SpikeLog.Write($"day lock: sun {state} -> 12-14");
         }
 
         void PollCommand()
@@ -311,10 +286,8 @@ namespace PerkeleRim.Spike
                         if (reader != null) reader.InspectModel(lines[0].Trim().Substring(8).Trim());
                         else SpikeLog.Write("cmd: no PlayerLink");
                         break;
-                    case "shot":  // MSC's own view, next to the game
-                        var shot = Path.Combine(Path.GetDirectoryName(Application.dataPath), "PerkeleRim_shot.png");
-                        Application.CaptureScreenshot(shot);
-                        SpikeLog.Write("cmd: screenshot to " + shot);
+                    case "shot":  // MSC's own view, next to the game, as F11 saves it (ViewShot)
+                        PerkeleRim.Game.ViewShot.Save(Path.Combine(SpikeLog.GameDir, "PerkeleRim_shot.png"), 0, 0, SpikeLog.Write);
                         break;
                     case "event":  // a global PlayMaker event, e.g. "event DRINKBEER" plays the beer drinking animation
                         if (words.Length > 1) PlayMakerFSM.BroadcastEvent(words[1]);
@@ -392,10 +365,6 @@ namespace PerkeleRim.Spike
                         else if (islandMode == "why") islandLink.LogWhy(words.Length > 2 ? float.Parse(words[2], CultureInfo.InvariantCulture) : 2f);
                         else if (islandMode == "steps")islandLink.LogSteps(words.Length > 2 ? float.Parse(words[2], CultureInfo.InvariantCulture) : 8f);
                         else islandLink.SetIslandVisible(islandMode != "hide");
-                        break;
-                    case "day":  // "day on", "day off"
-                        dayLock = words.Length < 2 || words[1].ToLower() != "off";
-                        SpikeLog.Write($"cmd: day lock {(dayLock ? "on" : "off")}");
                         break;
                     case "voices":  // "voices" lists every MasterAudio group, "voices hurt" only those (and clips) named like it
                         Voices(lines[0].Trim().Substring(6).Trim());

@@ -56,6 +56,8 @@ namespace PerkeleRim.Game
         readonly KeyRemap remap = new KeyRemap();
         readonly PauseClock clock = new PauseClock();
         ChaseCamera chase;
+        DebugView debugView;
+        string shotPath;  // F11's PNG for MSC's view (ScreenshotEvent), saved at the end of this LateUpdate
         int hitKey = (int)KeyCode.H;  // MSC's Hit binding, read once the player is found
         int watchKey = (int)KeyCode.U;  // MSC's Watch binding, likewise
         Action<string> log;
@@ -77,9 +79,9 @@ namespace PerkeleRim.Game
 
         GameObject islandObject;
         readonly Dictionary<long, GameObject> chunks = new Dictionary<long, GameObject>();
-        // Spike "island show|hide": draws the chunks, flat-shaded and colored by slope (green flat,
-        // red at 60 degrees and steeper, ramps over lips blue, Skyrim's roads bluish green), to compare
-        // the island with Skyrim's ground.
+        // Draws the chunks, flat-shaded and colored by slope (green flat, red at 60 degrees and
+        // steeper, ramps over lips blue, Skyrim's roads bluish green), to compare the island with
+        // Skyrim's ground: while MSC has the player (DebugView), or spike "island show|hide".
         public static bool ShowIsland;
         static Material islandMaterial;
         // Where each chunk mesh's ramps (Fillets) start in its triangle list; drawn blue.
@@ -138,7 +140,8 @@ namespace PerkeleRim.Game
             voice = new PlayerVoice(log);
             horn = new VehicleHorn(log);
             chase = new ChaseCamera(log);
-            hands = new HandLayerSender(log);
+            debugView = new DebugView(SetIslandVisible, log);
+            hands =new HandLayerSender(log);
             crash = new CrashSensor(log);
             DeathGuard.Install(log);
             ConsumeWatch.Install(log);
@@ -265,6 +268,7 @@ namespace PerkeleRim.Game
             var state = new PlayerState { frame = fixedFrame };
             if (owned) CloseMenu();
             chase.Update(owned);
+            debugView.Update(owned);
 
             playing = owned && player != null && island.HasAnchor && placedGeneration == island.Generation;
             if (playing) CatchFall();
@@ -298,6 +302,11 @@ namespace PerkeleRim.Game
             models.Update(link);
             hands.Update(link, playing, input.ScreenWidth, input.ScreenHeight);
             saves.Update();
+            if (shotPath != null)
+            {
+                ViewShot.Save(shotPath, (int)input.ScreenWidth, (int)input.ScreenHeight, log);
+                shotPath = null;
+            }
         }
 
         // MSC's blood over the view when the player dies (Systems/Death/PlayerBlood's texture), sent as
@@ -390,6 +399,10 @@ namespace PerkeleRim.Game
                 shelves.OnMessage(payload, size);
             else if (type == MessageType.MscSave || type == MessageType.MscLoad)
                 saves.OnMessage(type, payload, size);
+            else if (type == MessageType.ScreenshotEvent)
+            {
+                if (!Screenshot.Decode(payload, size, out shotPath)) log($"shot: malformed ScreenshotEvent ({size} bytes)");
+            }
         }
 
         void FindPlayer()

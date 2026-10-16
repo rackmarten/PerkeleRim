@@ -34,6 +34,7 @@ F10 hands the player to My Summer Car and back. While MSC has the player you nev
 | Shift / Ctrl (driving) | shift up / down |
 | H (driving) | horn: people in the way run off |
 | F8 (driving) | chase camera for filming, on / off (hides the HUD) |
+| F11 | screenshot of both games, to Documents\My Games\PerkeleRim\Screenshots |
 | [ / ] | call the Jonnez moped / the Kekmet tractor: it's parked in front of you, wherever it was |
 | Y, 3 to 8 | pocket (Skyrim's inventory); driving, 3 and 5 to 8 drink and eat |
 

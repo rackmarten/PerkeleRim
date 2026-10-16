@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 31;
+    inline constexpr std::uint32_t kProtocolVersion = 32;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -365,6 +365,7 @@ namespace PerkeleRim::Protocol
         PlayerHurt = 18,       // Skyrim -> MSC
         StockShelves = 19,     // Skyrim -> MSC
         HornEvent = 20,        // MSC -> Skyrim
+        ScreenshotEvent = 21,  // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -489,6 +490,17 @@ namespace PerkeleRim::Protocol
     {
         float direction[3];  // where the vehicle heads, unit vector in Skyrim space (its nose when slow)
         float speed;         // meters per second
+    };
+
+    // ScreenshotEvent (v32): F11 in Skyrim while MSC has the player. Skyrim saves its own frame and
+    // MSC saves its view as a PNG at the path named here, so the pair shares a name. Payload: this
+    // header, then length bytes of UTF-8 file path (no terminator).
+    inline constexpr std::uint32_t kScreenshotPathMax = 1024;
+
+    struct ScreenshotEvent
+    {
+        std::uint32_t length;  // path bytes, <= kScreenshotPathMax
+        std::uint32_t reserved;
     };
 
     // PlayerShout: the player shouted in Skyrim while MSC had it (Z, Skyrim's own shout with its
@@ -785,6 +797,8 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(PunchEvent, direction) == 4);
     static_assert(sizeof(HornEvent) == 16);
     static_assert(offsetof(HornEvent, speed) == 12);
+    static_assert(sizeof(ScreenshotEvent) == 8);
+    static_assert(offsetof(ScreenshotEvent, reserved) == 4);
     static_assert(sizeof(ImpactEvent) == 24);
     static_assert(offsetof(ImpactEvent, speed) == 8);
     static_assert(offsetof(ImpactEvent, direction) == 12);

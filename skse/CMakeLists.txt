@@ -20,10 +20,12 @@ add_commonlibsse_plugin(
     ${PROJECT_NAME}
     NAME "PerkeleRim"
     AUTHOR "Marek Uncik"
-    SOURCES src/main.cpp src/link/LinkService.cpp src/player/PlayerSync.cpp src/collision/CollisionSampler.cpp src/collision/StaticMeshes.cpp src/combat/Combat.cpp src/vehicle/VehicleView.cpp src/model/ModelView.cpp src/item/ItemView.cpp src/hands/HandView.cpp src/death/Death.cpp src/garage/Garage.cpp src/hud/Hud.cpp src/drink/Drink.cpp src/pocket/Pocket.cpp src/autoload/Autoload.cpp src/save/Cosave.cpp src/save/SaveSync.cpp ../protocol/cpp/link.cpp
+    SOURCES src/main.cpp src/link/LinkService.cpp src/player/PlayerSync.cpp src/collision/CollisionSampler.cpp src/collision/StaticMeshes.cpp src/combat/Combat.cpp src/vehicle/VehicleView.cpp src/model/ModelView.cpp src/item/ItemView.cpp src/hands/HandView.cpp src/death/Death.cpp src/garage/Garage.cpp src/hud/Hud.cpp src/drink/Drink.cpp src/pocket/Pocket.cpp src/autoload/Autoload.cpp src/save/Cosave.cpp src/save/SaveSync.cpp src/shot/Shot.cpp src/shot/BackBuffer.cpp ../protocol/cpp/link.cpp
 )
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
 target_include_directories(${PROJECT_NAME} PRIVATE src ../protocol/cpp)
 # The shared link code includes <Windows.h> itself and must not pick up CommonLib's PCH.
 set_source_files_properties(../protocol/cpp/link.cpp PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+# So does the back buffer grab, which needs the real d3d11.h.
+set_source_files_properties(src/shot/BackBuffer.cpp PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
