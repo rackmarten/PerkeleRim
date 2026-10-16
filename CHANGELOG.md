@@ -69,6 +69,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Starving (or dying of thirst, stress, a full bladder, drowning, a wasp or the train) in MSC while handed over left MSC's player lying on the ground for good, even after reloading in Skyrim: MSC's death screen object was switched off a frame late, after it had already taken the player apart, and MSC's needs stopped for the rest of the session. These deaths are now kept from starting at all (Skyrim still takes the hit) and MSC's needs carry on.
+
 - Left click punched instead of picking up items MSC shows no prompt for (empty bottles): it now stays MSC's click whenever something MSC would pick up is under the crosshair.
 - Left click sometimes punched instead of picking up an item the crosshair was on: MSC's hand icon flickers on and off from frame to frame, and a click that landed in an off frame counted as free hands. A prompt seen in the last half second now keeps the click MSC's. Spike `spawn <product> [n]` puts a fresh shop product (sausages, pizza, cigarettes, ...) in front of the player, and `global` sets int globals too (`global PlayerCigarettes 20`).
 

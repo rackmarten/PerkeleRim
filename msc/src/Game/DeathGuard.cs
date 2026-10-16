@@ -13,9 +13,14 @@ namespace PerkeleRim.Game
     //
     // Vehicle crashes kill through the global DEATH event (FPSCamera :: Death turns it into the
     // Crash death and activates Systems/Death). A Harmony prefix on Fsm.ProcessEvent, which every
-    // PlayMaker event goes through, drops DEATH while Active. Other deaths (drowning, wasps, the
-    // train) activate Systems/Death directly; the watchdog in Update switches it off again in the
-    // same frame and clears the cause its FSM was given.
+    // PlayMaker event goes through, drops DEATH while Active. Other deaths (hunger, thirst, urine,
+    // stress, drowning, wasps, the train) activate Systems/Death directly with PlayMaker's
+    // ActivateGameObject; a prefix on its OnEnter skips that while Active. It has to be before:
+    // Activate Dead Body destroys the player's CharacterController, CharacterMotor and
+    // FPSInputController in its first frame, and the player can't be put back together after.
+    // The watchdog in Update still switches Systems/Death off should anything else turn it on.
+    // A need death leaves Database/PlayerDatabase :: Simulation in a state with no way out, so
+    // MSC's needs would stop for good; Update sends it on to Loop.
     public static class DeathGuard
     {
         // One crash sends DEATH to many FSMs, and a wreck can keep sending it while it tumbles.
@@ -53,6 +58,60 @@ namespace PerkeleRim.Game
                 log("death: MSC's DEATH event is caught while Skyrim has handed the player over");
             }
             catch (Exception e) { log("death: patching Fsm.ProcessEvent FAILED: " + e.Message); }
+            try
+            {
+                var harmony = HarmonyInstance.Create("PerkeleRim.DeathGuard.Activate");
+                harmony.Patch(typeof(HutongGames.PlayMaker.Actions.ActivateGameObject).GetMethod("OnEnter"),
+                    new HarmonyMethod(typeof(DeathGuard).GetMethod(nameof(ActivatePrefix), BindingFlags.Static | BindingFlags.NonPublic)), null);
+                log("death: MSC's own deaths (hunger, thirst, drowning, ...) are kept from starting while Skyrim has handed the player over");
+            }
+            catch (Exception e) { log("death: patching ActivateGameObject FAILED, need deaths will break MSC's player: " + e.Message); }
+        }
+
+        static bool ActivatePrefix(HutongGames.PlayMaker.Actions.ActivateGameObject __instance)
+        {
+            if (!Active || __instance.activate == null || !__instance.activate.Value) return true;
+            var target = __instance.Fsm != null ? __instance.Fsm.GetOwnerDefaultTarget(__instance.gameObject) : null;
+            if (target == null || target.name != "Death" || target.transform.parent == null || target.transform.parent.name != "Systems") return true;
+            Hit(Wire.DamageOther, $"{Path(__instance.Fsm)} :: {__instance.Fsm.Name} in {__instance.Fsm.ActiveStateName} would start Systems/Death:{TakeCauses(target)}");
+            __instance.Finish();
+            return false;
+        }
+
+        // Clears the causes a death set on Systems/Death :: Activate Dead Body, and names them.
+        static string TakeCauses(GameObject deathObject)
+        {
+            string causes = "";
+            foreach (var fsm in deathObject.GetComponents<PlayMakerFSM>())
+            {
+                if (fsm.FsmName != "Activate Dead Body") continue;
+                foreach (var b in fsm.FsmVariables.BoolVariables)
+                    if (b.Value) { causes += " " + b.Name; b.Value = false; }
+            }
+            return causes.Length > 0 ? causes : " no cause set";
+        }
+
+        // Simulation's need deaths (thirst, hunger, urine, stress, burn): each sets its need to 0 and
+        // starts Systems/Death, then waits for the game to end.
+        static readonly string[] NeedDeathStates = { "State 6", "State 7", "State 9", "State 10", "Burn" };
+        static PlayMakerFSM simulation;
+
+        static void ResumeNeeds()
+        {
+            if (simulation == null)
+            {
+                var database = GameObject.Find("Database/PlayerDatabase");
+                if (database == null) return;
+                foreach (var fsm in database.GetComponents<PlayMakerFSM>())
+                    if (fsm.FsmName == "Simulation") simulation = fsm;
+                if (simulation == null) return;
+            }
+            var state = simulation.ActiveStateName;
+            if (Array.IndexOf(NeedDeathStates, state) < 0) return;
+            var loop = simulation.Fsm.GetState("Loop");
+            if (loop == null) return;
+            SaveSync.SwitchState.Invoke(simulation.Fsm, new object[] { loop });
+            log($"death: MSC's needs went on from {state} (a need death's dead end) to Loop");
         }
 
         static bool Prefix(Fsm __instance, FsmEvent fsmEvent)
@@ -249,6 +308,7 @@ namespace PerkeleRim.Game
             if (Time.realtimeSinceStartup >= nextSeatScan) FindNewSeats();
             KeepJointsHeld();
             PutDriversBack();
+            ResumeNeeds();
             if (death == null)
             {
                 var systems = GameObject.Find("Systems");
@@ -258,14 +318,7 @@ namespace PerkeleRim.Game
             }
             if (!death.activeSelf) return;
             death.SetActive(false);
-            string causes = "";
-            foreach (var fsm in death.GetComponents<PlayMakerFSM>())
-            {
-                if (fsm.FsmName != "Activate Dead Body") continue;
-                foreach (var b in fsm.FsmVariables.BoolVariables)
-                    if (b.Value) { causes += " " + b.Name; b.Value = false; }
-            }
-            Hit(Wire.DamageOther, "Systems/Death came on:" + (causes.Length > 0 ? causes : " no cause set"));
+            Hit(Wire.DamageOther, "Systems/Death came on:" + TakeCauses(death));
         }
 
         // CrashSensor measured an impact on the driven vehicle (m/s) and what it costs (0 = nothing).
