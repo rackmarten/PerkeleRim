@@ -64,13 +64,51 @@ namespace PerkeleRim.Tests
             Assert.That(BitConverter.ToUInt32(blob, material), Is.EqualTo(Wire.MaterialCutout), "flags");
             Assert.That(BitConverter.ToSingle(blob, material + 4), Is.EqualTo(0.25f), "alphaCutoff");
             Assert.That(BitConverter.ToSingle(blob, material + 20), Is.EqualTo(0.5f), "glossiness");
-            int mesh = material + 40;
+            int mesh = material + 40;  // no nodes
             Assert.That(Encoding.UTF8.GetString(blob, mesh, 11), Is.EqualTo("case/bottle"));
             Assert.That(BitConverter.ToInt32(blob, mesh + 48), Is.EqualTo(0), "texture");
             Assert.That(BitConverter.ToUInt32(blob, mesh + 52), Is.EqualTo(3u), "vertexCount");
             Assert.That(BitConverter.ToUInt32(blob, mesh + 56), Is.EqualTo(3u), "indexCount");
             Assert.That(BitConverter.ToInt32(blob, mesh + 60), Is.EqualTo(0), "material");
-            Assert.That(blob.Length, Is.EqualTo(mesh + 64 + 3 * 32 + 3 * 2));
+            Assert.That(BitConverter.ToInt32(blob, mesh + 64), Is.EqualTo(-1), "node");
+            Assert.That(blob.Length, Is.EqualTo(mesh + 72 + 3 * 32 + 3 * 2));
+        }
+
+        [Test]
+        public void EncodesNodesBeforeTheMeshes()
+        {
+            var model = new ModelData { Name = "Hayosiko" };
+            model.Nodes.Add(new ModelNodeData { Name = "WheelFL", Translation = new[] { 50f, 60f, 10f } });
+            model.Nodes.Add(new ModelNodeData { Name = "LOD/Electricity/PowerON/Blinkers/Right/indicator_right", Parent = 0 });
+            var triangle = UpTriangle();
+            triangle.Node = 1;
+            model.Meshes.Add(triangle);
+            var blob = model.Encode();
+
+            Assert.That(BitConverter.ToUInt32(blob, 60), Is.EqualTo(2u), "nodeCount");
+            int node = 64;  // no textures or materials
+            Assert.That(Encoding.UTF8.GetString(blob, node, 7), Is.EqualTo("WheelFL"));
+            Assert.That(BitConverter.ToInt32(blob, node + 64), Is.EqualTo(-1), "parent");
+            Assert.That(BitConverter.ToSingle(blob, node + 72), Is.EqualTo(60f), "translation y");
+            Assert.That(BitConverter.ToSingle(blob, node + 92), Is.EqualTo(1f), "rotation w");
+            int second = node + 96;
+            Assert.That(Encoding.UTF8.GetString(blob, second, 54), Is.EqualTo("LOD/Electricity/PowerON/Blinkers/Right/indicator_right"));
+            Assert.That(BitConverter.ToInt32(blob, second + 64), Is.EqualTo(0), "parent");
+            int mesh = second + 96;
+            Assert.That(BitConverter.ToInt32(blob, mesh + 64), Is.EqualTo(1), "node");
+        }
+
+        [Test]
+        public void NodesComeAfterTheirParentsAndMeshesNeedAnExistingNode()
+        {
+            var model = new ModelData { Name = "x" };
+            model.Nodes.Add(new ModelNodeData { Name = "a", Parent = 0 });
+            Assert.Throws<ArgumentException>(() => model.Encode());
+            model.Nodes[0].Parent = -1;
+            var triangle = UpTriangle();
+            triangle.Node = 1;
+            model.Meshes.Add(triangle);
+            Assert.Throws<ArgumentException>(() => model.Encode());
         }
 
         [Test]

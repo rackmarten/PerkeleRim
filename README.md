@@ -57,12 +57,12 @@ To build from source, see [docs/DEV_SETUP.md](docs/DEV_SETUP.md).
 | [`skse/`](skse/) | SKSE plugin (C++) |
 | [`msc/`](msc/) | MSCLoader mod (C#) |
 | [`skyrim-data/`](skyrim-data/) | Skyrim plugin (ESP), garage, scripts |
-| [`tools/`](tools/) | Mesh conversion and debugging helpers |
+| [`tools/`](tools/) | ESP generator, optional dev tools (offline van NIF conversion) and debugging helpers |
 | [`scripts/`](scripts/) | Build, local deploy and log scripts (PowerShell) |
 
 ## Game assets
 
-This repository contains **no assets from My Summer Car or Skyrim**, and contributions must not add any. You need your own copies of both games. See [CONTRIBUTING.md](CONTRIBUTING.md#game-assets).
+This repository contains **no assets from My Summer Car or Skyrim**, and contributions must not add any. You need your own copies of both games. Skyrim draws MSC's van and items from MSC's own models, read from your running game at play time, so nothing is converted or installed beyond the release zip. See [CONTRIBUTING.md](CONTRIBUTING.md#game-assets).
 
 ## Contributing
 

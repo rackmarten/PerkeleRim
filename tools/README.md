@@ -3,11 +3,14 @@
 Development helpers. Everything they produce comes from your own game installs and must never be
 committed: `tools/.deps/` (downloaded tools) and `tools/out/` (converted assets) are gitignored.
 
-## Vehicle mesh conversion
+## Vehicle mesh conversion (optional)
 
-Converts an MSC vehicle into a Skyrim SE NIF plus DDS textures, so Skyrim draws the real van instead
-of the vanilla cart stand-in. Each player runs this against their own My Summer Car install; the
-converted files are never shipped.
+Converts an MSC vehicle into a Skyrim SE NIF plus DDS textures, for looking at it in NifSkope or
+Blender. **The game doesn't need it:** since protocol v27 MSC sends the van's own model at runtime
+(`msc/src/Game/VehicleModel.cs`) with a node for every object that has a mesh, posed from MSC every
+frame, and the SKSE plugin builds it in memory. It no longer loads `Meshes/PerkeleRim/Hayosiko.nif`,
+and the part list below only matters to this converter.
+Run it against your own My Summer Car install; the converted files are never shipped.
 
 Pipeline (`convert-vehicle.ps1`):
 
@@ -27,10 +30,9 @@ The NIF has the body's shapes under the root, and per wheel a `WheelFL`/`WheelFR
 node at the wheel center with a `<name>:Spin` child holding the tire and rim. The SKSE plugin steers
 the front wheel nodes about Z and spins the `:Spin` nodes about X from `VehicleState`.
 
-Each entry of `parts` (MSC hierarchy paths, the same list and order as `kHayosikoParts` in
-`protocol/perkelerim_protocol.h`, checked by `msc/tests`) becomes a node named by its path, at the
-part's pivot, directly under the root; the shapes below that path hang in it. The SKSE plugin poses
-these nodes and hides switched-off ones from `VehicleParts`. `"lit": true` parts (lights, lamps)
+Each entry of `parts` (MSC hierarchy paths; protocol v26 and older posed exactly these from
+`VehicleParts`) becomes a node named by its path, at the part's pivot, directly under the root; the
+shapes below that path hang in it. `"lit": true` parts (lights, lamps)
 are kept even where `skip` matches and use Skyrim's glow shader with their lit texture as glow map.
 
 ### Setup (once)
@@ -53,8 +55,8 @@ powershell -ExecutionPolicy Bypass -File tools/convert-vehicle.ps1 -Deploy
 ```
 
 Takes about 15 seconds. Output lands in `tools/out/hayosiko/Data/` (`Meshes/PerkeleRim/Hayosiko.nif`,
-`Textures/PerkeleRim/Hayosiko/*.dds`); `-Deploy` copies it into Skyrim's `Data` folder. Without the
-converted mesh the SKSE plugin falls back to the cart stand-in.
+`Textures/PerkeleRim/Hayosiko/*.dds`); `-Deploy` copies it into Skyrim's `Data` folder, where nothing
+loads it any more.
 
 `tools/out/hayosiko/raw/` keeps the intermediate `model.json` and PNGs for debugging.
 

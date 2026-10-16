@@ -173,7 +173,7 @@ namespace PerkeleRim.Game
         // pose only moves and turns it). Built from local transforms: going through world matrices out
         // on the island (10 km from Unity's origin) left millimeters of noise, so equal items got
         // different keys.
-        static Matrix4x4 RelativeTo(Transform root, Transform t)
+        public static Matrix4x4 RelativeTo(Transform root, Transform t)
         {
             var m = Matrix4x4.identity;
             for (var p = t; p != null && p != root; p = p.parent) m = Matrix4x4.TRS(p.localPosition, p.localRotation, p.localScale) * m;
@@ -227,32 +227,59 @@ namespace PerkeleRim.Game
         ModelData Read(Transform root, Predicate<Transform> include)
         {
             var model = new ModelData { Name = root.name };
-            var materialIndex = new Dictionary<int, int>();  // Material instance id -> index in model
-            var pixels = new Dictionary<int, ModelTextureData>();  // Texture instance id -> as read
+            var materials = new Materials();
             foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
             {
                 var filter = renderer.GetComponent<MeshFilter>();
-                var mesh = filter != null ? filter.sharedMesh : null;
-                if (!renderer.enabled || mesh == null || !include(renderer.transform)) continue;
-
-                var m = RelativeTo(root, renderer.transform);
-                var vertices = mesh.vertices;
-                var normals = mesh.normals;
-                var uvs = mesh.uv;
-                var materials = renderer.sharedMaterials;
-                string path = PathBelow(root, renderer.transform);
-                for (int sub = 0; sub < mesh.subMeshCount; sub++)
-                {
-                    var material = sub < materials.Length ? materials[sub] : null;
-                    int index = MaterialIndex(model, materialIndex, pixels, material);
-                    var scale = material != null ? material.mainTextureScale : Vector2.one;
-                    var offset = material != null ? material.mainTextureOffset : Vector2.zero;
-                    var data = Submesh(sub == 0 ? path : path + "#" + sub, index, m, vertices, normals, uvs, scale, offset, mesh.GetTriangles(sub));
-                    data.Material = index;
-                    model.Meshes.Add(data);
-                }
+                if (!renderer.enabled || filter == null || filter.sharedMesh == null || !include(renderer.transform)) continue;
+                AddRenderer(model, materials, renderer, RelativeTo(root, renderer.transform), PathBelow(root, renderer.transform), -1, null);
             }
             return model;
+        }
+
+        // The MSC materials and textures already in a model being read.
+        public sealed class Materials
+        {
+            internal readonly Dictionary<string, int> Index = new Dictionary<string, int>();  // material instance id + look -> index in model
+            internal readonly Dictionary<int, ModelTextureData> Pixels = new Dictionary<int, ModelTextureData>();  // Texture instance id -> as read
+            internal readonly Dictionary<string, int> Baked = new Dictionary<string, int>();  // what a texture was baked from -> index in model
+            internal readonly List<int> TextureOf = new List<int>();  // material index -> texture index
+        }
+
+        // How a caller draws MSC's materials instead of as they are (the van's rules).
+        public sealed class Look
+        {
+            public string Key = "";                       // materials read with different looks are separate model materials
+            public Predicate<Material> Keep;               // false leaves the submesh out; null keeps all
+            public Func<Material, Texture> Diffuse;        // the texture drawn; null = the main texture
+            public Func<Material, ModelMaterialData, ModelMaterialData> Adjust;  // null = as read
+        }
+
+        // Adds renderer's submeshes to model: moved by m (into the space of node, -1 = the model's
+        // root), named name and "name#<n>" from the second submesh on.
+        public void AddRenderer(ModelData model, Materials materials, MeshRenderer renderer, Matrix4x4 m, string name, int node, Look look)
+        {
+            var filter = renderer.GetComponent<MeshFilter>();
+            var mesh = filter != null ? filter.sharedMesh : null;
+            if (mesh == null) return;
+            var vertices = mesh.vertices;
+            var normals = mesh.normals;
+            var uvs = mesh.uv;
+            var shared = renderer.sharedMaterials;
+            for (int sub = 0; sub < mesh.subMeshCount; sub++)
+            {
+                var material = sub < shared.Length ? shared[sub] : null;
+                if (look != null && look.Keep != null && !look.Keep(material)) continue;
+                var triangles = mesh.GetTriangles(sub);
+                if (triangles.Length == 0) continue;
+                int index = MaterialIndex(model, materials, material, look);
+                var scale = material != null ? material.mainTextureScale : Vector2.one;
+                var offset = material != null ? material.mainTextureOffset : Vector2.zero;
+                var data = Submesh(sub == 0 ? name : name + "#" + sub, index >= 0 ? materials.TextureOf[index] : -1, m, vertices, normals, uvs, scale, offset, triangles);
+                data.Material = index;
+                data.Node = node;
+                model.Meshes.Add(data);
+            }
         }
 
         // Only the vertices this submesh uses, moved into the root's space.
@@ -295,7 +322,7 @@ namespace PerkeleRim.Game
             m.m01 * (m.m10 * m.m22 - m.m12 * m.m20) +
             m.m02 * (m.m10 * m.m21 - m.m11 * m.m20);
 
-        static string PathBelow(Transform root, Transform t)
+        public static string PathBelow(Transform root, Transform t)
         {
             if (t == root) return root.name;
             string path = t.name;
@@ -303,17 +330,22 @@ namespace PerkeleRim.Game
             return path;
         }
 
-        // One material and one texture per MSC material (same index in both lists): the texture is
-        // the material's main texture with its color tint and metal baked in, so two materials
-        // sharing a texture (an atlas) may still look different. -1 without a material.
-        int MaterialIndex(ModelData model, Dictionary<int, int> known, Dictionary<int, ModelTextureData> pixels, Material material)
+        // One material per MSC material, with a texture made of the material's main texture with its
+        // color tint and metal baked in, so two materials sharing a texture (an atlas) may still look
+        // different. Materials that bake to the same texture (copies of one material, as the van's
+        // windows have) share it. -1 without a material.
+        int MaterialIndex(ModelData model, Materials materials, Material material, Look look)
         {
             if (material == null) return -1;
             int index;
-            if (known.TryGetValue(material.GetInstanceID(), out index)) return index;
+            string key = material.GetInstanceID() + (look != null ? "/" + look.Key : "");
+            if (materials.Index.TryGetValue(key, out index)) return index;
 
-            var main = ReadTexture(pixels, material.mainTexture);
-            var metalMap = material.HasProperty("_MetallicGlossMap") ? ReadTexture(pixels, material.GetTexture("_MetallicGlossMap")) : null;
+            var pixels = materials.Pixels;
+            var mainTexture = look != null && look.Diffuse != null ? look.Diffuse(material) : material.mainTexture;
+            var metalTexture = material.HasProperty("_MetallicGlossMap") ? material.GetTexture("_MetallicGlossMap") : null;
+            var main = ReadTexture(pixels, mainTexture);
+            var metalMap = ReadTexture(pixels, metalTexture);
             var unity = new ModelMaterialData.Unity
             {
                 Shader = material.shader != null ? material.shader.name : "",
@@ -327,14 +359,28 @@ namespace PerkeleRim.Game
                 Emission = Color(material, "_EmissionColor"),
             };
             var data = ModelMaterialData.FromUnity(unity);
+            if (look != null && look.Adjust != null) data = look.Adjust(material, data);
             bool standard = unity.Shader.StartsWith("Standard");
             var tint = Color(material, "_Color") ?? new[] { 1f, 1f, 1f, 1f };
-            var baked = ModelTextureData.Baked(main, tint, standard ? metalMap : null, standard && metalMap == null ? (unity.Metallic ?? 0f) : 0f);
+            var bakeMetal = standard ? metalMap : null;
+            float metallic = standard && metalMap == null ? (unity.Metallic ?? 0f) : 0f;
+            string bakeKey = (mainTexture != null ? mainTexture.GetInstanceID() : 0) + "/" + (bakeMetal != null ? metalTexture.GetInstanceID() : 0) + "/" +
+                Mathf.Round(metallic * 1000f) + "/" + string.Join(",", Array.ConvertAll(tint, c => Mathf.Round(c * 1000f).ToString()));
+            int texture;
+            ModelTextureData baked;
+            if (materials.Baked.TryGetValue(bakeKey, out texture)) baked = model.Textures[texture];
+            else
+            {
+                baked = ModelTextureData.Baked(main, tint, bakeMetal, metallic);
+                texture = model.Textures.Count;
+                model.Textures.Add(baked);
+                materials.Baked[bakeKey] = texture;
+            }
 
             index = model.Materials.Count;
             model.Materials.Add(data);
-            model.Textures.Add(baked);
-            known[material.GetInstanceID()] = index;
+            materials.TextureOf.Add(texture);
+            materials.Index[key] = index;
             log($"model: material {material.name} shader \"{unity.Shader}\" queue {unity.RenderQueue} flags {data.Flags} cutoff {data.AlphaCutoff:0.##} " +
                 $"tint ({tint[0]:0.##},{tint[1]:0.##},{tint[2]:0.##},{tint[3]:0.##}) metal {unity.Metallic:0.##} gloss {data.Glossiness:0.##} " +
                 $"specular {data.Specular[0]:0.##} -> average {Average(baked.Rgba)}");

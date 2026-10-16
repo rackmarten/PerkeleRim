@@ -101,15 +101,16 @@ namespace PerkeleRim.Tests
             Assert.That(vback.wheelSpin[3], Is.EqualTo(2.5f));
 
             Assert.That(p.Skyrim.ReadVehicleParts(out _), Is.False);  // never written
-            var parts = new VehicleParts { frame = 9, vehicle = Wire.VehicleHayosiko, count = Wire.HayosikoPartCount };
+            var parts = new VehicleParts { frame = 9, vehicle = Wire.VehicleHayosiko, count = Wire.VehiclePartCapacity, model = 0x373B0001 };
             var part = new VehiclePart { flags = Wire.PartVisible };
             part.rotation[3] = 1f;
             part.translation[1] = 42f;
-            parts.Set((int)Wire.HayosikoPartCount - 1, part);
+            parts.Set((int)Wire.VehiclePartCapacity - 1, part);
             p.Msc.WriteVehicleParts(ref parts);
             Assert.That(p.Skyrim.ReadVehicleParts(out var pback), Is.True);
-            Assert.That(pback.count, Is.EqualTo(Wire.HayosikoPartCount));
-            var last = pback.Get((int)Wire.HayosikoPartCount - 1);
+            Assert.That(pback.count, Is.EqualTo(Wire.VehiclePartCapacity));
+            Assert.That(pback.model, Is.EqualTo(0x373B0001u));
+            var last = pback.Get((int)Wire.VehiclePartCapacity - 1);
             Assert.That(last.flags, Is.EqualTo(Wire.PartVisible));
             Assert.That(last.rotation[3], Is.EqualTo(1f));
             Assert.That(last.translation[1], Is.EqualTo(42f));

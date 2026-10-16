@@ -16,9 +16,10 @@ namespace
         a_out.insert(a_out.end(), p, p + sizeof(T));
     }
 
-    // One 2x1 texture, one cutout material and one triangle using both, the way
-    // msc/src/Link/Model.cs writes them.
-    std::vector<std::uint8_t> Blob(std::uint16_t a_lastIndex = 2, std::int32_t a_texture = 0, std::int32_t a_material = 0)
+    // One 2x1 texture, one cutout material, a node under a node and one triangle using them all, the
+    // way msc/src/Link/Model.cs writes them.
+    std::vector<std::uint8_t> Blob(std::uint16_t a_lastIndex = 2, std::int32_t a_texture = 0, std::int32_t a_material = 0,
+        std::int32_t a_node = 1, std::int32_t a_parent = 0)
     {
         std::vector<std::uint8_t> blob;
         Protocol::ModelHeader     header{};
@@ -26,6 +27,7 @@ namespace
         header.textureCount = 1;
         header.meshCount = 1;
         header.materialCount = 1;
+        header.nodeCount = 2;
         Put(blob, header);
 
         Put(blob, Protocol::ModelTexture{ 2, 1, Protocol::kModelTextureRgba8, 0 });
@@ -33,11 +35,23 @@ namespace
             blob.push_back(b);
         }
         Put(blob, Protocol::ModelMaterial{ Protocol::kMaterialCutout, 0.5f, { 0.2f, 0.2f, 0.2f }, 0.7f, { 0, 0, 0 }, 0 });
+        Protocol::ModelNode wheel{};
+        std::memcpy(wheel.name, "WheelFL", 7);
+        wheel.parent = -1;
+        wheel.translation[0] = 50.0f;
+        wheel.rotation[3] = 1.0f;
+        Put(blob, wheel);
+        Protocol::ModelNode spin{};
+        std::memcpy(spin.name, "LOD/Electricity/PowerON/Blinkers/Right/indicator_right", 54);
+        spin.parent = a_parent;
+        spin.rotation[3] = 1.0f;
+        Put(blob, spin);
 
         Protocol::ModelMesh mesh{};
         std::memcpy(mesh.name, "bottle", 6);
         mesh.texture = a_texture;
         mesh.material = a_material;
+        mesh.node = a_node;
         mesh.vertexCount = 3;
         mesh.indexCount = 3;
         Put(blob, mesh);
@@ -81,6 +95,14 @@ TEST_CASE("a model blob parses into textures and meshes")
     CHECK(mesh.Vertex(1).position[0] == 10.0f);
     CHECK(mesh.Vertex(2).uv[1] == 1.0f);
     CHECK(mesh.Index(2) == 2);
+    REQUIRE(model->nodes.size() == 2);
+    CHECK(model->nodes[0].name == "WheelFL");
+    CHECK(model->nodes[0].parent == -1);
+    CHECK(model->nodes[0].translation[0] == 50.0f);
+    CHECK(model->nodes[1].name == "LOD/Electricity/PowerON/Blinkers/Right/indicator_right");
+    CHECK(model->nodes[1].parent == 0);
+    CHECK(model->nodes[1].rotation[3] == 1.0f);
+    CHECK(mesh.node == 1);
 }
 
 TEST_CASE("a malformed model blob is refused")
@@ -97,6 +119,12 @@ TEST_CASE("a malformed model blob is refused")
     CHECK_FALSE(Model::Parse(badMaterial.data(), badMaterial.size()));
     const auto noMaterial = Blob(2, 0, -1);
     CHECK(Model::Parse(noMaterial.data(), noMaterial.size()));
+    const auto badNode = Blob(2, 0, 0, 2);
+    CHECK_FALSE(Model::Parse(badNode.data(), badNode.size()));
+    const auto atRoot = Blob(2, 0, 0, -1);
+    CHECK(Model::Parse(atRoot.data(), atRoot.size()));
+    const auto ownParent = Blob(2, 0, 0, 1, 1);  // a node comes after its parent
+    CHECK_FALSE(Model::Parse(ownParent.data(), ownParent.size()));
 }
 
 TEST_CASE("chunks put a model back together in order")

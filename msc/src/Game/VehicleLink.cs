@@ -10,9 +10,9 @@ namespace PerkeleRim.Game
     //  - when the player sits in it, the vehicle carries the player to the new anchor instead;
     //  - while there is no island ground under it, it is held (kinematic) and keeps its speed for
     //    when the ground arrives, so it never falls off the edge of the streamed area;
-    //  - writes VehicleState (Skyrim world space) and VehicleParts (doors, controls, lights relative
-    //    to the body) every frame if it has a wire id (only the van so far; the protocol carries one
-    //    vehicle).
+    //  - writes VehicleState (Skyrim world space) and VehicleParts (where every object of its model
+    //    is relative to the body, and whether MSC draws it) every frame if it has a wire id (only the
+    //    van so far; the protocol carries one vehicle).
     public unsafe class VehicleLink
     {
         // Drop the vehicle from this high above the ground so its wheels settle on it.
@@ -37,7 +37,7 @@ namespace PerkeleRim.Game
 
         Transform car;
         Transform[] wheels;
-        Transform[] parts;
+        readonly VehicleModel model = new VehicleModel();
         Rigidbody body;
         uint placedGeneration;
         bool held;
@@ -107,7 +107,6 @@ namespace PerkeleRim.Game
             for (int i = 0; i < wheels.Length; i++)
                 if ((wheels[i] = car.Find(WheelModels[i])) != null) found++;
             if (wireId != 0) log($"vehicle: {driverName} has {found}/{wheels.Length} wheel models");
-            FindParts();
             // The pose goes out every rendered frame; without this it only moves on 50 Hz physics steps.
             if (body != null && body.interpolation == RigidbodyInterpolation.None)
             {
@@ -120,29 +119,12 @@ namespace PerkeleRim.Game
             Refuel();
         }
 
-        // The parts VehicleParts carries for this vehicle, by path below its root (Wire.HayosikoParts).
-        void FindParts()
+        // The van's model (VehicleModel), sent to Skyrim once per link session: Skyrim draws the van
+        // from it (VehicleView finds it by name) and poses its nodes from VehicleParts.
+        public void SendModel(ModelSender models, Transform player)
         {
-            var paths = wireId == Wire.VehicleHayosiko ? Wire.HayosikoParts : new string[0];
-            parts = new Transform[paths.Length];
-            var missing = new System.Collections.Generic.List<string>();
-            for (int i = 0; i < paths.Length; i++)
-                if ((parts[i] = FindPath(car, paths[i].Split('/'), 0)) == null) missing.Add(paths[i]);
-            if (paths.Length > 0)
-                log($"vehicle: {driverName} has {paths.Length - missing.Count}/{paths.Length} parts" + (missing.Count > 0 ? ", missing " + string.Join(", ", missing.ToArray()) : ""));
-        }
-
-        // Like Transform.Find, but tries every child of a name: some levels repeat a name (Wipers/Pivot).
-        static Transform FindPath(Transform t, string[] names, int depth)
-        {
-            if (depth == names.Length) return t;
-            foreach (Transform child in t)
-            {
-                if (child.name != names[depth]) continue;
-                var found = FindPath(child, names, depth + 1);
-                if (found != null) return found;
-            }
-            return null;
+            if (wireId != Wire.VehicleHayosiko || car == null) return;
+            model.Id = models.IdForBuilt(VanModel.Name, () => car != null ? model.Read(car, player, models, log) : null);
         }
 
         // The tank's level and capacity (<vehicle>/FuelTank :: Data); either may be null.
@@ -450,7 +432,8 @@ namespace PerkeleRim.Game
 
             state.flags = Wire.VehicleValid | (driven ? Wire.VehicleDriven : 0);
             Fill(ref state);
-            FillParts(ref partState);
+            partState.frame = (uint)Time.frameCount;
+            model.Fill(car, ref partState);
             if (link != null && wireId != 0)
             {
                 link.WriteVehicle(ref state);
@@ -592,35 +575,6 @@ namespace PerkeleRim.Game
                 // Undo the steer; what is left turns about the axle. Rolling forward tips up toward +Z.
                 var up = Quaternion.AngleAxis(-steer * Mathf.Rad2Deg, Vector3.up) * q * Vector3.up;
                 s.wheelSpin[i] = Mathf.Atan2(up.z, up.y);
-            }
-        }
-
-        // Each part's pose in the body's frame (as the converted NIF has it: the root's own transform
-        // left out), and whether MSC draws it: lights and indicators switch by turning objects or
-        // their renderers off.
-        void FillParts(ref VehicleParts s)
-        {
-            s.frame = (uint)Time.frameCount;
-            s.count = (uint)parts.Length;
-            var toCar = Quaternion.Inverse(car.rotation);
-            for (int i = 0; i < parts.Length; i++)
-            {
-                var t = parts[i];
-                if (t == null) continue;
-                var part = new VehiclePart();
-                var p = Coords.UnityToSkyrim(Vec3From(car.InverseTransformPoint(t.position)));
-                part.translation[0] = p.x;
-                part.translation[1] = p.y;
-                part.translation[2] = p.z;
-                var r = toCar * t.rotation;
-                var q = Coords.UnityToSkyrim(new Quat(r.x, r.y, r.z, r.w));
-                part.rotation[0] = q.x;
-                part.rotation[1] = q.y;
-                part.rotation[2] = q.z;
-                part.rotation[3] = q.w;
-                var renderer = t.GetComponent<Renderer>();
-                if (t.gameObject.activeInHierarchy && (renderer == null || renderer.enabled)) part.flags = Wire.PartVisible;
-                s.Set(i, part);
             }
         }
 

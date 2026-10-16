@@ -272,6 +272,7 @@ namespace PerkeleRim.Game
             SendLookAt(link, playing);
             SendSubtitle(link, playing);
             foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero);
+            foreach (var v in vehicles) v.SendModel(models, player);
             if (playing && Driven() == null && cInput.GetKeyDown("Push"))
                 foreach (var v in vehicles) if (v.RightIfRolled(player)) break;
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind

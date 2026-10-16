@@ -111,6 +111,7 @@ namespace PerkeleRim
         public string Name;
         public int Texture = -1;
         public int Material = -1;
+        public int Node = -1;      // index into ModelData.Nodes, -1 = the model's root
         public float[] Positions;  // x, y, z per vertex, Skyrim axes and units
         public float[] Normals;    // x, y, z per vertex, Skyrim axes
         public float[] Uvs;        // u, v per vertex, (0, 0) = top left
@@ -163,11 +164,22 @@ namespace PerkeleRim
         }
     }
 
+    // A named node meshes hang under (ModelNode), so Skyrim can move it on its own: pose relative to
+    // its parent at rest, Skyrim axes and units.
+    public sealed class ModelNodeData
+    {
+        public string Name;
+        public int Parent = -1;  // index into ModelData.Nodes, below this one's; -1 = the model's root
+        public float[] Translation = new float[3];
+        public float[] Rotation = { 0f, 0f, 0f, 1f };  // x, y, z, w
+    }
+
     public sealed class ModelData
     {
         public string Name;
         public readonly List<ModelTextureData> Textures = new List<ModelTextureData>();
         public readonly List<ModelMaterialData> Materials = new List<ModelMaterialData>();
+        public readonly List<ModelNodeData> Nodes = new List<ModelNodeData>();
         public readonly List<ModelMeshData> Meshes = new List<ModelMeshData>();
 
         public int VertexCount
@@ -188,7 +200,7 @@ namespace PerkeleRim
             w.Write((uint)Textures.Count);
             w.Write((uint)Meshes.Count);
             w.Write((uint)Materials.Count);
-            w.Write(0u);
+            w.Write((uint)Nodes.Count);
             foreach (var t in Textures)
             {
                 if (t.Width < 1 || t.Height < 1 || t.Width > Wire.ModelTextureSizeMax || t.Height > Wire.ModelTextureSizeMax ||
@@ -209,14 +221,26 @@ namespace PerkeleRim
                 for (int k = 0; k < 3; k++) w.Write(m.Emissive[k]);
                 w.Write(0u);
             }
+            for (int i = 0; i < Nodes.Count; i++)
+            {
+                var n = Nodes[i];
+                if (n.Parent < -1 || n.Parent >= i) throw new ArgumentException($"{Name}: node {n.Name} has parent {n.Parent}");
+                WriteName(w, n.Name, (int)Wire.ModelNodeNameMax);
+                w.Write(n.Parent);
+                for (int k = 0; k < 3; k++) w.Write(n.Translation[k]);
+                for (int k = 0; k < 4; k++) w.Write(n.Rotation[k]);
+            }
             foreach (var m in Meshes)
             {
                 if (m.Material < -1 || m.Material >= Materials.Count) throw new ArgumentException($"{Name}: mesh {m.Name} has material {m.Material}");
+                if (m.Node < -1 || m.Node >= Nodes.Count) throw new ArgumentException($"{Name}: mesh {m.Name} has node {m.Node}");
                 WriteName(w, m.Name);
                 w.Write(m.Texture);
                 w.Write((uint)m.VertexCount);
                 w.Write((uint)m.Indices.Length);
                 w.Write(m.Material);
+                w.Write(m.Node);
+                w.Write(0u);
                 for (int i = 0; i < m.VertexCount; i++)
                 {
                     for (int k = 0; k < 3; k++) w.Write(m.Positions[i * 3 + k]);
@@ -275,12 +299,12 @@ namespace PerkeleRim
         }
 
         // UTF-8, cut at a character boundary to fit, zero padded.
-        static void WriteName(BinaryWriter w, string name)
+        static void WriteName(BinaryWriter w, string name, int size = (int)Wire.ModelNameMax)
         {
             var bytes = Encoding.UTF8.GetBytes(name ?? "");
-            int length = Math.Min(bytes.Length, (int)Wire.ModelNameMax - 1);
+            int length = Math.Min(bytes.Length, size - 1);
             while (length > 0 && length < bytes.Length && (bytes[length] & 0xC0) == 0x80) length--;
-            var field = new byte[Wire.ModelNameMax];
+            var field = new byte[size];
             Array.Copy(bytes, field, length);
             w.Write(field);
         }

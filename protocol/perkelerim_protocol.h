@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 26;
+    inline constexpr std::uint32_t kProtocolVersion = 27;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -35,14 +35,14 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kOffsetPlayerSlot = 256;
     inline constexpr std::uint32_t kOffsetVehicleSlot = 384;
     inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 512;
-    inline constexpr std::uint32_t kOffsetItemSlot = 2112;
-    inline constexpr std::uint32_t kOffsetHandLayerSlot = 7296;
-    inline constexpr std::uint32_t kOffsetActorSlot = 7360;
-    inline constexpr std::uint32_t kOffsetRingToMsc = 8960;         // RingHeader, data follows
+    inline constexpr std::uint32_t kOffsetItemSlot = 8768;
+    inline constexpr std::uint32_t kOffsetHandLayerSlot = 13952;
+    inline constexpr std::uint32_t kOffsetActorSlot = 14016;
+    inline constexpr std::uint32_t kOffsetRingToMsc = 15616;        // RingHeader, data follows
     inline constexpr std::uint32_t kRingToMscCapacity = 4194304;    // 4 MiB: collision chunks
-    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4203328;   // 8960 + 64 + 4 MiB
+    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4209984;   // 15616 + 64 + 4 MiB
     inline constexpr std::uint32_t kRingToSkyrimCapacity = 262144;  // 256 KiB: events
-    inline constexpr std::uint32_t kMappingSize = 4465536;         // 4203328 + 64 + 256 KiB
+    inline constexpr std::uint32_t kMappingSize = 4472192;         // 4209984 + 64 + 256 KiB
 
     enum class Side : std::uint32_t
     {
@@ -185,77 +185,31 @@ namespace PerkeleRim::Protocol
         std::uint8_t  pad[40];
     };
 
-    inline constexpr std::uint32_t kVehiclePartCapacity = 48;  // VehicleParts.parts
+    inline constexpr std::uint32_t kVehiclePartCapacity = 256;  // VehicleParts.parts
     inline constexpr std::uint32_t kPartVisible = 0x1;         // VehiclePart.flags: drawn (MSC shows it)
 
-    // The Hayosiko's moving and switchable parts, in VehicleParts.parts order: paths below the van's
-    // root in MSC's hierarchy (tools/nif/hayosiko.json lists the same paths, and the converted NIF
-    // has one node per part named by its path). Changing the list bumps kProtocolVersion.
-    inline constexpr const char* kHayosikoParts[] = {
-        // Doors
-        "DriverDoors/doorl",
-        "DriverDoors/doorr",
-        "SideDoor/door",
-        "RearDoor/doorear",
-        // Controls
-        "LOD/Dashboard/Steering/VanSteeringPivot",
-        "LOD/Dashboard/KeyHole/Keys/Key",
-        "LOD/Dashboard/Gauges/NeedleSpeedometer/Needle",
-        "LOD/Dashboard/Gauges/NeedleFuel/Needle",
-        "LOD/Dashboard/Gauges/NeedleTemp/Needle",
-        "LOD/Dashboard/Pedals 1/clutch",
-        "LOD/Dashboard/Pedals 1/brake",
-        "LOD/Dashboard/Pedals 1/throttle",
-        "LOD/Dashboard/GearShifter/lever",
-        "LOD/Dashboard/ParkingBrake/lever",
-        "LOD/Dashboard/BlinkerLever/lever",
-        "LOD/Dashboard/WipersLever/lever",
-        "LOD/Wipers/Pivot/WiperLeftPivot",
-        "LOD/Wipers/Pivot/WiperRightPivot",
-        "LOD/FuelFiller/Pivot",
-        "LOD/FuelFiller/OpenCap",
-        "RadioPivot/Radio/TunerPivot/needle",
-        "LOD/seatbelts/HandleUpPivot/SeatbeltHandle",
-        "LOD/seatbelts/Fastened_mesh",
-        // Lights (lit meshes, shown while on)
-        "LOD/Electricity/PowerON/Driving/BeamsShort/drive",
-        "LOD/Electricity/PowerON/Driving/BeamsLong/drive",
-        "LOD/Electricity/PowerON/Brake/brake",
-        "LOD/Electricity/PowerON/Reverse/reverse",
-        "LOD/Electricity/PowerON/Blinkers/Left/indicator_left",
-        "LOD/Electricity/PowerON/Blinkers/Right/indicator_right",
-        "LOD/Dashboard/Gauges/GaugesLights",
-        "LOD/Dashboard/Indicators/indicator_battery",
-        "LOD/Dashboard/Indicators/indicator_brake",
-        "LOD/Dashboard/Indicators/indicator_filter",
-        "LOD/Dashboard/Indicators/indicator_glowplug",
-        "LOD/Dashboard/Indicators/indicator_hazards",
-        "LOD/Dashboard/Indicators/indicator_left",
-        "LOD/Dashboard/Indicators/indicator_lights",
-        "LOD/Dashboard/Indicators/indicator_oil",
-        "LOD/Dashboard/Indicators/indicator_preheat",
-        "LOD/Dashboard/Indicators/indicator_right",
-    };
-    inline constexpr std::uint32_t kHayosikoPartCount = 40;
 
-    // A part's pose relative to the vehicle's body (VehicleState position and rotation): Skyrim axes
+    // A node's pose relative to the vehicle's body (VehicleState position and rotation): Skyrim axes
     // and units, vehicle +Y forward, +Z up.
     struct VehiclePart
     {
         float         rotation[4];     // x, y, z, w
-        float         translation[3];  // the part's pivot
+        float         translation[3];  // the node's origin (the MSC object's pivot)
         std::uint32_t flags;           // kPart*
     };
 
-    // MSC -> Skyrim, written right after VehicleState. parts[i] is part i of the vehicle's list
-    // (kHayosikoParts); count is that list's length, the rest is zero.
+    // MSC -> Skyrim, written right after VehicleState: where MSC has every object of the vehicle
+    // right now. parts[i] is node i of the vehicle's model (ModelChunk model, ModelNode order: one
+    // node per MSC object with a mesh); count is its node count, the rest is zero.
     struct VehicleParts
     {
-        std::uint32_t frame;       // MSC frame counter
-        std::uint32_t vehicle;     // kVehicle* id, 0 = none
-        std::uint32_t generation;  // WorldspaceChange.generation
-        std::uint32_t count;
-        VehiclePart   parts[48];   // kVehiclePartCapacity
+        std::uint32_t frame;        // MSC frame counter
+        std::uint32_t vehicle;      // kVehicle* id, 0 = none
+        std::uint32_t generation;   // WorldspaceChange.generation
+        std::uint32_t count;        // <= kVehiclePartCapacity
+        std::uint32_t model;        // ModelChunk.model the nodes are of, 0 = none yet
+        std::uint32_t reserved[3];
+        VehiclePart   parts[256];   // kVehiclePartCapacity
     };
 
     struct VehiclePartsSlot
@@ -263,7 +217,7 @@ namespace PerkeleRim::Protocol
         std::uint32_t seq;
         std::uint32_t reserved;
         VehicleParts  value;
-        std::uint8_t  pad[40];
+        std::uint8_t  pad[24];
     };
 
     inline constexpr std::uint32_t kItemCapacity = 128;  // ItemState.items
@@ -604,6 +558,7 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kModelChunkMax = 49152;     // ModelChunk.size limit
     inline constexpr std::uint32_t kModelSizeMax = 67108864;   // ModelChunk.totalSize limit (64 MiB)
     inline constexpr std::uint32_t kModelNameMax = 48;         // name bytes, UTF-8, zero padded
+    inline constexpr std::uint32_t kModelNodeNameMax = 64;     // ModelNode.name bytes, UTF-8, zero padded
     inline constexpr std::uint32_t kModelTextureRgba8 = 1;     // ModelTexture.format
     inline constexpr std::uint32_t kModelTextureSizeMax = 2048;  // width and height limit
     inline constexpr std::uint32_t kModelMeshVertexMax = 65535;  // 16-bit indices
@@ -618,18 +573,18 @@ namespace PerkeleRim::Protocol
     };
 
     // The blob: this header, textureCount textures (ModelTexture, then width * height RGBA8 pixels,
-    // top row first), then materialCount ModelMaterial, then meshCount meshes (ModelMesh, then
-    // vertexCount ModelVertex, then indexCount uint16 triangle indices). Positions and normals are
-    // relative to the model's root, in Skyrim axes and units. Front faces wind counterclockwise seen
-    // from the front (cross(b - a, c - a) points out), like CollisionChunk. UV (0, 0) is the texture's
-    // top left corner.
+    // top row first), then materialCount ModelMaterial, then nodeCount ModelNode, then meshCount
+    // meshes (ModelMesh, then vertexCount ModelVertex, then indexCount uint16 triangle indices).
+    // Positions and normals are relative to the mesh's node (the model's root without one), in Skyrim
+    // axes and units. Front faces wind counterclockwise seen from the front (cross(b - a, c - a)
+    // points out), like CollisionChunk. UV (0, 0) is the texture's top left corner.
     struct ModelHeader
     {
         char          name[48];  // kModelNameMax
         std::uint32_t textureCount;
         std::uint32_t meshCount;
         std::uint32_t materialCount;
-        std::uint32_t reserved;
+        std::uint32_t nodeCount;
     };
 
     struct ModelTexture
@@ -657,6 +612,16 @@ namespace PerkeleRim::Protocol
         std::uint32_t reserved;
     };
 
+    // A named node meshes can hang under, so Skyrim can move parts of a model on their own (the van's
+    // wheels, doors and lights). A node comes after its parent.
+    struct ModelNode
+    {
+        char          name[64];        // kModelNodeNameMax
+        std::int32_t  parent;          // node index, -1 = the model's root
+        float         translation[3];  // relative to the parent, at rest
+        float         rotation[4];     // x, y, z, w, relative to the parent, at rest
+    };
+
     struct ModelMesh
     {
         char          name[48];     // kModelNameMax: the MSC object's path below the model's root
@@ -664,6 +629,8 @@ namespace PerkeleRim::Protocol
         std::uint32_t vertexCount;  // <= kModelMeshVertexMax
         std::uint32_t indexCount;   // 3 per triangle
         std::int32_t  material;     // material index, -1 = default (opaque, lit, no highlight)
+        std::int32_t  node;         // node index it hangs under, -1 = the model's root
+        std::uint32_t reserved;
     };
 
     struct ModelVertex
@@ -717,10 +684,11 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(VehiclePart) == 32);
     static_assert(offsetof(VehiclePart, translation) == 16);
     static_assert(offsetof(VehiclePart, flags) == 28);
-    static_assert(sizeof(VehicleParts) == 1552);
+    static_assert(sizeof(VehicleParts) == 8224);
     static_assert(offsetof(VehicleParts, count) == 12);
-    static_assert(offsetof(VehicleParts, parts) == 16);
-    static_assert(sizeof(VehiclePartsSlot) == 1600);
+    static_assert(offsetof(VehicleParts, model) == 16);
+    static_assert(offsetof(VehicleParts, parts) == 32);
+    static_assert(sizeof(VehiclePartsSlot) == 8256);
     static_assert(offsetof(VehiclePartsSlot, value) == 8);
     static_assert(sizeof(ItemPose) == 40);
     static_assert(offsetof(ItemPose, flags) == 8);
@@ -799,11 +767,17 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ModelMaterial, specular) == 8);
     static_assert(offsetof(ModelMaterial, glossiness) == 20);
     static_assert(offsetof(ModelMaterial, emissive) == 24);
-    static_assert(sizeof(ModelMesh) == 64);
+    static_assert(offsetof(ModelHeader, nodeCount) == 60);
+    static_assert(sizeof(ModelNode) == 96);
+    static_assert(offsetof(ModelNode, parent) == 64);
+    static_assert(offsetof(ModelNode, translation) == 68);
+    static_assert(offsetof(ModelNode, rotation) == 80);
+    static_assert(sizeof(ModelMesh) == 72);
     static_assert(offsetof(ModelMesh, texture) == 48);
     static_assert(offsetof(ModelMesh, vertexCount) == 52);
     static_assert(offsetof(ModelMesh, indexCount) == 56);
     static_assert(offsetof(ModelMesh, material) == 60);
+    static_assert(offsetof(ModelMesh, node) == 64);
     static_assert(sizeof(ModelVertex) == 32);
     static_assert(offsetof(ModelVertex, normal) == 12);
     static_assert(offsetof(ModelVertex, uv) == 24);
@@ -822,8 +796,7 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(ActorList::actors) / sizeof(ActorPose) == kActorCapacity);
     static_assert(kOffsetRingToSkyrim == kOffsetRingToMsc + sizeof(RingHeader) + kRingToMscCapacity);
     static_assert(kMappingSize == kOffsetRingToSkyrim + sizeof(RingHeader) + kRingToSkyrimCapacity);
-    static_assert(sizeof(kHayosikoParts) / sizeof(kHayosikoParts[0]) == kHayosikoPartCount);
-    static_assert(kHayosikoPartCount <= kVehiclePartCapacity);
+    static_assert(sizeof(VehicleParts::parts) / sizeof(VehiclePart) == kVehiclePartCapacity);
     static_assert((kRingToMscCapacity & (kRingToMscCapacity - 1)) == 0);
     static_assert((kRingToSkyrimCapacity & (kRingToSkyrimCapacity - 1)) == 0);
 }

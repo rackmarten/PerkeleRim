@@ -7,7 +7,6 @@
 #include <atomic>
 #include <cstring>
 #include <memory>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -159,10 +158,11 @@ TEST_CASE("input and player slots carry the latest value")
     CHECK_FALSE(p.skyrim->ReadVehicleParts(parts));  // never written
     parts.frame = 9;
     parts.vehicle = kVehicleHayosiko;
-    parts.count = kHayosikoPartCount;
+    parts.count = kVehiclePartCapacity;
+    parts.model = 0x373B0001;
     parts.parts[0].rotation[3] = 1.0f;
     parts.parts[0].flags = kPartVisible;
-    parts.parts[kHayosikoPartCount - 1].translation[1] = 42.0f;
+    parts.parts[kVehiclePartCapacity - 1].translation[1] = 42.0f;
     p.msc->WriteVehicleParts(parts);
     VehicleParts partsOut{};
     REQUIRE(p.skyrim->ReadVehicleParts(partsOut));
@@ -187,21 +187,6 @@ TEST_CASE("input and player slots carry the latest value")
     HandLayer handsOut{};
     REQUIRE(p.skyrim->ReadHandLayer(handsOut));
     CHECK(std::memcmp(&handsOut, &hands, sizeof(hands)) == 0);
-}
-
-TEST_CASE("van part paths are unique and well formed")
-{
-    std::set<std::string> seen;
-    for (const char* path : kHayosikoParts) {
-        const std::string s(path);
-        CAPTURE(s);
-        CHECK(seen.insert(s).second);
-        CHECK_FALSE(s.empty());
-        CHECK(s.front() != '/');
-        CHECK(s.back() != '/');
-        CHECK(s.find("//") == std::string::npos);
-    }
-    CHECK(seen.size() == kHayosikoPartCount);
 }
 
 TEST_CASE("look-at text travels from MSC to Skyrim")

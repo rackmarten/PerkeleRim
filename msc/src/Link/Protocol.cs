@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 26;
+        public const uint ProtocolVersion = 27;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -18,14 +18,14 @@ namespace PerkeleRim.Protocol
         public const uint OffsetPlayerSlot = 256;
         public const uint OffsetVehicleSlot = 384;
         public const uint OffsetVehiclePartsSlot = 512;
-        public const uint OffsetItemSlot = 2112;
-        public const uint OffsetHandLayerSlot = 7296;
-        public const uint OffsetActorSlot = 7360;
-        public const uint OffsetRingToMsc = 8960;
+        public const uint OffsetItemSlot = 8768;
+        public const uint OffsetHandLayerSlot = 13952;
+        public const uint OffsetActorSlot = 14016;
+        public const uint OffsetRingToMsc = 15616;
         public const uint RingToMscCapacity = 4194304;
-        public const uint OffsetRingToSkyrim = 4203328;
+        public const uint OffsetRingToSkyrim = 4209984;
         public const uint RingToSkyrimCapacity = 262144;
-        public const uint MappingSize = 4465536;
+        public const uint MappingSize = 4472192;
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint InputPaused = 0x2;
@@ -47,9 +47,8 @@ namespace PerkeleRim.Protocol
         public const uint VehicleDriven = 0x2;
         public const uint VehicleHayosiko = 1;
         public const uint AnchorVehicleSpot = 0x1;
-        public const uint VehiclePartCapacity = 48;
+        public const uint VehiclePartCapacity = 256;
         public const uint PartVisible = 0x1;
-        public const uint HayosikoPartCount = 40;
         public const uint ItemCapacity = 128;
         public const uint ItemVisible = 0x1;
         public const uint ItemHeld = 0x2;
@@ -60,6 +59,7 @@ namespace PerkeleRim.Protocol
         public const uint ModelChunkMax = 49152;
         public const uint ModelSizeMax = 67108864;
         public const uint ModelNameMax = 48;
+        public const uint ModelNodeNameMax = 64;
         public const uint ModelTextureRgba8 = 1;
         public const uint ModelTextureSizeMax = 2048;
         public const uint ModelMeshVertexMax = 65535;
@@ -95,54 +95,6 @@ namespace PerkeleRim.Protocol
         public const uint MaterialBlend = 0x2;
         public const uint MaterialUnlit = 0x4;
         public const uint MaterialOverlay = 0x8;
-
-        // VehicleParts.parts order for the van; msc/tests checks it against the header's list.
-        public static readonly string[] HayosikoParts =
-        {
-            // Doors
-            "DriverDoors/doorl",
-            "DriverDoors/doorr",
-            "SideDoor/door",
-            "RearDoor/doorear",
-            // Controls
-            "LOD/Dashboard/Steering/VanSteeringPivot",
-            "LOD/Dashboard/KeyHole/Keys/Key",
-            "LOD/Dashboard/Gauges/NeedleSpeedometer/Needle",
-            "LOD/Dashboard/Gauges/NeedleFuel/Needle",
-            "LOD/Dashboard/Gauges/NeedleTemp/Needle",
-            "LOD/Dashboard/Pedals 1/clutch",
-            "LOD/Dashboard/Pedals 1/brake",
-            "LOD/Dashboard/Pedals 1/throttle",
-            "LOD/Dashboard/GearShifter/lever",
-            "LOD/Dashboard/ParkingBrake/lever",
-            "LOD/Dashboard/BlinkerLever/lever",
-            "LOD/Dashboard/WipersLever/lever",
-            "LOD/Wipers/Pivot/WiperLeftPivot",
-            "LOD/Wipers/Pivot/WiperRightPivot",
-            "LOD/FuelFiller/Pivot",
-            "LOD/FuelFiller/OpenCap",
-            "RadioPivot/Radio/TunerPivot/needle",
-            "LOD/seatbelts/HandleUpPivot/SeatbeltHandle",
-            "LOD/seatbelts/Fastened_mesh",
-            // Lights (lit meshes, shown while on)
-            "LOD/Electricity/PowerON/Driving/BeamsShort/drive",
-            "LOD/Electricity/PowerON/Driving/BeamsLong/drive",
-            "LOD/Electricity/PowerON/Brake/brake",
-            "LOD/Electricity/PowerON/Reverse/reverse",
-            "LOD/Electricity/PowerON/Blinkers/Left/indicator_left",
-            "LOD/Electricity/PowerON/Blinkers/Right/indicator_right",
-            "LOD/Dashboard/Gauges/GaugesLights",
-            "LOD/Dashboard/Indicators/indicator_battery",
-            "LOD/Dashboard/Indicators/indicator_brake",
-            "LOD/Dashboard/Indicators/indicator_filter",
-            "LOD/Dashboard/Indicators/indicator_glowplug",
-            "LOD/Dashboard/Indicators/indicator_hazards",
-            "LOD/Dashboard/Indicators/indicator_left",
-            "LOD/Dashboard/Indicators/indicator_lights",
-            "LOD/Dashboard/Indicators/indicator_oil",
-            "LOD/Dashboard/Indicators/indicator_preheat",
-            "LOD/Dashboard/Indicators/indicator_right",
-        };
     }
 
     public enum Side : uint
@@ -302,7 +254,9 @@ namespace PerkeleRim.Protocol
         public uint vehicle;
         public uint generation;
         public uint count;
-        public fixed byte parts[1536];
+        public uint model;
+        public fixed uint reserved[3];
+        public fixed byte parts[8192];
 
         public VehiclePart Get(int i)
         {
@@ -323,7 +277,7 @@ namespace PerkeleRim.Protocol
         public uint seq;
         public uint reserved;
         public VehicleParts value;
-        public fixed byte pad[40];
+        public fixed byte pad[24];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -581,7 +535,7 @@ namespace PerkeleRim.Protocol
         public uint textureCount;
         public uint meshCount;
         public uint materialCount;
-        public uint reserved;
+        public uint nodeCount;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -612,6 +566,17 @@ namespace PerkeleRim.Protocol
         public uint vertexCount;
         public uint indexCount;
         public int material;
+        public int node;
+        public uint reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ModelNode
+    {
+        public fixed byte name[64];
+        public int parent;
+        public fixed float translation[3];
+        public fixed float rotation[4];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

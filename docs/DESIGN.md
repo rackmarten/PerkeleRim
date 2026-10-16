@@ -137,9 +137,9 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 
 ## 10. Assets and legal
 
-- Personal prototype / video: converting models from **your own** MSC install into NIFs offline is fine for personal use.
+- MSC's models (the van, items, overlays) are read at runtime from the player's own running MSC and built in Skyrim's memory (protocol `ModelChunk`): nothing is converted, shipped or written to disk, so a player needs only SKSE, Address Library, MSCLoader and the release zip.
+- `tools/convert-vehicle.ps1` (offline NIF conversion of the van from your own install) stays as an optional dev tool for inspecting meshes; the game doesn't use its output.
 - Do **not** distribute converted MSC or Skyrim assets.
-- For any public release: extract meshes at runtime from the player's own MSC install (like SkyCraft avoids shipping Minecraft assets).
 
 ## 11. Milestones
 

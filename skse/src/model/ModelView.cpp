@@ -2,6 +2,7 @@
 
 #include <DirectXPackedVector.h>
 
+#include "coords.h"
 #include "model.h"
 
 namespace PerkeleRim::ModelView
@@ -484,7 +485,7 @@ namespace PerkeleRim::ModelView
         Store(state.assembler.Id(), state.assembler.Blob());
     }
 
-    RE::NiPointer<RE::NiNode> Instance(std::uint32_t a_model)
+    RE::NiPointer<RE::NiNode> Instance(std::uint32_t a_model, std::vector<RE::NiNode*>* a_nodes)
     {
         const auto found = state.models.find(a_model);
         if (found == state.models.end() || !LoadTemplate()) {
@@ -495,6 +496,22 @@ namespace PerkeleRim::ModelView
         const auto& model = cached.model;
         RE::NiPointer<RE::NiNode> node(RE::NiNode::Create(static_cast<std::uint16_t>(model.meshes.size())));
         node->name = model.name.c_str();
+        // The model's own nodes, each under its parent (always built before it) at its rest pose.
+        std::vector<RE::NiNode*> nodes;
+        for (const auto& in : model.nodes) {
+            auto* child = RE::NiNode::Create(0);
+            child->name = in.name.c_str();
+            float m[3][3];
+            Coords::ToMatrix({ in.rotation[0], in.rotation[1], in.rotation[2], in.rotation[3] }, m);
+            for (int r = 0; r < 3; r++) {
+                for (int c = 0; c < 3; c++) {
+                    child->local.rotate.entry[r][c] = m[r][c];
+                }
+            }
+            child->local.translate = Point(in.translation);
+            (in.parent >= 0 ? nodes[in.parent] : node.get())->AttachChild(child, true);
+            nodes.push_back(child);
+        }
         std::uint32_t vertices = 0, triangles = 0;
         for (const auto& mesh : model.meshes) {
             auto shape = MakeShape(mesh, mesh.texture >= 0 ? cached.textures[mesh.texture] : nullptr,
@@ -502,15 +519,18 @@ namespace PerkeleRim::ModelView
             if (!shape) {
                 continue;
             }
-            node->AttachChild(shape.get(), true);
+            (mesh.node >= 0 ? nodes[mesh.node] : node.get())->AttachChild(shape.get(), true);
             vertices += mesh.vertexCount;
             triangles += mesh.indexCount / 3;
         }
         if (!cached.logged) {
             cached.logged = true;
             const auto ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-            SKSE::log::info("model view: {:08X} {} first instance in {:.1f} ms: {} vertices, {} triangles", a_model, model.name, ms,
-                vertices, triangles);
+            SKSE::log::info("model view: {:08X} {} first instance in {:.1f} ms: {} vertices, {} triangles, {} nodes", a_model, model.name, ms,
+                vertices, triangles, nodes.size());
+        }
+        if (a_nodes) {
+            *a_nodes = std::move(nodes);
         }
         return node;
     }

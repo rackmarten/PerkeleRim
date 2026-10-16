@@ -27,6 +27,7 @@ namespace PerkeleRim::Model
         std::string                   name;
         std::int32_t                  texture;  // index into Model::textures, -1 = none
         std::int32_t                  material;  // index into Model::materials, -1 = default
+        std::int32_t                  node;      // index into Model::nodes, -1 = the model's root
         const Protocol::ModelVertex*  vertices;  // unaligned: copy before use where alignment matters
         std::uint32_t                 vertexCount;
         const std::uint8_t*           indices;   // indexCount little-endian uint16
@@ -45,18 +46,28 @@ namespace PerkeleRim::Model
         }
     };
 
+    struct Node
+    {
+        std::string  name;
+        std::int32_t parent;  // index into Model::nodes, always below its own; -1 = the model's root
+        float        translation[3];
+        float        rotation[4];  // x, y, z, w
+    };
+
     struct Model
     {
         std::string          name;
         std::vector<Texture>                 textures;
         std::vector<Protocol::ModelMaterial> materials;
+        std::vector<Node>                    nodes;
         std::vector<Mesh>                    meshes;
     };
 
-    inline std::string Name(const char (&a_field)[Protocol::kModelNameMax])
+    template <std::size_t N>
+    std::string Name(const char (&a_field)[N])
     {
         std::size_t length = 0;
-        while (length < Protocol::kModelNameMax && a_field[length] != '\0') {
+        while (length < N && a_field[length] != '\0') {
             length++;
         }
         return std::string(a_field, length);
@@ -102,11 +113,22 @@ namespace PerkeleRim::Model
             }
             model.materials.push_back(material);
         }
+        for (std::uint32_t i = 0; i < header.nodeCount; i++) {
+            Protocol::ModelNode node{};
+            if (!take(&node, sizeof(node)) || node.parent < -1 || node.parent >= static_cast<std::int32_t>(i)) {
+                return std::nullopt;
+            }
+            Node out{ Name(node.name), node.parent, {}, {} };
+            std::memcpy(out.translation, node.translation, sizeof(out.translation));
+            std::memcpy(out.rotation, node.rotation, sizeof(out.rotation));
+            model.nodes.push_back(std::move(out));
+        }
         for (std::uint32_t i = 0; i < header.meshCount; i++) {
             Protocol::ModelMesh mesh{};
             if (!take(&mesh, sizeof(mesh)) || mesh.vertexCount > Protocol::kModelMeshVertexMax || mesh.indexCount % 3 != 0 ||
                 mesh.texture < -1 || mesh.texture >= static_cast<std::int32_t>(header.textureCount) || mesh.material < -1 ||
-                mesh.material >= static_cast<std::int32_t>(header.materialCount)) {
+                mesh.material >= static_cast<std::int32_t>(header.materialCount) || mesh.node < -1 ||
+                mesh.node >= static_cast<std::int32_t>(header.nodeCount)) {
                 return std::nullopt;
             }
             const std::size_t vertexBytes = static_cast<std::size_t>(mesh.vertexCount) * sizeof(Protocol::ModelVertex);
@@ -114,7 +136,7 @@ namespace PerkeleRim::Model
             if (a_size - at < vertexBytes + indexBytes) {
                 return std::nullopt;
             }
-            Mesh out{ Name(mesh.name), mesh.texture, mesh.material, reinterpret_cast<const Protocol::ModelVertex*>(a_blob + at),
+            Mesh out{ Name(mesh.name), mesh.texture, mesh.material, mesh.node, reinterpret_cast<const Protocol::ModelVertex*>(a_blob + at),
                 mesh.vertexCount, a_blob + at + vertexBytes, mesh.indexCount };
             at += vertexBytes + indexBytes;
             for (std::uint32_t k = 0; k < out.indexCount; k++) {
