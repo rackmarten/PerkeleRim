@@ -279,28 +279,35 @@ namespace PerkeleRim
         return IsUp() && SeqRead(At<PlayerSlot>(Base(), kOffsetPlayerSlot), a_out);
     }
 
+    namespace
+    {
+        bool KnownVehicle(std::uint32_t a_vehicle) { return a_vehicle >= 1 && a_vehicle <= kVehicleCount; }
+        std::uint32_t VehicleSlotAt(std::uint32_t a_vehicle) { return kOffsetVehicleSlot + (a_vehicle - 1) * static_cast<std::uint32_t>(sizeof(VehicleSlot)); }
+        std::uint32_t VehiclePartsSlotAt(std::uint32_t a_vehicle) { return kOffsetVehiclePartsSlot + (a_vehicle - 1) * static_cast<std::uint32_t>(sizeof(VehiclePartsSlot)); }
+    }
+
     void Link::WriteVehicle(const VehicleState& a_value)
     {
-        if (std::uint8_t* base = Base(); base && _attached.load(std::memory_order_acquire)) {
-            SeqWrite(At<VehicleSlot>(base, kOffsetVehicleSlot), a_value);
+        if (std::uint8_t* base = Base(); base && _attached.load(std::memory_order_acquire) && KnownVehicle(a_value.vehicle)) {
+            SeqWrite(At<VehicleSlot>(base, VehicleSlotAt(a_value.vehicle)), a_value);
         }
     }
 
-    bool Link::ReadVehicle(VehicleState& a_out) const
+    bool Link::ReadVehicle(std::uint32_t a_vehicle, VehicleState& a_out) const
     {
-        return IsUp() && SeqRead(At<VehicleSlot>(Base(), kOffsetVehicleSlot), a_out);
+        return IsUp() && KnownVehicle(a_vehicle) && SeqRead(At<VehicleSlot>(Base(), VehicleSlotAt(a_vehicle)), a_out);
     }
 
     void Link::WriteVehicleParts(const VehicleParts& a_value)
     {
-        if (std::uint8_t* base = Base(); base && _attached.load(std::memory_order_acquire)) {
-            SeqWrite(At<VehiclePartsSlot>(base, kOffsetVehiclePartsSlot), a_value);
+        if (std::uint8_t* base = Base(); base && _attached.load(std::memory_order_acquire) && KnownVehicle(a_value.vehicle)) {
+            SeqWrite(At<VehiclePartsSlot>(base, VehiclePartsSlotAt(a_value.vehicle)), a_value);
         }
     }
 
-    bool Link::ReadVehicleParts(VehicleParts& a_out) const
+    bool Link::ReadVehicleParts(std::uint32_t a_vehicle, VehicleParts& a_out) const
     {
-        return IsUp() && SeqRead(At<VehiclePartsSlot>(Base(), kOffsetVehiclePartsSlot), a_out);
+        return IsUp() && KnownVehicle(a_vehicle) && SeqRead(At<VehiclePartsSlot>(Base(), VehiclePartsSlotAt(a_vehicle)), a_out);
     }
 
     void Link::WriteItems(const ItemState& a_value)

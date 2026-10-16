@@ -49,10 +49,12 @@ namespace PerkeleRim
         bool ReadInput(Protocol::InputState& a_out) const;
         void WritePlayer(const Protocol::PlayerState& a_value);
         bool ReadPlayer(Protocol::PlayerState& a_out) const;
+        // Vehicles have a slot each: Write picks it by a_value.vehicle, Read by a_vehicle (kVehicle*
+        // id); an id outside 1..kVehicleCount writes nothing and reads false.
         void WriteVehicle(const Protocol::VehicleState& a_value);
-        bool ReadVehicle(Protocol::VehicleState& a_out) const;
+        bool ReadVehicle(std::uint32_t a_vehicle, Protocol::VehicleState& a_out) const;
         void WriteVehicleParts(const Protocol::VehicleParts& a_value);
-        bool ReadVehicleParts(Protocol::VehicleParts& a_out) const;
+        bool ReadVehicleParts(std::uint32_t a_vehicle, Protocol::VehicleParts& a_out) const;
         void WriteItems(const Protocol::ItemState& a_value);
         bool ReadItems(Protocol::ItemState& a_out) const;
         void WriteHandLayer(const Protocol::HandLayer& a_value);

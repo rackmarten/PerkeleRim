@@ -6,17 +6,20 @@ namespace PerkeleRim.Game
 {
     // One MSC vehicle on the collision island, driven by PlayerLink (one instance per vehicle):
     //  - when the player is put down on a new anchor on foot, the vehicle is parked next to it, or
-    //    at the spot the anchor names for it (ParkAt);
+    //    at the spot the anchor names for it (ParkAt); a vehicle on call (the moped, the Kekmet) is
+    //    instead put away until the player calls it (Summon), which parks it in front of the player
+    //    wherever it was;
     //  - when the player sits in it, the vehicle carries the player to the new anchor instead;
     //  - while there is no island ground under it, it is held (kinematic) and keeps its speed for
     //    when the ground arrives, so it never falls off the edge of the streamed area;
     //  - writes VehicleState (Skyrim world space) and VehicleParts (where every object of its model
-    //    is relative to the body, and whether MSC draws it) every frame if it has a wire id (only the
-    //    van so far; the protocol carries one vehicle).
+    //    is relative to the body, and whether MSC draws it) every frame into its wire id's slot.
     public unsafe class VehicleLink
     {
-        // Drop the vehicle from this high above the ground so its wheels settle on it.
+        // Drop the vehicle from this high above the ground so its wheels settle on it, or from a bit
+        // above the height it stood at in MSC when that is more (the Kekmet's big wheels).
         const float ParkClearance = 0.6f;
+        const float RestMargin = 0.15f;
         const float GroundCheckEvery = 0.25f;
         // Half width and half length (meters) of the ground that must be flat where a vehicle parks
         // (van sized; generous for the moped), and how uneven it may be.
@@ -27,8 +30,9 @@ namespace PerkeleRim.Game
 
         readonly string objectName;
         readonly string driverName;   // PlayerCurrentVehicle while driving it
-        readonly Vector3 parkOffset;  // from the player's feet, in the player's frame (meters)
-        readonly uint wireId;         // VehicleState.vehicle, 0 = not sent to Skyrim
+        readonly Vector3 parkOffset;  // from the player's feet, in the player's frame (meters); x = 0: ahead
+        readonly uint wireId;         // VehicleState.vehicle
+        readonly bool onCall;         // only parked by Summon, put away until then
         readonly string keyVariable;  // global Int the ignition checks, null = no key needed
         readonly Island island;
         readonly Action<string> log;
@@ -37,6 +41,7 @@ namespace PerkeleRim.Game
 
         Transform car;
         Transform[] wheels;
+        float clearance = ParkClearance;
         readonly VehicleModel model = new VehicleModel();
         Rigidbody body;
         uint placedGeneration;
@@ -53,13 +58,14 @@ namespace PerkeleRim.Game
         Vec3 spot;            // Skyrim units, the ground under the vehicle's middle
         float spotHeading;    // Skyrim radians
 
-        public VehicleLink(string objectName, string driverName, Vector3 parkOffset, uint wireId, string keyVariable,
+        public VehicleLink(string objectName, string driverName, Vector3 parkOffset, uint wireId, bool onCall, string keyVariable,
             VehicleTune.Settings tuning, Island island, Func<Vector3, Vector3?> findGround, Action<string> log)
         {
             this.objectName = objectName;
             this.driverName = driverName;
             this.parkOffset = parkOffset;
             this.wireId = wireId;
+            this.onCall = onCall;
             this.keyVariable = keyVariable;
             this.island = island;
             this.findGround = findGround;
@@ -100,13 +106,15 @@ namespace PerkeleRim.Game
             Moves++;
             placedGeneration = 0;
             held = false;
-            Ground = ColliderBelow(car);
+            float rest;
+            Ground = ColliderBelow(car, out rest);
+            clearance = Ground != null ? Mathf.Clamp(rest + RestMargin, ParkClearance, 3f) : ParkClearance;
             tune.Attach(car, body);
             wheels = new Transform[WheelModels.Length];
             int found = 0;
             for (int i = 0; i < wheels.Length; i++)
                 if ((wheels[i] = car.Find(WheelModels[i])) != null) found++;
-            if (wireId != 0) log($"vehicle: {driverName} has {found}/{wheels.Length} wheel models");
+            log($"vehicle: {driverName} has {found}/{wheels.Length} wheel models, parks {clearance:0.00} m up");
             // The pose goes out every rendered frame; without this it only moves on 50 Hz physics steps.
             if (body != null && body.interpolation == RigidbodyInterpolation.None)
             {
@@ -119,12 +127,13 @@ namespace PerkeleRim.Game
             Refuel();
         }
 
-        // The van's model (VehicleModel), sent to Skyrim once per link session: Skyrim draws the van
-        // from it (VehicleView finds it by name) and poses its nodes from VehicleParts.
+        // The vehicle's model (VehicleModel, named like PlayerCurrentVehicle: Hayosiko, Jonnez,
+        // Kekmet), sent to Skyrim once per link session: Skyrim draws the vehicle from it (VehicleView
+        // finds it by name) and poses its nodes from VehicleParts.
         public void SendModel(ModelSender models, Transform player)
         {
-            if (wireId != Wire.VehicleHayosiko || car == null) return;
-            model.Id = models.IdForBuilt(VanModel.Name, () => car != null ? model.Read(car, player, models, log) : null);
+            if (car == null) return;
+            model.Id = models.IdForBuilt(driverName, () => car != null ? model.Read(driverName, car, player, models, log) : null);
         }
 
         // The tank's level and capacity (<vehicle>/FuelTank :: Data); either may be null.
@@ -230,6 +239,34 @@ namespace PerkeleRim.Game
             log($"vehicle: the {driverName} stays in worldspace {home.Worldspace:X8} cell {home.Cell:X8}, put away for gen {island.Generation}");
         }
 
+        // On call and not called yet: held far below the island like PutAway, not sent to Skyrim.
+        void Stash()
+        {
+            away = true;
+            Hold(true);
+            Moves++;
+            car.position = new Vector3(car.position.x, AwayHeight, car.position.z);
+            if (body != null) body.position = car.position;
+            heldVelocity = heldAngular = Vector3.zero;
+            log($"vehicle: the {driverName} waits to be called, put away for gen {island.Generation}");
+        }
+
+        // The player calls the vehicle: it is parked in front of the player wherever it was (another
+        // worldspace, put away, far behind). Not while the player sits in it.
+        public void Summon(Transform player, Vector3 feet)
+        {
+            if (car == null || player == null) return;
+            if (Carries(player))
+            {
+                log($"vehicle: the player sits in the {driverName}, not calling it");
+                return;
+            }
+            away = false;
+            Park(player, feet);
+            nextGroundCheck = 0f;  // let it go as soon as the ground under it is there
+            log($"vehicle: called the {driverName}");
+        }
+
         const float AwayHeight = -5000f;
 
         // Where the vehicle is and how it moves, for a snapshot (SaveSync); null when not found.
@@ -237,7 +274,8 @@ namespace PerkeleRim.Game
         public Snapshot.Body Capture(Transform player)
         {
             if (car == null) return null;
-            if (away && home != null)
+            if (away && home == null) return null;  // on call and never called: nothing to keep
+            if (away)
             {
                 HutongGames.PlayMaker.FsmFloat tank, size;
                 FuelTank(out tank, out size, null);
@@ -331,7 +369,7 @@ namespace PerkeleRim.Game
         {
             if (car == null) return;
             var delta = anchorGround - feet;
-            delta.y = anchorGround.y + ParkClearance - car.position.y;
+            delta.y = anchorGround.y + clearance - car.position.y;
             Shift(delta);
         }
 
@@ -349,7 +387,7 @@ namespace PerkeleRim.Game
         // On its wheels at ground, facing the way it faced (its forward flattened).
         void SetUpright(Vector3 ground)
         {
-            Shift(new Vector3(0f, ground.y + ParkClearance - car.position.y, 0f));
+            Shift(new Vector3(0f, ground.y + clearance - car.position.y, 0f));
             var f = car.forward;
             var u = car.up;
             car.rotation = Quaternion.Euler(0f, Upright.Heading(f.x, f.z, u.x, u.z), 0f);
@@ -404,7 +442,9 @@ namespace PerkeleRim.Game
                 placedGeneration = island.Generation;
                 // A driven vehicle came along in PlayerLink.Settle already.
                 if (driven) away = false;
-                else if (spotGeneration == island.Generation || home == null) Park(player, playerFeet);
+                else if (spotGeneration == island.Generation) Park(player, playerFeet);
+                else if (home == null && onCall) Stash();
+                else if (home == null) Park(player, playerFeet);
                 else if (InHomeSpace()) PutHome();
                 else PutAway();
             }
@@ -481,7 +521,7 @@ namespace PerkeleRim.Game
                 spot = feet + yaw * parkOffset;
                 ground = FlatSpot(feet, yaw) ?? findGround(spot);
             }
-            spot = (ground ?? spot) + Vector3.up * ParkClearance;
+            spot = (ground ?? spot) + Vector3.up * clearance;
             Moves++;
             car.position = spot;
             car.rotation = yaw;
@@ -501,18 +541,27 @@ namespace PerkeleRim.Game
 
         // A spot next to the player whose ground is flat under the whole vehicle: the usual one, then
         // further ahead, further back, further out, all on the vehicle's own side so the van and the
-        // moped never pick the same one. Parked over a rock, the vehicle spawned inside it and was
-        // thrown, sometimes into the player. Returns the highest ground point there, or null.
+        // moped never pick the same one; a vehicle parked ahead (called) tries further ahead, then
+        // ahead to either side, never behind. Parked over a rock, the vehicle spawned inside it and
+        // was thrown, sometimes into the player. Returns the highest ground point there, or null.
         Vector3? FlatSpot(Vector3 feet, Quaternion yaw)
         {
             var outward = new Vector3(Mathf.Sign(parkOffset.x) * 3f, 0f, 0f);
-            var offsets = new[]
-            {
-                parkOffset,
-                parkOffset + Vector3.forward * 4f,
-                parkOffset - Vector3.forward * 4f,
-                parkOffset + outward,
-            };
+            var offsets = parkOffset.x == 0f
+                ? new[]
+                {
+                    parkOffset,
+                    parkOffset + Vector3.forward * 3f,
+                    parkOffset + Vector3.right * 3f,
+                    parkOffset - Vector3.right * 3f,
+                }
+                : new[]
+                {
+                    parkOffset,
+                    parkOffset + Vector3.forward * 4f,
+                    parkOffset - Vector3.forward * 4f,
+                    parkOffset + outward,
+                };
             foreach (var offset in offsets)
             {
                 var center = feet + yaw * offset;
@@ -602,6 +651,13 @@ namespace PerkeleRim.Game
         // The first collider straight below t that isn't part of t itself.
         static Collider ColliderBelow(Transform t)
         {
+            float height;
+            return ColliderBelow(t, out height);
+        }
+
+        // Also how high t's origin is above it (meters).
+        static Collider ColliderBelow(Transform t, out float height)
+        {
             float best = float.MaxValue;
             Collider ground = null;
             foreach (var hit in Physics.RaycastAll(t.position + Vector3.up, Vector3.down, 10f))
@@ -610,6 +666,7 @@ namespace PerkeleRim.Game
                 best = hit.distance;
                 ground = hit.collider;
             }
+            height = ground != null ? best - 1f : 0f;
             return ground;
         }
     }

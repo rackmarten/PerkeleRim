@@ -89,25 +89,38 @@ namespace PerkeleRim.Tests
             Assert.That(back.position[2], Is.EqualTo(-12.5f));
             Assert.That(back.stance, Is.EqualTo(2));
 
-            Assert.That(p.Skyrim.ReadVehicle(out _), Is.False);  // never written
+            Assert.That(p.Skyrim.ReadVehicle(Wire.VehicleHayosiko, out _), Is.False);  // never written
             var vehicle = new VehicleState { frame = 9, flags = Wire.VehicleValid | Wire.VehicleDriven, vehicle = Wire.VehicleHayosiko };
             vehicle.rotation[3] = 1f;
             vehicle.wheelSpin[3] = 2.5f;
             p.Msc.WriteVehicle(ref vehicle);
-            Assert.That(p.Skyrim.ReadVehicle(out var vback), Is.True);
+            Assert.That(p.Skyrim.ReadVehicle(Wire.VehicleHayosiko, out var vback), Is.True);
             Assert.That(vback.frame, Is.EqualTo(9));
             Assert.That(vback.flags, Is.EqualTo(Wire.VehicleValid | Wire.VehicleDriven));
             Assert.That(vback.rotation[3], Is.EqualTo(1f));
             Assert.That(vback.wheelSpin[3], Is.EqualTo(2.5f));
+            // Each vehicle has its own slot; unknown ids are neither written nor read.
+            Assert.That(p.Skyrim.ReadVehicle(Wire.VehicleJonnez, out _), Is.False);
+            var kekmet = new VehicleState { frame = 11, vehicle = Wire.VehicleKekmet };
+            p.Msc.WriteVehicle(ref kekmet);
+            Assert.That(p.Skyrim.ReadVehicle(Wire.VehicleKekmet, out var kback), Is.True);
+            Assert.That(kback.frame, Is.EqualTo(11));
+            Assert.That(p.Skyrim.ReadVehicle(Wire.VehicleHayosiko, out vback), Is.True);
+            Assert.That(vback.frame, Is.EqualTo(9));
+            var unknown = new VehicleState { frame = 12, vehicle = Wire.VehicleCount + 1 };
+            p.Msc.WriteVehicle(ref unknown);
+            Assert.That(p.Skyrim.ReadVehicle(0, out _), Is.False);
+            Assert.That(p.Skyrim.ReadVehicle(Wire.VehicleCount + 1, out _), Is.False);
 
-            Assert.That(p.Skyrim.ReadVehicleParts(out _), Is.False);  // never written
+            Assert.That(p.Skyrim.ReadVehicleParts(Wire.VehicleHayosiko, out _), Is.False);  // never written
             var parts = new VehicleParts { frame = 9, vehicle = Wire.VehicleHayosiko, count = Wire.VehiclePartCapacity, model = 0x373B0001 };
             var part = new VehiclePart { flags = Wire.PartVisible };
             part.rotation[3] = 1f;
             part.translation[1] = 42f;
             parts.Set((int)Wire.VehiclePartCapacity - 1, part);
             p.Msc.WriteVehicleParts(ref parts);
-            Assert.That(p.Skyrim.ReadVehicleParts(out var pback), Is.True);
+            Assert.That(p.Skyrim.ReadVehicleParts(Wire.VehicleJonnez, out _), Is.False);
+            Assert.That(p.Skyrim.ReadVehicleParts(Wire.VehicleHayosiko, out var pback), Is.True);
             Assert.That(pback.count, Is.EqualTo(Wire.VehiclePartCapacity));
             Assert.That(pback.model, Is.EqualTo(0x373B0001u));
             var last = pback.Get((int)Wire.VehiclePartCapacity - 1);

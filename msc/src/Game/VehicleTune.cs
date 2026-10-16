@@ -15,6 +15,8 @@ namespace PerkeleRim.Game
             public float Spring;      // spring rate times this (and times Mass, so it sags as before)
             public float Travel;      // suspension travel times this
             public float BottomLift;  // meters the body collider's bottom goes up
+            public float Power;       // engine torque times this (Drivetrain.powerMultiplier), 0 = as MSC has it
+            public float Grip;        // tire forward grip times this, 0 = as MSC has it
         }
 
         // The van's wheels sit far behind its bumpers, so the body's overhang reached a lip or a ramp
@@ -22,6 +24,9 @@ namespace PerkeleRim.Game
         // the ground instead and the wheels climb.
         public static readonly Settings Van = new Settings { Mass = 1.2f, CenterDrop = 0.2f, Spring = 0.85f, Travel = 1.2f, BottomLift = 0.25f };
         public static readonly Settings Moped = new Settings { Mass = 1.2f, CenterDrop = 0.1f, Spring = 1f, Travel = 1f };
+        // Skyrim is all hills: the tractor gets the van's softer, longer suspension, twice the engine
+        // torque (it barely got rolling uphill even in low first) and more grip to put it down.
+        public static readonly Settings Kekmet = new Settings { Mass = 1.2f, CenterDrop = 0.1f, Spring = 0.85f, Travel = 1.2f, Power = 2f, Grip = 1.3f };
         const string BodyCollider = "CarCollider";
 
         // MSC sets things up in its own Start; tune after it.
@@ -36,6 +41,7 @@ namespace PerkeleRim.Game
         float tuneAt, nextWatch;
         bool tuned;
         float mass0, tunedMass;
+        float power0, tunedPower;  // Drivetrain.powerMultiplier as MSC had it and as tuned, 0 = not tuned
         Vector3 tunedCenter;
         int resets;
 
@@ -90,25 +96,42 @@ namespace PerkeleRim.Game
                 foreach (var axle in new[] { axles.frontAxle, axles.rearAxle })
                 {
                     if (axle == null) continue;
-                    sb.Append($" axle travel {axle.suspensionTravel:0.###} rate {axle.suspensionRate:0} bump {axle.bumpRate:0} rebound {axle.reboundRate:0}");
-                    axle.suspensionTravel *= settings.Travel;
-                    axle.suspensionRate *= settings.Mass * settings.Spring;
-                    axle.bumpRate *= damping;
-                    axle.reboundRate *= damping;
+                    sb.Append($" axle travel {axle.suspensionTravel:0.###} rate {axle.suspensionRate:0} bump {axle.bumpRate:0} rebound {axle.reboundRate:0} grip {axle.forwardGripFactor:0.##}");
+                    TuneAxle(axle, damping);
                 }
                 if (axles.otherAxles != null)
                     foreach (var axle in axles.otherAxles)
-                    {
-                        if (axle == null) continue;
-                        axle.suspensionTravel *= settings.Travel;
-                        axle.suspensionRate *= settings.Mass * settings.Spring;
-                        axle.bumpRate *= damping;
-                        axle.reboundRate *= damping;
-                    }
+                        if (axle != null) TuneAxle(axle, damping);
                 dynamics.SetWheelsParams();
+            }
+            var drivetrain = car.GetComponent<Drivetrain>();
+            if (drivetrain != null && settings.Power > 0f)
+            {
+                power0 = drivetrain.powerMultiplier;
+                SetPower(drivetrain, power0 * settings.Power);
+                sb.Append($", engine power x{power0:0.##} -> x{tunedPower:0.##}, clutch {drivetrain.clutchMaxTorque:0} Nm");
             }
             log($"vehicle tune: {name} mass {mass0:0} -> {tunedMass:0} kg, center of mass {center0} -> {tunedCenter}" +
                 (dynamics == null ? ", no CarDynamics (suspension left alone)" : $", suspension x{settings.Mass * settings.Spring:0.##} rate x{settings.Travel:0.##} travel, was{sb}"));
+        }
+
+        void TuneAxle(Axle axle, float damping)
+        {
+            axle.suspensionTravel *= settings.Travel;
+            axle.suspensionRate *= settings.Mass * settings.Spring;
+            axle.bumpRate *= damping;
+            axle.reboundRate *= damping;
+            if (settings.Grip > 0f) axle.forwardGripFactor *= settings.Grip;
+        }
+
+        // UnityCar scales the engine's torque, friction and inertia by powerMultiplier, and the
+        // clutch's grip with it (CalcClutchTorque), so the engine pulls harder but revs the same.
+        void SetPower(Drivetrain drivetrain, float multiplier)
+        {
+            tunedPower = multiplier;
+            drivetrain.powerMultiplier = multiplier;
+            drivetrain.CalcClutchTorque();
+            drivetrain.CalcIdleThrottle();
         }
 
         // Moves the bottom of the body colliders up by BottomLift (in the car's space), the top stays.
@@ -176,11 +199,15 @@ namespace PerkeleRim.Game
             if (!tuned) return;
             bool mass = Mathf.Abs(body.mass - tunedMass) > 0.5f && Mathf.Abs(body.mass - mass0) < 0.5f;
             bool center = (body.centerOfMass - tunedCenter).sqrMagnitude > 1e-6f;
-            if (!mass && !center) return;
+            var drivetrain = tunedPower > 0f ? car.GetComponent<Drivetrain>() : null;
+            bool power = drivetrain != null && Mathf.Abs(drivetrain.powerMultiplier - tunedPower) > 1e-3f;
+            if (!mass && !center && !power) return;
             if (mass) body.mass = tunedMass;
             if (center) SetCenter(car.GetComponent<CarDynamics>());
+            float set = power ? drivetrain.powerMultiplier : 0f;
+            if (power) SetPower(drivetrain, set * settings.Power);  // MSC changed it: tune its new value
             if (++resets <= 5)
-                log($"vehicle tune: {name} {(mass ? "mass " : "")}{(center ? "center of mass " : "")}was put back, tuned again");
+                log($"vehicle tune: {name} {(mass ? "mass " : "")}{(center ? "center of mass " : "")}{(power ? $"engine power (MSC set x{set:0.##}) " : "")}was put back, tuned again");
         }
     }
 

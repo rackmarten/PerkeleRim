@@ -84,11 +84,12 @@ namespace PerkeleRim::PlayerSync
             std::uint32_t lastPoseFrame = 0;
             float         vanShift = 0.0f;  // most the van was moved off MSC's pose to stay around the camera, units
 
-            bool         cameraSeatKnown = false;
-            bool         chase = false;  // MSC's chase camera was on last frame
-            // Skyrim's camera in the driven van's local frame, units. Kept across seatings and
-            // handovers: it is the same seat, and a van carried to a new anchor may still be rolling.
-            RE::NiPoint3 cameraSeat;
+            bool chase = false;  // MSC's chase camera was on last frame
+            // Skyrim's camera in each driven vehicle's local frame, units, by vehicle id - 1. Kept
+            // across seatings and handovers: it is the same seat, and a vehicle carried to a new
+            // anchor may still be rolling.
+            std::array<bool, Protocol::kVehicleCount>         cameraSeatKnown{};
+            std::array<RE::NiPoint3, Protocol::kVehicleCount> cameraSeat{};
         } state;
 
         // The camera seat is learned only while the van is this slow (m/s), so the camera's lag at
@@ -524,13 +525,16 @@ namespace PerkeleRim::PlayerSync
         // fell behind at speed. Instead the van is hung around the camera, at the camera's spot in
         // the van learned while it is nearly stopped: like a rider on a horse, the camera can't move
         // inside it. What is learned is the camera minus MSC's eye (PoseCamera), never while leaning, so
-        // leaning moves the camera inside the van instead of dragging the van along.
-        void LockVanToCamera(Protocol::VehicleState& a_vehicle, float a_roll)
+        // leaning moves the camera inside the van instead of dragging the van along. Same for the
+        // moped and the Kekmet, each with its own seat.
+        void LockVehicleToCamera(Protocol::VehicleState& a_vehicle, float a_roll)
         {
             auto* camera = RE::PlayerCamera::GetSingleton();
-            if (!camera || !camera->cameraRoot) {
+            if (!camera || !camera->cameraRoot || a_vehicle.vehicle < 1 || a_vehicle.vehicle > Protocol::kVehicleCount) {
                 return;
             }
+            auto& seat = state.cameraSeat[a_vehicle.vehicle - 1];
+            auto& seatKnown = state.cameraSeatKnown[a_vehicle.vehicle - 1];
             const auto         at = camera->cameraRoot->world.translate - state.eye;
             const RE::NiPoint3 van(a_vehicle.position[0], a_vehicle.position[1], a_vehicle.position[2]);
             float              m[3][3];
@@ -549,13 +553,13 @@ namespace PerkeleRim::PlayerSync
             const float vanRoll = std::asin(std::clamp(-m[2][0], -1.0f, 1.0f));
             if (speed < kCameraSeatLearnSpeed && std::abs(a_roll - vanRoll) < kCameraSeatLearnRoll) {
                 const auto local = rotate.Transpose() * (at - van);
-                state.cameraSeat = state.cameraSeatKnown ? state.cameraSeat + (local - state.cameraSeat) * kCameraSeatBlend : local;
-                state.cameraSeatKnown = true;
+                seat = seatKnown ? seat + (local - seat) * kCameraSeatBlend : local;
+                seatKnown = true;
             }
-            if (!state.cameraSeatKnown) {
+            if (!seatKnown) {
                 return;
             }
-            const auto locked = at - rotate * state.cameraSeat;
+            const auto locked = at - rotate * seat;
             state.vanShift = (std::max)(state.vanShift, locked.GetDistance(van));
             a_vehicle.position[0] = locked.x;
             a_vehicle.position[1] = locked.y;
@@ -603,10 +607,17 @@ namespace PerkeleRim::PlayerSync
             // wreck Skyrim's rendering, so it's skipped like an invalid one.
             const bool            valid = link.ReadPlayer(pose) && (pose.flags & Protocol::kPlayerValid) != 0 &&
                                pose.generation == state.generation && Finite(pose);
-            Protocol::VehicleState vehicle{};
-            const bool             hasVehicle = link.ReadVehicle(vehicle);
-            const bool             seated = valid && hasVehicle && (vehicle.flags & Protocol::kVehicleDriven) != 0 &&
-                                vehicle.generation == state.generation;
+            // Every vehicle's slot, by id - 1; seated in whichever one says the player drives it.
+            std::array<Protocol::VehicleState, Protocol::kVehicleCount> vehicles{};
+            std::array<bool, Protocol::kVehicleCount>                   hasVehicle{};
+            Protocol::VehicleState*                                     driven = nullptr;
+            for (std::uint32_t i = 0; i < Protocol::kVehicleCount; i++) {
+                hasVehicle[i] = link.ReadVehicle(i + 1, vehicles[i]);
+                if (hasVehicle[i] && (vehicles[i].flags & Protocol::kVehicleDriven) != 0 && vehicles[i].generation == state.generation) {
+                    driven = &vehicles[i];
+                }
+            }
+            const bool seated = valid && driven != nullptr;
             if (seated != state.seated) {
                 state.seated = seated;
                 SetSimulated(a_player, !seated);
@@ -682,11 +693,13 @@ namespace PerkeleRim::PlayerSync
                 SKSE::log::info("player sync: chase camera {}", chase ? "on" : "off");
             }
             if (seated && !chase) {
-                LockVanToCamera(vehicle, pose.roll);
+                LockVehicleToCamera(*driven, pose.roll);
             }
             Protocol::VehicleParts parts{};
-            const bool             hasParts = hasVehicle && link.ReadVehicleParts(parts);
-            VehicleView::Update(hasVehicle ? &vehicle : nullptr, hasParts ? &parts : nullptr, state.generation);
+            for (std::uint32_t i = 0; i < Protocol::kVehicleCount; i++) {
+                const bool hasParts = hasVehicle[i] && link.ReadVehicleParts(i + 1, parts);
+                VehicleView::Update(i + 1, hasVehicle[i] ? &vehicles[i] : nullptr, hasParts ? &parts : nullptr, state.generation);
+            }
             Protocol::ItemState items{};
             if (link.ReadItems(items)) {  // a torn read keeps last frame's items; link down releases
                 ItemView::Update(&items, state.generation);

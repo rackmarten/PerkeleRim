@@ -5,7 +5,7 @@
 
 // Builds MSC's own models in memory from ModelChunk messages (meshes and textures read from the
 // running MSC, nothing converted or written to disk) and keeps them by MSC's model id. ItemView
-// asks for a fresh node of a model per item, VehicleView for the van. Main thread only.
+// asks for a fresh node of a model per item, VehicleView for each vehicle. Main thread only.
 namespace PerkeleRim::ModelView
 {
     void OnChunk(const std::uint8_t* a_payload, std::uint32_t a_size);

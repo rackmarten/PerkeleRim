@@ -143,7 +143,7 @@ TEST_CASE("input and player slots carry the latest value")
     CHECK(std::memcmp(&out, &player, sizeof(player)) == 0);
 
     VehicleState vehicle{};
-    CHECK_FALSE(p.skyrim->ReadVehicle(vehicle));  // never written
+    CHECK_FALSE(p.skyrim->ReadVehicle(kVehicleHayosiko, vehicle));  // never written
     vehicle.frame = 9;
     vehicle.flags = kVehicleValid | kVehicleDriven;
     vehicle.vehicle = kVehicleHayosiko;
@@ -151,11 +151,27 @@ TEST_CASE("input and player slots carry the latest value")
     vehicle.wheelSpin[3] = 2.5f;
     p.msc->WriteVehicle(vehicle);
     VehicleState vehicleOut{};
-    REQUIRE(p.skyrim->ReadVehicle(vehicleOut));
+    REQUIRE(p.skyrim->ReadVehicle(kVehicleHayosiko, vehicleOut));
     CHECK(std::memcmp(&vehicleOut, &vehicle, sizeof(vehicle)) == 0);
+    // Each vehicle has its own slot; unknown ids are neither written nor read.
+    CHECK_FALSE(p.skyrim->ReadVehicle(kVehicleJonnez, vehicleOut));
+    VehicleState kekmet{};
+    kekmet.frame = 11;
+    kekmet.vehicle = kVehicleKekmet;
+    kekmet.position[0] = 7.0f;
+    p.msc->WriteVehicle(kekmet);
+    REQUIRE(p.skyrim->ReadVehicle(kVehicleKekmet, vehicleOut));
+    CHECK(std::memcmp(&vehicleOut, &kekmet, sizeof(kekmet)) == 0);
+    REQUIRE(p.skyrim->ReadVehicle(kVehicleHayosiko, vehicleOut));
+    CHECK(std::memcmp(&vehicleOut, &vehicle, sizeof(vehicle)) == 0);
+    VehicleState unknown{};
+    unknown.vehicle = kVehicleCount + 1;
+    p.msc->WriteVehicle(unknown);
+    CHECK_FALSE(p.skyrim->ReadVehicle(0, vehicleOut));
+    CHECK_FALSE(p.skyrim->ReadVehicle(kVehicleCount + 1, vehicleOut));
 
     VehicleParts parts{};
-    CHECK_FALSE(p.skyrim->ReadVehicleParts(parts));  // never written
+    CHECK_FALSE(p.skyrim->ReadVehicleParts(kVehicleHayosiko, parts));  // never written
     parts.frame = 9;
     parts.vehicle = kVehicleHayosiko;
     parts.count = kVehiclePartCapacity;
@@ -165,7 +181,17 @@ TEST_CASE("input and player slots carry the latest value")
     parts.parts[kVehiclePartCapacity - 1].translation[1] = 42.0f;
     p.msc->WriteVehicleParts(parts);
     VehicleParts partsOut{};
-    REQUIRE(p.skyrim->ReadVehicleParts(partsOut));
+    REQUIRE(p.skyrim->ReadVehicleParts(kVehicleHayosiko, partsOut));
+    CHECK(std::memcmp(&partsOut, &parts, sizeof(parts)) == 0);
+    CHECK_FALSE(p.skyrim->ReadVehicleParts(kVehicleKekmet, partsOut));
+    VehicleParts moped{};
+    moped.vehicle = kVehicleJonnez;
+    moped.count = 3;
+    moped.parts[2].flags = kPartVisible;
+    p.msc->WriteVehicleParts(moped);
+    REQUIRE(p.skyrim->ReadVehicleParts(kVehicleJonnez, partsOut));
+    CHECK(std::memcmp(&partsOut, &moped, sizeof(moped)) == 0);
+    REQUIRE(p.skyrim->ReadVehicleParts(kVehicleHayosiko, partsOut));
     CHECK(std::memcmp(&partsOut, &parts, sizeof(parts)) == 0);
 
     ItemState items{};

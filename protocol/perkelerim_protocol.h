@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 28;
+    inline constexpr std::uint32_t kProtocolVersion = 29;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -34,15 +34,15 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kOffsetInputSlot = 128;
     inline constexpr std::uint32_t kOffsetPlayerSlot = 256;
     inline constexpr std::uint32_t kOffsetVehicleSlot = 384;
-    inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 512;
-    inline constexpr std::uint32_t kOffsetItemSlot = 8768;
-    inline constexpr std::uint32_t kOffsetHandLayerSlot = 13952;
-    inline constexpr std::uint32_t kOffsetActorSlot = 14016;
-    inline constexpr std::uint32_t kOffsetRingToMsc = 15616;        // RingHeader, data follows
+    inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 768;   // after kVehicleCount VehicleSlots
+    inline constexpr std::uint32_t kOffsetItemSlot = 25536;         // after kVehicleCount VehiclePartsSlots
+    inline constexpr std::uint32_t kOffsetHandLayerSlot = 30720;
+    inline constexpr std::uint32_t kOffsetActorSlot = 30784;
+    inline constexpr std::uint32_t kOffsetRingToMsc = 32384;        // RingHeader, data follows
     inline constexpr std::uint32_t kRingToMscCapacity = 4194304;    // 4 MiB: collision chunks
-    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4209984;   // 15616 + 64 + 4 MiB
+    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4226752;   // 32384 + 64 + 4 MiB
     inline constexpr std::uint32_t kRingToSkyrimCapacity = 262144;  // 256 KiB: events
-    inline constexpr std::uint32_t kMappingSize = 4472192;         // 4209984 + 64 + 256 KiB
+    inline constexpr std::uint32_t kMappingSize = 4488960;         // 4226752 + 64 + 256 KiB
 
     enum class Side : std::uint32_t
     {
@@ -159,9 +159,13 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kVehicleDriven = 0x2;  // VehicleState.flags: the player sits in it
 
     inline constexpr std::uint32_t kVehicleHayosiko = 1;  // VehicleState.vehicle: the Hayosiko van
+    inline constexpr std::uint32_t kVehicleJonnez = 2;    // VehicleState.vehicle: the Jonnez moped
+    inline constexpr std::uint32_t kVehicleKekmet = 3;    // VehicleState.vehicle: the Kekmet tractor
+    inline constexpr std::uint32_t kVehicleCount = 3;     // vehicle ids are 1..kVehicleCount
 
-    // MSC -> Skyrim. One vehicle for now. Skyrim world space like PlayerState; the rotation is a
-    // quaternion in Skyrim space, so the vehicle's local +Y is forward and +Z is up.
+    // MSC -> Skyrim, one slot per vehicle: vehicle id v is VehicleSlot v - 1 from kOffsetVehicleSlot
+    // (its VehicleParts likewise from kOffsetVehiclePartsSlot). Skyrim world space like PlayerState;
+    // the rotation is a quaternion in Skyrim space, so the vehicle's local +Y is forward and +Z is up.
     struct VehicleState
     {
         std::uint32_t frame;         // MSC FixedUpdate counter
@@ -812,8 +816,8 @@ namespace PerkeleRim::Protocol
     static_assert(kOffsetInputSlot == kOffsetHeader + sizeof(LinkHeader));
     static_assert(kOffsetPlayerSlot == kOffsetInputSlot + sizeof(InputSlot));
     static_assert(kOffsetVehicleSlot == kOffsetPlayerSlot + sizeof(PlayerSlot));
-    static_assert(kOffsetVehiclePartsSlot == kOffsetVehicleSlot + sizeof(VehicleSlot));
-    static_assert(kOffsetItemSlot == kOffsetVehiclePartsSlot + sizeof(VehiclePartsSlot));
+    static_assert(kOffsetVehiclePartsSlot == kOffsetVehicleSlot + kVehicleCount * sizeof(VehicleSlot));
+    static_assert(kOffsetItemSlot == kOffsetVehiclePartsSlot + kVehicleCount * sizeof(VehiclePartsSlot));
     static_assert(kOffsetHandLayerSlot == kOffsetItemSlot + sizeof(ItemSlot));
     static_assert(kOffsetActorSlot == kOffsetHandLayerSlot + sizeof(HandLayerSlot));
     static_assert(kOffsetRingToMsc == kOffsetActorSlot + sizeof(ActorSlot));

@@ -251,20 +251,24 @@ namespace PerkeleRim
             return false;
         }
 
+        // Vehicles have a slot each, by vehicle id (Wire.Vehicle*, 1..VehicleCount); other ids write
+        // nothing and read false.
+        static bool KnownVehicle(uint vehicle) => vehicle >= 1 && vehicle <= Wire.VehicleCount;
+
         public void WriteVehicle(ref VehicleState value)
         {
-            if (basePtr == null || !attached) return;
-            var slot = (VehicleSlot*)(basePtr + Wire.OffsetVehicleSlot);
+            if (basePtr == null || !attached || !KnownVehicle(value.vehicle)) return;
+            var slot = (VehicleSlot*)(basePtr + Wire.OffsetVehicleSlot) + (value.vehicle - 1);
             BeginWrite(&slot->seq, out uint n);
             slot->value = value;
             EndWrite(&slot->seq, n);
         }
 
-        public bool ReadVehicle(out VehicleState value)
+        public bool ReadVehicle(uint vehicle, out VehicleState value)
         {
             value = default(VehicleState);
-            if (!IsUp) return false;
-            var slot = (VehicleSlot*)(basePtr + Wire.OffsetVehicleSlot);
+            if (!IsUp || !KnownVehicle(vehicle)) return false;
+            var slot = (VehicleSlot*)(basePtr + Wire.OffsetVehicleSlot) + (vehicle - 1);
             for (int attempt = 0; attempt < 64; attempt++)
             {
                 uint before = (uint)Thread.VolatileRead(ref *(int*)&slot->seq);
@@ -279,18 +283,18 @@ namespace PerkeleRim
 
         public void WriteVehicleParts(ref VehicleParts value)
         {
-            if (basePtr == null || !attached) return;
-            var slot = (VehiclePartsSlot*)(basePtr + Wire.OffsetVehiclePartsSlot);
+            if (basePtr == null || !attached || !KnownVehicle(value.vehicle)) return;
+            var slot = (VehiclePartsSlot*)(basePtr + Wire.OffsetVehiclePartsSlot) + (value.vehicle - 1);
             BeginWrite(&slot->seq, out uint n);
             slot->value = value;
             EndWrite(&slot->seq, n);
         }
 
-        public bool ReadVehicleParts(out VehicleParts value)
+        public bool ReadVehicleParts(uint vehicle, out VehicleParts value)
         {
             value = default(VehicleParts);
-            if (!IsUp) return false;
-            var slot = (VehiclePartsSlot*)(basePtr + Wire.OffsetVehiclePartsSlot);
+            if (!IsUp || !KnownVehicle(vehicle)) return false;
+            var slot = (VehiclePartsSlot*)(basePtr + Wire.OffsetVehiclePartsSlot) + (vehicle - 1);
             for (int attempt = 0; attempt < 64; attempt++)
             {
                 uint before = (uint)Thread.VolatileRead(ref *(int*)&slot->seq);

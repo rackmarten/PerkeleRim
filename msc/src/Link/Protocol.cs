@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 28;
+        public const uint ProtocolVersion = 29;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -17,15 +17,15 @@ namespace PerkeleRim.Protocol
         public const uint OffsetInputSlot = 128;
         public const uint OffsetPlayerSlot = 256;
         public const uint OffsetVehicleSlot = 384;
-        public const uint OffsetVehiclePartsSlot = 512;
-        public const uint OffsetItemSlot = 8768;
-        public const uint OffsetHandLayerSlot = 13952;
-        public const uint OffsetActorSlot = 14016;
-        public const uint OffsetRingToMsc = 15616;
+        public const uint OffsetVehiclePartsSlot = 768;
+        public const uint OffsetItemSlot = 25536;
+        public const uint OffsetHandLayerSlot = 30720;
+        public const uint OffsetActorSlot = 30784;
+        public const uint OffsetRingToMsc = 32384;
         public const uint RingToMscCapacity = 4194304;
-        public const uint OffsetRingToSkyrim = 4209984;
+        public const uint OffsetRingToSkyrim = 4226752;
         public const uint RingToSkyrimCapacity = 262144;
-        public const uint MappingSize = 4472192;
+        public const uint MappingSize = 4488960;
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint InputPaused = 0x2;
@@ -46,6 +46,9 @@ namespace PerkeleRim.Protocol
         public const uint VehicleValid = 0x1;
         public const uint VehicleDriven = 0x2;
         public const uint VehicleHayosiko = 1;
+        public const uint VehicleJonnez = 2;
+        public const uint VehicleKekmet = 3;
+        public const uint VehicleCount = 3;
         public const uint AnchorVehicleSpot = 0x1;
         public const uint VehiclePartCapacity = 256;
         public const uint PartVisible = 0x1;

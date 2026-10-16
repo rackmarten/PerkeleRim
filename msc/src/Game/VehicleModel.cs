@@ -5,11 +5,11 @@ using UnityEngine;
 
 namespace PerkeleRim.Game
 {
-    // A vehicle's model for Skyrim, read from MSC's running vehicle (VanModel has the rules), and its
-    // pose every frame. Every MSC object of it with a mesh, switched off or not, is one node straight
-    // under the model's root, its meshes in the node's frame (scale baked in); VehicleParts then
-    // carries each node's pose relative to the vehicle and whether MSC draws it. The player and items
-    // riding along are left out.
+    // A vehicle's model for Skyrim, read from MSC's running vehicle (VanModel has the rules, for every
+    // vehicle), and its pose every frame. Every MSC object of it with a mesh, switched off or not, is
+    // one node straight under the model's root, its meshes in the node's frame (scale baked in);
+    // VehicleParts then carries each node's pose relative to the vehicle and whether MSC draws it.
+    // The player and items riding along are left out.
     public sealed unsafe class VehicleModel
     {
         Transform[] nodes = new Transform[0];  // ModelNode order
@@ -18,9 +18,9 @@ namespace PerkeleRim.Game
         // ModelChunk.model of the model these nodes are of, 0 until it was asked for.
         public uint Id;
 
-        public ModelData Read(Transform car, Transform player, ModelSender sender, Action<string> log)
+        public ModelData Read(string name, Transform car, Transform player, ModelSender sender, Action<string> log)
         {
-            var model = new ModelData { Name = VanModel.Name };
+            var model = new ModelData { Name = name };
             var plain = new ModelSender.Look { Key = "van", Keep = KeepMaterial, Adjust = Blend };
             var lit = new ModelSender.Look { Key = "lit", Keep = KeepMaterial, Diffuse = GlowTexture, Adjust = (m, data) => VanModel.Lit(Blend(m, data)) };
             var materials = new ModelSender.Materials();
@@ -54,7 +54,7 @@ namespace PerkeleRim.Game
             }
             nodes = found.ToArray();
             renderers = shown.ToArray();
-            log($"vehicle model: {nodes.Length} objects ({switchedOff} switched off, {lights} lights), {left} left out, {model.Meshes.Count} meshes");
+            log($"vehicle model: {name} has {nodes.Length} objects ({switchedOff} switched off, {lights} lights), {left} left out, {model.Meshes.Count} meshes");
             return model;
         }
 
