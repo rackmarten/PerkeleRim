@@ -42,14 +42,26 @@ Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, 
 
 Tip: make your character a male Nord. While MSC has the player, Skyrim's own voice is muted and Finn does the yelling, grunting and swearing, so a Nord fits best whenever Skyrim has the player back.
 
-## Requirements (planned)
+## Install and play
 
-- Windows 10/11
-- [The Elder Scrolls V: Skyrim Anniversary Edition](https://store.steampowered.com/app/489830/) (latest Steam version), with SKSE64 and Address Library
-- [My Summer Car](https://store.steampowered.com/app/516750/) (Steam) with MSCLoader
-- A PC that can run both games at once
+You need:
 
-To build from source, see [docs/DEV_SETUP.md](docs/DEV_SETUP.md).
+- Windows 10/11 and a PC that can run both games at once
+- [The Elder Scrolls V: Skyrim Anniversary Edition](https://store.steampowered.com/app/489830/) (latest Steam version) with [SKSE64](https://skse.silverlock.org) and [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
+- [My Summer Car](https://store.steampowered.com/app/516750/) (Steam) with [MSCLoader](https://www.nexusmods.com/mysummercar/mods/147)
+
+Then:
+
+1. Extract the release zip anywhere (not inside a game folder).
+2. Double-click **Start PerkeleRim.bat**. Every time, it:
+   - finds both games in your Steam libraries, or asks for their folders once (saved in `PerkeleRim.ini` next to it; delete that file to look again),
+   - tells you if SKSE, Address Library or MSCLoader is missing,
+   - installs or updates the mod (the SKSE plugin and `PerkeleRim.esp` in Skyrim, enabled in `plugins.txt`; the MSCLoader mod where MSCLoader keeps mods),
+   - gives My Summer Car a starter save (needs reset to fresh) when you have none, never over yours,
+   - starts My Summer Car in a small window that minimizes itself and continues your MSC save, then starts Skyrim through SKSE.
+3. Play in Skyrim only. Load a save (or start a new game) and press **F10** to hand over to My Summer Car. Leave MSC minimized.
+
+To build from source, see [docs/DEV_SETUP.md](docs/DEV_SETUP.md); `scripts/package.ps1` builds the release zip.
 
 ## Repository layout
 
@@ -61,7 +73,8 @@ To build from source, see [docs/DEV_SETUP.md](docs/DEV_SETUP.md).
 | [`msc/`](msc/) | MSCLoader mod (C#) |
 | [`skyrim-data/`](skyrim-data/) | Skyrim plugin (ESP), garage, scripts |
 | [`tools/`](tools/) | ESP generator, optional dev tools (offline van NIF conversion) and debugging helpers |
-| [`scripts/`](scripts/) | Build, local deploy and log scripts (PowerShell) |
+| [`launcher/`](launcher/) | Player launcher shipped in the release zip, starter saves (`launcher/saves/`) |
+| [`scripts/`](scripts/) | Build, local deploy, packaging and log scripts (PowerShell) |
 
 ## Game assets
 

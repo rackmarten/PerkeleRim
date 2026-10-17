@@ -7,3 +7,4 @@
 *.esp binary
 *.png binary
 *.jpg binary
+launcher/saves/** binary
