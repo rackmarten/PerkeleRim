@@ -19,22 +19,28 @@ namespace PerkeleRim.Game
             public float BottomLift;  // meters the body collider's bottom goes up
             public float Power;       // engine torque times this (Drivetrain.powerMultiplier), 0 = as MSC has it
             public float Grip;        // tire forward grip times this, 0 = as MSC has it
+            public float SideGrip;    // tire sideways grip times this, 0 = as MSC has it
+            public float RearBrake;   // rear axle brake torque times this, 0 = as MSC has it
             public float Bump;        // compression damping times this on top, 0 = 1
             public float Rebound;     // rebound damping times this on top, 0 = 1
+            public float FrontSpring; // front axle spring rate times this on top (its damping by the root), 0 = 1
             public bool Air;          // lands its jumps while ridden (AirAssist)
         }
 
         // The van's wheels sit far behind its bumpers, so the body's overhang reached a lip or a ramp
         // before the wheels and stopped the van dead. With its bottom lifted the overhang clips into
-        // the ground instead and the wheels climb.
-        public static readonly Settings Van = new Settings { Mass = 1.2f, CenterDrop = 0.2f, Spring = 0.85f, Travel = 1.2f, BottomLift = 0.25f };
-        // The moped keeps MSC's mass and center of mass: MSC balances it by moving the center (-0.1 m while
+        // the ground instead and the wheels climb. On Skyrim's steep roads the rear wheels spun uphill
+        // and locked braking downhill, so the back slid out: more grip both ways, a weaker rear brake.
+        public static readonly Settings Van = new Settings { Mass = 1.2f, CenterDrop = 0.2f, Spring = 0.85f, Travel = 1.2f, BottomLift = 0.25f, Grip = 1.3f, SideGrip = 1.3f, RearBrake = 0.75f };
+        // The moped keeps MSC's mass and follows MSC's center of mass moves: MSC balances it by moving the center (-0.1 m while
         // ridden, 0.4 m at speed, 0.2 m tipped over or left alone, a bit to the side on its
         // kickstand), and the extra mass stalled its little engine pulling away. Its 8 cm of travel
         // bottomed out in Skyrim's road holes and UnityCar's bump stop threw it up and onto its side,
         // and the fork sprang back from a bump and threw the rider over the handlebar: softer and
-        // twice as long, giving way to a bump and slow to spring back.
-        public static readonly Settings Moped = new Settings { Mass = 1f, CenterDrop = 0f, Spring = 0.6f, Travel = 2f, Bump = 0.8f, Rebound = 1.5f, Air = true };
+        // longer, giving way to a bump and slow to spring back. Twice the travel was too much, so
+        // 1.6 times; the fork is softer still than the rear. Its center of mass still goes 15 cm
+        // below wherever MSC puts it (FollowCenter), or every bump pitched it over the front wheel.
+        public static readonly Settings Moped = new Settings { Mass = 1f, CenterDrop = 0.15f, Spring = 0.6f, Travel = 1.6f, Bump = 0.8f, Rebound = 1.5f, FrontSpring = 0.75f, Air = true };
         // Skyrim is all hills: the tractor gets the van's softer, longer suspension, twice the engine
         // torque (it barely got rolling uphill even in low first) and more grip to put it down.
         public static readonly Settings Kekmet = new Settings { Mass = 1.2f, CenterDrop = 0.1f, Spring = 0.85f, Travel = 1.2f, Power = 2f, Grip = 1.3f };
@@ -117,12 +123,13 @@ namespace PerkeleRim.Game
                 foreach (var axle in new[] { axles.frontAxle, axles.rearAxle })
                 {
                     if (axle == null) continue;
-                    sb.Append($" axle travel {axle.suspensionTravel:0.###} rate {axle.suspensionRate:0} bump {axle.bumpRate:0} rebound {axle.reboundRate:0} grip {axle.forwardGripFactor:0.##}");
-                    TuneAxle(axle, damping);
+                    sb.Append($" axle travel {axle.suspensionTravel:0.###} rate {axle.suspensionRate:0} bump {axle.bumpRate:0} rebound {axle.reboundRate:0} grip {axle.forwardGripFactor:0.##}/{axle.sidewaysGripFactor:0.##} brake {axle.brakeFrictionTorque:0}");
+                    TuneAxle(axle, damping, axle == axles.frontAxle && settings.FrontSpring > 0f ? settings.FrontSpring : 1f);
+                    if (axle == axles.rearAxle && settings.RearBrake > 0f) axle.brakeFrictionTorque *= settings.RearBrake;
                 }
                 if (axles.otherAxles != null)
                     foreach (var axle in axles.otherAxles)
-                        if (axle != null) TuneAxle(axle, damping);
+                        if (axle != null) TuneAxle(axle, damping, 1f);
                 dynamics.SetWheelsParams();
             }
             var drivetrain = car.GetComponent<Drivetrain>();
@@ -133,16 +140,18 @@ namespace PerkeleRim.Game
                 sb.Append($", engine power x{power0:0.##} -> x{tunedPower:0.##}, clutch {drivetrain.clutchMaxTorque:0} Nm");
             }
             log($"vehicle tune: {name} mass {mass0:0} -> {tunedMass:0} kg, center of mass {center0} -> {tunedCenter}" +
-                (dynamics == null ? ", no CarDynamics (suspension left alone)" : $", suspension x{settings.Mass * settings.Spring:0.##} rate x{settings.Travel:0.##} travel, was{sb}"));
+                (dynamics == null ? ", no CarDynamics (suspension left alone)" : $", suspension x{settings.Mass * settings.Spring:0.##} rate x{settings.Travel:0.##} travel{(settings.FrontSpring > 0f ? $", front rate x{settings.FrontSpring:0.##} on top" : "")}, was{sb}"));
         }
 
-        void TuneAxle(Axle axle, float damping)
+        void TuneAxle(Axle axle, float damping, float spring)
         {
+            damping *= Mathf.Sqrt(spring);
             axle.suspensionTravel *= settings.Travel;
-            axle.suspensionRate *= settings.Mass * settings.Spring;
+            axle.suspensionRate *= settings.Mass * settings.Spring * spring;
             axle.bumpRate *= damping * (settings.Bump > 0f ? settings.Bump : 1f);
             axle.reboundRate *= damping * (settings.Rebound > 0f ? settings.Rebound : 1f);
             if (settings.Grip > 0f) axle.forwardGripFactor *= settings.Grip;
+            if (settings.SideGrip > 0f) axle.sidewaysGripFactor *= settings.SideGrip;
         }
 
         // UnityCar scales the engine's torque, friction and inertia by powerMultiplier, and the
