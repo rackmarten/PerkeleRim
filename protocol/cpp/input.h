@@ -41,6 +41,7 @@ namespace PerkeleRim::Input
     inline constexpr std::uint32_t kDikF10 = 0x44;
     inline constexpr std::uint32_t kDikF11 = 0x57;
     inline constexpr std::uint32_t kDikM = 0x32;
+    inline constexpr std::uint32_t kDikLeftShift = 0x2A;  // MSC's run
 
     // DirectInput scan code -> Unity KeyCode, None for keys MSC doesn't get.
     constexpr std::uint16_t KeyFromScanCode(std::uint32_t a_dik)
@@ -152,6 +153,20 @@ namespace PerkeleRim::Input
             return a_keyCode < 512 && (_keys[a_keyCode >> 6] & (1ull << (a_keyCode & 63))) != 0;
         }
 
+        // Holds a key back from Build while it stays down here (the run key of an exhausted player).
+        void Block(std::uint16_t a_keyCode, bool a_blocked)
+        {
+            if (a_keyCode == KeyCode::None || a_keyCode >= 512) {
+                return;
+            }
+            const std::uint64_t bit = 1ull << (a_keyCode & 63);
+            if (a_blocked) {
+                _blocked[a_keyCode >> 6] |= bit;
+            } else {
+                _blocked[a_keyCode >> 6] &= ~bit;
+            }
+        }
+
         // Raw counts from a mouse move event; DirectInput's y grows downwards, Unity's "Mouse Y" up.
         void AddMouse(std::int32_t a_dx, std::int32_t a_dy)
         {
@@ -188,7 +203,7 @@ namespace PerkeleRim::Input
             s.mouseWheel = _mouseWheel;
             if (a_live) {
                 for (int i = 0; i < 8; ++i) {
-                    s.keys[i] = _keys[i];
+                    s.keys[i] = _keys[i] & ~_blocked[i];
                 }
                 s.horizontal = Axis(KeyCode::D, KeyCode::RightArrow, KeyCode::A, KeyCode::LeftArrow);
                 s.vertical = Axis(KeyCode::W, KeyCode::UpArrow, KeyCode::S, KeyCode::DownArrow);
@@ -206,6 +221,7 @@ namespace PerkeleRim::Input
         }
 
         std::uint64_t _keys[8]{};
+        std::uint64_t _blocked[8]{};
         double        _mouseX = 0.0;
         double        _mouseY = 0.0;
         double        _mouseWheel = 0.0;

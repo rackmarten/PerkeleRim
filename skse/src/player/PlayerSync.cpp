@@ -16,6 +16,7 @@
 #include "model/ModelView.h"
 #include "pocket/Pocket.h"
 #include "shot/Shot.h"
+#include "stamina.h"
 #include "vehicle/VehicleView.h"
 
 namespace PerkeleRim::PlayerSync
@@ -66,6 +67,7 @@ namespace PerkeleRim::PlayerSync
             int            sneakResend = 0;  // frames until a sneak event the graph ignored is sent again
             std::uint32_t  inputFrame = 0;
             Input::Builder input;
+            Stamina::Sprint sprint;  // MSC's run costs stamina; an empty bar stops it
             bool           seated = false;
             RE::NiPoint3   eye;               // Skyrim's camera relative to the placed feet (MSC's eye), 0 when not posed
             float          savedFov = 0.0f;   // Skyrim's worldFOV before MSC's took over, 0 = untouched
@@ -173,6 +175,8 @@ namespace PerkeleRim::PlayerSync
             }
             state.owned = false;
             state.input.ReleaseAll();
+            state.input.Block(Input::KeyFromScanCode(Input::kDikLeftShift), false);
+            state.sprint.Reset();
             SetControls(true);
             if (auto* player = RE::PlayerCharacter::GetSingleton(); player && (state.sneak || player->IsSneaking())) {
                 player->AsActorState()->actorState1.sneaking = false;
@@ -556,6 +560,28 @@ namespace PerkeleRim::PlayerSync
             }
         }
 
+        // MSC's run (LeftShift) costs Skyrim stamina; with the bar empty the key is held back from MSC
+        // (from the next Publish on) until a fifth of the stamina is back.
+        void Sprint(RE::PlayerCharacter* a_player, const Protocol::PlayerState* a_pose, bool a_seated, bool a_menu, float a_delta)
+        {
+            auto*       values = a_player->AsActorValueOwner();
+            const float stamina = values->GetActorValue(RE::ActorValue::kStamina);
+            const float max = values->GetPermanentActorValue(RE::ActorValue::kStamina) +
+                              a_player->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, RE::ActorValue::kStamina);
+            const float speed = a_pose ? std::hypot(a_pose->velocity[0], a_pose->velocity[1]) * Coords::kMetersPerUnit : 0.0f;
+            const auto  key = Input::KeyFromScanCode(Input::kDikLeftShift);
+            const bool  was = state.sprint.Exhausted();
+            const auto  result = state.sprint.Step(a_delta, !a_menu && state.input.IsKeyDown(key), speed, stamina, max, !a_seated);
+            state.input.Block(key, result.blockRun && !a_seated);  // driving, Shift is the gear shift
+            if (result.drain > 0.0f) {
+                values->DamageActorValue(RE::ActorValue::kStamina, result.drain);
+            }
+            if (result.blockRun != was) {
+                SKSE::log::info("player sync: {} (stamina {:.0f} of {:.0f})",
+                    result.blockRun ? "out of breath, MSC's run is held back" : "caught its breath, running again", stamina, max);
+            }
+        }
+
         void Drive(RE::PlayerCharacter* a_player, float a_delta)
         {
             auto& link = LinkService::Get();
@@ -691,6 +717,7 @@ namespace PerkeleRim::PlayerSync
             Combat::Drunk(a_player, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, a_delta);
             Combat::Guard(a_player, valid && !seated && !menu && (pose.flags & Protocol::kPlayerBlocking) != 0, !menu);
             Combat::Shouts(a_player);
+            Sprint(a_player, valid ? &pose : nullptr, seated, menu, a_delta);
             // Stream ahead of the player while it moves fast (driving).
             const RE::NiPoint3 velocity = valid ? RE::NiPoint3(pose.velocity[0], pose.velocity[1], pose.velocity[2]) : RE::NiPoint3();
             CollisionSampler::Update(a_player, velocity);

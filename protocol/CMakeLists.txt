@@ -22,6 +22,7 @@ add_executable(protocol_tests
     tests/cpp/test_msc_save.cpp
     tests/cpp/test_hurt.cpp
     tests/cpp/test_shout.cpp
+    tests/cpp/test_stamina.cpp
     tests/cpp/test_screenshot.cpp
 )
 target_link_libraries(protocol_tests PRIVATE doctest::doctest)
