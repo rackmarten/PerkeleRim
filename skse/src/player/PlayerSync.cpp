@@ -14,6 +14,7 @@
 #include "link/LinkService.h"
 #include "look_at.h"
 #include "model/ModelView.h"
+#include "particle/ParticleView.h"
 #include "pocket/Pocket.h"
 #include "shot/Shot.h"
 #include "stamina.h"
@@ -211,6 +212,7 @@ namespace PerkeleRim::PlayerSync
             Combat::Stop();
             VehicleView::Hide();
             ItemView::Clear();
+            ParticleView::Hide();
             HandView::Hide();
             Publish();
             SKSE::log::info("player sync: Skyrim owns the player ({})", a_reason);
@@ -708,6 +710,10 @@ namespace PerkeleRim::PlayerSync
             Protocol::ItemState items{};
             if (link.ReadItems(items)) {  // a torn read keeps last frame's items; link down releases
                 ItemView::Update(&items, state.generation);
+            }
+            static Protocol::ParticleState particles{};  // 16 KiB, kept off the stack
+            if (link.ReadParticles(particles)) {         // a torn read keeps last frame's smoke
+                ParticleView::Update(&particles, state.generation, HandView::Light(a_player));
             }
             Protocol::HandLayer hands{};
             HandView::Update(link.ReadHandLayer(hands) ? &hands : nullptr, a_delta);

@@ -14,7 +14,7 @@ The SKSE plugin (Skyrim side) and the MSCLoader mod (My Summer Car side) exchang
 
 ## Section layout
 
-One section, `Local\PerkeleRim.Link`, 4,488,960 bytes. Whichever game starts first creates it; it disappears when both have closed.
+One section, `Local\PerkeleRim.Link`, 4,505,408 bytes. Whichever game starts first creates it; it disappears when both have closed.
 
 | Offset | Size | Part | Written by |
 |---|---|---|---|
@@ -26,8 +26,9 @@ One section, `Local\PerkeleRim.Link`, 4,488,960 bytes. Whichever game starts fir
 | 25536 | 5184 | `ItemSlot` (latest `ItemState`) | MSC |
 | 30720 | 64 | `HandLayerSlot` (latest `HandLayer`) | MSC |
 | 30784 | 1600 | `ActorSlot` (latest `ActorList`) | Skyrim |
-| 32384 | 64 + 4 MiB | ring Skyrim → MSC (collision chunks, worldspace changes) | Skyrim produces, MSC consumes |
-| 4,226,752 | 64 + 256 KiB | ring MSC → Skyrim (look-at text, later events) | MSC produces, Skyrim consumes |
+| 32384 | 16448 | `ParticleSlot` (latest `ParticleState`) | MSC |
+| 48832 | 64 + 4 MiB | ring Skyrim → MSC (collision chunks, worldspace changes) | Skyrim produces, MSC consumes |
+| 4,243,200 | 64 + 256 KiB | ring MSC → Skyrim (look-at text, later events) | MSC produces, Skyrim consumes |
 
 Layout rules:
 
@@ -102,6 +103,20 @@ A model's id (`ModelChunk.model`, never 0) stands for what it is made of: MSC ke
 MSC side (`msc/src/Game/ItemLink.cs`): every 0.5 s it looks for `Rigidbody` objects within 15 m of the player's feet (kept until 50 m, so a thrown bottle stays drawn all the way) that are MSC items: named `...(itemx)` or under `ITEMS`, or any non-kinematic loose rigidbody up to 30 kg that isn't part of the player or of something 100 kg or heavier (a thrown bottle; not the van's doors). Each item is split: its root's own renderers are one entry, and each direct child with renderers is an entry of its own, posed on its own. A beer case's bottles are its children, so a drunk bottle simply disappears, and all bottles share one model. Poses go out every frame; a destroyed piece drops out the same frame. When a new anchor moves the island under the player (the next handover, a load door), the items are moved by the same offset so each stays where it was in Skyrim's world, as long as that is within 50 m of the player; the rest stay behind. MSC itself does all the handling (picking up, carrying, dropping, throwing, drinking); mouse and keys already reach it. Spike command `items` logs every entry with its path and model id.
 
 Skyrim side (`skse/src/item/ItemView.cpp`): one node per item id, made by `ModelView::Instance` once its model has arrived, hung under the player's parent scene node like the van (no reference, no collision), posed every frame and app-culled while not visible. Items that go away, change model, or all of them on F10 or an anchor change go back to a per-model pool for reuse.
+
+## Smoke
+
+MSC's smoke is drawn in Skyrim particle by particle (v34): the exhaust of the van, moped and Kekmet, the player's tire smoke and the player's cigarette smoke. They all use legacy Unity `ParticleEmitter`s in world space, textured with sprite sheets (`carsmoke` is 4 x 4 frames).
+
+`ParticleState` (MSC → Skyrim, latest-value slot, rewritten whole every frame): `frame`, `generation` (the `WorldspaceChange` the positions are for), `count` and up to `kParticleCapacity` (512) `ParticlePose`s, closest systems first. A pose is the particle's look (`model`, a `ModelChunk` model id), its center in Skyrim world space, its width in units, its rotation on screen, `color` (r, g, b, a: the particle's color times its material's `_TintColor` doubled, as `Particles/Alpha Blended` draws it) and `sheet` (columns, rows and the frame it shows: Unity's UV animation steps through the frames `uvAnimationCycles` times over the particle's life, left to right from the top row).
+
+A particle's look is a one-square model of its texture (`ModelData.Particle`: 1 unit wide, alpha blended, unlit), sent once per texture and sheet layout like any model. Before sending, MSC clears the texture's faint alpha haze (alpha up to 10 becomes 0, the rest is stretched back) and fades each frame's alpha out toward the edge of its inscribed circle, so a frame never ends in a straight edge. Dark smoke (a material whose doubled tint is under 0.5: MSC's diesel exhaust) gets a black texture and each particle's alpha times one minus its grey: Skyrim's lighting shader adds the scene's light to whatever it draws, which turned dark exhaust pale, but black times any light stays black, so dark smoke only dims what's behind it. Light smoke (cigarettes) keeps its white texture and glows with its color times Skyrim's light at the player (`HandView::Light`).
+
+MSC side (`msc/src/Game/ParticleLink.cs`): every 2 s it collects the emitters below the drawn vehicles (leaving out the player's own, since a seated player is a child of the vehicle: its rain and piss stream aren't exhaust), `Skidmarks/SkidSmoke` and the player's `.../Smoking/BreathSmoke`; every frame it sends the live particles of the active ones within 80 m. Pure helpers (color, frame, haze, edge fade, darkening) are in `msc/src/Link/ParticleLook.cs` with tests.
+
+Skyrim side (`skse/src/particle/ParticleView.cpp`): a pool of square instances per model, hung under the player's scene node like the items. Each frame every particle takes one: turned to Skyrim's camera and by its rotation, scaled to its width, its material's `materialAlpha` and UV scale and offset (the frame) and its glow color set. Squares not needed this frame are culled. Alpha-blended model shapes (smoke, glass) never write depth: with depth writes the squares hid each other and the fog behind them, showing as dark hard-edged squares.
+
+Spike commands: `particles [word]` lists every particle system in MSC's scene with its shader, texture and state; `smoke` lists the mirrored systems and their first particles; `smoke on|off` stops or resumes sending; `smoke puff [n]` bursts every active mirrored system; `smoke sheet on|off` sends textures as one picture instead of frames.
 
 ## Hand layer
 

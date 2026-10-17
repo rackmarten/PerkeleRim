@@ -367,7 +367,12 @@ namespace PerkeleRim::ModelView
             }
             shader->flags.set(F::kZBufferTest);
             if ((a_material.flags & Protocol::kMaterialBlend) == 0) {
-                shader->flags.set(F::kZBufferWrite);  // glass doesn't hide what's behind it
+                shader->flags.set(F::kZBufferWrite);
+            } else {
+                // Glass and smoke don't hide what's behind them. Cleared explicitly: a new shader
+                // can start with it set, and smoke squares then hid each other and the fog behind
+                // them (dark, hard-edged squares).
+                shader->flags.reset(F::kZBufferWrite);
             }
             return shader;
         }

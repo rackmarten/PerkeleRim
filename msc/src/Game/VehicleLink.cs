@@ -85,6 +85,7 @@ namespace PerkeleRim.Game
         // by hand (its velocity jumps then without a hit).
         public Rigidbody Body => body;
         public string Name => driverName;
+        public Transform Car => car;  // null until the vehicle is found
         public string ObjectName => objectName;
         public Vector3 Position => car != null ? car.position : Vector3.zero;
         public int Moves { get; private set; }

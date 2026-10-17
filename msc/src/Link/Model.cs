@@ -278,6 +278,28 @@ namespace PerkeleRim
             return model;
         }
 
+        // A particle's look: one square of texture, 1 unit wide (x and z -0.5..0.5), alpha blended
+        // and unlit, at y 0 facing a viewer that looks along +Y. Skyrim turns it to its camera and
+        // scales it to the particle's size.
+        public static ModelData Particle(string name, ModelTextureData texture)
+        {
+            var model = new ModelData { Name = name };
+            model.Textures.Add(texture);
+            model.Materials.Add(new ModelMaterialData { Flags = Wire.MaterialBlend | Wire.MaterialUnlit });
+            model.Meshes.Add(new ModelMeshData
+            {
+                Name = name,
+                Texture = 0,
+                Material = 0,
+                // bottom left, bottom right, top right, top left
+                Positions = new[] { -0.5f, 0f, -0.5f, 0.5f, 0f, -0.5f, 0.5f, 0f, 0.5f, -0.5f, 0f, 0.5f },
+                Normals = new[] { 0f, -1f, 0f, 0f, -1f, 0f, 0f, -1f, 0f, 0f, -1f, 0f },
+                Uvs = new[] { 0f, 1f, 1f, 1f, 1f, 0f, 0f, 0f },
+                Indices = new ushort[] { 0, 1, 2, 0, 2, 3 },
+            });
+            return model;
+        }
+
         // ModelChunk payloads for a blob, in sending order.
         public static List<byte[]> Split(byte[] blob, uint model, int chunkMax = (int)Wire.ModelChunkMax)
         {

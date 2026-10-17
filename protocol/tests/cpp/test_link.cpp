@@ -207,6 +207,18 @@ TEST_CASE("input and player slots carry the latest value")
     REQUIRE(p.skyrim->ReadItems(itemsOut));
     CHECK(std::memcmp(&itemsOut, &items, sizeof(items)) == 0);
 
+    auto particles = std::make_unique<ParticleState>();
+    auto particlesOut = std::make_unique<ParticleState>();
+    CHECK_FALSE(p.skyrim->ReadParticles(*particlesOut));  // never written
+    particles->frame = 10;
+    particles->generation = 3;
+    particles->count = kParticleCapacity;
+    particles->particles[0] = { 5, { 1.0f, 2.0f, 3.0f }, 30.0f, 0.5f, { 255, 128, 0, 64 }, { 4, 4, 15, 0 } };
+    particles->particles[kParticleCapacity - 1].model = 6;
+    p.msc->WriteParticles(*particles);
+    REQUIRE(p.skyrim->ReadParticles(*particlesOut));
+    CHECK(std::memcmp(particlesOut.get(), particles.get(), sizeof(ParticleState)) == 0);
+
     HandLayer hands{};
     CHECK_FALSE(p.skyrim->ReadHandLayer(hands));  // never written
     hands = { 12, kHandLayerValid, 0x40000A42ull, 1920, 1080, 28, 350 };

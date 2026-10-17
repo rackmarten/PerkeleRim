@@ -68,6 +68,7 @@ namespace PerkeleRim.Game
         PocketLink pocket;
         ModelSender models;
         ItemLink items;
+        ParticleLink particles;
         ActorLink actors;
         PlayerVoice voice;
         VehicleHorn horn;
@@ -136,6 +137,7 @@ namespace PerkeleRim.Game
             pocket = new PocketLink(log);
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
+            particles = new ParticleLink(island, models, () => Array.ConvertAll(vehicles, v => v.Car), log);
             actors = new ActorLink(island, log, what => voice.Swear(what));
             voice = new PlayerVoice(log);
             horn = new VehicleHorn(log);
@@ -164,6 +166,8 @@ namespace PerkeleRim.Game
         // Spike commands "textures" (read an object's model and log it) and "items" (what Skyrim gets).
         public void InspectModel(string name) => models.Inspect(name);
         public void DumpItems() => items.Dump();
+        public void DumpParticles() => particles.Dump();
+        public void PuffParticles(int count) => particles.Puff(count);
 
         // ---- Input (runs inside the first Input call of each frame) ----
 
@@ -296,6 +300,7 @@ namespace PerkeleRim.Game
             shelves.Update(playing);
             pocket.Update(link, playing, player != null);
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
+            particles.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
             var driven = playing ? Driven() : null;
             // MSC's push stance (J toggles it): PlayerFunctions holds both hands up in its On state.
             bool pushing = functions != null && functions.ActiveStateName == "On";

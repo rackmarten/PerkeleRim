@@ -95,6 +95,35 @@ namespace PerkeleRim.Spike
             if (n == 0) SpikeLog.Write("cmd: inspect: nothing named like " + text);
         }
 
+        // Every particle system (Shuriken and legacy ParticleEmitter), inactive ones too, filtered by a
+        // word in its path: what it draws with, where it simulates and whether it runs now.
+        static void Particles(string text)
+        {
+            int n = 0;
+            foreach (Component c in Resources.FindObjectsOfTypeAll(typeof(Component)))
+            {
+                var system = c as ParticleSystem;
+                var emitter = c as ParticleEmitter;
+                if (system == null && emitter == null) continue;
+                if (c.gameObject.hideFlags != HideFlags.None) continue;  // prefabs and assets, not in the scene
+                string path = c.name;
+                for (var p = c.transform.parent; p != null; p = p.parent) path = p.name + "/" + path;
+                if (text.Length > 0 && path.IndexOf(text, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                if (++n > 200) { SpikeLog.Write("cmd: particles: more than 200, stopped"); return; }
+                var renderer = c.GetComponent<Renderer>();
+                var mat = renderer != null ? renderer.sharedMaterial : null;
+                string look = mat == null ? "no material" :
+                    $"{mat.name} shader {(mat.shader != null ? mat.shader.name : "-")} tex {(mat.mainTexture != null ? mat.mainTexture.name + " " + mat.mainTexture.width + "x" + mat.mainTexture.height : "-")}";
+                string run = system != null
+                    ? $"shuriken playing {system.isPlaying} emit {system.enableEmission} rate {system.emissionRate} n {system.particleCount}/{system.maxParticles} " +
+                      $"life {system.startLifetime} size {system.startSize} space {system.simulationSpace} sheet {(renderer is ParticleSystemRenderer ? ((ParticleSystemRenderer)renderer).renderMode.ToString() : "-")}"
+                    : $"legacy emit {emitter.emit} rate {emitter.minEmission}..{emitter.maxEmission} n {emitter.particleCount} size {emitter.minSize}..{emitter.maxSize} world {emitter.useWorldSpace}";
+                SpikeLog.Write($"cmd: particles {path} active {c.gameObject.activeInHierarchy} layer {c.gameObject.layer} " +
+                               $"render {(renderer != null && renderer.enabled)} {run} | {look}");
+            }
+            if (n == 0) SpikeLog.Write("cmd: particles: none named like " + text);
+        }
+
         // MSC's MasterAudio groups (direct children of MasterAudio) with their clips, filtered by a
         // word in the group or clip name; also loose AudioClips named like it (soundbanks).
         static void Voices(string text)
@@ -357,6 +386,17 @@ namespace PerkeleRim.Spike
                         break;
                     case "inspect":  // "inspect empty bottle" lists objects with that name, inactive ones too
                         Inspect(lines[0].Trim().Substring(7).Trim());
+                        break;
+                    case "particles":  // "particles" lists every particle system, "particles HAYOSIKO" those under the van
+                        Particles(lines[0].Trim().Substring(9).Trim());
+                        break;
+                    case "smoke":  // "smoke off|on" stops or resumes sending smoke to Skyrim; "smoke puff 30" bursts every mirrored system; "smoke" lists them
+                        var smokeLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (words.Length > 2 && words[1] == "sheet") PerkeleRim.Game.ParticleLink.Sheets = words[2] != "off";
+                        else if (words.Length > 1 && words[1] == "puff") { if (smokeLink != null) smokeLink.PuffParticles(words.Length > 2 ? int.Parse(words[2]) : 30); }
+                        else if (words.Length > 1) PerkeleRim.Game.ParticleLink.Enabled = words[1] != "off";
+                        else if (smokeLink != null) smokeLink.DumpParticles();
+                        SpikeLog.Write("cmd: smoke " + (PerkeleRim.Game.ParticleLink.Enabled ? "on" : "off"));
                         break;
                     case "island":  // "island show", "island hide", "island steps 8"
                         var islandLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();

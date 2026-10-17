@@ -458,6 +458,18 @@ namespace PerkeleRim.Game
             return null;
         }
 
+        // A particle texture as a one-square particle model (ParticleLink).
+        public static ModelData Particle(string modelName, Texture texture, int columns, int rows, bool darken, Action<string> log)
+        {
+            if (texture == null) return null;
+            var pixels = Pixels(texture, log);
+            int cleared = ParticleLook.ClearHaze(pixels.Rgba);
+            ParticleLook.FadeFrameEdges(pixels.Rgba, pixels.Width, pixels.Height, columns, rows);
+            log($"model: particle texture {texture.name}: {cleared} of {pixels.Width * pixels.Height} pixels had only haze (alpha <= {ParticleLook.HazeFloor})");
+            if (darken) ParticleLook.Blacken(pixels.Rgba);
+            return ModelData.Particle(modelName, pixels);
+        }
+
         // Straight from the texture when it is readable, else drawn into a RenderTexture and read back.
         static ModelTextureData Pixels(Texture texture, Action<string> log)
         {

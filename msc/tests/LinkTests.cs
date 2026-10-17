@@ -148,6 +148,23 @@ namespace PerkeleRim.Tests
             Assert.That(lastItem.rotation[3], Is.EqualTo(1f));
             Assert.That(iback.Get(0).id, Is.EqualTo(0u));
 
+            Assert.That(p.Skyrim.ReadParticles(out _), Is.False);  // never written
+            var particles = new ParticleState { frame = 10, generation = 3, count = Wire.ParticleCapacity };
+            var particle = new ParticlePose { model = 5, size = 30f, rotation = 0.5f };
+            particle.position[1] = 2f;
+            particle.color[3] = 64;
+            particles.Set((int)Wire.ParticleCapacity - 1, particle);
+            p.Msc.WriteParticles(ref particles);
+            Assert.That(p.Skyrim.ReadParticles(out var pkback), Is.True);
+            Assert.That(pkback.count, Is.EqualTo(Wire.ParticleCapacity));
+            var lastParticle = pkback.Get((int)Wire.ParticleCapacity - 1);
+            Assert.That(lastParticle.model, Is.EqualTo(5u));
+            Assert.That(lastParticle.size, Is.EqualTo(30f));
+            Assert.That(lastParticle.rotation, Is.EqualTo(0.5f));
+            Assert.That(lastParticle.position[1], Is.EqualTo(2f));
+            Assert.That(lastParticle.color[3], Is.EqualTo((byte)64));
+            Assert.That(pkback.Get(0).model, Is.EqualTo(0u));
+
             Assert.That(p.Skyrim.ReadHandLayer(out _), Is.False);  // never written
             var hands = new HandLayer { frame = 12, flags = Wire.HandLayerValid, texture = 0x40000A42UL, width = 1920, height = 1080, format = 28, costMicros = 350 };
             p.Msc.WriteHandLayer(ref hands);

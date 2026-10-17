@@ -381,6 +381,32 @@ namespace PerkeleRim
             EndWrite(&slot->seq, n);
         }
 
+        public void WriteParticles(ref ParticleState value)
+        {
+            if (basePtr == null || !attached) return;
+            var slot = (ParticleSlot*)(basePtr + Wire.OffsetParticleSlot);
+            BeginWrite(&slot->seq, out uint n);
+            slot->value = value;
+            EndWrite(&slot->seq, n);
+        }
+
+        public bool ReadParticles(out ParticleState value)
+        {
+            value = default(ParticleState);
+            if (!IsUp) return false;
+            var slot = (ParticleSlot*)(basePtr + Wire.OffsetParticleSlot);
+            for (int attempt = 0; attempt < 64; attempt++)
+            {
+                uint before = (uint)Thread.VolatileRead(ref *(int*)&slot->seq);
+                if (before == 0) return false;
+                if ((before & 1) != 0) continue;
+                value = slot->value;
+                Thread.MemoryBarrier();
+                if ((uint)Thread.VolatileRead(ref *(int*)&slot->seq) == before) return true;
+            }
+            return false;
+        }
+
         public bool ReadActors(out ActorList value)
         {
             value = default(ActorList);

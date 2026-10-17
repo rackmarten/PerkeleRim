@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 33;
+    inline constexpr std::uint32_t kProtocolVersion = 34;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -38,11 +38,12 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kOffsetItemSlot = 25536;         // after kVehicleCount VehiclePartsSlots
     inline constexpr std::uint32_t kOffsetHandLayerSlot = 30720;
     inline constexpr std::uint32_t kOffsetActorSlot = 30784;
-    inline constexpr std::uint32_t kOffsetRingToMsc = 32384;        // RingHeader, data follows
+    inline constexpr std::uint32_t kOffsetParticleSlot = 32384;
+    inline constexpr std::uint32_t kOffsetRingToMsc = 48832;        // RingHeader, data follows
     inline constexpr std::uint32_t kRingToMscCapacity = 4194304;    // 4 MiB: collision chunks
-    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4226752;   // 32384 + 64 + 4 MiB
+    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4243200;   // 48832 + 64 + 4 MiB
     inline constexpr std::uint32_t kRingToSkyrimCapacity = 262144;  // 256 KiB: events
-    inline constexpr std::uint32_t kMappingSize = 4488960;         // 4226752 + 64 + 256 KiB
+    inline constexpr std::uint32_t kMappingSize = 4505408;         // 4243200 + 64 + 256 KiB
 
     enum class Side : std::uint32_t
     {
@@ -323,6 +324,41 @@ namespace PerkeleRim::Protocol
         std::uint32_t seq;
         std::uint32_t reserved;
         ActorList     value;
+        std::uint8_t  pad[40];
+    };
+
+    inline constexpr std::uint32_t kParticleCapacity = 512;  // ParticleState.particles
+
+    // One of MSC's smoke particles (vehicle exhaust, tire smoke, cigarette smoke), drawn by Skyrim
+    // as a square facing its camera. Skyrim world space like ItemPose.
+    struct ParticlePose
+    {
+        std::uint32_t model;        // ModelChunk.model of its look (one square of its texture), never 0
+        float         position[3];  // center
+        float         size;         // width, units
+        float         rotation;     // radians, clockwise on screen
+        std::uint8_t  color[4];     // r, g, b, a: the particle's color times its material's tint, 255 = as the texture
+                                    // (dark smoke: alpha already times one minus its grey, docs/PROTOCOL.md "Smoke")
+        std::uint8_t  sheet[4];     // columns, rows, frame, 0: the texture is a grid of frames (1, 1 = one picture), frame
+                                    // counts left to right from the top row
+    };
+
+    // MSC -> Skyrim, while MSC has the player. Every live particle of the systems MSC mirrors,
+    // closest systems first; count of them, the rest is zero. Rewritten whole every frame.
+    struct ParticleState
+    {
+        std::uint32_t frame;           // MSC frame counter
+        std::uint32_t generation;      // WorldspaceChange.generation the positions are for
+        std::uint32_t count;           // <= kParticleCapacity
+        std::uint32_t reserved;
+        ParticlePose  particles[512];  // kParticleCapacity
+    };
+
+    struct ParticleSlot
+    {
+        std::uint32_t seq;
+        std::uint32_t reserved;
+        ParticleState value;
         std::uint8_t  pad[40];
     };
 
@@ -655,7 +691,6 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kMaterialBlend = 0x2;    // ModelMaterial.flags: alpha blended (glass, overlays)
     inline constexpr std::uint32_t kMaterialUnlit = 0x4;    // ModelMaterial.flags: shows its texture as is, no lighting
     inline constexpr std::uint32_t kMaterialOverlay = 0x8;  // ModelMaterial.flags: drawn over everything (no depth test)
-
     struct ModelMaterial
     {
         std::uint32_t flags;        // kMaterial*
@@ -773,6 +808,17 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ActorList, actors) == 16);
     static_assert(sizeof(ActorSlot) == 1600);
     static_assert(offsetof(ActorSlot, value) == 8);
+    static_assert(sizeof(ParticlePose) == 32);
+    static_assert(offsetof(ParticlePose, position) == 4);
+    static_assert(offsetof(ParticlePose, size) == 16);
+    static_assert(offsetof(ParticlePose, rotation) == 20);
+    static_assert(offsetof(ParticlePose, color) == 24);
+    static_assert(offsetof(ParticlePose, sheet) == 28);
+    static_assert(sizeof(ParticleState) == 16400);
+    static_assert(offsetof(ParticleState, count) == 8);
+    static_assert(offsetof(ParticleState, particles) == 16);
+    static_assert(sizeof(ParticleSlot) == 16448);
+    static_assert(offsetof(ParticleSlot, value) == 8);
     static_assert(sizeof(RingHeader) == 64);
     static_assert(offsetof(RingHeader, head) == 8);
     static_assert(offsetof(RingHeader, tail) == 32);
@@ -855,7 +901,9 @@ namespace PerkeleRim::Protocol
     static_assert(kOffsetItemSlot == kOffsetVehiclePartsSlot + kVehicleCount * sizeof(VehiclePartsSlot));
     static_assert(kOffsetHandLayerSlot == kOffsetItemSlot + sizeof(ItemSlot));
     static_assert(kOffsetActorSlot == kOffsetHandLayerSlot + sizeof(HandLayerSlot));
-    static_assert(kOffsetRingToMsc == kOffsetActorSlot + sizeof(ActorSlot));
+    static_assert(kOffsetParticleSlot == kOffsetActorSlot + sizeof(ActorSlot));
+    static_assert(kOffsetRingToMsc == kOffsetParticleSlot + sizeof(ParticleSlot));
+    static_assert(sizeof(ParticleState::particles) / sizeof(ParticlePose) == kParticleCapacity);
     static_assert(sizeof(ItemState::items) / sizeof(ItemPose) == kItemCapacity);
     static_assert(sizeof(ActorList::actors) / sizeof(ActorPose) == kActorCapacity);
     static_assert(sizeof(StockShelves::spots) / sizeof(StockSpot) == kStockSpotsMax);

@@ -346,6 +346,18 @@ namespace PerkeleRim
         return IsUp() && SeqRead(At<ActorSlot>(Base(), kOffsetActorSlot), a_out);
     }
 
+    void Link::WriteParticles(const ParticleState& a_value)
+    {
+        if (std::uint8_t* base = Base(); base && _attached.load(std::memory_order_acquire)) {
+            SeqWrite(At<ParticleSlot>(base, kOffsetParticleSlot), a_value);
+        }
+    }
+
+    bool Link::ReadParticles(ParticleState& a_out) const
+    {
+        return IsUp() && SeqRead(At<ParticleSlot>(Base(), kOffsetParticleSlot), a_out);
+    }
+
     bool Link::Send(MessageType a_type, const void* a_payload, std::uint32_t a_size)
     {
         if (!IsUp()) {

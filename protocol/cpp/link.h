@@ -61,6 +61,8 @@ namespace PerkeleRim
         bool ReadHandLayer(Protocol::HandLayer& a_out) const;
         void WriteActors(const Protocol::ActorList& a_value);
         bool ReadActors(Protocol::ActorList& a_out) const;
+        void WriteParticles(const Protocol::ParticleState& a_value);
+        bool ReadParticles(Protocol::ParticleState& a_out) const;
 
         // Outbound ring (Skyrim -> MSC for Skyrim, MSC -> Skyrim for MSC). Returns false when the
         // link is down, the ring is full or the message can never fit.

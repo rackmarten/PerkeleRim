@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 33;
+        public const uint ProtocolVersion = 34;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -21,11 +21,12 @@ namespace PerkeleRim.Protocol
         public const uint OffsetItemSlot = 25536;
         public const uint OffsetHandLayerSlot = 30720;
         public const uint OffsetActorSlot = 30784;
-        public const uint OffsetRingToMsc = 32384;
+        public const uint OffsetParticleSlot = 32384;
+        public const uint OffsetRingToMsc = 48832;
         public const uint RingToMscCapacity = 4194304;
-        public const uint OffsetRingToSkyrim = 4226752;
+        public const uint OffsetRingToSkyrim = 4243200;
         public const uint RingToSkyrimCapacity = 262144;
-        public const uint MappingSize = 4488960;
+        public const uint MappingSize = 4505408;
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint InputPaused = 0x2;
@@ -58,6 +59,7 @@ namespace PerkeleRim.Protocol
         public const uint ItemHeld = 0x2;
         public const uint HandLayerValid = 0x1;
         public const uint ActorCapacity = 32;
+        public const uint ParticleCapacity = 512;
         public const uint LookAtTextMax = 255;
         public const uint LookAtUse = 0x1;
         public const uint ModelChunkMax = 49152;
@@ -101,8 +103,7 @@ namespace PerkeleRim.Protocol
         public const uint MaterialCutout = 0x1;
         public const uint MaterialBlend = 0x2;
         public const uint MaterialUnlit = 0x4;
-        public const uint MaterialOverlay = 0x8;
-    }
+        public const uint MaterialOverlay = 0x8;    }
 
     public enum Side : uint
     {
@@ -396,6 +397,49 @@ namespace PerkeleRim.Protocol
         public uint seq;
         public uint reserved;
         public ActorList value;
+        public fixed byte pad[40];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ParticlePose
+    {
+        public uint model;
+        public fixed float position[3];
+        public float size;
+        public float rotation;
+        public fixed byte color[4];
+        public fixed byte sheet[4];
+    }
+
+    // particles holds kParticleCapacity ParticlePoses.
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ParticleState
+    {
+        public uint frame;
+        public uint generation;
+        public uint count;
+        public uint reserved;
+        public fixed byte particles[16384];
+
+        public ParticlePose Get(int i)
+        {
+            if ((uint)i >= Wire.ParticleCapacity) throw new System.ArgumentOutOfRangeException(nameof(i));
+            fixed (byte* p = particles) return ((ParticlePose*)p)[i];
+        }
+
+        public void Set(int i, ParticlePose particle)
+        {
+            if ((uint)i >= Wire.ParticleCapacity) throw new System.ArgumentOutOfRangeException(nameof(i));
+            fixed (byte* p = particles) ((ParticlePose*)p)[i] = particle;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ParticleSlot
+    {
+        public uint seq;
+        public uint reserved;
+        public ParticleState value;
         public fixed byte pad[40];
     }
 
