@@ -20,6 +20,19 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void UnityLightsGetARole()
+        {
+            Assert.That(VanModel.LightRole("HAYOSIKO/LOD/Electricity/PowerON/Driving/BeamsShort/BeamShortLeft", true), Is.EqualTo(Wire.LightLow));
+            Assert.That(VanModel.LightRole("KEKMET/LOD/Electrics/BeamsLong/BeamLongRight", true), Is.EqualTo(Wire.LightHigh));
+            Assert.That(VanModel.LightRole("HAYOSIKO/LOD/Electricity/PowerON/Driving/BeamsLong/CarRearLight", false), Is.EqualTo(Wire.LightTail));
+            Assert.That(VanModel.LightRole("HAYOSIKO/LOD/Electricity/PowerON/Brake/CarBrakeLight", false), Is.EqualTo(Wire.LightBrake));
+            Assert.That(VanModel.LightRole("HAYOSIKO/LOD/Electricity/PowerON/Reverse/Reverse", false), Is.EqualTo(Wire.LightReverse));
+            Assert.That(VanModel.LightRole("KEKMET/LOD/InteriorLight/Light", false), Is.EqualTo(Wire.LightInterior));
+            Assert.That(VanModel.LightRole("HAYOSIKO/LOD/Electricity/PowerON/Blinkers/Left/FrontIndicator", false), Is.EqualTo(0u));
+            Assert.That(VanModel.LightRole("JONNEZ ES(Clone)/LOD/Suspension/Steering/SteeringPivot/Headlight/Light", false), Is.EqualTo(0u));
+        }
+
+        [Test]
         public void LightsGlow()
         {
             Assert.That(VanModel.IsLight("LOD/Electricity/PowerON/Brake/brake"));

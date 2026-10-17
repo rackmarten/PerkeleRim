@@ -1,4 +1,5 @@
 using System;
+using PerkeleRim.Protocol;
 using System.Text.RegularExpressions;
 
 namespace PerkeleRim
@@ -11,6 +12,10 @@ namespace PerkeleRim
     public static class VanModel
     {
         public const string Name = "Hayosiko";
+
+        // The intensity MSC gives the van's beams (the moped's follows its RPM): full brightness in Skyrim.
+        public const float LowBeamIntensity = 3f;
+        public const float HighBeamIntensity = 4f;
 
         // Paths below the van's root left out: colliders and the dead body.
         public static readonly string[] Skip = { "(^|/)coll", "^DeadBody" };
@@ -32,6 +37,22 @@ namespace PerkeleRim
 
         public static bool Skipped(string path) => Any(skip, path);
         public static bool IsLight(string path) => Any(lights, path);
+
+        // What a Unity Light below the vehicle is for (Wire.Light*), 0 = Skyrim doesn't draw it (the
+        // blinkers, the moped's dummy). Paths are the van's, the moped's and the Kekmet's: beams are
+        // spots below BeamsShort / BeamsLong, the van's tail lights sit below both of them.
+        public static uint LightRole(string path, bool spot)
+        {
+            if (path.Contains("Indicator") || path.Contains("Blinkers")) return 0;
+            if (spot && path.Contains("BeamsLong")) return Wire.LightHigh;
+            if (spot && path.Contains("BeamsShort")) return Wire.LightLow;
+            if (spot) return 0;
+            if (path.Contains("CarRearLight")) return Wire.LightTail;
+            if (path.Contains("Brake")) return Wire.LightBrake;
+            if (path.Contains("Reverse")) return Wire.LightReverse;
+            if (path.Contains("InteriorLight")) return Wire.LightInterior;
+            return 0;
+        }
 
         static bool Any(Regex[] patterns, string s)
         {

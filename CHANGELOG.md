@@ -69,6 +69,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Drinking toughens Finn while MSC has the player: up to +200 armor, +100 stamina and twice the stamina regen at MSC drunk 3, shown in Active Effects as "Drunk: Thick Skin", "Liquid Courage" and "Second Wind" (PerkeleRim.esp spells 0x914..0x916).
 - Pushing (protocol v33, `kImpactPush`): with MSC's push stance up (J or G), walking into someone shoves them aside with Skyrim's stagger stumble, again every 0.8 s while in touch: no damage, no bounty, no fight.
+- Vehicle lights light up Skyrim at night (protocol v35, `ModelLight`, `VehicleParts.lights`): MSC sends each vehicle's real lights with the model (role, color, place, direction) and which are on every frame; Skyrim hangs a shadow-casting spotlight (low or high beam) and red tail/brake, white reverse and warm cabin point lights under the vehicle, switched with MSC's own lights. The van's cabin light works too. At most 1 shadow light and 3 point lights per vehicle (Skyrim draws 4 shadow lights at once). Spike commands `carlights` and `lightson`. Beam direction and brightness are first guesses, tune them in game.
 - Finn fights with his fists: weapons, spells and scrolls are unequipped while MSC has the player, with a short notification.
 
 ### Changed

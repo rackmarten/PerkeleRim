@@ -14,6 +14,11 @@ namespace PerkeleRim.Game
     {
         Transform[] nodes = new Transform[0];  // ModelNode order
         Renderer[] renderers = new Renderer[0];
+        Light[] lightObjects = new Light[0];  // ModelLight order
+        string[] lightNames = new string[0];
+        uint[] lightRoles = new uint[0];
+        uint lastLights = uint.MaxValue;
+        Action<string> lightLog;
 
         // ModelChunk.model of the model these nodes are of, 0 until it was asked for.
         public uint Id;
@@ -54,8 +59,39 @@ namespace PerkeleRim.Game
             }
             nodes = found.ToArray();
             renderers = shown.ToArray();
-            log($"vehicle model: {name} has {nodes.Length} objects ({switchedOff} switched off, {lights} lights), {left} left out, {model.Meshes.Count} meshes");
+            ReadLights(car, model, log);
+            log($"vehicle model: {name} has {nodes.Length} objects ({switchedOff} switched off, {lights} lights), {left} left out, " +
+                $"{model.Meshes.Count} meshes, {lightObjects.Length} Unity lights");
             return model;
+        }
+
+        // MSC's own Unity Lights that Skyrim draws (VanModel.LightRole), with where they shine from
+        // and along in the vehicle's frame; whether each is on goes out every frame in Fill.
+        void ReadLights(Transform car, ModelData model, Action<string> log)
+        {
+            var found = new List<Light>();
+            foreach (var light in car.GetComponentsInChildren<Light>(true))
+            {
+                var role = VanModel.LightRole(ModelSender.PathBelow(car, light.transform), light.type == LightType.Spot);
+                if (role == 0) continue;
+                if (found.Count == Wire.ModelLightMax) break;
+                var p = Position(Matrix4x4.TRS(ModelSender.RelativeTo(car, light.transform).GetColumn(3), Quaternion.identity, Vector3.one));
+                var d = Quaternion.Inverse(car.rotation) * light.transform.forward;
+                model.Lights.Add(new ModelLightData
+                {
+                    Role = role,
+                    Color = new[] { light.color.r, light.color.g, light.color.b },
+                    Position = new[] { p.x, p.y, p.z },
+                    Direction = new[] { d.x, d.z, d.y },  // Unity to Skyrim axes
+                });
+                found.Add(light);
+            }
+            lightObjects = found.ToArray();
+            lightRoles = new uint[found.Count];
+            for (int i = 0; i < found.Count; i++) lightRoles[i] = model.Lights[i].Role;
+            lightLog = log;
+            lightNames = new string[found.Count];
+            for (int i = 0; i < found.Count; i++) lightNames[i] = ModelSender.PathBelow(car, found[i].transform);
         }
 
         // Every node's pose as MSC has it right now, and whether MSC draws it.
@@ -63,6 +99,30 @@ namespace PerkeleRim.Game
         {
             s.model = Id;
             s.count = (uint)nodes.Length;
+            uint on = 0;
+            for (int i = 0; i < lightObjects.Length; i++)
+                if (lightObjects[i] != null && lightObjects[i].enabled && lightObjects[i].gameObject.activeInHierarchy) on |= 1u << i;
+            s.lights = on;
+            float low = 0f, high = 0f;
+            int lowOn = 0, highOn = 0;
+            for (int i = 0; i < lightObjects.Length; i++)
+            {
+                if ((on >> i & 1) == 0) continue;
+                if (lightRoles[i] == Wire.LightLow) { low += lightObjects[i].intensity / VanModel.LowBeamIntensity; lowOn++; }
+                if (lightRoles[i] == Wire.LightHigh) { high += lightObjects[i].intensity / VanModel.HighBeamIntensity; highOn++; }
+            }
+            s.lowLevel = lowOn > 0 ? low / lowOn : 0f;
+            s.highLevel = highOn > 0 ? high / highOn : 0f;
+            if (on != lastLights && lightLog != null)
+            {
+                lastLights = on;
+                for (int i = 0; i < lightObjects.Length; i++)
+                {
+                    var l = lightObjects[i];
+                    if (l == null) continue;
+                    lightLog($"vehicle lights {Id:X8}: {lightNames[i]} on {(on >> i & 1)} enabled {l.enabled} self {l.gameObject.activeSelf} hier {l.gameObject.activeInHierarchy} intensity {l.intensity}");
+                }
+            }
             for (int i = 0; i < nodes.Length; i++)
             {
                 var t = nodes[i];

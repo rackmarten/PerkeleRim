@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 34;
+    inline constexpr std::uint32_t kProtocolVersion = 35;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -220,7 +220,9 @@ namespace PerkeleRim::Protocol
         std::uint32_t generation;   // WorldspaceChange.generation
         std::uint32_t count;        // <= kVehiclePartCapacity
         std::uint32_t model;        // ModelChunk.model the nodes are of, 0 = none yet
-        std::uint32_t reserved[3];
+        std::uint32_t lights;       // bit i: light i of the model (ModelLight order) is on
+        float         lowLevel;     // brightness of the low beams that are on, 1 = full (MSC drives the moped's with its RPM), 0 = none
+        float         highLevel;    // the same for the high beams
         VehiclePart   parts[256];   // kVehiclePartCapacity
     };
 
@@ -648,6 +650,13 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kModelChunkMax = 49152;     // ModelChunk.size limit
     inline constexpr std::uint32_t kModelSizeMax = 67108864;   // ModelChunk.totalSize limit (64 MiB)
     inline constexpr std::uint32_t kModelNameMax = 48;         // name bytes, UTF-8, zero padded
+    inline constexpr std::uint32_t kModelLightMax = 32;        // ModelHeader.lightCount, one VehicleParts.lights bit each
+    inline constexpr std::uint32_t kLightLow = 1;              // ModelLight.role: low beam headlight
+    inline constexpr std::uint32_t kLightHigh = 2;             // high beam headlight
+    inline constexpr std::uint32_t kLightTail = 3;             // tail light
+    inline constexpr std::uint32_t kLightBrake = 4;            // brake light
+    inline constexpr std::uint32_t kLightReverse = 5;          // reversing light
+    inline constexpr std::uint32_t kLightInterior = 6;         // cabin light
     inline constexpr std::uint32_t kModelNodeNameMax = 64;     // ModelNode.name bytes, UTF-8, zero padded
     inline constexpr std::uint32_t kModelTextureRgba8 = 1;     // ModelTexture.format
     inline constexpr std::uint32_t kModelTextureSizeMax = 2048;  // width and height limit
@@ -675,6 +684,7 @@ namespace PerkeleRim::Protocol
         std::uint32_t meshCount;
         std::uint32_t materialCount;
         std::uint32_t nodeCount;
+        std::uint32_t lightCount;  // ModelLights after the nodes, <= kModelLightMax
     };
 
     struct ModelTexture
@@ -709,6 +719,17 @@ namespace PerkeleRim::Protocol
         std::int32_t  parent;          // node index, -1 = the model's root
         float         translation[3];  // relative to the parent, at rest
         float         rotation[4];     // x, y, z, w, relative to the parent, at rest
+    };
+
+    // A real light of the vehicle (a Unity Light below it in MSC), in the vehicle's frame, Skyrim axes
+    // and units. Skyrim draws one light per role from the lights of that role that are on
+    // (VehicleParts.lights) and picks reach and brightness itself.
+    struct ModelLight
+    {
+        std::uint32_t role;          // kLight*
+        float         color[3];      // 0..1
+        float         position[3];
+        float         direction[3];  // unit vector the light shines along
     };
 
     struct ModelMesh
@@ -777,6 +798,7 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(VehicleParts) == 8224);
     static_assert(offsetof(VehicleParts, count) == 12);
     static_assert(offsetof(VehicleParts, model) == 16);
+    static_assert(offsetof(VehicleParts, lights) == 20);
     static_assert(offsetof(VehicleParts, parts) == 32);
     static_assert(sizeof(VehiclePartsSlot) == 8256);
     static_assert(offsetof(VehiclePartsSlot, value) == 8);
@@ -866,7 +888,10 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(PocketCounts, counts) == 8);
     static_assert(sizeof(ModelChunk) == 16);
     static_assert(offsetof(ModelChunk, offset) == 8);
-    static_assert(sizeof(ModelHeader) == 64);
+    static_assert(sizeof(ModelHeader) == 68);
+    static_assert(offsetof(ModelHeader, lightCount) == 64);
+    static_assert(sizeof(ModelLight) == 40);
+    static_assert(offsetof(ModelLight, position) == 16);
     static_assert(offsetof(ModelHeader, textureCount) == 48);
     static_assert(offsetof(ModelHeader, meshCount) == 52);
     static_assert(offsetof(ModelHeader, materialCount) == 56);

@@ -174,12 +174,23 @@ namespace PerkeleRim
         public float[] Rotation = { 0f, 0f, 0f, 1f };  // x, y, z, w
     }
 
+    // A light of a vehicle (ModelLight): its role (Wire.Light*), color and where it shines from and along,
+    // in the vehicle's frame, Skyrim axes and units.
+    public sealed class ModelLightData
+    {
+        public uint Role;
+        public float[] Color = { 1f, 1f, 1f };
+        public float[] Position = new float[3];
+        public float[] Direction = { 0f, 1f, 0f };
+    }
+
     public sealed class ModelData
     {
         public string Name;
         public readonly List<ModelTextureData> Textures = new List<ModelTextureData>();
         public readonly List<ModelMaterialData> Materials = new List<ModelMaterialData>();
         public readonly List<ModelNodeData> Nodes = new List<ModelNodeData>();
+        public readonly List<ModelLightData> Lights = new List<ModelLightData>();
         public readonly List<ModelMeshData> Meshes = new List<ModelMeshData>();
 
         public int VertexCount
@@ -201,6 +212,7 @@ namespace PerkeleRim
             w.Write((uint)Meshes.Count);
             w.Write((uint)Materials.Count);
             w.Write((uint)Nodes.Count);
+            w.Write((uint)Lights.Count);
             foreach (var t in Textures)
             {
                 if (t.Width < 1 || t.Height < 1 || t.Width > Wire.ModelTextureSizeMax || t.Height > Wire.ModelTextureSizeMax ||
@@ -229,6 +241,14 @@ namespace PerkeleRim
                 w.Write(n.Parent);
                 for (int k = 0; k < 3; k++) w.Write(n.Translation[k]);
                 for (int k = 0; k < 4; k++) w.Write(n.Rotation[k]);
+            }
+            if (Lights.Count > Wire.ModelLightMax) throw new ArgumentException($"{Name}: {Lights.Count} lights, at most {Wire.ModelLightMax}");
+            foreach (var l in Lights)
+            {
+                w.Write(l.Role);
+                for (int k = 0; k < 3; k++) w.Write(l.Color[k]);
+                for (int k = 0; k < 3; k++) w.Write(l.Position[k]);
+                for (int k = 0; k < 3; k++) w.Write(l.Direction[k]);
             }
             foreach (var m in Meshes)
             {

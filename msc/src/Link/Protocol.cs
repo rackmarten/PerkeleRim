@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 34;
+        public const uint ProtocolVersion = 35;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -66,6 +66,13 @@ namespace PerkeleRim.Protocol
         public const uint ModelSizeMax = 67108864;
         public const uint ModelNameMax = 48;
         public const uint ModelNodeNameMax = 64;
+        public const uint ModelLightMax = 32;
+        public const uint LightLow = 1;
+        public const uint LightHigh = 2;
+        public const uint LightTail = 3;
+        public const uint LightBrake = 4;
+        public const uint LightReverse = 5;
+        public const uint LightInterior = 6;
         public const uint ModelTextureRgba8 = 1;
         public const uint ModelTextureSizeMax = 2048;
         public const uint ModelMeshVertexMax = 65535;
@@ -267,7 +274,9 @@ namespace PerkeleRim.Protocol
         public uint generation;
         public uint count;
         public uint model;
-        public fixed uint reserved[3];
+        public uint lights;
+        public float lowLevel;
+        public float highLevel;
         public fixed byte parts[8192];
 
         public VehiclePart Get(int i)
@@ -620,6 +629,7 @@ namespace PerkeleRim.Protocol
         public uint meshCount;
         public uint materialCount;
         public uint nodeCount;
+        public uint lightCount;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -652,6 +662,15 @@ namespace PerkeleRim.Protocol
         public int material;
         public int node;
         public uint reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ModelLight
+    {
+        public uint role;
+        public fixed float color[3];
+        public fixed float position[3];
+        public fixed float direction[3];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

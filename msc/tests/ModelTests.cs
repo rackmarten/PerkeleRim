@@ -59,8 +59,8 @@ namespace PerkeleRim.Tests
             Assert.That(BitConverter.ToUInt32(blob, 48), Is.EqualTo(1u), "textureCount");
             Assert.That(BitConverter.ToUInt32(blob, 52), Is.EqualTo(1u), "meshCount");
             Assert.That(BitConverter.ToUInt32(blob, 56), Is.EqualTo(1u), "materialCount");
-            Assert.That(BitConverter.ToUInt32(blob, 64 + 8), Is.EqualTo(Wire.ModelTextureRgba8));
-            int material = 64 + 16 + 4;
+            Assert.That(BitConverter.ToUInt32(blob, 68 + 8), Is.EqualTo(Wire.ModelTextureRgba8));
+            int material = 68 + 16 + 4;
             Assert.That(BitConverter.ToUInt32(blob, material), Is.EqualTo(Wire.MaterialCutout), "flags");
             Assert.That(BitConverter.ToSingle(blob, material + 4), Is.EqualTo(0.25f), "alphaCutoff");
             Assert.That(BitConverter.ToSingle(blob, material + 20), Is.EqualTo(0.5f), "glossiness");
@@ -86,7 +86,7 @@ namespace PerkeleRim.Tests
             var blob = model.Encode();
 
             Assert.That(BitConverter.ToUInt32(blob, 60), Is.EqualTo(2u), "nodeCount");
-            int node = 64;  // no textures or materials
+            int node = 68;  // no textures or materials
             Assert.That(Encoding.UTF8.GetString(blob, node, 7), Is.EqualTo("WheelFL"));
             Assert.That(BitConverter.ToInt32(blob, node + 64), Is.EqualTo(-1), "parent");
             Assert.That(BitConverter.ToSingle(blob, node + 72), Is.EqualTo(60f), "translation y");
@@ -96,6 +96,25 @@ namespace PerkeleRim.Tests
             Assert.That(BitConverter.ToInt32(blob, second + 64), Is.EqualTo(0), "parent");
             int mesh = second + 96;
             Assert.That(BitConverter.ToInt32(blob, mesh + 64), Is.EqualTo(1), "node");
+        }
+
+        [Test]
+        public void EncodesLightsAfterTheNodes()
+        {
+            var model = new ModelData { Name = "Hayosiko" };
+            model.Lights.Add(new ModelLightData
+            {
+                Role = Wire.LightBrake, Color = new[] { 1f, 0f, 0.5f }, Position = new[] { 1f, -150f, 30f }, Direction = new[] { 0f, -1f, 0f },
+            });
+            model.Meshes.Add(UpTriangle());
+            var blob = model.Encode();
+
+            Assert.That(BitConverter.ToUInt32(blob, 64), Is.EqualTo(1u), "lightCount");
+            Assert.That(BitConverter.ToUInt32(blob, 68), Is.EqualTo(Wire.LightBrake), "role");
+            Assert.That(BitConverter.ToSingle(blob, 68 + 12), Is.EqualTo(0.5f), "color blue");
+            Assert.That(BitConverter.ToSingle(blob, 68 + 20), Is.EqualTo(-150f), "position y");
+            Assert.That(BitConverter.ToSingle(blob, 68 + 32), Is.EqualTo(-1f), "direction y");
+            Assert.That(Encoding.UTF8.GetString(blob, 68 + 40, 11), Is.EqualTo("case/bottle"), "meshes follow");
         }
 
         [Test]

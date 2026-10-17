@@ -54,12 +54,21 @@ namespace PerkeleRim::Model
         float        rotation[4];  // x, y, z, w
     };
 
+    struct Light
+    {
+        std::uint32_t role;  // Protocol::kLight*
+        float         color[3];
+        float         position[3];
+        float         direction[3];
+    };
+
     struct Model
     {
         std::string          name;
         std::vector<Texture>                 textures;
         std::vector<Protocol::ModelMaterial> materials;
         std::vector<Node>                    nodes;
+        std::vector<Light>                   lights;
         std::vector<Mesh>                    meshes;
     };
 
@@ -122,6 +131,20 @@ namespace PerkeleRim::Model
             std::memcpy(out.translation, node.translation, sizeof(out.translation));
             std::memcpy(out.rotation, node.rotation, sizeof(out.rotation));
             model.nodes.push_back(std::move(out));
+        }
+        if (header.lightCount > Protocol::kModelLightMax) {
+            return std::nullopt;
+        }
+        for (std::uint32_t i = 0; i < header.lightCount; i++) {
+            Protocol::ModelLight light{};
+            if (!take(&light, sizeof(light))) {
+                return std::nullopt;
+            }
+            Light out{ light.role, {}, {}, {} };
+            std::memcpy(out.color, light.color, sizeof(out.color));
+            std::memcpy(out.position, light.position, sizeof(out.position));
+            std::memcpy(out.direction, light.direction, sizeof(out.direction));
+            model.lights.push_back(out);
         }
         for (std::uint32_t i = 0; i < header.meshCount; i++) {
             Protocol::ModelMesh mesh{};

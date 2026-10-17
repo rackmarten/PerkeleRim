@@ -124,6 +124,37 @@ namespace PerkeleRim.Spike
             if (n == 0) SpikeLog.Write("cmd: particles: none named like " + text);
         }
 
+        // Lights of the three vehicles: Unity Light components (type, color, range, intensity, spot angle,
+        // enabled and active) and every object whose name looks like a lamp.
+        static void CarLights()
+        {
+            foreach (var root in new[] { "HAYOSIKO(1500kg, 250)", "JONNEZ ES(Clone)", "KEKMET(350-400psi)" })
+            {
+                var car = GameObject.Find(root);
+                if (car == null) { SpikeLog.Write($"cmd: carlights: no {root}"); continue; }
+                foreach (var light in car.GetComponentsInChildren<Light>(true))
+                {
+                    var t = light.transform;
+                    string path = t.name;
+                    for (var p = t.parent; p != null && p != car.transform.parent; p = p.parent) path = p.name + "/" + path;
+                    var local = car.transform.InverseTransformPoint(t.position);
+                    var dir = car.transform.InverseTransformDirection(t.forward);
+                    SpikeLog.Write($"cmd: carlights {path}: {light.type} color {light.color} range {light.range} intensity {light.intensity} " +
+                                   $"spot {light.spotAngle} shadows {light.shadows} enabled {light.enabled} active {t.gameObject.activeInHierarchy} " +
+                                   $"at {local} dir {dir}");
+                }
+                foreach (var t in car.GetComponentsInChildren<Transform>(true))
+                {
+                    var n = t.name.ToLower();
+                    if (n.IndexOf("light") < 0 && n.IndexOf("lamp") < 0 && n.IndexOf("beam") < 0 && n.IndexOf("interior") < 0 && n.IndexOf("dome") < 0) continue;
+                    string path = t.name;
+                    for (var p = t.parent; p != null && p != car.transform.parent; p = p.parent) path = p.name + "/" + path;
+                    SpikeLog.Write($"cmd: carlights object {path} active {t.gameObject.activeSelf}/{t.gameObject.activeInHierarchy} " +
+                                   $"fsms {t.GetComponents<PlayMakerFSM>().Length} at {car.transform.InverseTransformPoint(t.position)}");
+                }
+            }
+        }
+
         // MSC's MasterAudio groups (direct children of MasterAudio) with their clips, filtered by a
         // word in the group or clip name; also loose AudioClips named like it (soundbanks).
         static void Voices(string text)
@@ -397,6 +428,29 @@ namespace PerkeleRim.Spike
                         else if (words.Length > 1) PerkeleRim.Game.ParticleLink.Enabled = words[1] != "off";
                         else if (smokeLink != null) smokeLink.DumpParticles();
                         SpikeLog.Write("cmd: smoke " + (PerkeleRim.Game.ParticleLink.Enabled ? "on" : "off"));
+                        break;
+                    case "lightson":  // "lightson 1" forces the van's beams, rear and cabin lights on (their FSMs normally do), "lightson 0" off
+                    {
+                        bool onOff = words.Length < 2 || words[1] != "0";  // "lightson 2": the high beam too
+                        foreach (var rootName in new[] { "HAYOSIKO(1500kg, 250)", "JONNEZ ES(Clone)", "KEKMET(350-400psi)" })
+                        {
+                        var carObj = GameObject.Find(rootName);
+                        if (carObj == null) continue;
+                        foreach (var t in carObj.GetComponentsInChildren<Transform>(true))
+                        {
+                            var n = t.name;
+                            bool lamp = n == "BeamsShort" || (n == "BeamsLong" && words.Length > 1 && words[1] == "2") || n == "Brake" || n == "Reverse" || n == "InteriorLight" || (n == "Light" && t.parent != null && t.parent.name == "InteriorLight");
+                            if (!lamp) continue;
+                            if (onOff) for (var p = t; p != null && p != carObj.transform; p = p.parent) p.gameObject.SetActive(true);
+                            else t.gameObject.SetActive(false);
+                            foreach (var l in t.GetComponentsInChildren<Light>(true)) l.enabled = true;
+                        }
+                        }
+                        SpikeLog.Write($"cmd: lightson {onOff}");
+                        break;
+                    }
+                    case "carlights":  // every Light below the vehicles, and the objects named like lamps, with their state
+                        CarLights();
                         break;
                     case "island":  // "island show", "island hide", "island steps 8"
                         var islandLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
