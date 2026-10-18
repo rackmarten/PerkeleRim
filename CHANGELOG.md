@@ -82,6 +82,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Alt pisses on a quick tap instead of on press: Skyrim sends it to MSC only when Alt was held no longer than 0.35 s, with no other key pressed meanwhile and Skyrim still in front, so Alt+Tab no longer starts a stream. Once started it runs until Kumpo is empty.
+- Sleeping in a Skyrim bed takes fatigue off twice as fast as MSC's bed, so 8 hours zero it; waiting without a bed is unchanged.
 - Punches deal Skyrim's own unarmed damage (race, Fortify Unarmed, perks such as Fists of Steel, difficulty) times 2 instead of a quarter of the target's max health, and up to twice that drunk; thrown items scale off the sober punch. The punch reaches 2 m and small creatures (mudcrabs, skeevers) can be hit standing. Thrown items hit twice as hard as that sober punch at full speed, since a throw is hard to aim.
 - Drunk scales to MSC's own slow drunk level (five beers about 0.4, two dozen about 2.5): Skyrim's drunk blur stays off below 1.5 and stays light. Drinks heal less (beer 3%, spirit 8%, food 15%).
 - Fuel is endless: every vehicle's tank is kept full, since Skyrim has no fuel stations yet and MSC's fuel gauge isn't visible there.

@@ -17,9 +17,11 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
-        public void ABedSleepOfItsFullLengthTakesFatigueToZeroAndAddsMscsRate()
+        public void EightHoursInABedTakeAnyFatigueToZeroAndAddMscsRate()
         {
-            var n = Rest.Hours(87, 10, true);  // 87 fatigue sleeps 10 h
+            var n = Rest.Hours(87, 10, true);  // 87 fatigue is MSC's 10 h sleep
+            Assert.That(Rest.Hours(150, 8, true).Fatigue, Is.EqualTo(-150).Within(1e-9));
+            Assert.That(Rest.Hours(87, 5, true).Fatigue, Is.EqualTo(-87).Within(1e-9));  // twice MSC's rate
             Assert.That(n.Fatigue, Is.EqualTo(-87).Within(1e-9));
             Assert.That(n.Hunger, Is.EqualTo(87 / 5.0).Within(1e-9));  // Calc rates: Rate = fatigue / 5
             Assert.That(n.Thirst, Is.EqualTo(n.Hunger));
@@ -27,12 +29,12 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
-        public void EightHoursOfWaitingTakeHalfOfWhatEightHoursInABedDo()
+        public void WaitingRestsAtHalfMscsRateAndABedAtTwice()
         {
-            var bed = Rest.Hours(87, 8, true);
-            var wait = Rest.Hours(87, 8, false);
+            var bed = Rest.Hours(87, 4, true);
+            var wait = Rest.Hours(87, 4, false);
             Assert.That(bed.Fatigue, Is.EqualTo(-87 * 0.8).Within(1e-9));
-            Assert.That(wait.Fatigue, Is.EqualTo(bed.Fatigue / 2).Within(1e-9));
+            Assert.That(wait.Fatigue, Is.EqualTo(bed.Fatigue / 4).Within(1e-9));
             Assert.That(wait.Hunger, Is.EqualTo(bed.Hunger));  // hunger, thirst and urine rise at the sleep rate either way
         }
 

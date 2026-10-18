@@ -5,13 +5,15 @@ namespace PerkeleRim
     // What waiting or sleeping in Skyrim (TimePassed) does to MSC's player: the needs and the clock.
     // The rates are MSC's own, from its bed (docs/FSM_MAP.md, "Sleep"): a bed sleeps 2, 4, 6, 8 or 10
     // hours by how tired the player is, takes the fatigue to 0 and adds Rate = fatigue / 5 to hunger,
-    // thirst and urine over those hours. A Skyrim bed uses the same rate per hour for any length of
-    // sleep; waiting without a bed rests half as fast and hungers the same. Unity-free; hours are
+    // thirst and urine over those hours. A Skyrim bed rests twice as fast as MSC's bed per hour, so 8
+    // hours take any fatigue to 0; waiting without a bed rests at half MSC's rate. Both hunger at
+    // MSC's rate. Unity-free; hours are
     // game hours, clock times minutes since midnight.
     public static class Rest
     {
-        // Fatigue a wait takes off compared with a bed, per hour.
-        public const double WaitShare = 0.5;
+        // Fatigue taken off per hour, as a share of MSC's bed rate.
+        public const double BedSpeed = 2.0;
+        public const double WaitSpeed = 0.5;
 
         // MSC's sleep length by fatigue.
         public static int BedHours(double fatigue)
@@ -38,7 +40,7 @@ namespace PerkeleRim
             var n = new Needs();
             if (fatigue <= 0 || hours <= 0) return n;
             int bedHours = BedHours(fatigue);
-            double drop = fatigue / bedHours * hours * (bed ? 1.0 : WaitShare);
+            double drop = fatigue / bedHours * hours * (bed ? BedSpeed : WaitSpeed);
             n.Fatigue = -Math.Min(drop, fatigue);
             double rise = fatigue / 5.0 / bedHours * hours;
             n.Hunger = n.Thirst = n.Urine = rise;
