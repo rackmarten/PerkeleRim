@@ -6,8 +6,13 @@
     the mod files from files/, adds the starter MSC save from saves/MSC when the player has none,
     starts My Summer Car in a small window that it minimizes once MSC continues its save,
     then starts Skyrim through SKSE.
+
+    -ReportBug ("Report a bug.bat") installs and starts nothing: it zips the PerkeleRim logs,
+    PerkeleRim.ini and a versions.txt to "Bug reports" next to this script (the Windows user name replaced by
+    %USERPROFILE%) and opens the GitHub bug form with the versions filled in. Nothing is sent
+    anywhere; the player attaches the zip. -NoOpen prints the form's address instead of opening it.
 #>
-param([switch] $NoStart)
+param([switch] $NoStart, [switch] $ReportBug, [switch] $NoOpen)
 
 $ErrorActionPreference = 'Stop'
 $Root = $PSScriptRoot
@@ -50,6 +55,7 @@ function Find-Game($name, $folder, $exe, $configured) {
         $path = Join-Path $library "steamapps\common\$folder"
         if (Test-Path (Join-Path $path $exe)) { return (Resolve-Path $path).Path }
     }
+    if ($ReportBug) { return $null }  # a bug report works with what it finds, no folder picker
     Write-Host "$name not found in Steam. Pick its install folder (the one with $exe)."
     Add-Type -AssemblyName System.Windows.Forms
     $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -59,7 +65,125 @@ function Find-Game($name, $folder, $exe, $configured) {
     return $dialog.SelectedPath
 }
 
+# MSCLoader's installer picks where mods go: GF game folder, MD Documents, AD AppData.
+function Get-ModsDir($msc) {
+    $doorstop = Join-Path $msc 'doorstop_config.ini'
+    $setting = if (Test-Path $doorstop) { (Select-String -Path $doorstop -Pattern '^\s*mods\s*=\s*(\w+)' | Select-Object -First 1).Matches.Groups[1].Value }
+    switch ($setting) {
+        'MD' { Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'MySummerCar\Mods' }
+        'AD' { Join-Path $env:USERPROFILE 'AppData\LocalLow\MSCLoader\Mods' }
+        default { Join-Path $msc 'Mods' }
+    }
+}
+
+# --- Bug report (-ReportBug) -------------------------------------------------------------------
+
+$IssueUrl = 'https://github.com/rackmarten/PerkeleRim/issues/new'
+
+# Copies a file with the Windows user name taken out of any path in it. Read as Latin-1 so the
+# bytes of any encoding survive the round trip; the profile folder is matched as its UTF-8 bytes.
+function Copy-Scrubbed($source, $dest) {
+    $latin1 = [Text.Encoding]::GetEncoding(28591)
+    $text = $latin1.GetString([IO.File]::ReadAllBytes($source))
+    $profileText = $latin1.GetString([Text.Encoding]::UTF8.GetBytes($env:USERPROFILE))
+    $profilePattern = ($profileText -split '[\\/]+' | Where-Object { $_ } | ForEach-Object { [regex]::Escape($_) }) -join '[\\/]+'
+    $text = [regex]::Replace($text, "(?i)$profilePattern", '%USERPROFILE%')
+    $text = [regex]::Replace($text, '(?i)[A-Z]:[\\/]+Users[\\/]+[^\\/\r\n"''<>|:*?]+', '%USERPROFILE%')
+    [IO.File]::WriteAllBytes($dest, $latin1.GetBytes($text))
+}
+
+function Version-Of($path, $field) {
+    if ($path -and (Test-Path $path)) { (Get-Item $path).VersionInfo.$field }
+}
+
+function Send-BugReport($config) {
+    $skyrim = Find-Game 'Skyrim Special Edition' 'Skyrim Special Edition' 'SkyrimSE.exe' $config['SkyrimPath']
+    $msc = Find-Game 'My Summer Car' 'My Summer Car' 'mysummercar.exe' $config['MscPath']
+    $skseDir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\Skyrim Special Edition\SKSE'
+    $modDll = if ($msc) { Join-Path (Get-ModsDir $msc) 'PerkeleRim.dll' }
+    $skyrimDll = if ($skyrim) { Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.dll' }
+
+    $skyrimVersion = if ($skyrim) { Version-Of (Join-Path $skyrim 'SkyrimSE.exe') 'FileVersion' }
+    $skseVersion = if ($skyrim) { (Version-Of (Join-Path $skyrim 'skse64_loader.exe') 'FileVersion') -replace ',\s*', '.' }
+    $loaderVersion = if ($msc) { Version-Of (Join-Path $msc 'mysummercar_Data\Managed\MSCLoader.dll') 'FileVersion' }
+    $modVersion = (Version-Of $modDll 'ProductVersion') -replace '\+(\w{7})\w*$', '+$1'
+    $build = $null
+    if ($msc) {
+        $manifest = Join-Path (Split-Path (Split-Path $msc)) 'appmanifest_516750.acf'
+        if (Test-Path $manifest) { $build = [regex]::Match((Get-Content -Raw $manifest), '"buildid"\s+"(\d+)"').Groups[1].Value }
+    }
+    $nt = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+    $windows = "Windows $(if ([int] $nt.CurrentBuildNumber -ge 22000) { 11 } else { 10 }) $($nt.DisplayVersion), build $($nt.CurrentBuildNumber).$($nt.UBR)"
+
+    $stage = Join-Path ([IO.Path]::GetTempPath()) "PerkeleRim-bug-$([guid]::NewGuid().ToString('N'))"
+    $raw = Join-Path $stage 'raw'
+    $report = Join-Path $stage 'report'
+    New-Item -ItemType Directory -Force $raw, $report | Out-Null
+    try {
+        $wanted = @(
+            @{ Name = 'PerkeleRim-skse.log'; Source = Join-Path $skseDir 'PerkeleRim.log' },
+            @{ Name = 'PerkeleRim-msc.log'; Source = if ($msc) { Join-Path $msc 'PerkeleRim_spike.log' } },
+            @{ Name = 'output_log.txt'; Source = if ($msc) { Join-Path $msc 'output_log.txt' } },
+            @{ Name = 'PerkeleRim.ini'; Source = if ($skyrim) { Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.ini' } })
+        $included = @()
+        $absent = @()
+        foreach ($file in $wanted) {
+            if ($file.Source -and (Test-Path $file.Source)) {
+                Copy-Item $file.Source (Join-Path $raw $file.Name)
+                $included += $file.Name
+            } else {
+                $where = if ($file.Source) { "looked for $($file.Source)" } else { 'its game folder was not found' }
+                $absent += "$($file.Name) ($where)"
+            }
+        }
+        function Or-Unknown($value) { if ($value) { $value } else { 'not found' } }
+        function Written($path) { if ($path -and (Test-Path $path)) { (Get-Item $path).LastWriteTime.ToString('s') } else { 'not found' } }
+        $included += 'versions.txt'
+        $versions = @(
+            "SkyrimSE.exe:   $(Or-Unknown $skyrimVersion)",
+            "SKSE:           $(Or-Unknown $skseVersion)",
+            "MSCLoader:      $(Or-Unknown $loaderVersion)",
+            "My Summer Car:  Steam build $(Or-Unknown $build)",
+            "PerkeleRim:     $(Or-Unknown $modVersion)",
+            "Windows:        $windows",
+            '',
+            "PerkeleRim.dll in Skyrim last written: $(Written $skyrimDll)",
+            "PerkeleRim.dll in MSC last written:    $(Written $modDll)",
+            '',
+            'Files in this zip:') + @($included | ForEach-Object { " - $_" }) + @('', 'Missing:') +
+            $(if ($absent) { @($absent | ForEach-Object { " - $_" }) } else { ' (nothing)' })
+        Set-Content -Path (Join-Path $raw 'versions.txt') -Encoding utf8 -Value $versions
+
+        foreach ($name in $included) { Copy-Scrubbed (Join-Path $raw $name) (Join-Path $report $name) }
+
+        $reports = Join-Path $Root 'Bug reports'
+        New-Item -ItemType Directory -Force $reports | Out-Null
+        $zip = Join-Path $reports "PerkeleRim-bug-$(Get-Date -Format 'yyyy-MM-dd').zip"
+        if (Test-Path $zip) { $zip = Join-Path $reports "PerkeleRim-bug-$(Get-Date -Format 'yyyy-MM-dd_HHmmss').zip" }
+        Compress-Archive -Path (Join-Path $report '*') -DestinationPath $zip
+    } finally {
+        Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
+    }
+
+    # Only versions go in the address: nothing about the player or the machine.
+    $msVersions = if ($build -or $loaderVersion) { "Steam build $build, MSCLoader $loaderVersion" }
+    $fields = [ordered] @{ template = 'bug_report.yml'; mod = $modVersion; skyrim = $skyrimVersion; msc = $msVersions }
+    $query = ($fields.GetEnumerator() | Where-Object { $_.Value } | ForEach-Object { "$($_.Key)=$([uri]::EscapeDataString($_.Value))" }) -join '&'
+    $url = "${IssueUrl}?$query"
+
+    Write-Host ''
+    Write-Host "Saved $zip" -ForegroundColor Green
+    if ($absent) { Write-Host "Not found (listed in versions.txt): $(($absent | ForEach-Object { ($_ -split ' ')[0] }) -join ', ')" -ForegroundColor Yellow }
+    Write-Host 'Nothing is sent anywhere. The zip holds your PerkeleRim logs, PerkeleRim.ini and the game versions.'
+    Write-Host ''
+    if ($NoOpen) { Write-Host "Bug form: $url"; return }
+    Write-Host 'Opening the bug form. Tell us what happened, then drag the zip (shown in a folder window) into the form.'
+    Start-Process $url
+    Start-Process explorer.exe "/select,`"$zip`""
+}
+
 $config = Read-Config
+if ($ReportBug) { Send-BugReport $config; exit 0 }
 $skyrim = Find-Game 'Skyrim Special Edition' 'Skyrim Special Edition' 'SkyrimSE.exe' $config['SkyrimPath']
 $msc = Find-Game 'My Summer Car' 'My Summer Car' 'mysummercar.exe' $config['MscPath']
 if ($skyrim -ne $config['SkyrimPath'] -or $msc -ne $config['MscPath']) {
@@ -90,13 +214,7 @@ if (-not (Test-Path $doorstop) -or -not (Test-Path (Join-Path $msc 'mysummercar_
 }
 if ($missing) { Fail (@('Missing:') + ($missing | ForEach-Object { " - $_" }) + '', 'Install them and run the launcher again.') }
 
-# MSCLoader's installer picks where mods go: GF game folder, MD Documents, AD AppData.
-$modsSetting = (Select-String -Path $doorstop -Pattern '^\s*mods\s*=\s*(\w+)' | Select-Object -First 1).Matches.Groups[1].Value
-$mods = switch ($modsSetting) {
-    'MD' { Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'MySummerCar\Mods' }
-    'AD' { Join-Path $env:USERPROFILE 'AppData\LocalLow\MSCLoader\Mods' }
-    default { Join-Path $msc 'Mods' }
-}
+$mods = Get-ModsDir $msc
 
 $skyrimRunning = Get-Process SkyrimSE, skse64_loader -ErrorAction SilentlyContinue
 $mscRunning = Get-Process mysummercar -ErrorAction SilentlyContinue

@@ -19,10 +19,17 @@ body:
         3. ...
     validations:
       required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Bug report zip
+      description: |
+        Run **Report a bug.bat** (next to Start PerkeleRim.bat) and drag the PerkeleRim-bug-<date>.zip it puts in the Bug reports folder next to the launcher into this box. It holds your PerkeleRim logs, PerkeleRim.ini and the game versions, with your Windows user name taken out. Nothing is sent anywhere until you submit this form.
   - type: input
     id: skyrim
     attributes:
       label: Skyrim runtime version
+      description: Filled in by Report a bug.bat.
       placeholder: e.g. 1.6.1170
     validations:
       required: true
@@ -30,20 +37,16 @@ body:
     id: msc
     attributes:
       label: My Summer Car and MSCLoader versions
+      description: Filled in by Report a bug.bat.
     validations:
       required: true
   - type: input
     id: mod
     attributes:
       label: PerkeleRim version or commit
+      description: Filled in by Report a bug.bat.
     validations:
       required: true
-  - type: textarea
-    id: logs
-    attributes:
-      label: Logs
-      description: SKSE log (Documents/My Games/Skyrim Special Edition/SKSE) and the MSCLoader output log.
-      render: text
   - type: textarea
     id: mods
     attributes:

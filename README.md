@@ -65,6 +65,10 @@ Then:
 
 To build from source, see [docs/DEV_SETUP.md](docs/DEV_SETUP.md); `scripts/package.ps1` builds the release zip.
 
+## Reporting bugs
+
+Double-click **Report a bug.bat** (next to Start PerkeleRim.bat). It puts `PerkeleRim-bug-<date>.zip` in the `Bug reports` folder next to the launcher, with your PerkeleRim logs from both games, `PerkeleRim.ini` and the game versions (your Windows user name is replaced by `%USERPROFILE%`), then opens the bug form on GitHub with the versions filled in. Say what happened and drag the zip into the form. Nothing is sent anywhere until you submit it, and PerkeleRim has no telemetry of any kind.
+
 ## Known issues
 
 - Followers get in the way and are easy to run over.
