@@ -476,3 +476,26 @@ TEST_CASE("a foreign section is rejected")
     CHECK(skyrim.GetState() == Link::State::Disabled);
     CHECK(log.Has("not a PerkeleRim link"));
 }
+
+TEST_CASE("a thrown item's way travels from MSC to Skyrim")
+{
+    Pair p;
+    p.Tick(3);
+    REQUIRE(p.msc->IsUp());
+
+    const ThrownPath path{ 7, 14.5f, { 1000.0f, -2000.0f, 512.0f }, { 1010.0f, -1990.0f, 509.0f } };
+    REQUIRE(p.msc->Send(MessageType::ThrownPath, &path, sizeof(path)));
+    int count = 0;
+    p.skyrim->Receive([&](MessageType a_type, const std::uint8_t* a_data, std::uint32_t a_size) {
+        CHECK(a_type == MessageType::ThrownPath);
+        REQUIRE(a_size == sizeof(ThrownPath));
+        ThrownPath got{};
+        std::memcpy(&got, a_data, sizeof(got));
+        CHECK(got.flight == 7u);
+        CHECK(got.speed == 14.5f);
+        CHECK(got.from[1] == -2000.0f);
+        CHECK(got.to[2] == 509.0f);
+        count++;
+    });
+    CHECK(count == 1);
+}

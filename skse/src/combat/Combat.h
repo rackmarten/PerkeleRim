@@ -29,8 +29,13 @@ namespace PerkeleRim::Combat
 
     // MSC's player swung (left click or H while MSC has it): a destructible within reach in front
     // takes a hit, a spider web enough to cut it (Arvel's in Bleak Falls Barrow has to be), an oil pot
-    // or barricade a punch's worth. MSC's punch only lands on actors.
+    // or barricade a punch's worth. MSC's punch only lands on actors. Oil puddles on the floor are
+    // left alone (a hit lights them under the player's feet).
     void OnSwing(RE::PlayerCharacter* a_player);
+
+    // A ThrownPath message: a destructible whose bounds the thrown item's way passed through takes a
+    // hit by the item's speed (Damage::ThrownObject), once per throw; a web is cut.
+    void OnThrown(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
 
     // A HornEvent message: the actors in the driven vehicle's way (Damage::InHornPath, all but huge
     // ones) dive aside out of its lane as ragdolls (Damage::HornDodge).

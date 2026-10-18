@@ -642,6 +642,10 @@ namespace PerkeleRim::PlayerSync
                     Combat::OnImpact(a_player, a_data, a_size);
                     return;
                 }
+                if (a_type == Protocol::MessageType::ThrownPath) {
+                    Combat::OnThrown(a_player, a_data, a_size);
+                    return;
+                }
                 if (a_type == Protocol::MessageType::HornEvent) {
                     Combat::OnHorn(a_player, a_data, a_size);
                     return;

@@ -28,6 +28,10 @@ namespace PerkeleRim
             return n.Contains("bottle") || n.StartsWith("booze") || n.StartsWith("spirit");
         }
 
+        // The speed a flight's way since the last frame goes to Skyrim with (ThrownPath): a hit on
+        // the island (a wall, a barricade) has slowed it by now, so the frame before counts too.
+        public static float PathSpeed(float now, float lastFrame) => Math.Max(now, lastFrame);
+
         // The body something of radius radius passes through moving from from to to: the first along
         // the way, -1 for none. A point (from == to) works too.
         public static int Sweep(Vec3 from, Vec3 to, float radius, IList<ActorBody> bodies)

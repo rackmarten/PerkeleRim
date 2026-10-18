@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 35;
+    inline constexpr std::uint32_t kProtocolVersion = 36;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -404,6 +404,7 @@ namespace PerkeleRim::Protocol
         StockShelves = 19,     // Skyrim -> MSC
         HornEvent = 20,        // MSC -> Skyrim
         ScreenshotEvent = 21,  // Skyrim -> MSC
+        ThrownPath = 22,       // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -522,6 +523,19 @@ namespace PerkeleRim::Protocol
         std::uint32_t kind;          // kImpact*
         float         speed;         // meters per second (kImpactThrown, kImpactVehicle)
         float         direction[3];  // the way it moved, unit vector in Skyrim space
+    };
+
+    // ThrownPath (v36): where an item MSC's player threw moved since the last frame, sent every frame
+    // of its flight while it moves at Damage::kThrownSpeedMin or faster. Skyrim's destructibles
+    // (hanging oil pots, spider webs, barricades) are not actors and mostly not on the collision
+    // island, so MSC can't see them: Skyrim damages those the path passes through, each once per
+    // flight. The segment that ends where the item hit something keeps the speed it had before.
+    struct ThrownPath
+    {
+        std::uint32_t flight;   // counts up per thrown item, so a destructible is hit once per throw
+        float         speed;    // meters per second
+        float         from[3];  // Skyrim world units
+        float         to[3];
     };
 
     // HornEvent (v31): the player honked the vehicle it drives (H), sent on the press and again every
@@ -865,6 +879,10 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(MscSnapshot, length) == 8);
     static_assert(sizeof(PunchEvent) == 16);
     static_assert(offsetof(PunchEvent, direction) == 4);
+    static_assert(sizeof(ThrownPath) == 32);
+    static_assert(offsetof(ThrownPath, speed) == 4);
+    static_assert(offsetof(ThrownPath, from) == 8);
+    static_assert(offsetof(ThrownPath, to) == 20);
     static_assert(sizeof(HornEvent) == 16);
     static_assert(offsetof(HornEvent, speed) == 12);
     static_assert(sizeof(ScreenshotEvent) == 8);

@@ -76,16 +76,52 @@ namespace PerkeleRim::Damage
     // Recast once the drunk level moves this much from what the bonuses were cast for.
     inline constexpr float kDrunkBuffStep = 0.1f;  // drunk levels
 
-    // A thrown item hits by its speed: nothing at kThrownSpeedMin, a sober punch from kThrownSpeedFull
+    // A thrown item hits by its speed: nothing at kThrownSpeedMin, twice a sober punch from kThrownSpeedFull
     // on. MSC's own throw lands in between; a bottle, thrown twice as fast (msc/src/Link/Throwing.cs),
-    // hits like a punch from range. a_punch: the player's sober Punch.
+    // hits like two punches from range. a_punch: the player's sober Punch.
     inline constexpr float kThrownSpeedMin = 2.0f;    // meters per second
     inline constexpr float kThrownSpeedFull = 15.0f;
+
+    inline constexpr float kThrownShare = 2.0f;  // of the punch at full speed: aiming a throw is hard enough
 
     inline float Thrown(float a_punch, float a_speed)
     {
         const float scale = (std::clamp)((a_speed - kThrownSpeedMin) / (kThrownSpeedFull - kThrownSpeedMin), 0.0f, 1.0f);
-        return (std::max)(0.0f, a_punch) * scale;
+        return (std::max)(0.0f, a_punch) * kThrownShare * scale;
+    }
+
+    // Skyrim's destructibles (Combat::OnSwing, Combat::OnThrown): a spider web takes more than any
+    // web's health, so one hit cuts it; others (oil pots, barricades) a punch's worth, from a thrown
+    // item by its speed like Thrown.
+    inline constexpr float kWebDamage = 1000.0f;
+    inline constexpr float kObjectDamage = 50.0f;
+
+    inline float ThrownObject(bool a_web, float a_speed)
+    {
+        if (a_speed < kThrownSpeedMin) {
+            return 0.0f;
+        }
+        return a_web ? kWebDamage : (std::max)(1.0f, Thrown(kObjectDamage, a_speed));
+    }
+
+    // Distance from a_point to the segment a_from..a_to (any units).
+    inline float SegmentDistance(const float a_from[3], const float a_to[3], const float a_point[3])
+    {
+        float way[3], to[3];
+        float length2 = 0.0f, along = 0.0f;
+        for (int i = 0; i < 3; i++) {
+            way[i] = a_to[i] - a_from[i];
+            to[i] = a_point[i] - a_from[i];
+            length2 += way[i] * way[i];
+            along += way[i] * to[i];
+        }
+        const float t = length2 > 1e-12f ? (std::clamp)(along / length2, 0.0f, 1.0f) : 0.0f;
+        float d2 = 0.0f;
+        for (int i = 0; i < 3; i++) {
+            const float d = to[i] - way[i] * t;
+            d2 += d * d;
+        }
+        return std::sqrt(d2);
     }
 
     // Shares of max health below (running over, piss) leave dragons this fraction.

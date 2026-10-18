@@ -43,6 +43,8 @@ namespace PerkeleRim.Game
             public float Since;
             public bool Boosted;  // its throw speed seen (and doubled for a bottle)
             public Vector3 Last;
+            public float LastSpeed;  // last frame's, from before a hit that slows it
+            public uint Id;
         }
 
         readonly Action<string> log;
@@ -50,6 +52,7 @@ namespace PerkeleRim.Game
         readonly List<Rigidbody> held = new List<Rigidbody>();
         readonly List<Flight> flights = new List<Flight>();
         float throwButtonAt = -10f;
+        uint flightCount;
         Transform fluid;
         bool fluidLooked, particlesLogged;
         ParticleSystem.Particle[] drops = new ParticleSystem.Particle[256];
@@ -200,8 +203,21 @@ namespace PerkeleRim.Game
             return link.Send(MessageType.ImpactEvent, payload, payload.Length);
         }
 
+        // A flight's way since the last frame, for Skyrim's destructibles (ThrownPath).
+        void SendPath(Link link, Flight f, Vector3 at, float speed)
+        {
+            var from = island.IslandToSkyrim(new Vec3(f.Last.x, f.Last.y, f.Last.z));
+            var to = island.IslandToSkyrim(new Vec3(at.x, at.y, at.z));
+            var path = new ThrownPath { flight = f.Id, speed = speed };
+            path.from[0] = from.x; path.from[1] = from.y; path.from[2] = from.z;
+            path.to[0] = to.x; path.to[1] = to.y; path.to[2] = to.z;
+            var payload = new byte[sizeof(ThrownPath)];
+            fixed (byte* p = payload) *(ThrownPath*)p = path;
+            link.Send(MessageType.ThrownPath, payload, payload.Length);
+        }
+
         // Items leaving the hand right after the throw button become flights; each flight is swept
-        // against the capsules from where it was last frame.
+        // against the capsules from where it was last frame, and its way goes to Skyrim (SendPath).
         void Throws(Link link, Transform player, bool driving)
         {
             if (InputShim.GetMouseButton(1)) throwButtonAt = Time.time;
@@ -209,7 +225,7 @@ namespace PerkeleRim.Game
             {
                 if (body == null || body.transform.IsChildOf(player)) continue;
                 if (Time.time - throwButtonAt > Throwing.ThrowWindow) continue;  // dropped, not thrown
-                flights.Add(new Flight { Body = body, Since = Time.time, Boosted = !Throwing.IsBottle(body.name), Last = body.position });
+                flights.Add(new Flight { Body = body, Since = Time.time, Boosted = !Throwing.IsBottle(body.name), Last = body.position, Id = ++flightCount });
                 // Small and fast, it would pass through the island's thin ground between physics steps.
                 body.collisionDetectionMode = CollisionDetectionMode.Continuous;
                 log($"actors: {body.name} thrown");
@@ -241,7 +257,10 @@ namespace PerkeleRim.Game
                 int hit = v.magnitude >= Throwing.SpeedMin
                     ? Throwing.Sweep(new Vec3(f.Last.x, f.Last.y, f.Last.z), new Vec3(at.x, at.y, at.z), Throwing.ItemRadius, now)
                     : -1;
+                float pathSpeed = Throwing.PathSpeed(v.magnitude, f.LastSpeed);
+                if (pathSpeed >= Throwing.SpeedMin) SendPath(link, f, at, pathSpeed);
                 f.Last = at;
+                f.LastSpeed = v.magnitude;
                 if (hit < 0) continue;
                 bool sent = SendImpact(link, now[hit].Id, Wire.ImpactThrown, v.magnitude, v);
                 f.Body.velocity = -v * Throwing.Bounce;  // capsules don't collide with items: bounce it off by hand

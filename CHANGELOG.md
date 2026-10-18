@@ -71,10 +71,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Pushing (protocol v33, `kImpactPush`): with MSC's push stance up (J or G), walking into someone shoves them aside with Skyrim's stagger stumble, again every 0.8 s while in touch: no damage, no bounty, no fight.
 - Vehicle lights light up Skyrim at night (protocol v35, `ModelLight`, `VehicleParts.lights`): MSC sends each vehicle's real lights with the model (role, color, place, direction) and which are on every frame; Skyrim hangs a shadow-casting spotlight (low or high beam) and red tail/brake, white reverse and warm cabin point lights under the vehicle, switched with MSC's own lights. The van's cabin light works too. At most 1 shadow light and 3 point lights per vehicle (Skyrim draws 4 shadow lights at once). Spike commands `carlights` and `lightson`. Beam direction and brightness are first guesses, tune them in game.
 - Finn fights with his fists: weapons, spells and scrolls are unequipped while MSC has the player, with a short notification.
+- Thrown items break Skyrim's destructibles (protocol v36, `ThrownPath`): MSC sends every thrown item's way while it flies, and Skyrim damages the destructibles it passes through, once per throw: a bottle drops a hanging oil pot, cuts a spider web or knocks a barricade.
 
 ### Changed
 
-- Punches deal Skyrim's own unarmed damage (race, Fortify Unarmed, perks such as Fists of Steel, difficulty) times 2 instead of a quarter of the target's max health, and up to twice that drunk; thrown items scale off the sober punch. The punch reaches 2 m and small creatures (mudcrabs, skeevers) can be hit standing.
+- Punches deal Skyrim's own unarmed damage (race, Fortify Unarmed, perks such as Fists of Steel, difficulty) times 2 instead of a quarter of the target's max health, and up to twice that drunk; thrown items scale off the sober punch. The punch reaches 2 m and small creatures (mudcrabs, skeevers) can be hit standing. Thrown items hit twice as hard as that sober punch at full speed, since a throw is hard to aim.
 - Drunk scales to MSC's own slow drunk level (five beers about 0.4, two dozen about 2.5): Skyrim's drunk blur stays off below 1.5 and stays light. Drinks heal less (beer 3%, spirit 8%, food 15%).
 - Fuel is endless: every vehicle's tank is kept full, since Skyrim has no fuel stations yet and MSC's fuel gauge isn't visible there.
 - Vehicles plow through people and animals alike, bears, elk and cows too: only huge actors (2000 kg or more by their bounds: mammoths, every dragon) stop them. Heavy animals are now thrown like people. While the player drives, the light capsules are off entirely, so a person can never stop the van.
@@ -92,6 +93,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A punch near an oil puddle no longer sets it alight under the player: destructibles lying flat on the floor are left out of punches and throws.
 - Vehicles no longer die on roads far below where the player was put down: the collision island's origin moved from 100 m to 1000 m up, since MSC treats anything below about -5 m as under water and its AirIntake check flooded the van's engine there.
 - The moped's suspension travel is 1.6 times MSC's instead of twice, and its front fork is softer than the rear (0.75 times the spring rate).
 - The ridden moped balances on the ground: its roll is eased toward the lean the turn asks for (upright going straight), so it no longer always falls onto its side; past 70° it is left to fall. Its center of mass sits 15 cm below where MSC puts it, so bumps no longer pitch it over the front wheel. The balance is strong enough to beat gravity, its pitch is damped on the ground, and the last 40% of each wheel's travel pushes back progressively instead of hitting UnityCar's bump stop, which kicked it up at every bump.

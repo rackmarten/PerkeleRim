@@ -51,14 +51,14 @@ TEST_CASE("drunk makes the player tougher, up to MSC's drunk 3")
     CHECK(Damage::Drunk(-1.0f).armor == 0.0f);
 }
 
-TEST_CASE("a thrown item hits by its speed, up to a sober punch")
+TEST_CASE("a thrown item hits by its speed, up to two sober punches")
 {
     const float punch = Damage::Punch(4.0f);
     CHECK(Damage::Thrown(punch, 1.0f) == 0.0f);
     CHECK(Damage::Thrown(punch, 2.0f) == 0.0f);
-    CHECK(Damage::Thrown(punch, 8.5f) == doctest::Approx(punch * 0.5f));
-    CHECK(Damage::Thrown(punch, 15.0f) == doctest::Approx(punch));
-    CHECK(Damage::Thrown(punch, 40.0f) == doctest::Approx(punch));
+    CHECK(Damage::Thrown(punch, 8.5f) == doctest::Approx(punch));
+    CHECK(Damage::Thrown(punch, 15.0f) == doctest::Approx(punch * 2.0f));
+    CHECK(Damage::Thrown(punch, 40.0f) == doctest::Approx(punch * 2.0f));
     CHECK(Damage::Thrown(-5.0f, 15.0f) == 0.0f);
 }
 
@@ -191,4 +191,26 @@ TEST_CASE("a fall is measured from the highest point while airborne to the landi
     CHECK(fall.Update(5000.0f, false) == 0.0f);
     fall.Reset();
     CHECK(fall.Update(0.0f, true) == 0.0f);
+}
+
+TEST_CASE("a thrown item cuts a web and breaks other destructibles by its speed")
+{
+    CHECK(Damage::ThrownObject(true, 1.9f) == 0.0f);
+    CHECK(Damage::ThrownObject(false, 1.9f) == 0.0f);
+    CHECK(Damage::ThrownObject(true, 2.0f) == Damage::kWebDamage);
+    CHECK(Damage::ThrownObject(false, 2.0f) == 1.0f);  // still a knock
+    CHECK(Damage::ThrownObject(false, 15.0f) == doctest::Approx(Damage::kObjectDamage * Damage::kThrownShare));
+}
+
+TEST_CASE("a thrown item's way passes a destructible or not")
+{
+    const float from[3] = { 0.0f, 0.0f, 100.0f };
+    const float to[3] = { 0.0f, 50.0f, 100.0f };
+    const float beside[3] = { 10.0f, 25.0f, 100.0f };
+    const float before[3] = { 0.0f, -20.0f, 100.0f };
+    const float after[3] = { 0.0f, 80.0f, 130.0f };
+    CHECK(Damage::SegmentDistance(from, to, beside) == doctest::Approx(10.0f));
+    CHECK(Damage::SegmentDistance(from, to, before) == doctest::Approx(20.0f));
+    CHECK(Damage::SegmentDistance(from, to, after) == doctest::Approx(std::sqrt(30.0f * 30.0f * 2.0f)));
+    CHECK(Damage::SegmentDistance(from, from, beside) == doctest::Approx(std::sqrt(10.0f * 10.0f + 25.0f * 25.0f)));  // no way at all
 }

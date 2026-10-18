@@ -7,6 +7,8 @@
 #include "player/PlayerSync.h"
 #include "shout.h"
 
+#include <cstring>
+#include <optional>
 #include <unordered_set>
 
 namespace PerkeleRim::Combat
@@ -28,8 +30,10 @@ namespace PerkeleRim::Combat
         constexpr float         kListUnits = 2800.0f;   // actors within 40 m go to MSC
         constexpr float         kPunchMaxUnits = 400.0f;  // a punch further than this away is stale
         constexpr float         kSwingReach = 200.0f;        // units from the player a swing reaches a web or other destructible
-        constexpr float         kWebDamage = 1000.0f;      // more than any web's health: one swing cuts it
-        constexpr float         kObjectDamage = 50.0f;     // other destructibles (oil pots, barricades): a few punches at most
+        constexpr float         kFlatUnits = 16.0f;          // a destructible under this tall lies on the floor (an oil puddle)
+        constexpr float         kFlightScanUnits = 8000.0f;  // destructibles within about 110 m can be hit by a thrown item
+        constexpr float         kItemUnits = 7.0f;           // a thrown item's radius, about 0.1 m
+        constexpr float         kObjectRadius = 30.0f;       // a destructible's reach with no 3D loaded to measure
         constexpr float         kWatchUnits = 1000.0f;  // attackers the per-second log follows
         constexpr int           kThrowWaitFrames = 30;  // frames a run-over actor gets to go ragdoll
         constexpr int           kThrowFrames = 3;       // frames its ragdoll is thrown for (the first settle eats one)
@@ -313,6 +317,59 @@ namespace PerkeleRim::Combat
                 return RE::BSEventNotifyControl::kContinue;
             }
         };
+
+        // A destructible a swing or a thrown item can hit: its base has destruction data, it isn't an
+        // actor and it's there. An oil puddle lies flat on the floor (its bounds are under kFlatUnits
+        // tall): a hit sets it alight under the player's feet, so it is left alone. Webs are flat too,
+        // but upright, and are always kept.
+        struct Destructible
+        {
+            bool        web;
+            const char* model;
+        };
+
+        std::optional<Destructible> AsDestructible(RE::TESObjectREFR* a_ref)
+        {
+            auto* base = a_ref ? a_ref->GetBaseObject() : nullptr;
+            auto* model = base ? base->As<RE::TESModel>() : nullptr;
+            auto* destructible = base ? base->As<RE::BGSDestructibleObjectForm>() : nullptr;
+            if (!model || !model->GetModel() || !destructible || !destructible->data || a_ref->IsDisabled() || a_ref->As<RE::Actor>()) {
+                return std::nullopt;
+            }
+            std::string path = model->GetModel();
+            std::ranges::transform(path, path.begin(), [](unsigned char a_c) { return static_cast<char>(std::tolower(a_c)); });
+            const bool web = path.find("web") != std::string::npos;
+            if (!web && a_ref->GetBoundMax().z - a_ref->GetBoundMin().z < kFlatUnits) {
+                return std::nullopt;
+            }
+            return Destructible{ web, model->GetModel() };
+        }
+
+        // DamageObject is Papyrus', and runs the object's own script (Arvel's web frees him, an oil pot
+        // drops). A web with no script bound can't take the call, so it is just taken away; anything
+        // else without one stays as it is. Returns what happened, for the log.
+        const char* DamageDestructible(RE::TESObjectREFR* a_ref, const Destructible& a_what, float a_damage)
+        {
+            auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+            auto* policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
+            const auto handle = policy ? policy->GetHandleForObject(RE::FormType::Reference, a_ref) : RE::VMHandle{};
+            RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback;
+            const bool scripted = vm && policy && handle != policy->EmptyHandle() &&
+                                  vm->DispatchMethodCall(handle, "ObjectReference", "DamageObject", RE::MakeFunctionArguments(static_cast<float>(a_damage)), callback);
+            if (!scripted && a_what.web) {
+                a_ref->Disable();
+            }
+            return scripted ? "damaged" : a_what.web ? "taken away (no script to damage)" : "no script to damage it";
+        }
+
+        // Thrown items' flights (ThrownPath): the destructibles near the player when the newest flight
+        // started, and which of them each flight already hit.
+        struct Flights
+        {
+            std::uint32_t                   scanned = 0;  // the flight candidates were gathered for
+            std::vector<RE::FormID>         candidates;
+            std::unordered_set<std::uint64_t> hit;        // flight << 32 | form id
+        } flights;
     }
 
     void OnDataLoaded()
@@ -427,15 +484,10 @@ namespace PerkeleRim::Combat
         const float        heading = a_player->GetAngleZ();
         const RE::NiPoint3 forward(std::sin(heading), std::cos(heading), 0.0f);
         tes->ForEachReferenceInRange(a_player, kSwingReach, [&](RE::TESObjectREFR* a_ref) {
-            auto* base = a_ref ? a_ref->GetBaseObject() : nullptr;
-            auto* model = base ? base->As<RE::TESModel>() : nullptr;
-            auto* destructible = base ? base->As<RE::BGSDestructibleObjectForm>() : nullptr;
-            if (!model || !model->GetModel() || !destructible || !destructible->data || a_ref->IsDisabled() || a_ref->As<RE::Actor>()) {
+            const auto what = AsDestructible(a_ref);
+            if (!what) {
                 return RE::BSContainer::ForEachResult::kContinue;
             }
-            std::string path = model->GetModel();
-            std::ranges::transform(path, path.begin(), [](unsigned char a_c) { return static_cast<char>(std::tolower(a_c)); });
-            const bool web = path.find("web") != std::string::npos;
             // In front (within 60 degrees) and about at the player's height; a web's origin is its middle.
             auto       to = a_ref->GetPosition() - pos;
             const float dz = to.z;
@@ -444,22 +496,56 @@ namespace PerkeleRim::Combat
             if (std::abs(dz) > kSwingReach || (flat > 1.0f && forward.Dot(to / flat) < 0.5f)) {
                 return RE::BSContainer::ForEachResult::kContinue;
             }
-            // DamageObject is Papyrus', and runs the object's own script (Arvel's web frees him, an oil pot
-            // drops). A web with no script bound can't take the call, so it is just taken away; anything
-            // else without one stays as it is.
-            auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
-            auto* policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
-            const auto handle = policy ? policy->GetHandleForObject(RE::FormType::Reference, a_ref) : RE::VMHandle{};
-            RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback;
-            const bool scripted = vm && policy && handle != policy->EmptyHandle() &&
-                                  vm->DispatchMethodCall(handle, "ObjectReference", "DamageObject", RE::MakeFunctionArguments(static_cast<float>(web ? kWebDamage : kObjectDamage)), callback);
-            if (!scripted && web) {
-                a_ref->Disable();
-            }
-            SKSE::log::info("combat: the player hit {} {:08X} ({}), {}", web ? "the web" : "a destructible", a_ref->GetFormID(), model->GetModel(),
-                scripted ? "damaged" : web ? "taken away (no script to damage)" : "no script to damage it");
+            const char* result = DamageDestructible(a_ref, *what, what->web ? Damage::kWebDamage : Damage::kObjectDamage);
+            SKSE::log::info("combat: the player hit {} {:08X} ({}), {}", what->web ? "the web" : "a destructible", a_ref->GetFormID(), what->model, result);
             return RE::BSContainer::ForEachResult::kContinue;
         });
+    }
+
+    void OnThrown(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
+    {
+        auto* tes = RE::TES::GetSingleton();
+        if (!a_player || !tes || a_size < sizeof(Protocol::ThrownPath)) {
+            return;
+        }
+        Protocol::ThrownPath path;
+        std::memcpy(&path, a_data, sizeof(path));
+        if (path.flight > flights.scanned || flights.scanned - path.flight > 1000) {  // a new flight (or MSC restarted)
+            flights.scanned = path.flight;
+            flights.candidates.clear();
+            tes->ForEachReferenceInRange(a_player, kFlightScanUnits, [&](RE::TESObjectREFR* a_ref) {
+                if (AsDestructible(a_ref)) {
+                    flights.candidates.push_back(a_ref->GetFormID());
+                }
+                return RE::BSContainer::ForEachResult::kContinue;
+            });
+            if (flights.hit.size() > 256) {
+                flights.hit.clear();
+            }
+        }
+        for (const auto id : flights.candidates) {
+            auto* ref = RE::TESForm::LookupByID<RE::TESObjectREFR>(id);
+            const auto what = AsDestructible(ref);
+            if (!what) {
+                continue;
+            }
+            // Its 3D's bounding sphere, or a small one around its origin while it has no 3D.
+            auto*        root = ref->Get3D();
+            RE::NiPoint3 center = root ? root->worldBound.center : ref->GetPosition();
+            const float  radius = root && root->worldBound.radius > 0.0f ? root->worldBound.radius : kObjectRadius;
+            const float  at[3] = { center.x, center.y, center.z };
+            if (Damage::SegmentDistance(path.from, path.to, at) > radius + kItemUnits) {
+                continue;
+            }
+            const std::uint64_t key = (std::uint64_t(path.flight) << 32) | id;
+            if (!flights.hit.insert(key).second) {
+                continue;
+            }
+            const float damage = Damage::ThrownObject(what->web, path.speed);
+            const char* result = DamageDestructible(ref, *what, damage);
+            SKSE::log::info("combat: a thrown item hit {} {:08X} ({}) at {:.1f} m/s for {:.0f}, {}", what->web ? "the web" : "a destructible", id, what->model,
+                path.speed, damage, result);
+        }
     }
 
     void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
