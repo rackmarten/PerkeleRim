@@ -53,7 +53,7 @@ namespace PerkeleRim.Game
         // longer, giving way to a bump and slow to spring back. Twice the travel was too much, so
         // 1.6 times; the fork is softer still than the rear. Its center of mass still goes 15 cm
         // below wherever MSC puts it (FollowCenter), or every bump pitched it over the front wheel.
-        public static readonly Settings Moped = new Settings { Mass = 1f, CenterDrop = 0.15f, Spring = 0.6f, Travel = 2f, Bump = 0.8f, Rebound = 1.5f, FrontSpring = 0.75f, Grip = 1.2f, SideGrip = 1.3f, Cushion = 1.5f, Air = true, SoftBumps = true, LeaveTipUpY = Leaving.TippedUpY };
+        public static readonly Settings Moped = new Settings { Mass = 1f, CenterDrop = 0.15f, Spring = 0.6f, Travel = 2f, Bump = 0.8f, Rebound = 1.5f, FrontSpring = 0.75f, Grip = 1.2f, SideGrip = 1.3f, CushionFrom = Springs.MopedFrom, Cushion = 1.5f, Air = true, SoftBumps = true, LeaveTipUpY = Leaving.TippedUpY };
         // Skyrim is all hills: the tractor gets twice the engine torque (it barely got rolling uphill
         // even in low first) and more grip to put it down. MSC's tractor has 5 cm of travel and a
         // 75000 N/m spring, and each rear wheel carries about 9 kN: it sat 12 cm deep, on its bump
@@ -126,6 +126,7 @@ namespace PerkeleRim.Game
         public void Update(bool riding)
         {
             if (air != null) air.Riding = riding;
+            if (springs != null) springs.Riding = riding;
             if (settings.SoftBumps) KeepEngine(riding);
             if (settings.LeaveTipUpY > 0f) FreeLeave(riding);
             if (car == null || body == null || Time.realtimeSinceStartup < tuneAt) return;

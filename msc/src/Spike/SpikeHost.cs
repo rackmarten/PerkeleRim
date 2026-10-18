@@ -204,6 +204,7 @@ namespace PerkeleRim.Spike
         int stepIndex;
         float stepEnds;
         bool autoloadDone;
+        float menuSince = -1f;  // realtime the main menu was first seen
 
         static readonly string[] Needs = { "PlayerThirst", "PlayerHunger", "PlayerUrine", "PlayerFatigue", "PlayerDrunk", "PlayerStress" };
 
@@ -237,7 +238,9 @@ namespace PerkeleRim.Spike
             updates = fixedUpdates = 0;
             PollCommand();
 
-            if (!autoloadDone && Application.loadedLevelName == "MainMenu" && Time.timeSinceLevelLoad > 2f
+            // Real time: while Skyrim is paused (a menu open) MSC's time scale is 0 and timeSinceLevelLoad stands still.
+            if (menuSince < 0f && Application.loadedLevelName == "MainMenu") menuSince = now;
+            if (!autoloadDone && menuSince >= 0f && now - menuSince > 2f && Application.loadedLevelName == "MainMenu"
                 && File.Exists(Path.Combine(SpikeLog.GameDir, "PerkeleRim_autoload.txt")))
             {
                 autoloadDone = true;

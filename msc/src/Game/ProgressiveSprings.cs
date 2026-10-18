@@ -3,14 +3,15 @@ using UnityEngine;
 
 namespace PerkeleRim.Game
 {
-    // Applies Springs.Push to every wheel of a vehicle on the island, riding or parked: the last
+    // Applies Springs.Push to every wheel of a vehicle on the island while it is ridden: the last
     // part of each wheel's travel pushes back harder and harder instead of meeting UnityCar's
-    // bump stop (VehicleTune sets From and Strength per vehicle). Wheel.compression is meters into
+    // bump stop (VehicleTune sets From and Strength per vehicle; parked, the wheels push nothing). Wheel.compression is meters into
     // its suspensionTravel.
     public class ProgressiveSprings : MonoBehaviour
     {
         public float From = 0.6f;
         public float Strength = 1.5f;
+        public bool Riding;  // set by VehicleTune every frame; a parked vehicle's wheels don't push (Springs.Applies)
         public Action<string> Log;
 
         Rigidbody body;
@@ -27,7 +28,7 @@ namespace PerkeleRim.Game
 
         void FixedUpdate()
         {
-            if (body == null || body.isKinematic || Strength <= 0f) return;
+            if (body == null || body.isKinematic || Strength <= 0f || !Springs.Applies(Riding)) return;
             var wheels = axles != null ? axles.allWheels : null;
             if (wheels == null) return;
             if (lastCompression == null || lastCompression.Length != wheels.Length) lastCompression = new float[wheels.Length];

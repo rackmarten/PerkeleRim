@@ -49,6 +49,33 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void ParkedVehiclesDontPush()
+        {
+            Assert.That(Springs.Applies(false), Is.False);
+            Assert.That(Springs.Applies(true), Is.True);
+        }
+
+        [Test]
+        public void ALandingOnTheSeatDoesntFlingIt()
+        {
+            // A wheel squeezed at 10 m/s all the way down: capped at a few weights, not tens.
+            float push = Springs.Push(1f, 10f, Weight, 0.75f, 1.5f);
+            Assert.That(push, Is.EqualTo(Springs.MaxWeights * Weight).Within(1e-3f));
+        }
+
+        [Test]
+        public void TheMopedAtRestSitsBelowTheProgressivePart()
+        {
+            // 140 kg on four wheels, its front spring 3150 N/m (7000 x 0.6 x 0.75) over 0.16 m of travel
+            // (0.08 x 2): the heaviest wheel sags 0.68 of it, which the old From of 0.6 pushed on.
+            float load = 140f * 9.81f / 4f;
+            float share = Springs.RestShare(load, 3150f, 0.16f);
+            Assert.That(share, Is.InRange(0.6f, 0.75f));
+            Assert.That(Springs.Push(share, 0f, 140f * 9.81f, Springs.MopedFrom, 1.5f), Is.EqualTo(0f));
+            Assert.That(Springs.Push(share, 0f, 140f * 9.81f, 0.6f, 1.5f), Is.GreaterThan(0f));
+        }
+
+        [Test]
         public void AirAssistSkipsABikeLyingDown()
         {
             Assert.That(Righting.AirHelps(1f, 8f), Is.True);        // flying level

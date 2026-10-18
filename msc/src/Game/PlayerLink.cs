@@ -212,7 +212,8 @@ namespace PerkeleRim.Game
             // Keep the mouse totals current even while Skyrim owns the player, so taking over
             // doesn't start with a jump.
             input.Update(ref s);
-            Freeze(input.Paused);
+            // Not in the main menu: MSC loads its game there with its own time, which a Skyrim menu would stop for good.
+            Freeze(input.Paused && Application.loadedLevelName == "GAME");
             InputShim.Active = input.OwnsPlayer;
             if (!input.OwnsPlayer) { punch.Reset(); block.Reset(); charge.Reset(); return; }
             var state = functions != null ? functions.ActiveStateName : null;
