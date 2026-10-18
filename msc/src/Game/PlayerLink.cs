@@ -932,7 +932,9 @@ namespace PerkeleRim.Game
             }
             var heights = IslandSurfaces(feet);
             if (heights.Count == 0 || heights[heights.Count - 1] <= feet.y + FallSlack) return;  // ground below, or no island here
-            float above = heights[heights.Count - 1];  // the lowest, all of them above the feet
+            float lowest = heights[heights.Count - 1];  // the lowest, all of them above the feet
+            float above = FallRescue.Target(carrier == null, haveGrounded && Near(feet, lastGrounded), lastGrounded.y, feet.y, lowest);
+            if (float.IsNaN(above)) return;  // on foot, only a ceiling above: not a floor fallen through
             PutBack(feet, new Vector3(feet.x, above, feet.z));
             log($"player: fell through the island at ({feet.x:0.00},{feet.y:0.00},{feet.z:0.00}), put back on top at {above:0.00}");
         }
