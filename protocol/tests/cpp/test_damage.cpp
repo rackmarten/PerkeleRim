@@ -243,3 +243,74 @@ TEST_CASE("staggers, recoils, knockdowns and ragdolls are recognized by their an
     CHECK_FALSE(Damage::PullsOutOfSeat(""));
     CHECK_FALSE(Damage::PullsOutOfSeat(nullptr));
 }
+
+namespace
+{
+    // The game's god mode byte, which may be slow to go off (delay frames after a Disable).
+    struct FakeGod
+    {
+        Damage::SeatGod god;
+        bool            on = false;
+        int             delay = 0;
+        int             pending = 0;
+
+        void Frame(std::uint32_t a_vehicle)
+        {
+            if (pending > 0 && --pending == 0) {
+                on = false;
+            }
+            const auto action = god.Step(a_vehicle, on);
+            if (action == Damage::SeatGod::Action::Enable) {
+                on = true;
+                pending = 0;
+            } else if (action == Damage::SeatGod::Action::Disable) {
+                if (delay == 0) {
+                    on = false;
+                } else if (pending == 0) {
+                    pending = delay;  // a repeated Disable doesn't restart the wait
+                }
+            }
+        }
+    };
+}
+
+TEST_CASE("god mode is on in a safe seat and off again on foot or on the moped")
+{
+    FakeGod g;
+    g.Frame(0);
+    CHECK_FALSE(g.on);
+    g.Frame(Protocol::kVehicleKekmet);
+    CHECK(g.on);
+    g.Frame(Protocol::kVehicleKekmet);
+    CHECK(g.on);
+    g.Frame(0);
+    CHECK_FALSE(g.on);
+    g.Frame(Protocol::kVehicleJonnez);
+    CHECK_FALSE(g.on);
+}
+
+TEST_CASE("a flicker out of the seat and back never leaves god mode on")
+{
+    for (int delay = 0; delay <= 3; delay++) {
+        FakeGod g;
+        g.delay = delay;
+        g.Frame(Protocol::kVehicleHayosiko);
+        g.Frame(0);  // seated for one frame less
+        g.Frame(Protocol::kVehicleHayosiko);
+        g.Frame(0);
+        for (int i = 0; i < 6; i++) {
+            g.Frame(0);
+        }
+        CHECK_FALSE(g.on);  // enemies hurt again on foot
+    }
+}
+
+TEST_CASE("a god mode that was on before is never turned off")
+{
+    FakeGod g;
+    g.on = true;  // the console's tgm
+    g.Frame(Protocol::kVehicleKekmet);
+    g.Frame(0);
+    g.Frame(0);
+    CHECK(g.on);
+}

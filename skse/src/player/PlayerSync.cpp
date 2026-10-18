@@ -778,6 +778,9 @@ namespace PerkeleRim::PlayerSync
                 original(a_player, a_delta);
                 Death::Tick();
                 Pocket::Update(a_player, a_delta);
+                if (!state.owned) {
+                    Safe::Set(a_player, 0);  // keeps clearing god mode if it was slow to go off
+                }
                 if (state.garage && a_delta > 0.0f) {
                     TravelToGarage(a_player, a_delta);
                 } else if (state.resume && !state.owned && a_delta > 0.0f) {

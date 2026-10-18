@@ -8,8 +8,8 @@ namespace PerkeleRim::Safe
     {
         struct State
         {
-            std::uint32_t vehicle = 0;
-            bool          godApplied = false;  // we turned god mode on, and give it back
+            std::uint32_t   vehicle = 0;
+            Damage::SeatGod god;
             int           own = 0;             // OwnDamage scopes alive
             std::uint32_t dropped = 0;         // hits and events dropped since the last log line
         } state;
@@ -45,9 +45,12 @@ namespace PerkeleRim::Safe
             static inline REL::Relocation<decltype(thunk)> original;
         };
 
-        void SetGod(RE::PlayerCharacter* a_player, bool a_on)
+        // The game's god mode byte (what PlayerCharacter::IsGodMode reads), written directly:
+        // PlayerCharacter::SetGodMode(false) left it on after the first time out of a seat.
+        bool* GodByte()
         {
-            a_player->SetGodMode(a_on);
+            static REL::Relocation<bool*> god{ RELOCATION_ID(517711, 404238) };
+            return reinterpret_cast<bool*>(god.address());
         }
     }
 
@@ -67,16 +70,20 @@ namespace PerkeleRim::Safe
         const bool was = state.vehicle != 0 && Damage::SafeSeat(state.vehicle);
         const bool now = Damage::SafeSeat(a_vehicle);
         state.vehicle = a_vehicle;
-        if (now && !was && !RE::PlayerCharacter::IsGodMode()) {
-            SetGod(a_player, true);
-            state.godApplied = true;
-            SKSE::log::info("safe: seated in vehicle {}, enemies can't hurt the player", a_vehicle);
+        switch (state.god.Step(a_vehicle, *GodByte())) {
+        case Damage::SeatGod::Action::Enable:
+            *GodByte() = true;
+            break;
+        case Damage::SeatGod::Action::Disable:
+            *GodByte() = false;
+            break;
+        default:
+            break;
+        }
+        if (now && !was) {
+            SKSE::log::info("safe: seated in vehicle {}, enemies can't hurt the player (god mode {})", a_vehicle, *GodByte() ? "on" : "off");
         } else if (!now && was) {
-            if (state.godApplied) {
-                SetGod(a_player, false);
-                state.godApplied = false;
-            }
-            SKSE::log::info("safe: out of the safe seat, {} hits and events were dropped", state.dropped);
+            SKSE::log::info("safe: out of the safe seat, {} hits and events were dropped, god mode {}", state.dropped, *GodByte() ? "still on" : "off");
             state.dropped = 0;
         }
     }
@@ -84,9 +91,8 @@ namespace PerkeleRim::Safe
     OwnDamage::OwnDamage()
     {
         state.own++;
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (state.godApplied && player) {
-            SetGod(player, false);
+        if (state.god.Ours() && *GodByte()) {
+            *GodByte() = false;
             _lifted = true;
         }
     }
@@ -94,9 +100,8 @@ namespace PerkeleRim::Safe
     OwnDamage::~OwnDamage()
     {
         state.own--;
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (_lifted && player && state.godApplied) {
-            SetGod(player, true);
+        if (_lifted && state.god.Ours()) {
+            *GodByte() = true;
         }
     }
 }

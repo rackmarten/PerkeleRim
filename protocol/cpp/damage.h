@@ -330,6 +330,52 @@ namespace PerkeleRim::Damage
         return SafeSeat(a_vehicle) ? 0.0f : a_damage;
     }
 
+    // When god mode is on for a safe seat. God mode is the game's own global byte, so the player's might
+    // already have it on (the console's tgm): that is never touched. What this turned on, it turns off
+    // again, and keeps turning it off until the byte reads off, so a flicker out of the seat and back
+    // (seated for one frame less) can't leave it on for good, which made every enemy harmless on foot.
+    class SeatGod
+    {
+    public:
+        enum class Action { None, Enable, Disable };
+
+        // a_vehicle: what the player sits in (0 = on foot); a_godNow: the byte as it reads now.
+        Action Step(std::uint32_t a_vehicle, bool a_godNow)
+        {
+            if (SafeSeat(a_vehicle)) {
+                if (_ours || _clearing) {
+                    _ours = true;
+                    _clearing = false;
+                    return a_godNow ? Action::None : Action::Enable;
+                }
+                if (a_godNow) {
+                    return Action::None;  // not ours
+                }
+                _ours = true;
+                return Action::Enable;
+            }
+            if (_ours) {
+                _ours = false;
+                _clearing = true;
+                return Action::Disable;
+            }
+            if (_clearing) {
+                if (a_godNow) {
+                    return Action::Disable;
+                }
+                _clearing = false;
+            }
+            return Action::None;
+        }
+
+        // God mode is on because of the seat (OwnDamage lifts it for a moment).
+        bool Ours() const { return _ours; }
+
+    private:
+        bool _ours = false;
+        bool _clearing = false;
+    };
+
     // Animation events that throw a seated player out of PlayerSync's seat placement: staggers,
     // recoils, knockdowns and ragdolls start from these. Matched case-insensitively by prefix.
     inline bool PullsOutOfSeat(const char* a_event)
