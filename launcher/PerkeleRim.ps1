@@ -113,10 +113,32 @@ function Install-File($source, $destDir) {
     Write-Host "Installed $dest"
 }
 
+# The release zip carries the mod files under files/; a repo checkout takes them from the build output.
 $files = Join-Path $Root 'files'
-Install-File (Join-Path $files 'Skyrim\Data\SKSE\Plugins\PerkeleRim.dll') (Join-Path $skyrim 'Data\SKSE\Plugins')
-Install-File (Join-Path $files 'Skyrim\Data\PerkeleRim.esp') (Join-Path $skyrim 'Data')
-Install-File (Join-Path $files 'MSC\Mods\PerkeleRim.dll') $mods
+if (Test-Path $files) {
+    $sources = @((Join-Path $files 'Skyrim\Data\SKSE\Plugins\PerkeleRim.dll'),
+                 (Join-Path $files 'Skyrim\Data\PerkeleRim.esp'),
+                 (Join-Path $files 'MSC\Mods\PerkeleRim.dll'))
+} else {
+    $repo = Split-Path $Root
+    $sources = @((Join-Path $repo 'skse\build\release\PerkeleRim.dll'),
+                 (Join-Path $repo 'tools\out\esp\PerkeleRim.esp'),
+                 (Join-Path $repo 'msc\bin\Release\net35\PerkeleRim.dll'))
+}
+$missing = @($sources | Where-Object { -not (Test-Path $_) })
+if ($missing) { Fail (@('Mod files not found (run scripts/build.ps1 and scripts/build-esp.ps1 first):') + $missing) }
+Install-File $sources[0] (Join-Path $skyrim 'Data\SKSE\Plugins')
+Install-File $sources[1] (Join-Path $skyrim 'Data')
+Install-File $sources[2] $mods
+
+# F11 screenshots go to Screenshots next to this script (ScreenshotDir in the SKSE plugin's ini).
+$shotIni = Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.ini'
+$shotLine = "ScreenshotDir=$(Join-Path $Root 'Screenshots')"
+$iniLines = if (Test-Path $shotIni) { @(Get-Content $shotIni | Where-Object { $_ -notmatch '^\s*ScreenshotDir\s*=' }) } else { @() }
+if (-not (Test-Path $shotIni) -or (Get-Content $shotIni) -notcontains $shotLine) {
+    [IO.File]::WriteAllLines($shotIni, [string[]](@($iniLines) + $shotLine), (New-Object Text.UTF8Encoding $false))  # no BOM, the plugin reads plain UTF-8
+    Write-Host "Screenshots (F11) go to $(Join-Path $Root 'Screenshots')"
+}
 
 # Skyrim SE lists active plugins as "*Name.esp", in load order, after the official masters.
 $plugins = Join-Path $env:LOCALAPPDATA 'Skyrim Special Edition\plugins.txt'

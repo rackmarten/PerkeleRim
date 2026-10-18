@@ -59,3 +59,7 @@ local.props
 # --- tools/ output and downloaded tools (tools/README.md) ---
 tools/.deps/
 tools/out/
+
+# Launcher state on a dev machine
+launcher/PerkeleRim.ini
+launcher/Screenshots/
