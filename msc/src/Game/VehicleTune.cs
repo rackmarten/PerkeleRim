@@ -28,14 +28,23 @@ namespace PerkeleRim.Game
             public float Cushion;     // that push at full travel in vehicle weights per wheel, 0 = none
             public bool Air;          // lands its jumps while ridden (AirAssist)
             public bool SoftBumps;    // small bumps make no crash sound and never stall the engine (Bumps)
-            public bool FreeLeave;    // the rider may get off while it is tipped or at a walking pace (Leaving)
+            public float LeaveTipUpY; // the rider may get off while its up axis y is under this, or at a walking pace (Leaving), 0 = MSC's rule
         }
+
+        // A vehicle sunk into the island is pushed out by the physics at whatever speed it takes: the
+        // van's nose dug into a downhill at 50 km/h and left it at 3000 km/h. The body may leave what
+        // it overlaps at this speed (m/s) at most.
+        const float MaxDepenetration = 4f;
 
         // The van's wheels sit far behind its bumpers, so the body's overhang reached a lip or a ramp
         // before the wheels and stopped the van dead. With its bottom lifted the overhang clips into
         // the ground instead and the wheels climb. On Skyrim's steep roads the rear wheels spun uphill
         // and locked braking downhill, so the back slid out: more grip both ways, a weaker rear brake.
-        public static readonly Settings Van = new Settings { Mass = 1.2f, CenterDrop = 0.2f, Spring = 0.85f, Travel = 1.2f, BottomLift = 0.25f, Grip = 1.3f, SideGrip = 1.3f, RearBrake = 0.75f, Cushion = 0.5f };
+        // Steep hills west of Whiterun still spun the rear wheels at 1.3x: 1.8x forward grip now, the
+        // sideways grip stays so it is no twitchier on roads. The body's overhang and the thin
+        // TrafficTrigger collider at its nose both reached the ground before the wheels did, so both
+        // have their bottom lifted.
+        public static readonly Settings Van = new Settings { Mass = 1.2f, CenterDrop = 0.2f, Spring = 0.85f, Travel = 1.2f, BottomLift = 0.25f, Grip = 1.8f, SideGrip = 1.3f, RearBrake = 0.75f, Cushion = 0.5f, LeaveTipUpY = Upright.MaxTiltCos };
         // The moped keeps MSC's mass and follows MSC's center of mass moves: MSC balances it by moving the center (-0.1 m while
         // ridden, 0.4 m at speed, 0.2 m tipped over or left alone, a bit to the side on its
         // kickstand), and the extra mass stalled its little engine pulling away. Its 8 cm of travel
@@ -44,7 +53,7 @@ namespace PerkeleRim.Game
         // longer, giving way to a bump and slow to spring back. Twice the travel was too much, so
         // 1.6 times; the fork is softer still than the rear. Its center of mass still goes 15 cm
         // below wherever MSC puts it (FollowCenter), or every bump pitched it over the front wheel.
-        public static readonly Settings Moped = new Settings { Mass = 1f, CenterDrop = 0.15f, Spring = 0.6f, Travel = 2f, Bump = 0.8f, Rebound = 1.5f, FrontSpring = 0.75f, Grip = 1.2f, SideGrip = 1.3f, Cushion = 1.5f, Air = true, SoftBumps = true, FreeLeave = true };
+        public static readonly Settings Moped = new Settings { Mass = 1f, CenterDrop = 0.15f, Spring = 0.6f, Travel = 2f, Bump = 0.8f, Rebound = 1.5f, FrontSpring = 0.75f, Grip = 1.2f, SideGrip = 1.3f, Cushion = 1.5f, Air = true, SoftBumps = true, LeaveTipUpY = Leaving.TippedUpY };
         // Skyrim is all hills: the tractor gets twice the engine torque (it barely got rolling uphill
         // even in low first) and more grip to put it down. MSC's tractor has 5 cm of travel and a
         // 75000 N/m spring, and each rear wheel carries about 9 kN: it sat 12 cm deep, on its bump
@@ -53,8 +62,8 @@ namespace PerkeleRim.Game
         // about half the travel) with the damping to match: the bump stop's 1000 Ns/m was a
         // twentieth of what such a spring needs. Too much rebound damping (6.5) made it slow to
         // settle after a turn, now 4.5. Past half its travel the progressive springs take over.
-        public static readonly Settings Kekmet = new Settings { Mass = 1.2f, CenterDrop = 0.1f, Spring = 0.8f, Travel = 6f, Bump = 3.5f, Rebound = 4.5f, CushionFrom = 0.5f, Cushion = 0.7f, Power = 2f, Grip = 1.3f };
-        const string BodyCollider = "CarCollider";
+        public static readonly Settings Kekmet = new Settings { Mass = 1.2f, CenterDrop = 0.1f, Spring = 0.8f, Travel = 6f, Bump = 3.5f, Rebound = 4.5f, CushionFrom = 0.5f, Cushion = 0.7f, Power = 2f, Grip = 1.3f, LeaveTipUpY = Upright.MaxTiltCos };
+        static readonly string[] BodyColliders = { "CarCollider", "TrafficTrigger" };
 
         // MSC sets things up in its own Start; tune after it.
         const float TuneDelay = 1f;
@@ -92,6 +101,7 @@ namespace PerkeleRim.Game
             this.car = car;
             this.body = body;
             tuned = false;
+            if (body != null) body.maxDepenetrationVelocity = MaxDepenetration;
             probe = car.GetComponent<ContactProbe>();
             if (probe == null) probe = car.gameObject.AddComponent<ContactProbe>();
             springs = car.GetComponent<ProgressiveSprings>();
@@ -117,7 +127,7 @@ namespace PerkeleRim.Game
         {
             if (air != null) air.Riding = riding;
             if (settings.SoftBumps) KeepEngine(riding);
-            if (settings.FreeLeave) FreeLeave(riding);
+            if (settings.LeaveTipUpY > 0f) FreeLeave(riding);
             if (car == null || body == null || Time.realtimeSinceStartup < tuneAt) return;
             if (!tuned) Tune();
             FollowCenter();
@@ -198,7 +208,7 @@ namespace PerkeleRim.Game
             if (driveTrigger == null) return;
             var limit = driveTrigger.FsmVariables.FindFsmFloat("MinimumRequiredVelocity");
             if (limit == null) return;
-            float wanted = Leaving.Limit(car.up.y);
+            float wanted = Leaving.Limit(car.up.y, settings.LeaveTipUpY);
             if (Mathf.Abs(limit.Value - wanted) < 1e-3f) return;
             if ((wanted >= Leaving.Anything) != (limit.Value >= Leaving.Anything))
                 log($"vehicle tune: {name} {(wanted >= Leaving.Anything ? "is tipped, the rider may get off at any speed" : "stands again, the rider may get off at a walking pace")}");
@@ -281,7 +291,7 @@ namespace PerkeleRim.Game
         {
             foreach (var c in car.GetComponentsInChildren<Collider>(true))
             {
-                if (c.isTrigger || c.name != BodyCollider) continue;
+                if (c.isTrigger || Array.IndexOf(BodyColliders, c.name) < 0) continue;
                 var t = c.transform;
                 var box = c as BoxCollider;
                 var mesh = c as MeshCollider;

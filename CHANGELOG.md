@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Van and tractor fixes from a steep-hill drive: the van grips harder uphill (forward grip 1.8x MSC's); a vehicle that sinks into the island goes back where it last stood on its wheels (within 60 m), or onto a surface at most 4 m above it, never onto a cliff far above; a vehicle that comes back from a save inside a wall or rock is stood upright on the nearest clear, flat spot before it is let go; Kumpo can always get out of a van or tractor tipped past 60 degrees, and at a walking pace otherwise, like the moped. The van's thin nose collider no longer digs into downhills (its bottom is lifted), and every vehicle is pushed out of geometry at 4 m/s at most, not thousands of km/h.
 - Wading into water up to Kumpo's waist washes him: his dirtiness goes to 0, once per wade in (ankle- or knee-deep does nothing; getting out re-arms it). Swimming, drowning and vehicles in water are still ignored.
 - A throw from sneak at someone who has not noticed Kumpo (Skyrim's detection level 0 or below) deals double damage on top of the speed rule, with Skyrim's "Sneak attack for 2.0x damage" message. Punches stay as they are.
 - Repository scaffold: README, MIT license, contributing guide, code of conduct, security policy, issue and PR templates.

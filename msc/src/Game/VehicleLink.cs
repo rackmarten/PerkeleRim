@@ -24,7 +24,6 @@ namespace PerkeleRim.Game
         // Half width and half length (meters) of the ground that must be flat where a vehicle parks
         // (van sized; generous for the moped), and how uneven it may be.
         static readonly Vector2 ParkHalfSize = new Vector2(1f, 2.3f);
-        const float MaxParkStep = 0.4f;
         // The parts MSC turns and spins per wheel, in VehicleState.wheelSpin order (the van's names).
         static readonly string[] WheelModels = { "wheelFL/tire", "wheelFR/tire", "wheelRL/tire", "wheelRR/tire" };
 
@@ -60,6 +59,12 @@ namespace PerkeleRim.Game
         // on the island; null until it was first placed. A new anchor elsewhere puts it away.
         Snapshot.Body home;
         bool away;
+        // Where it last stood on its wheels (the ground under it, Skyrim units), for putting it back
+        // when it sinks into the island: the nearest surface above could be a cliff.
+        bool haveStood;
+        Vec3 stood;
+        float nextRescueLog;
+        bool restoring;       // Restore placed it; before it is let go it must not be inside the island's statics
         uint spotGeneration;  // anchor generation the spot below is for, 0 = none
         Vec3 spot;            // Skyrim units, the ground under the vehicle's middle
         float spotHeading;    // Skyrim radians
@@ -367,6 +372,7 @@ namespace PerkeleRim.Game
                 }
             }
             nextGroundCheck = 0f;
+            restoring = true;
             HutongGames.PlayMaker.FsmFloat level, capacity;
             FuelTank(out level, out capacity, null);
             if (level != null && !float.IsNaN(b.Fuel)) level.Value = b.Fuel;
@@ -401,17 +407,116 @@ namespace PerkeleRim.Game
         // crash into a thin streamed collider). Left there it sank on, the player in it dragged
         // thousands of units under Skyrim's ground, and Skyrim took that for a teleport every frame.
         const float FellThroughDepth = 1.5f;
+        // The ground where it last stood may be this far (meters) from the height it was at then.
+        const float StoodDrift = 3f;
 
-        void PutBackOnTop(Vector3 ground)
+        // Remembers where the vehicle stands on its wheels: upright and about a ride height over ground.
+        void RememberStood(Vector3 ground)
         {
-            SetUpright(ground);
-            log($"vehicle: the {driverName} fell through the island, put back on its wheels on top");
+            if (body == null || body.isKinematic || car.up.y < Upright.MaxTiltCos) return;
+            float height = car.position.y - ground.y;
+            if (height < clearance - 0.5f || height > clearance + 0.5f) return;
+            stood = island.IslandToSkyrim(Vec3From(ground));
+            haveStood = true;
+        }
+
+        // The vehicle sank into the island; nearest is the closest island surface, above it. Back where
+        // it last stood when that is near, else onto the surface just above it, else left alone: that
+        // surface could be a cliff, and the player in a vehicle put on top of one fell from it.
+        void PutBackAfterSinking(Vector3 nearest)
+        {
+            Vector3? stoodGround = null;
+            float distance = float.MaxValue;
+            if (haveStood)
+            {
+                var at = island.SkyrimToIsland(stood);
+                var p = new Vector3(at.x, at.y, at.z);
+                var g = findGround(p);
+                if (g.HasValue && Mathf.Abs(g.Value.y - p.y) <= StoodDrift)
+                {
+                    stoodGround = g;
+                    distance = Vector3.Distance(car.position, p);
+                }
+            }
+            var pick = FallRescue.Vehicle(stoodGround.HasValue, distance, car.position.y, nearest.y);
+            if (pick == FallRescue.Pick.Stood)
+            {
+                SetUpright(stoodGround.Value);
+                log($"vehicle: the {driverName} fell through the island, put back on its wheels where it last stood, {distance:0} m away");
+            }
+            else if (pick == FallRescue.Pick.Above)
+            {
+                SetUpright(nearest);
+                log($"vehicle: the {driverName} fell through the island, put back on its wheels on top");
+            }
+            else if (Time.realtimeSinceStartup >= nextRescueLog)
+            {
+                nextRescueLog = Time.realtimeSinceStartup + 5f;
+                log($"vehicle: the {driverName} is under the island, {nearest.y - car.position.y:0} m below the nearest surface and nowhere it stood within reach, left alone");
+            }
+        }
+
+        // The island's statics (walls, rocks) a vehicle must not be set down in: spheres along the
+        // body, above the wheels so the ground under it is not counted.
+        const string IslandName = "PerkeleRim.Island";
+        const float BodyRadius = 0.6f;
+        static readonly Vector3[] BodySpheres = { new Vector3(0f, 1.1f, -1.7f), new Vector3(0f, 1.1f, 0f), new Vector3(0f, 1.1f, 1.7f) };
+
+        bool InIsland(Vector3 position, Quaternion rotation)
+        {
+            foreach (var local in BodySpheres)
+                foreach (var c in Physics.OverlapSphere(position + rotation * local, BodyRadius))
+                    if (c.transform.parent != null && c.transform.parent.name == IslandName) return true;
+            return false;
+        }
+
+        // A vehicle restored from a save inside a wall or rock (it came back lodged in Whiterun's gate
+        // wall, on its side, and bounced) is stood upright on the nearest clear spot with flat ground
+        // under it (ClearSpot, the ground rule of parking it next to the player), before it is let go.
+        // True when it was moved.
+        bool MoveToClearSpot()
+        {
+            if (!InIsland(car.position, car.rotation)) return false;
+            var f = car.forward;
+            var u = car.up;
+            var yaw = Quaternion.Euler(0f, Upright.Heading(f.x, f.z, u.x, u.z), 0f);
+            var from = car.position;
+            var placed = from;
+            var offset = ClearSpot.First(o =>
+            {
+                float high;
+                var center = from + yaw * new Vector3(o.x, 0f, o.z);
+                if (!FlatGround(center, yaw, out high)) return false;
+                placed = new Vector3(center.x, high + clearance, center.z);
+                return !InIsland(placed, yaw);
+            });
+            if (!offset.HasValue)
+            {
+                log($"vehicle: the {driverName} came back inside the island's statics and no clear spot is near, left as it is");
+                return false;
+            }
+            Moves++;
+            car.position = placed;
+            car.rotation = yaw;
+            if (body != null)
+            {
+                body.position = placed;
+                body.rotation = yaw;
+                if (!body.isKinematic)
+                {
+                    body.velocity = Vector3.zero;
+                    body.angularVelocity = Vector3.zero;
+                }
+            }
+            heldVelocity = heldAngular = Vector3.zero;
+            log($"vehicle: the {driverName} came back inside the island's statics, stood upright {new Vector2(offset.Value.x, offset.Value.z).magnitude:0.0} m away on clear ground");
+            return true;
         }
 
         // On its wheels at ground, facing the way it faced (its forward flattened).
         void SetUpright(Vector3 ground)
         {
-            Shift(new Vector3(0f, ground.y + clearance - car.position.y, 0f));
+            Shift(new Vector3(ground.x - car.position.x, ground.y + clearance - car.position.y, ground.z - car.position.z));
             var f = car.forward;
             var u = car.up;
             car.rotation = Quaternion.Euler(0f, Upright.Heading(f.x, f.z, u.x, u.z), 0f);
@@ -498,8 +603,17 @@ namespace PerkeleRim.Game
             {
                 nextGroundCheck = Time.realtimeSinceStartup + GroundCheckEvery;
                 var ground = findGround(car.position);
+                if (ground.HasValue && restoring)
+                {
+                    restoring = false;
+                    if (MoveToClearSpot()) ground = findGround(car.position);
+                }
                 Hold(!ground.HasValue);
-                if (ground.HasValue && ground.Value.y - car.position.y > FellThroughDepth) PutBackOnTop(ground.Value);
+                if (ground.HasValue)
+                {
+                    if (ground.Value.y - car.position.y > FellThroughDepth) PutBackAfterSinking(ground.Value);
+                    else RememberStood(ground.Value);
+                }
             }
 
             Report(driven);
@@ -580,6 +694,23 @@ namespace PerkeleRim.Game
         // was thrown, sometimes into the player. Returns the highest ground point there, or null.
         Vector3 Offset => calling && callOffset.HasValue ? callOffset.Value : parkOffset;
 
+        // Whether the ground is there and flat (ClearSpot.Flat) under the whole vehicle parked at
+        // center: its middle, then its four corners. high: the highest ground point of those.
+        bool FlatGround(Vector3 center, Quaternion yaw, out float high)
+        {
+            float low = float.MaxValue;
+            high = float.MinValue;
+            for (int i = 0; i < 5; i++)
+            {
+                var local = i == 0 ? Vector3.zero : new Vector3((i & 1) != 0 ? ParkHalfSize.x : -ParkHalfSize.x, 0f, (i & 2) != 0 ? ParkHalfSize.y : -ParkHalfSize.y);
+                var g = findGround(center + yaw * local);
+                if (!g.HasValue) return false;
+                low = Mathf.Min(low, g.Value.y);
+                high = Mathf.Max(high, g.Value.y);
+            }
+            return ClearSpot.Flat(low, high);
+        }
+
         Vector3? FlatSpot(Vector3 feet, Quaternion yaw)
         {
             var parkOffset = Offset;
@@ -602,18 +733,8 @@ namespace PerkeleRim.Game
             foreach (var offset in offsets)
             {
                 var center = feet + yaw * offset;
-                float low = float.MaxValue, high = float.MinValue;
-                bool ok = true;
-                // The center, then the four corners.
-                for (int i = 0; i < 5 && ok; i++)
-                {
-                    var local = i == 0 ? Vector3.zero : new Vector3((i & 1) != 0 ? ParkHalfSize.x : -ParkHalfSize.x, 0f, (i & 2) != 0 ? ParkHalfSize.y : -ParkHalfSize.y);
-                    var g = findGround(center + yaw * local);
-                    if (!g.HasValue) { ok = false; break; }
-                    low = Mathf.Min(low, g.Value.y);
-                    high = Mathf.Max(high, g.Value.y);
-                }
-                if (ok && high - low <= MaxParkStep)
+                float high;
+                if (FlatGround(center, yaw, out high))
                 {
                     if (offset != parkOffset) log($"vehicle: ground uneven where the {driverName} parks, parking it at offset {offset}");
                     return new Vector3(center.x, high, center.z);
