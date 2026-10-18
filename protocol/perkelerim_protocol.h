@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 38;
+    inline constexpr std::uint32_t kProtocolVersion = 39;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -408,6 +408,7 @@ namespace PerkeleRim::Protocol
         LoadReset = 23,        // Skyrim -> MSC
         TimePassed = 24,       // Skyrim -> MSC
         GearText = 25,         // MSC -> Skyrim
+        PlayerWashed = 26,     // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -469,6 +470,9 @@ namespace PerkeleRim::Protocol
     // GearText: the gear MSC shows bottom right while the player drives (global GUIgear: "N", "R",
     // "2", "3 HIGH", "1 LOW"), sent when it changes and once more each time MSC takes the player.
     // Same payload as Subtitle; no text (on foot) clears it.
+
+    // PlayerWashed: Kumpo waded into water up to his waist (protocol/cpp/wading.h). Empty payload; MSC
+    // sets PlayerDirtiness to 0. Sent once per wade in, not every frame.
 
     // PlayerDamage: something hit MSC's player that MSC would have died of (a crash, drowning), or a
     // crash it survives (a jump, a flip, a rock; severity below 1, scaled by the impact). MSC never

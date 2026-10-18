@@ -9,6 +9,7 @@ namespace PerkeleRim.Game
     //  - LoadReset: whatever the player was doing is stopped before a loaded save gives control back
     //    (Link/LoadReset.cs), so a piss, a cigarette or a raised hand never carries over. The needs
     //    come from the save (SaveSync).
+    //  - PlayerWashed: Kumpo waded into Skyrim's water up to his waist, so his dirtiness goes to 0.
     public class RestLink
     {
         const string SunPath = "MAP/SUN/Pivot/SUN";
@@ -100,6 +101,21 @@ namespace PerkeleRim.Game
             s.Fsms.Add(new Snapshot.FsmValue { Path = path, Fsm = fsm, Kind = 'f', Name = name, Value = value });
 
         static string Hhmm(double minutes) => $"{(int)(minutes / 60):00}:{(int)(minutes % 60):00}";
+
+        // ---- Washing ----
+
+        public void OnWashed()
+        {
+            var dirtiness = HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmFloat("PlayerDirtiness");
+            if (dirtiness == null)
+            {
+                log("wash: MSC isn't in its game, PlayerWashed ignored");
+                return;
+            }
+            float before = dirtiness.Value;
+            dirtiness.Value = 0f;
+            log($"wash: waded in up to the waist, dirtiness {before:0.#} -> 0");
+        }
 
         // ---- Loads ----
 

@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Wading into water up to Kumpo's waist washes him: his dirtiness goes to 0, once per wade in (ankle- or knee-deep does nothing; getting out re-arms it). Swimming, drowning and vehicles in water are still ignored.
 - A throw from sneak at someone who has not noticed Kumpo (Skyrim's detection level 0 or below) deals double damage on top of the speed rule, with Skyrim's "Sneak attack for 2.0x damage" message. Punches stay as they are.
 - Repository scaffold: README, MIT license, contributing guide, code of conduct, security policy, issue and PR templates.
 - Design document ([docs/DESIGN.md](docs/DESIGN.md)) and protocol proposal ([docs/PROTOCOL.md](docs/PROTOCOL.md)).

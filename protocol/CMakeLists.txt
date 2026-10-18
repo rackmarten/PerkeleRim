@@ -22,6 +22,7 @@ add_executable(protocol_tests
     tests/cpp/test_msc_save.cpp
     tests/cpp/test_piss_tap.cpp
     tests/cpp/test_time_skip.cpp
+    tests/cpp/test_wading.cpp
     tests/cpp/test_hurt.cpp
     tests/cpp/test_shout.cpp
     tests/cpp/test_stamina.cpp

@@ -21,6 +21,7 @@
 #include "safe/Safe.h"
 #include "shot/Shot.h"
 #include "stamina.h"
+#include "wading.h"
 #include "vehicle/VehicleView.h"
 
 namespace PerkeleRim::PlayerSync
@@ -73,8 +74,10 @@ namespace PerkeleRim::PlayerSync
             Input::Builder input;
             Stamina::Sprint sprint;  // MSC's run costs stamina; an empty bar stops it
             PissTap::Tap    pissTap;  // Alt reaches MSC only after a clean tap
+            Wading::Edge    wading;   // waist-deep water washes Kumpo once per wade in
             bool           seated = false;
-            RE::NiPoint3   eye;               // Skyrim's camera relative to the placed feet (MSC's eye), 0 when not posed
+            float          waterLevel = 0.0f;  // fraction of Kumpo under water, for the log
+            RE::NiPoint3   eye;              // Skyrim's camera relative to the placed feet (MSC's eye), 0 when not posed
             float          savedFov = 0.0f;   // Skyrim's worldFOV before MSC's took over, 0 = untouched
             bool           wasThirdPerson = false;  // Skyrim's camera was third person at the handover
             std::string    lookAt;            // MSC's interaction text
@@ -195,6 +198,7 @@ namespace PerkeleRim::PlayerSync
             state.input.Block(Input::KeyFromScanCode(Input::kDikLeftShift), false);
             state.sprint.Reset();
             state.pissTap.Reset();
+            state.wading.Reset();
             SetControls(true);
             if (auto* player = RE::PlayerCharacter::GetSingleton(); player && (state.sneak || player->IsSneaking())) {
                 player->AsActorState()->actorState1.sneaking = false;
@@ -603,6 +607,26 @@ namespace PerkeleRim::PlayerSync
             }
         }
 
+        // Waist-deep water washes Kumpo: MSC zeroes its dirtiness when he wades in (protocol/cpp/wading.h).
+        // The level is the fraction of him under water at his feet, 0 to 1.
+        void Wash(RE::PlayerCharacter* a_player, bool a_onFoot)
+        {
+            float level = 0.0f;
+            if (auto* cell = a_onFoot ? a_player->GetParentCell() : nullptr) {
+                level = a_player->GetSubmergeLevel(a_player->GetPositionZ(), cell);
+            }
+            state.waterLevel = level;
+            if (!state.wading.Step(level, a_onFoot)) {
+                return;
+            }
+            const std::uint8_t none = 0;
+            if (LinkService::Get().Send(Protocol::MessageType::PlayerWashed, &none, 0)) {
+                SKSE::log::info("player sync: wading, {:.0f}% under water, MSC washes Kumpo", level * 100.0f);
+            } else {
+                state.wading.Reset();  // the ring was full, try again next frame
+            }
+        }
+
         void Drive(RE::PlayerCharacter* a_player, float a_delta)
         {
             auto& link = LinkService::Get();
@@ -646,6 +670,7 @@ namespace PerkeleRim::PlayerSync
                 SetSimulated(a_player, !seated);
                 SKSE::log::info("player sync: {}", seated ? "seated" : "out of the seat");
             }
+            Wash(a_player, valid && !seated);
             link.Receive([a_player](Protocol::MessageType a_type, const std::uint8_t* a_data, std::uint32_t a_size) {
                 if (a_type == Protocol::MessageType::ModelChunk) {
                     ModelView::OnChunk(a_data, a_size);
@@ -776,10 +801,10 @@ namespace PerkeleRim::PlayerSync
             Drink::SetDrunk(state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, a_delta);
             if (second) {
                 SKSE::log::info(
-                    "player sync: frames={} placed={} new poses={} pos=({:.0f},{:.0f},{:.0f}) speed={:.1f} m/s heading={:.2f} pitch={:.2f} stance={} seated={} van shift={:.1f} eye=({:.0f},{:.0f},{:.0f}) roll={:.2f} fov={:.0f}",
+                    "player sync: frames={} placed={} new poses={} pos=({:.0f},{:.0f},{:.0f}) speed={:.1f} m/s heading={:.2f} pitch={:.2f} stance={} seated={} water={:.2f} van shift={:.1f} eye=({:.0f},{:.0f},{:.0f}) roll={:.2f} fov={:.0f}",
                     state.frames, state.placed, state.newPoses, pose.position[0], pose.position[1], pose.position[2],
                     std::hypot(pose.velocity[0], pose.velocity[1]) * Coords::kMetersPerUnit, pose.heading, pose.pitch, pose.stance,
-                    state.seated, state.vanShift, pose.eye[0], pose.eye[1], pose.eye[2], pose.roll, pose.fov);
+                    state.seated, state.waterLevel, state.vanShift, pose.eye[0], pose.eye[1], pose.eye[2], pose.roll, pose.fov);
                 state.vanShift = 0.0f;
                 state.statTime = 0.0f;
                 state.frames = state.placed = state.newPoses = 0;

@@ -73,7 +73,7 @@ Double-click **Report a bug.bat** (next to Start PerkeleRim.bat). It puts `Perke
 
 - Followers get in the way and are easy to run over. We don't recommend taking one along in v0.1.
 - Horses don't work properly, so don't ride them. Kumpo is a drunk, not a horse rider.
-- Water is ignored: Kumpo walks on the bottom, Skyrim can drown him, vehicles drive through water, and there is no thirst or washing.
+- Water is mostly ignored: Kumpo walks on the bottom, Skyrim can drown him and vehicles drive through water. Wading in up to the waist washes him (dirtiness to 0), but there is no thirst from water.
 - Vehicles have no hitbox in Skyrim, so arrows and dragons pass through the van. Kumpo is safe inside the van and the Kekmet anyway.
 
 ## Repository layout

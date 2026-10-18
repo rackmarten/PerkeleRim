@@ -439,6 +439,8 @@ namespace PerkeleRim.Game
                 shelves.OnMessage(payload, size);
             else if (type == MessageType.LoadReset)
                 rest.OnLoadReset();
+            else if (type == MessageType.PlayerWashed)
+                rest.OnWashed();
             else if (type == MessageType.TimePassed)
                 rest.OnTimePassed(payload, size);
             else if (type == MessageType.MscSave || type == MessageType.MscLoad)
