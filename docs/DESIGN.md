@@ -130,7 +130,7 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 ## 9. Known limitations
 
 - Vehicles can't go through load doors: park at city gates; the player walks in on foot.
-- The island has the land as a heightfield (0.9 m apart) and statics as their real collision; spheres and transform wrappers that don't read as a rotation are left out (counted in the log as skipped), and tree trunks are 8-sided prisms. Doors are read again only after they have swung, so for 1.5 s a moving door is where it was.
+- The island has the land as a heightfield (0.9 m apart) and statics as their real collision; spheres and transform wrappers that don't read as a rotation are left out (counted in the log as skipped), and tree trunks are 8-sided prisms. Doors, gates and trapdoors are read again only once they have stopped moving (about 0.5 s after), so you can't slip through a double door while it is still opening as you can in Skyrim.
 - Skyrim inventory, barter and magic menus are unavailable while MSC controls the player.
 - MSC is first-person only; third-person would need a body model and animation.
 - MSC vehicles are fragile and can kill the player in crashes; may need patching for Skyrim terrain.
@@ -151,6 +151,7 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 5. **Combat**: punching, bottles, running over bandits, Mirmulnir.
 6. **Finale**: Kekmet tractor up the Throat of the World.
 7. *(Future)* Deliveries, traffic, trucking.
+8. *(Future)* Doors that update as they move: read a moving door's chunks while it swings, not only once it has stopped, so the player can run through a half-open double door as in Skyrim (costs MSC a collider rebuild every quarter second on big rooms). Left to player feedback.
 
 ## 12. Risks
 

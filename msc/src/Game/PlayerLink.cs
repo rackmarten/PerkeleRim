@@ -48,6 +48,17 @@ namespace PerkeleRim.Game
         const float FallCheckEvery = 0.25f;
         const float FallSlack = 0.3f;
         const float ThrownDistance = 6f;
+        // On foot, rising faster than LaunchSpeed means the island threw the player (the controller
+        // pushed out of a vertical face or the edge of a hole), and CatchLaunch puts it back where it
+        // last stood. Measured in game: a sprint jump leaves at 8-13 m/s, a step-up is up to StepUp in
+        // one physics step (25 m/s at 50 Hz), throws were 30-130 m/s. CatchFall puts the player back there too
+        // when no island surface is left under the feet, if that spot is within GroundedReach.
+        const float LaunchSpeed = 30f;
+        // How high a step the controller climbs while MSC plays the player for Skyrim: Skyrim's rocks
+        // and rubble are lumpier than MSC's ground, and the player got stuck on them. MSC's own comes
+        // back when Skyrim takes the player.
+        const float StepUp = 0.5f;
+        const float GroundedReach = 25f;
 
         readonly Island island = new Island();
         readonly InputFrame input = new InputFrame();
@@ -84,6 +95,9 @@ namespace PerkeleRim.Game
         // steeper, ramps over lips blue, Skyrim's roads bluish green), to compare the island with
         // Skyrim's ground: while MSC has the player (DebugView), or spike "island show|hide".
         public static bool ShowIsland;
+        // The ramps over short steps on roads (Fillets): off, they bumped the vehicles more than they
+        // helped and stood up as walls in gateways. Spike "island ramps on|off" to compare.
+        public static bool RoadRamps;
         static Material islandMaterial;
         // Where each chunk mesh's ramps (Fillets) start in its triangle list; drawn blue.
         static readonly Dictionary<Mesh, int> filletFrom = new Dictionary<Mesh, int>();
@@ -122,6 +136,12 @@ namespace PerkeleRim.Game
         bool haveLastFeet;
         Vector3 lastFeet;
         Vec3 velocity;  // Skyrim units per second
+        bool haveGrounded;  // lastGrounded is where the player last stood on foot, on the current island
+        Vector3 lastGrounded;
+        readonly StepSmoother steps = new StepSmoother();  // the eye's height over stairs (StepWalk)
+        float groundedAt;  // Time.time the player last stood on something on foot
+        bool haveWalkFeet;
+        Vector3 walkFeet;  // feet as of the last LateUpdate, for StepWalk
 
         public void Init(Action<string> log)
         {
@@ -227,9 +247,12 @@ namespace PerkeleRim.Game
         void FixedUpdate()
         {
             fixedFrame++;
-            crash.Step(playing && player != null ? Driven() : null);
+            var driven = playing && player != null ? Driven() : null;
+            crash.Step(driven);
             if (player == null) { haveLastFeet = false; return; }
             var feet = Feet();
+            if (!playing || driven != null) haveGrounded = false;
+            else if (CatchLaunch(feet)) return;
             if (haveLastFeet)
                 velocity = Coords.UnityToSkyrim(ToVec3((feet - lastFeet) / Time.fixedDeltaTime));
             lastFeet = feet;
@@ -276,6 +299,7 @@ namespace PerkeleRim.Game
 
             playing = owned && player != null && island.HasAnchor && placedGeneration == island.Generation;
             if (playing) CatchFall();
+            StepWalk();
             MotorBoost.Active = playing;
             DeathGuard.Active = owned;
             DeathGuard.Update();
@@ -420,6 +444,7 @@ namespace PerkeleRim.Game
             if (go == null) return;
             player = go.transform;
             controller = go.GetComponent<CharacterController>();
+            ownStepOffset = -1f;  // a new controller has its own step height
             fpsCamera = player.Find("Pivot/AnimPivot/Camera/FPSCamera");
             viewCamera = fpsCamera != null ? fpsCamera.GetComponentInChildren<Camera>() : null;
             crouch = null;
@@ -430,6 +455,7 @@ namespace PerkeleRim.Game
                 foreach (var f in fpsCamera.GetComponents<PlayMakerFSM>())
                     if (f.FsmName == "PlayerFunctions") functions = f;
             haveLastFeet = false;
+            haveGrounded = false;
             motor = go.GetComponent("CharacterMotor") as Behaviour;
             motorDisabled = false;
             ReadBindings();
@@ -525,7 +551,7 @@ namespace PerkeleRim.Game
 
             var watch = System.Diagnostics.Stopwatch.StartNew();
             int sampled = chunk.Triangles.Length;
-            int fillets = Fillets.Add(ref chunk.Vertices, ref chunk.Triangles, chunk.Roads);
+            int fillets = RoadRamps ? Fillets.Add(ref chunk.Vertices, ref chunk.Triangles, chunk.Roads) : 0;
             watch.Stop();
 
             var vertices = new Vector3[chunk.Vertices.Length];
@@ -632,6 +658,41 @@ namespace PerkeleRim.Game
                     log($"player:   ({off.x:+0.0;-0.0},{off.y:+0.00;-0.00},{off.z:+0.0;-0.0}) {reason} on {go.name}");
                 });
             }
+        }
+
+        // Spike "island ramps on|off": every chunk rebuilt with or without its road ramps.
+        public void SetRoadRamps(bool on)
+        {
+            RoadRamps = on;
+            int added = 0;
+            foreach (var go in chunks.Values)
+            {
+                var collider = go.GetComponent<MeshCollider>();
+                if (collider == null || collider.sharedMesh == null) continue;
+                var old = collider.sharedMesh;
+                int sampled;
+                if (!filletFrom.TryGetValue(old, out sampled)) sampled = old.triangles.Length;
+                float[] roads;
+                roadsOf.TryGetValue(old, out roads);
+                var from = old.vertices;
+                var vertices = new Vec3[from.Length];
+                for (int i = 0; i < from.Length; i++) vertices[i] = ToVec3(from[i]);
+                var triangles = new int[sampled];
+                Array.Copy(old.triangles, triangles, sampled);
+                if (on) added += Fillets.Add(ref vertices, ref triangles, roads);
+                var points = new Vector3[vertices.Length];
+                for (int i = 0; i < points.Length; i++) points[i] = ToVector3(vertices[i]);
+                var mesh = new Mesh { name = old.name, vertices = points, triangles = triangles };
+                mesh.RecalculateBounds();
+                filletFrom[mesh] = sampled;
+                roadsOf[mesh] = roads;
+                collider.sharedMesh = mesh;
+                filletFrom.Remove(old);
+                roadsOf.Remove(old);
+                Destroy(old);
+                DrawChunk(go);
+            }
+            log($"player: road ramps {(on ? "on" : "off")}, {chunks.Count} chunks rebuilt, {added} ramp triangles");
         }
 
         public void SetIslandVisible(bool show)
@@ -785,6 +846,7 @@ namespace PerkeleRim.Game
             var body = player.GetComponent<Rigidbody>();
             if (body != null && !body.isKinematic) body.velocity = Vector3.zero;
             haveLastFeet = false;
+            haveGrounded = false;
             velocity = new Vec3();
 
             if (!ready)
@@ -860,14 +922,117 @@ namespace PerkeleRim.Game
             // Standing on something isn't falling, even where the rays below miss the floor (next to
             // the garage's shelves they did, and the player was put on the shed's beams).
             if (carrier == null && controller != null && controller.isGrounded) return;
+            // On foot, through a hole in the island or below it: back where the player last stood
+            // (the lowest surface above could be a bridge or a rock top far over the hole).
+            if (carrier == null && haveGrounded && feet.y < lastGrounded.y - FallSlack && Near(feet, lastGrounded) && !IslandBelow(feet))
+            {
+                PutBack(feet, lastGrounded);
+                log($"player: fell into a hole at ({feet.x:0.00},{feet.y:0.00},{feet.z:0.00}), put back at ({lastGrounded.x:0.00},{lastGrounded.y:0.00},{lastGrounded.z:0.00})");
+                return;
+            }
             var heights = IslandSurfaces(feet);
             if (heights.Count == 0 || heights[heights.Count - 1] <= feet.y + FallSlack) return;  // ground below, or no island here
             float above = heights[heights.Count - 1];  // the lowest, all of them above the feet
-            player.position += new Vector3(0f, above + SpawnClearance - feet.y, 0f);
+            PutBack(feet, new Vector3(feet.x, above, feet.z));
+            log($"player: fell through the island at ({feet.x:0.00},{feet.y:0.00},{feet.z:0.00}), put back on top at {above:0.00}");
+        }
+
+        // On foot: snaps the player down onto the step below instead of letting it run off each one
+        // into the air (down Skyrim's stairs at MotorBoost's speed it was airborne half the time), and
+        // smooths the eye Skyrim's camera hangs at over the steps (StepSmoother). Not while rising (a
+        // jump) or more than SnapWindow after the player last stood on something (a real fall).
+        const float SnapWindow = 0.25f;
+        float ownStepOffset = -1f;  // MSC's own CharacterController.stepOffset while ours is in
+        void StepHeight(bool on)
+        {
+            if (controller == null) return;
+            if (on && ownStepOffset < 0f)
+            {
+                ownStepOffset = controller.stepOffset;
+                controller.stepOffset = Mathf.Max(ownStepOffset, Mathf.Min(StepUp, controller.height * 0.5f));
+                log($"player: step height {ownStepOffset:0.00} m raised to {controller.stepOffset:0.00}");
+            }
+            else if (!on && ownStepOffset >= 0f)
+            {
+                controller.stepOffset = ownStepOffset;
+                ownStepOffset = -1f;
+            }
+        }
+        void StepWalk()
+        {
+            StepHeight(playing);
+            if (!playing || controller == null || !controller.enabled || islandObject == null || Array.Find(vehicles, v => v.Carries(player)) != null)
+            {
+                steps.Reset();
+                haveWalkFeet = false;
+                return;
+            }
+            var feet = Feet();
+            if (controller.isGrounded) groundedAt = Time.time;
+            else if (Time.time - groundedAt < SnapWindow && haveWalkFeet && feet.y <= walkFeet.y)
+            {
+                RaycastHit hit;
+                if (Physics.Raycast(feet + Vector3.up * 0.05f, Vector3.down, out hit, StepSmoother.MaxStep + 0.05f) && hit.collider.transform.parent == islandObject.transform)
+                {
+                    controller.Move(Vector3.down * (hit.distance - 0.04f));
+                    feet = Feet();
+                }
+            }
+            walkFeet = feet;
+            haveWalkFeet = true;
+            steps.Update(ToVec3(feet), controller.isGrounded, Time.deltaTime);
+        }
+
+        // Remembers where the player stands on foot, and puts it back there when it shoots up
+        // faster than any jump (see LaunchSpeed). True when it was put back.
+        bool CatchLaunch(Vector3 feet)
+        {
+            if (controller != null && controller.isGrounded)
+            {
+                lastGrounded = feet;
+                haveGrounded = true;
+                return false;
+            }
+            if (!haveLastFeet || !haveGrounded) return false;
+            float rise = (feet.y - lastFeet.y) / Time.fixedDeltaTime;
+            if (rise < LaunchSpeed || !Near(feet, lastGrounded)) return false;
+            PutBack(feet, lastGrounded);
+            log($"player: launched up at {rise:0.0} m/s from ({feet.x:0.00},{feet.y:0.00},{feet.z:0.00}), put back at ({lastGrounded.x:0.00},{lastGrounded.y:0.00},{lastGrounded.z:0.00})");
+            return true;
+        }
+
+        static bool Near(Vector3 a, Vector3 b) => new Vector2(a.x - b.x, a.z - b.z).magnitude < GroundedReach;
+
+        // Any island surface under p, down to HoleDepth: where there is none the player fell into
+        // a hole (or off the island) rather than off a ledge.
+        const float HoleDepth = 500f;
+        bool IslandBelow(Vector3 p)
+        {
+            if (islandObject == null) return true;
+            var from = p + Vector3.up * FallSlack;
+            float bottom = p.y - HoleDepth;
+            RaycastHit hit;
+            for (int i = 0; i < 32 && from.y > bottom && Physics.Raycast(from, Vector3.down, out hit, from.y - bottom); i++)
+            {
+                if (hit.collider.transform.parent == islandObject.transform) return true;
+                from = hit.point + Vector3.down * 0.01f;
+            }
+            return false;
+        }
+
+        // Moves the player's feet to `to`, standing still.
+        void PutBack(Vector3 feet, Vector3 to)
+        {
+            player.position += to + Vector3.up * SpawnClearance - feet;
             var body = player.GetComponent<Rigidbody>();
             if (body != null && !body.isKinematic) body.velocity = Vector3.zero;
+            if (motor != null)
+            {
+                var setVelocity = motor.GetType().GetMethod("SetVelocity", new[] { typeof(Vector3) });
+                if (setVelocity != null) setVelocity.Invoke(motor, new object[] { Vector3.zero });
+            }
             haveLastFeet = false;
-            log($"player: fell through the island at ({feet.x:0.00},{feet.y:0.00},{feet.z:0.00}), put back on top at {above:0.00}");
+            velocity = new Vec3();
         }
 
         void SetMotor(bool on)
@@ -915,7 +1080,8 @@ namespace PerkeleRim.Game
             if (view != null)
             {
                 var cam = view.transform;
-                CameraPose.Fill(ref s, ToVec3(cam.position - Feet()), ToVec3(cam.right), ToVec3(cam.up), view.fieldOfView);
+                var eye = cam.position - Feet() + (tv == null ? Vector3.up * steps.Offset : Vector3.zero);  // glides over stairs (StepWalk)
+                CameraPose.Fill(ref s, ToVec3(eye), ToVec3(cam.right), ToVec3(cam.up), view.fieldOfView);
                 if (tv != null) CameraPose.Chase(ref s, cam.eulerAngles.y, cam.eulerAngles.x);
                 else CameraPose.View(ref s, cam.eulerAngles.y, cam.eulerAngles.x);
             }

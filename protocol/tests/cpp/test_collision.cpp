@@ -237,3 +237,30 @@ TEST_CASE("a road triangle belongs to every chunk it reaches within kRoadReach o
     // Negative chunks.
     CHECK(RoadTouchesChunk(-2, -3, { -3000, -2900, -3000 }, { -5000, -5000, -4900 }));
 }
+
+TEST_CASE("small heightfield holes are filled from their neighbours, wide misses stay open")
+{
+    auto f = Flat(0, 0, 32, 100.0f);
+    const std::uint32_t side = f.Side();
+    // A 2 x 2 hole in the middle.
+    for (std::uint32_t j = 10; j < 12; j++) {
+        for (std::uint32_t i = 10; i < 12; i++) {
+            f.hit[j * side + i] = 0;
+            f.heights[j * side + i] = 0.0f;
+        }
+    }
+    // A wide miss: the last 12 rows.
+    for (std::uint32_t k = 21 * side; k < f.Samples(); k++) {
+        f.hit[k] = 0;
+    }
+    const auto filled = FillMisses(f);
+    CHECK(filled >= 4);
+    for (std::uint32_t j = 10; j < 12; j++) {
+        for (std::uint32_t i = 10; i < 12; i++) {
+            CHECK(f.hit[j * side + i] == 1);
+            CHECK(f.heights[j * side + i] == doctest::Approx(100.0f));
+        }
+    }
+    CHECK(f.hit[32 * side + 16] == 0);  // 12 rows deep, 3 passes close only the first 3
+    CHECK(f.hit[21 * side + 16] == 1);
+}

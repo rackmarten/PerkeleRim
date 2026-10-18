@@ -452,11 +452,12 @@ namespace PerkeleRim.Spike
                     case "carlights":  // every Light below the vehicles, and the objects named like lamps, with their state
                         CarLights();
                         break;
-                    case "island":  // "island show", "island hide", "island steps 8"
+                    case "island":  // "island show", "island hide", "island steps 8", "island ramps on|off"
                         var islandLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
                         string islandMode = words.Length > 1 ? words[1].ToLower() : "show";
                         if (islandLink == null) SpikeLog.Write("cmd: no PlayerLink");
                         else if (islandMode == "why") islandLink.LogWhy(words.Length > 2 ? float.Parse(words[2], CultureInfo.InvariantCulture) : 2f);
+                        else if (islandMode == "ramps") islandLink.SetRoadRamps(words.Length < 3 || words[2].ToLower() != "off");
                         else if (islandMode == "steps")islandLink.LogSteps(words.Length > 2 ? float.Parse(words[2], CultureInfo.InvariantCulture) : 8f);
                         else islandLink.SetIslandVisible(islandMode != "hide");
                         break;

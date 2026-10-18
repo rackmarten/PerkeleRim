@@ -54,6 +54,50 @@ namespace PerkeleRim::Collision
         }
     };
 
+    // Closes small holes in a heightfield: a missed sample with at least three hit neighbours (of
+    // eight) takes their mean height, a_passes times over, so holes a few samples across close
+    // from their edges while wide misses (no land there at all) stay open. Returns how many
+    // samples it filled. A hole was a pit the player and the moped fell into.
+    inline std::uint32_t FillMisses(Heightfield& a_field, int a_passes = 3)
+    {
+        const int     side = static_cast<int>(a_field.Side());
+        std::uint32_t filled = 0;
+        for (int pass = 0; pass < a_passes; pass++) {
+            std::vector<std::pair<std::uint32_t, float>> fills;
+            for (int j = 0; j < side; j++) {
+                for (int i = 0; i < side; i++) {
+                    const auto k = static_cast<std::uint32_t>(j * side + i);
+                    if (a_field.hit[k]) {
+                        continue;
+                    }
+                    float sum = 0.0f;
+                    int   count = 0;
+                    for (int dj = -1; dj <= 1; dj++) {
+                        for (int di = -1; di <= 1; di++) {
+                            const int ni = i + di, nj = j + dj;
+                            if ((di || dj) && ni >= 0 && nj >= 0 && ni < side && nj < side && a_field.hit[nj * side + ni]) {
+                                sum += a_field.heights[nj * side + ni];
+                                count++;
+                            }
+                        }
+                    }
+                    if (count >= 3) {
+                        fills.emplace_back(k, sum / static_cast<float>(count));
+                    }
+                }
+            }
+            if (fills.empty()) {
+                break;
+            }
+            for (const auto& [k, z] : fills) {
+                a_field.heights[k] = z;
+                a_field.hit[k] = 1;
+            }
+            filled += static_cast<std::uint32_t>(fills.size());
+        }
+        return filled;
+    }
+
     // Unity 5's meshes index vertices with 16 bits, so MSC can't build a chunk with more.
     constexpr std::uint32_t kMaxChunkVertices = 65000;
 

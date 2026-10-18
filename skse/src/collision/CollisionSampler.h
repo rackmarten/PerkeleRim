@@ -14,4 +14,5 @@ namespace PerkeleRim::CollisionSampler
     void Stop();                                                         // Skyrim took the player back
     void Update(RE::PlayerCharacter* a_player, const RE::NiPoint3& a_velocity);  // every frame while MSC owns the player; velocity in units/s
     void OnDataLoaded();  // a door opening or closing reads the chunks around it again once it has swung
+    void Probe(RE::PlayerCharacter* a_player);  // F11: logs every surface under the player, 2 m ahead and straight ahead, with its layer and ref, each ref explained
 }

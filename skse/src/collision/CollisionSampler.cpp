@@ -25,6 +25,10 @@ namespace PerkeleRim::CollisionSampler
         constexpr int           kMaxTries = 5;
         constexpr auto          kDoorSwing = 1500ms;   // a door's collision is where it stops after this
         constexpr float         kDoorReach = 256.0f;   // chunks this close to a door that moved are read again
+        constexpr auto          kMoverCheck = 250ms;   // how often gates, trapdoors and the like are looked at
+        constexpr auto          kMoverSettle = 300ms;  // ... and how long one must have stood still after moving
+        constexpr float         kMoverTolerance = 2.0f;  // units of StaticMeshes::Pose
+        constexpr std::pair<float, float> kNudges[] = { { 8.0f, 0.0f }, { -8.0f, 0.0f }, { 0.0f, 8.0f }, { 0.0f, -8.0f } };  // units, retries for a missed land sample
 
         using Key = std::pair<std::int32_t, std::int32_t>;
 
@@ -38,7 +42,7 @@ namespace PerkeleRim::CollisionSampler
 
         struct Stats
         {
-            int terrain = 0, passed = 0;
+            int terrain = 0, passed = 0, nudged = 0;
             int frames = 0;
             Clock::duration time{};
         };
@@ -63,6 +67,15 @@ namespace PerkeleRim::CollisionSampler
             std::uint32_t             pendingScore = 0;
 
             std::vector<std::pair<RE::NiPoint3, Clock::time_point>> doors;  // doors that moved, and when they will have stopped
+
+            struct Mover
+            {
+                RE::NiPoint3      pose;
+                bool              moving = false;
+                Clock::time_point movedAt{};
+            };
+            std::map<RE::FormID, Mover> movers;  // refs with moving bodies in chunks read (StaticMeshes::Pose)
+            Clock::time_point           nextMoverCheck{};
         } state;
 
         // Chunk offsets around the player's chunk, nearest first.
@@ -110,13 +123,13 @@ namespace PerkeleRim::CollisionSampler
             return false;
         }
 
-        // The landscape: the terrain layer, or in some cells the ground layer, which then belongs to
-        // no reference (statics on the ground layer come with the statics).
+        // The landscape: the terrain layer, or in some cells the ground layer, belonging to no
+        // reference. Refs on those layers (cliffs, mountain pieces) come with the statics as their
+        // own triangles: seen from above, an overhang over a mountain path was a wall down to it.
         bool IsLand(const RE::hkpCollidable& a_collidable)
         {
             switch (a_collidable.GetCollisionLayer()) {
             case Layer::kTerrain:
-                return true;
             case Layer::kGround:
                 return !RE::TESHavokUtilities::FindCollidableRef(a_collidable);
             default:
@@ -230,12 +243,19 @@ namespace PerkeleRim::CollisionSampler
             const auto roads = CollectRoads(key);
             const auto navmesh = Clock::now() - start - collect;
             const auto hits = f.Hits();
+            const auto filled = state.interior ? 0u : Collision::FillMisses(state.field);  // after counting: a filled hole isn't land found
             const auto triangles = static_cast<std::uint32_t>(statics.triangles.size() / 9);
             const auto roadCount = static_cast<std::uint32_t>(roads.triangles.size() / 6);
             const auto score = hits + triangles + roadCount;
             // A few land samples always miss (terrain holes at cave mouths), so 99% counts as complete.
             known.done = (state.interior || hits * 100 >= f.Samples() * 99) && statics.pending == 0;
 
+            for (const auto id : statics.movers) {
+                RE::NiPoint3 pose;
+                if (!state.movers.contains(id) && StaticMeshes::Pose(RE::TESForm::LookupByID<RE::TESObjectREFR>(id), pose)) {
+                    state.movers[id].pose = pose;
+                }
+            }
             const bool improved = score > known.sentScore;
             std::uint32_t dropped = 0;
             if (improved) {
@@ -248,9 +268,9 @@ namespace PerkeleRim::CollisionSampler
                 others += std::format(" {}x{}", count, layer);
             }
             SKSE::log::info(
-                "collision: chunk ({},{}) gen {} try {}: terrain {}/{} (passed through {}), statics {} triangles from {} refs ({} not loaded yet, {} transformed, {} shapes skipped{}{}), roads {} triangles from {} navmeshes, {:.1f} ms over {} frames + {:.1f} ms statics + {:.1f} ms navmesh{}{}",
-                key.first, key.second, state.generation, known.tries, hits, state.interior ? 0 : f.Samples(), state.stats.passed,
-                triangles, statics.refs, statics.pending, statics.transformed, statics.skipped, dropped ? std::format(", {} over the vertex limit", dropped) : "", others.empty() ? "" : ", bodies left out by layer:" + others,
+                "collision: chunk ({},{}) gen {} try {}: terrain {}/{} ({} on a nudged ray, {} filled in, passed through {}), statics {} triangles from {} refs ({} not loaded yet, {} transformed, {} hulls rebuilt, {} shapes skipped{}{}), roads {} triangles from {} navmeshes, {:.1f} ms over {} frames + {:.1f} ms statics + {:.1f} ms navmesh{}{}",
+                key.first, key.second, state.generation, known.tries, hits, state.interior ? 0 : f.Samples(), state.stats.nudged, filled, state.stats.passed,
+                triangles, statics.refs, statics.pending, statics.transformed, statics.rebuilt, statics.skipped, dropped ? std::format(", {} over the vertex limit", dropped) : "", others.empty() ? "" : ", bodies left out by layer:" + others,
                 roadCount, roads.navmeshes, std::chrono::duration<double, std::milli>(state.stats.time).count(), state.stats.frames,
                 std::chrono::duration<double, std::milli>(collect).count(), std::chrono::duration<double, std::milli>(navmesh).count(),
                 improved ? ", sent" : ", nothing new", known.done ? "" : ", again later");
@@ -282,6 +302,37 @@ namespace PerkeleRim::CollisionSampler
             });
         }
 
+        // A lever opening a portcullis, a trapdoor dropping: no open or close event, so the refs with
+        // moving bodies are watched, and once one has moved and stood still for kMoverSettle its
+        // chunks are read again, the way a door's are.
+        void WatchMovers()
+        {
+            const auto now = Clock::now();
+            if (now < state.nextMoverCheck) {
+                return;
+            }
+            state.nextMoverCheck = now + kMoverCheck;
+            for (auto it = state.movers.begin(); it != state.movers.end();) {
+                auto*        ref = RE::TESForm::LookupByID<RE::TESObjectREFR>(it->first);
+                RE::NiPoint3 pose;
+                if (!ref || !StaticMeshes::Pose(ref, pose)) {
+                    it = state.movers.erase(it);  // unloaded: its chunk is read again anyway when it comes back
+                    continue;
+                }
+                auto& mover = it->second;
+                if (pose.GetDistance(mover.pose) > kMoverTolerance) {
+                    mover.pose = pose;
+                    mover.moving = true;
+                    mover.movedAt = now;
+                } else if (mover.moving && now - mover.movedAt >= kMoverSettle) {
+                    mover.moving = false;
+                    state.doors.emplace_back(ref->GetPosition(), now);
+                    SKSE::log::info("collision: {:08X} moved and stopped, reading its chunks again", it->first);
+                }
+                ++it;
+            }
+        }
+
         class DoorSink : public RE::BSTEventSink<RE::TESOpenCloseEvent>
         {
         public:
@@ -304,6 +355,62 @@ namespace PerkeleRim::CollisionSampler
         }
     }
 
+    void Probe(RE::PlayerCharacter* a_player)
+    {
+        auto* cell = a_player ? a_player->GetParentCell() : nullptr;
+        auto* bhk = cell ? cell->GetbhkWorld() : nullptr;
+        auto* world = bhk ? bhk->GetWorld1() : nullptr;
+        if (!world) {
+            return;
+        }
+        const auto         pos = a_player->GetPosition();
+        const float        heading = a_player->GetAngleZ();
+        const float        scale = RE::bhkWorld::GetWorldScale();
+        const RE::NiPoint3 forward(std::sin(heading), std::cos(heading), 0.0f);
+        std::set<RE::FormID> explained;
+        RE::BSReadLockGuard  lock(bhk->worldLock);
+
+        // Every surface along from..to, passing through each, with the ref it belongs to; each ref
+        // explained once (StaticMeshes::Explain): what the island made of it.
+        const auto cast = [&](const char* a_what, const RE::NiPoint3& a_from, const RE::NiPoint3& a_to) {
+            SKSE::log::info("probe: {} from ({:.0f},{:.0f},{:.0f}), chunk ({},{}), player z {:.0f}:", a_what, a_from.x, a_from.y, a_from.z,
+                Collision::ChunkIndex(a_from.x), Collision::ChunkIndex(a_from.y), pos.z);
+            RE::hkpWorldRayCastInput input;
+            input.filterInfo.SetCollisionLayer(Layer::kLOS);
+            const float  length = a_from.GetDistance(a_to);
+            const auto   direction = (a_to - a_from) / length;
+            float        travelled = 0.0f;
+            for (int i = 0; i <= kMaxPassThrough && travelled < length; i++) {
+                const auto start = a_from + direction * travelled;
+                input.from = RE::hkVector4(start.x * scale, start.y * scale, start.z * scale, 0.0f);
+                input.to = RE::hkVector4(a_to.x * scale, a_to.y * scale, a_to.z * scale, 0.0f);
+                RE::hkpWorldRayCastOutput output;
+                world->CastRay(input, output);
+                if (!output.HasHit()) {
+                    break;
+                }
+                travelled += (length - travelled) * output.hitFraction;
+                const auto  at = a_from + direction * travelled;
+                const auto& collidable = *output.rootCollidable;
+                auto*       ref = RE::TESHavokUtilities::FindCollidableRef(collidable);
+                auto*       base = ref ? ref->GetBaseObject() : nullptr;
+                auto*       model = base ? base->As<RE::TESModel>() : nullptr;
+                SKSE::log::info("probe:   {:.0f} units along (z {:+.0f}), normal z {:.2f}, layer {}{}, {}", travelled, at.z - pos.z, output.normal.quad.m128_f32[2],
+                    static_cast<int>(collidable.GetCollisionLayer()), IsLand(collidable) ? " (land)" : "",
+                    ref ? std::format("ref {:08X} base {:08X} {}", ref->GetFormID(), base ? base->GetFormID() : 0, model ? model->GetModel() : "") : "no ref");
+                if (ref && explained.insert(ref->GetFormID()).second) {
+                    SKSE::log::info("probe:     ref {:08X}: {}", ref->GetFormID(), StaticMeshes::Explain(ref));
+                }
+                travelled += 1.0f;
+            }
+        };
+        const RE::NiPoint3 up(0.0f, 0.0f, 2000.0f);
+        cast("down under the player", pos + up, pos - up);
+        cast("down 2 m ahead", pos + forward * 140.0f + up, pos + forward * 140.0f - up);
+        const RE::NiPoint3 chest = pos + RE::NiPoint3(0.0f, 0.0f, 90.0f);
+        cast("straight ahead at chest height", chest, chest + forward * 500.0f);
+    }
+
     void Reset(std::uint32_t a_generation, std::uint32_t a_worldspace)
     {
         state.active = true;
@@ -313,6 +420,7 @@ namespace PerkeleRim::CollisionSampler
         state.sampling = false;
         state.pending.clear();
         state.doors.clear();
+        state.movers.clear();
     }
 
     void Stop()
@@ -322,6 +430,7 @@ namespace PerkeleRim::CollisionSampler
         state.pending.clear();
         state.known.clear();
         state.doors.clear();
+        state.movers.clear();
     }
 
     void Update(RE::PlayerCharacter* a_player, const RE::NiPoint3& a_velocity)
@@ -343,6 +452,7 @@ namespace PerkeleRim::CollisionSampler
         std::erase_if(state.known, [&](const auto& a_entry) { return !inRange(a_entry.first, kForgetRadius); });
 
         RefreshDoors();
+        WatchMovers();
         if (!state.pending.empty() && !TrySend()) {
             return;  // ring full, MSC is behind
         }
@@ -367,7 +477,18 @@ namespace PerkeleRim::CollisionSampler
             while (state.next < f.Samples()) {
                 const std::uint32_t k = state.next++;
                 float               z = 0.0f;
-                if (Cast(world, f.X(k % side), f.Y(k / side), z)) {
+                const float         x = f.X(k % side), y = f.Y(k / side);
+                bool                hit = Cast(world, x, y, z);
+                // A ray that misses the land is tried again a little to each side (they missed
+                // along seams), so it leaves no hole a wheel or a foot drops into.
+                for (const auto& [dx, dy] : kNudges) {
+                    if (hit) {
+                        break;
+                    }
+                    hit = Cast(world, x + dx, y + dy, z);
+                    state.stats.nudged += hit;
+                }
+                if (hit) {
                     f.heights[k] = z;
                     f.hit[k] = 1;
                 }

@@ -11,11 +11,21 @@ namespace PerkeleRim::StaticMeshes
         int                refs = 0;     // refs with wanted collision in the chunk
         int                pending = 0;  // statics in the chunk whose 3D hasn't loaded yet
         int                transformed = 0;  // children read through a transform wrapper
+        int                rebuilt = 0;      // convex hulls whose planes didn't close, rebuilt from their vertices
         int                skipped = 0;      // shapes we can't turn into triangles (spheres, wrappers that didn't read right)
         std::map<int, int> otherLayers;      // bodies of these refs on layers left out, by COL_LAYER
+        std::vector<RE::FormID> movers;      // refs with a body a script or an animation moves (gates, trapdoors), for Pose
     };
 
     // Triangles of every wanted static collision whose center lies in collision chunk (x, y) of
     // the loaded cells.
     Chunk Collect(std::int32_t a_chunkX, std::int32_t a_chunkY);
+
+    // Where a ref's moving bodies are, in one point that changes with any shift or turn of them (Skyrim
+    // units, roughly): false when it has none or no 3D. CollisionSampler reads chunks again once it
+    // has changed and settled, since a lever opening a portcullis sends no open event.
+    bool Pose(RE::TESObjectREFR* a_ref, RE::NiPoint3& a_pose);
+
+    // Why a ref gives the island what it does: its type, 3D and every collision body (F11's probe).
+    std::string Explain(RE::TESObjectREFR* a_ref);
 }

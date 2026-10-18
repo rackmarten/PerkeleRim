@@ -10,6 +10,7 @@ namespace PerkeleRim::StaticMeshes
 
         constexpr int   kMaxDepth = 8;        // nested shape containers
         constexpr float kMaxEdge = 20000.0f;  // a triangle edge longer than this (Skyrim units) means we misread it
+        constexpr std::size_t kMaxHullPoints = 64;  // a hull rebuilt from its vertices (ConvexVertices) tries every triple
         constexpr int   kCapsuleSides = 8;
 
         // hkpTriangleShape isn't in CommonLib: an hkpConvexShape (0x28), welding info, then its
@@ -17,7 +18,8 @@ namespace PerkeleRim::StaticMeshes
         // lies on Skyrim's own collision.
         constexpr std::size_t kTriangleVertices = 0x30;
 
-        // Collision we keep. Terrain comes from the heightfield. Transparent is what blocks the
+        // Collision we keep. The landscape comes from the heightfield, but refs on the terrain or
+        // ground layer (cliffs, mountain pieces) are here: they overhang paths. Transparent is what blocks the
         // player but not arrows (railings, plank fences, grates, invisible walls); clutter only
         // where it doesn't move (doors without a load door, chests, tables), since loose clutter
         // is MSC's own business. Actors, debris, water and triggers stay out.
@@ -26,6 +28,7 @@ namespace PerkeleRim::StaticMeshes
             switch (a_body.collidable.GetCollisionLayer()) {
             case Layer::kStatic:
             case Layer::kAnimStatic:
+            case Layer::kTerrain:
             case Layer::kGround:
             case Layer::kTrees:
             case Layer::kStairHelper:
@@ -36,6 +39,12 @@ namespace PerkeleRim::StaticMeshes
             default:
                 return false;
             }
+        }
+
+        // A body a script or an animation moves: gates, trapdoors, drawbridges, doors.
+        bool Animated(const RE::hkpRigidBody& a_body)
+        {
+            return a_body.collidable.GetCollisionLayer() == Layer::kAnimStatic || a_body.motion.type == RE::hkpMotion::MotionType::kKeyframed;
         }
 
         // Base objects whose refs have static collision once their 3D is in.
@@ -213,14 +222,21 @@ namespace PerkeleRim::StaticMeshes
                     Box(center, half);
                     return;
                 }
+                // Havok shrinks a hull's vertices by its convex radius while its planes stay where the
+                // full hull is, so a face's vertices lie up to the radius inside its plane: matched
+                // exactly, a portcullis, a floor grate trapdoor and many rubble stones gave no faces.
                 const float epsilon = 1e-3f * (std::max)({ half.x, half.y, half.z, 1e-3f });
+                const float inside = epsilon + (std::max)(a_shape->radius, 0.0f);
+                int         faces = 0;
+                const auto  before = out->triangles.size();
                 for (const auto& plane : a_shape->planeEquations) {
                     float p[4];
                     _mm_storeu_ps(p, plane.quad);
                     const RE::NiPoint3        normal(p[0], p[1], p[2]);
                     std::vector<RE::NiPoint3> face;
                     for (const auto& v : points) {
-                        if (std::abs(normal.Dot(v) + p[3]) <= epsilon) {
+                        const float d = normal.Dot(v) + p[3];
+                        if (d <= epsilon && d >= -inside) {
                             face.push_back(v);
                         }
                     }
@@ -237,7 +253,45 @@ namespace PerkeleRim::StaticMeshes
                     const RE::NiPoint3 w = normal.Cross(u);
                     std::ranges::sort(face, {}, [&](const RE::NiPoint3& a_v) { return std::atan2((a_v - mid).Dot(w), (a_v - mid).Dot(u)); });
                     Polygon(std::move(face), center);
+                    faces++;
                 }
+                if (faces >= 4) {
+                    return;
+                }
+                // Still not closed: the hull again from its vertices alone, every triangle of them with
+                // all the others on one side (a face of the hull; coplanar ones overlap, harmless).
+                out->triangles.resize(before);
+                if (points.size() > kMaxHullPoints) {
+                    out->skipped++;
+                    return;
+                }
+                RE::NiPoint3 mid;
+                for (const auto& v : points) {
+                    mid += v;
+                }
+                mid /= static_cast<float>(points.size());
+                for (std::size_t i = 0; i < points.size(); i++) {
+                    for (std::size_t j = i + 1; j < points.size(); j++) {
+                        for (std::size_t k = j + 1; k < points.size(); k++) {
+                            RE::NiPoint3 n = (points[j] - points[i]).Cross(points[k] - points[i]);
+                            const float  length = n.Length();
+                            if (length < 1e-9f) {
+                                continue;
+                            }
+                            n /= length;
+                            bool above = false, below = false;
+                            for (const auto& v : points) {
+                                const float d = n.Dot(v - points[i]);
+                                above |= d > epsilon;
+                                below |= d < -epsilon;
+                            }
+                            if (!(above && below)) {
+                                Polygon({ points[i], points[j], points[k] }, mid);
+                            }
+                        }
+                    }
+                }
+                out->rebuilt++;
             }
 
             // A child placed with a transform of its own: planks, railings, drawbridges, doors are
@@ -351,6 +405,7 @@ namespace PerkeleRim::StaticMeshes
                 bound.center.y + bound.radius < walk.y0 || bound.center.y - bound.radius >= walk.y1) {
                 return RE::BSContainer::ForEachResult::kContinue;
             }
+            bool       moves = false;
             const auto before = chunk.triangles.size();
             RE::BSVisit::TraverseScenegraphCollision(root, [&](RE::bhkNiCollisionObject* a_object) {
                 auto* body = a_object ? skyrim_cast<RE::bhkRigidBody*>(a_object->body.get()) : nullptr;
@@ -364,11 +419,87 @@ namespace PerkeleRim::StaticMeshes
                 // Havok's own transform: bhkRigidBody::GetTransform leaves out a bhkRigidBodyT's offset.
                 walk.xf = Frame::Of(hk->motion.motionState.transform);
                 walk.Shape(hk->GetShape(), 0);
+                moves |= Animated(*hk);
                 return RE::BSVisit::BSVisitControl::kContinue;
             });
             chunk.refs += chunk.triangles.size() > before;
+            if (moves) {
+                chunk.movers.push_back(a_ref->GetFormID());
+            }
             return RE::BSContainer::ForEachResult::kContinue;
         });
         return chunk;
+    }
+
+    bool Pose(RE::TESObjectREFR* a_ref, RE::NiPoint3& a_pose)
+    {
+        auto* root = a_ref ? a_ref->Get3D() : nullptr;
+        if (!root) {
+            return false;
+        }
+        a_pose = {};
+        bool any = false;
+        RE::BSVisit::TraverseScenegraphCollision(root, [&](RE::bhkNiCollisionObject* a_object) {
+            auto* body = a_object ? skyrim_cast<RE::bhkRigidBody*>(a_object->body.get()) : nullptr;
+            auto* hk = body ? static_cast<RE::hkpRigidBody*>(body->referencedObject.get()) : nullptr;
+            if (hk && hk->world && Wanted(*hk) && Animated(*hk)) {
+                const auto f = Frame::Of(hk->motion.motionState.transform);
+                a_pose += f.t + f.c0 + f.c1 * 2.0f + f.c2 * 3.0f;  // moves with any turn or shift
+                any = true;
+            }
+            return RE::BSVisit::BSVisitControl::kContinue;
+        });
+        a_pose *= 1.0f / RE::bhkWorld::GetWorldScale();
+        return any;
+    }
+
+    std::string Explain(RE::TESObjectREFR* a_ref)
+    {
+        const auto* base = a_ref ? a_ref->GetBaseObject() : nullptr;
+        if (!base) {
+            return "no base object";
+        }
+        auto*       root = a_ref->Get3D();
+        std::string out = std::format("form type {}, {}, {}{}", static_cast<int>(base->GetFormType()), HasStaticCollision(base) ? "a type we read" : "a type we skip",
+            a_ref->IsDisabled() ? "disabled, " : "", root ? "3D in" : "no 3D");
+        if (!root) {
+            return out;
+        }
+        Chunk scratch;
+        Walk  walk;
+        walk.out = &scratch;
+        walk.toSkyrim = 1.0f / RE::bhkWorld::GetWorldScale();
+        walk.x0 = walk.y0 = -1e9f;
+        walk.x1 = walk.y1 = 1e9f;
+        int objects = 0;
+        RE::BSVisit::TraverseScenegraphCollision(root, [&](RE::bhkNiCollisionObject* a_object) {
+            out += std::format("; collision object {}", objects++);
+            auto* body = a_object ? skyrim_cast<RE::bhkRigidBody*>(a_object->body.get()) : nullptr;
+            auto* hk = body ? static_cast<RE::hkpRigidBody*>(body->referencedObject.get()) : nullptr;
+            if (!body) {
+                out += std::format(": not a rigid body ({})", a_object && a_object->body ? a_object->body->GetRTTI() ? a_object->body->GetRTTI()->GetName() : "?" : "none");
+                return RE::BSVisit::BSVisitControl::kContinue;
+            }
+            if (!hk) {
+                out += ": no Havok body";
+                return RE::BSVisit::BSVisitControl::kContinue;
+            }
+            const auto* shape = hk->GetShape();
+            out += std::format(": layer {}, {}, {}, shape type {}", static_cast<int>(hk->collidable.GetCollisionLayer()), hk->world ? "in the world" : "not in the world",
+                Wanted(*hk) ? "kept" : "left out", shape ? static_cast<int>(shape->type) : -1);
+            if (hk->world && Wanted(*hk)) {
+                const auto before = scratch.triangles.size();
+                const auto skipped = scratch.skipped;
+                const auto rebuilt = scratch.rebuilt;
+                walk.xf = Frame::Of(hk->motion.motionState.transform);
+                walk.Shape(shape, 0);
+                out += std::format(", {} triangles, {} hulls rebuilt, {} shapes skipped", (scratch.triangles.size() - before) / 9, scratch.rebuilt - rebuilt, scratch.skipped - skipped);
+            }
+            return RE::BSVisit::BSVisitControl::kContinue;
+        });
+        if (!objects) {
+            out += "; no collision objects in its 3D";
+        }
+        return out;
     }
 }
