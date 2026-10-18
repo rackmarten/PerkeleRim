@@ -26,7 +26,7 @@ F10 hands the player to My Summer Car and back. While MSC has the player you nev
 |---|---|
 | Left / right click (free hands) | punch / guard (Skyrim blocks) |
 | V | middle finger |
-| Z | Skyrim's shout or power, as usual, but Finn yells it (Unrelenting Force: "Perkele!") |
+| Z | Skyrim's shout or power, as usual, but Kumpo yells it (Unrelenting Force: "Perkele!") |
 | Alt (hold) | piss |
 | Middle click | swear |
 | C / B | smoke / zoom |
@@ -34,13 +34,13 @@ F10 hands the player to My Summer Car and back. While MSC has the player you nev
 | Shift / Ctrl (driving) | shift up / down |
 | H (driving) | horn: people in the way run off |
 | F8 (driving) | chase camera for filming, on / off (hides the HUD) |
-| F11 | screenshot of both games, to Documents\My Games\PerkeleRim\Screenshots |
+| F11 | screenshot of both games, to Screenshots next to Start PerkeleRim.bat (the launcher sets this) |
 | [ / ] | call the Jonnez moped / the Kekmet tractor: it's parked in front of you, wherever it was |
 | Y, 3 to 8 | pocket (Skyrim's inventory); driving, 3 and 5 to 8 drink and eat |
 
-Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, P, O, J, I, ...) still work. Finn fights with his fists: weapons and spells can't be equipped while MSC has the player, armor works as usual, and the drunker he is, the harder he hits and the more he can take. Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).
+Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, P, O, J, I, ...) still work. Kumpo fights with his fists: weapons and spells can't be equipped while MSC has the player, armor works as usual, and the drunker he is, the harder he hits and the more he can take. A punch also cuts spider webs and breaks destructibles in front of him (oil pots, barricades). Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).
 
-Tip: make your character a male Nord. While MSC has the player, Skyrim's own voice is muted and Finn does the yelling, grunting and swearing, so a Nord fits best whenever Skyrim has the player back.
+Tip: make your character a male Nord. While MSC has the player, Skyrim's own voice is muted and Kumpo Kempolaari (Finn) does the yelling, grunting and swearing, so a Nord fits best whenever Skyrim has the player back.
 
 ## Install and play
 

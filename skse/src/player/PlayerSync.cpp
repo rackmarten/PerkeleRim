@@ -874,8 +874,12 @@ namespace PerkeleRim::PlayerSync
                         if (code == Input::kDikF11) {
                             if (button->IsDown() && state.owned) {
                                 Shot::Take();
+                                CollisionSampler::Probe(RE::PlayerCharacter::GetSingleton());  // what the island was made of there
                             }
                             continue;
+                        }
+                        if (code == Input::kDikH && button->IsDown() && state.owned) {
+                            Combat::OnSwing(RE::PlayerCharacter::GetSingleton());  // MSC's hit key: webs too
                         }
                         state.input.SetKey(Input::KeyFromScanCode(code), button->IsPressed());
                         changed = true;
@@ -886,6 +890,9 @@ namespace PerkeleRim::PlayerSync
                                 state.input.AddWheel(notches);
                             }
                         } else {
+                            if (code == 0 && button->IsDown() && state.owned && !MenuHasInput()) {
+                                Combat::OnSwing(RE::PlayerCharacter::GetSingleton());  // left click punches: webs too
+                            }
                             state.input.SetKey(Input::KeyFromMouseButton(code), button->IsPressed());
                         }
                         changed = true;

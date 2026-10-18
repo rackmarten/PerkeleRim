@@ -27,6 +27,9 @@ namespace PerkeleRim::Combat
         constexpr float         kRefuseQuiet = 3.0f;    // seconds between "fists only" notifications
         constexpr float         kListUnits = 2800.0f;   // actors within 40 m go to MSC
         constexpr float         kPunchMaxUnits = 400.0f;  // a punch further than this away is stale
+        constexpr float         kSwingReach = 200.0f;        // units from the player a swing reaches a web or other destructible
+        constexpr float         kWebDamage = 1000.0f;      // more than any web's health: one swing cuts it
+        constexpr float         kObjectDamage = 50.0f;     // other destructibles (oil pots, barricades): a few punches at most
         constexpr float         kWatchUnits = 1000.0f;  // attackers the per-second log follows
         constexpr int           kThrowWaitFrames = 30;  // frames a run-over actor gets to go ragdoll
         constexpr int           kThrowFrames = 3;       // frames its ragdoll is thrown for (the first settle eats one)
@@ -414,6 +417,51 @@ namespace PerkeleRim::Combat
             damage, unarmed, a_drunk, health, max);
     }
 
+    void OnSwing(RE::PlayerCharacter* a_player)
+    {
+        auto* tes = RE::TES::GetSingleton();
+        if (!a_player || !tes) {
+            return;
+        }
+        const auto         pos = a_player->GetPosition();
+        const float        heading = a_player->GetAngleZ();
+        const RE::NiPoint3 forward(std::sin(heading), std::cos(heading), 0.0f);
+        tes->ForEachReferenceInRange(a_player, kSwingReach, [&](RE::TESObjectREFR* a_ref) {
+            auto* base = a_ref ? a_ref->GetBaseObject() : nullptr;
+            auto* model = base ? base->As<RE::TESModel>() : nullptr;
+            auto* destructible = base ? base->As<RE::BGSDestructibleObjectForm>() : nullptr;
+            if (!model || !model->GetModel() || !destructible || !destructible->data || a_ref->IsDisabled() || a_ref->As<RE::Actor>()) {
+                return RE::BSContainer::ForEachResult::kContinue;
+            }
+            std::string path = model->GetModel();
+            std::ranges::transform(path, path.begin(), [](unsigned char a_c) { return static_cast<char>(std::tolower(a_c)); });
+            const bool web = path.find("web") != std::string::npos;
+            // In front (within 60 degrees) and about at the player's height; a web's origin is its middle.
+            auto       to = a_ref->GetPosition() - pos;
+            const float dz = to.z;
+            to.z = 0.0f;
+            const float flat = to.Length();
+            if (std::abs(dz) > kSwingReach || (flat > 1.0f && forward.Dot(to / flat) < 0.5f)) {
+                return RE::BSContainer::ForEachResult::kContinue;
+            }
+            // DamageObject is Papyrus', and runs the object's own script (Arvel's web frees him, an oil pot
+            // drops). A web with no script bound can't take the call, so it is just taken away; anything
+            // else without one stays as it is.
+            auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+            auto* policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
+            const auto handle = policy ? policy->GetHandleForObject(RE::FormType::Reference, a_ref) : RE::VMHandle{};
+            RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback;
+            const bool scripted = vm && policy && handle != policy->EmptyHandle() &&
+                                  vm->DispatchMethodCall(handle, "ObjectReference", "DamageObject", RE::MakeFunctionArguments(static_cast<float>(web ? kWebDamage : kObjectDamage)), callback);
+            if (!scripted && web) {
+                a_ref->Disable();
+            }
+            SKSE::log::info("combat: the player hit {} {:08X} ({}), {}", web ? "the web" : "a destructible", a_ref->GetFormID(), model->GetModel(),
+                scripted ? "damaged" : web ? "taken away (no script to damage)" : "no script to damage it");
+            return RE::BSContainer::ForEachResult::kContinue;
+        });
+    }
+
     void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
     {
         if (a_size < sizeof(Protocol::ImpactEvent)) {
@@ -688,15 +736,15 @@ namespace PerkeleRim::Combat
             }
             if (auto* weapon = form->As<RE::TESObjectWEAP>(); weapon && weapon->GetFormID() != kUnarmed) {
                 equip->UnequipObject(a_player, weapon);
-                refused = "Fists only. Finn is a drunk, not a swordsman.";
+                refused = "Fists only. Kumpo is a drunk, not a swordsman.";
                 SKSE::log::info("combat: unequipped {} from the player's {} hand (fists only while MSC has it)", weapon->GetName(), left ? "left" : "right");
             } else if (auto* scroll = form->As<RE::ScrollItem>()) {
                 equip->UnequipObject(a_player, scroll);
-                refused = "Fists only. Finn doesn't do magic.";
+                refused = "Fists only. Kumpo doesn't do magic.";
                 SKSE::log::info("combat: unequipped scroll {} from the player's {} hand", scroll->GetName(), left ? "left" : "right");
             } else if (auto* spell = form->As<RE::SpellItem>()) {
                 a_player->DeselectSpell(spell);
-                refused = "Fists only. Finn doesn't do magic.";
+                refused = "Fists only. Kumpo doesn't do magic.";
                 SKSE::log::info("combat: unequipped spell {} from the player's {} hand", spell->GetName(), left ? "left" : "right");
             }
         }

@@ -27,6 +27,11 @@ namespace PerkeleRim::Combat
     // actor, or MSC's push (staggered aside, no hit).
     void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
 
+    // MSC's player swung (left click or H while MSC has it): a destructible within reach in front
+    // takes a hit, a spider web enough to cut it (Arvel's in Bleak Falls Barrow has to be), an oil pot
+    // or barricade a punch's worth. MSC's punch only lands on actors.
+    void OnSwing(RE::PlayerCharacter* a_player);
+
     // A HornEvent message: the actors in the driven vehicle's way (Damage::InHornPath, all but huge
     // ones) dive aside out of its lane as ragdolls (Damage::HornDodge).
     void OnHorn(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
