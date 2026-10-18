@@ -86,6 +86,7 @@ namespace PerkeleRim.Game
         bool hornHeld;  // H held while driving, read by FeedInput before it is kept from MSC
         HandLayerSender hands;
         SaveSync saves;
+        RestLink rest;
         Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
         Collider groundTemplate;  // MSC ground the island chunks copy layer, tag and material from
 
@@ -168,6 +169,7 @@ namespace PerkeleRim.Game
             DeathGuard.Install(log);
             ConsumeWatch.Install(log);
             saves = new SaveSync(island, vehicles, items, () => playing, () => player, log);
+            rest = new RestLink(log);
         }
 
         // A beer case next to the player (spike command "beer").
@@ -424,6 +426,10 @@ namespace PerkeleRim.Game
                 voice.OnHurt(payload, size);
             else if (type == MessageType.StockShelves)
                 shelves.OnMessage(payload, size);
+            else if (type == MessageType.LoadReset)
+                rest.OnLoadReset();
+            else if (type == MessageType.TimePassed)
+                rest.OnTimePassed(payload, size);
             else if (type == MessageType.MscSave || type == MessageType.MscLoad)
                 saves.OnMessage(type, payload, size);
             else if (type == MessageType.ScreenshotEvent)
@@ -499,7 +505,7 @@ namespace PerkeleRim.Game
             }
             log($"player: left click with free hands punches (MSC's Hit key {(KeyCode)hitKey}), right click guards (its Watch key {(KeyCode)watchKey})");
             log($"player: V finger ({(KeyCode)remap.KeyOf("Finger")}), middle click swear ({(KeyCode)remap.KeyOf("Swear")}), C smoke ({(KeyCode)remap.KeyOf("Smoking")}), B zoom ({(KeyCode)remap.KeyOf("Zoom")}); " +
-                $"on foot X piss ({(KeyCode)remap.KeyOf("Urinate")}), G push ({(KeyCode)remap.KeyOf("Push")}), T thumb ({(KeyCode)remap.KeyOf("Hitchhike")}), Ctrl crouch ({(KeyCode)remap.KeyOf("Crouch")}); " +
+                $"on foot X piss ({(KeyCode)remap.KeyOf("Urinate")}), G push ({(KeyCode)remap.KeyOf("Push")}), O thumb ({(KeyCode)remap.KeyOf("Hitchhike")}), Ctrl crouch ({(KeyCode)remap.KeyOf("Crouch")}); " +
                 $"driving Shift gear up ({(KeyCode)remap.KeyOf("ShiftUp")}), Ctrl gear down ({(KeyCode)remap.KeyOf("ShiftDown")})");
         }
 

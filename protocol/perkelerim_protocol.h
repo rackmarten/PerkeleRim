@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 36;
+    inline constexpr std::uint32_t kProtocolVersion = 37;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -405,6 +405,8 @@ namespace PerkeleRim::Protocol
         HornEvent = 20,        // MSC -> Skyrim
         ScreenshotEvent = 21,  // Skyrim -> MSC
         ThrownPath = 22,       // MSC -> Skyrim
+        LoadReset = 23,        // Skyrim -> MSC
+        TimePassed = 24,       // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -555,6 +557,20 @@ namespace PerkeleRim::Protocol
     {
         std::uint32_t length;  // path bytes, <= kScreenshotPathMax
         std::uint32_t reserved;
+    };
+
+    // LoadReset (v37): Skyrim loaded a save (F9, autosave, the load menu, the reload after death). No
+    // payload. MSC stops what its player was doing (piss, smoke, drink, held items, push stance,
+    // finger, crouch, zoom) before control comes back; its needs come from the save as before (MscLoad).
+
+    // TimePassed (v37): the player waited or slept in Skyrim (the Wait menu, a bed) while MSC has the
+    // player. MSC advances its clock and its needs by that many hours (msc/src/Link/Rest.cs).
+    inline constexpr std::uint32_t kTimeBed = 0x1;  // TimePassed.flags: slept in a bed, else waited
+
+    struct TimePassed
+    {
+        float         hours;  // game hours that passed, > 0
+        std::uint32_t flags;  // kTime*
     };
 
     // PlayerShout: the player shouted in Skyrim while MSC had it (Z, Skyrim's own shout with its
@@ -885,6 +901,8 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ThrownPath, to) == 20);
     static_assert(sizeof(HornEvent) == 16);
     static_assert(offsetof(HornEvent, speed) == 12);
+    static_assert(sizeof(TimePassed) == 8);
+    static_assert(offsetof(TimePassed, flags) == 4);
     static_assert(sizeof(ScreenshotEvent) == 8);
     static_assert(offsetof(ScreenshotEvent, reserved) == 4);
     static_assert(sizeof(ImpactEvent) == 24);

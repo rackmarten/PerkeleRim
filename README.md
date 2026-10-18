@@ -30,7 +30,9 @@ F10 hands the player to My Summer Car and back. While MSC has the player you nev
 | Alt (hold) | piss |
 | Middle click | swear |
 | C / B | smoke / zoom |
-| Ctrl / G / T (on foot) | crouch / push stance on / off (walk into people to shove them aside; rights a rolled van) / hitchhike thumb |
+| Ctrl / G (on foot) | crouch / push stance on / off (walk into people to shove them aside; rights a rolled van) |
+| O | hitchhike thumb |
+| T (on foot) | Skyrim's Wait menu: Kumpo waits or sleeps, MSC's clock and needs go along (fatigue half as fast without a bed) |
 | Shift / Ctrl (driving) | shift up / down |
 | H (driving) | horn: people in the way run off |
 | F8 (driving) | chase camera for filming, on / off (hides the HUD) |

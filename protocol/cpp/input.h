@@ -41,6 +41,7 @@ namespace PerkeleRim::Input
     inline constexpr std::uint32_t kDikF10 = 0x44;
     inline constexpr std::uint32_t kDikF11 = 0x57;
     inline constexpr std::uint32_t kDikM = 0x32;
+    inline constexpr std::uint32_t kDikT = 0x14;  // Skyrim's Wait menu on foot (MSC has nothing on it there)
     inline constexpr std::uint32_t kDikH = 0x23;  // MSC's hit
     inline constexpr std::uint32_t kDikLeftShift = 0x2A;  // MSC's run
 

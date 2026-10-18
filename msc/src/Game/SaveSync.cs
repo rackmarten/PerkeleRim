@@ -228,7 +228,7 @@ namespace PerkeleRim.Game
         internal static readonly System.Reflection.MethodInfo SwitchState = typeof(HutongGames.PlayMaker.Fsm)
             .GetMethod("SwitchState", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
 
-        static PlayMakerFSM FindFsm(string path, string name)
+        internal static PlayMakerFSM FindFsm(string path, string name)
         {
             var go = GameObject.Find(path);
             if (go == null) return null;
@@ -267,7 +267,7 @@ namespace PerkeleRim.Game
         }
 
         // States first, then variables; only FSMs and names this build captures.
-        static int ApplyFsms(Snapshot s)
+        internal static int ApplyFsms(Snapshot s)
         {
             int n = 0;
             foreach (var v in s.Fsms)

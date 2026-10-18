@@ -10,6 +10,7 @@
 #include "link/LinkService.h"
 #include "player/PlayerSync.h"
 #include "pocket/Pocket.h"
+#include "rest/Rest.h"
 #include "save/Cosave.h"
 #include "save/SaveSync.h"
 
@@ -34,8 +35,10 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::CollisionSampler::OnDataLoaded();
             PerkeleRim::Combat::OnDataLoaded();
             PerkeleRim::Autoload::OnDataLoaded();
+            PerkeleRim::Rest::OnDataLoaded();
         } else if (a_msg->type == SKSE::MessagingInterface::kPreLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
             PerkeleRim::Death::Hide();  // the reload after a death
+            PerkeleRim::Rest::OnGameLoad();  // before the release: MSC stops pissing and the like at once
             PerkeleRim::PlayerSync::OnGameLoad();
         } else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame) {
             PerkeleRim::Autoload::OnGameLoaded();

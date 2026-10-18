@@ -24,9 +24,15 @@ namespace PerkeleRim.Tests
             Assert.That(Remap(false, KeyRemap.B), Is.EquivalentTo(new[] { Ctrl }));
             Assert.That(Remap(false, KeyRemap.LeftAlt), Is.EquivalentTo(new[] { P }));
             Assert.That(Remap(false, KeyRemap.G), Is.EquivalentTo(new[] { J }));
-            Assert.That(Remap(false, KeyRemap.T), Is.EquivalentTo(new[] { O }));
             Assert.That(Remap(false, Ctrl), Is.EquivalentTo(new[] { C }));
             Assert.That(Remap(false, Shift), Is.EquivalentTo(new[] { Shift }));  // run
+        }
+
+        [Test]
+        public void TIsSkyrimsWaitMenuOnFootAndTheThumbStaysOnO()
+        {
+            Assert.That(Remap(false, KeyRemap.T), Is.EquivalentTo(new[] { KeyRemap.T }));  // no thumb alias
+            Assert.That(Remap(false, O), Is.EquivalentTo(new[] { O }));
         }
 
         [Test]

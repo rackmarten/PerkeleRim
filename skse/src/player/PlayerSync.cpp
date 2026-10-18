@@ -16,6 +16,7 @@
 #include "model/ModelView.h"
 #include "particle/ParticleView.h"
 #include "pocket/Pocket.h"
+#include "rest/Rest.h"
 #include "safe/Safe.h"
 #include "shot/Shot.h"
 #include "stamina.h"
@@ -777,6 +778,7 @@ namespace PerkeleRim::PlayerSync
                     Resume(a_player, a_delta);
                 } else if (state.owned && a_delta > 0.0f) {
                     Drive(a_player, a_delta);
+                    Rest::OnFrame(a_player, a_delta);
                 }
             }
             static inline REL::Relocation<decltype(thunk)> original;
@@ -830,8 +832,8 @@ namespace PerkeleRim::PlayerSync
 
         // MSC's own keys open Skyrim's menus too (P magic, J journal, I inventory, T wait), and a
         // menu pauses Skyrim and with it MSC. While MSC has the player only Escape (Skyrim's system
-        // menu), Tab and M (the map; it never reaches MSC, whose finger moves to V) still open menus
-        // from the keyboard.
+        // menu), Tab, M (the map; it never reaches MSC, whose finger moves to V) and, on foot, T (the
+        // Wait menu; the hours go to MSC, Rest) still open menus from the keyboard.
         struct MenuOpenHook
         {
             static bool thunk(RE::MenuOpenHandler* a_handler, RE::InputEvent* a_event)
@@ -839,6 +841,10 @@ namespace PerkeleRim::PlayerSync
                 if (state.owned && a_event && a_event->GetDevice() == RE::INPUT_DEVICE::kKeyboard) {
                     if (auto* button = a_event->AsButtonEvent()) {
                         const auto key = button->GetIDCode();
+                        // T is Skyrim's Wait menu on foot; driving it is MSC's boost.
+                        if (key == Input::kDikT && !state.seated) {
+                            return original(a_handler, a_event);
+                        }
                         if (key != Input::kDikEscape && key != Input::kDikTab && key != Input::kDikM) {
                             return false;
                         }

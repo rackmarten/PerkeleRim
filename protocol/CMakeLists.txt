@@ -20,6 +20,7 @@ add_executable(protocol_tests
     tests/cpp/test_link.cpp
     tests/cpp/test_model.cpp
     tests/cpp/test_msc_save.cpp
+    tests/cpp/test_time_skip.cpp
     tests/cpp/test_hurt.cpp
     tests/cpp/test_shout.cpp
     tests/cpp/test_stamina.cpp

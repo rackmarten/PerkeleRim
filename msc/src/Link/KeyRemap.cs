@@ -7,7 +7,8 @@ namespace PerkeleRim
     // J, I, G, B) still work, and its bindings stay as they are, so standalone MSC keeps its keys. M
     // never arrives (it opens Skyrim's map, protocol/cpp/input.h), so the finger moves to V (Z is
     // Skyrim's shout). Alt pisses (held), C smokes ("cigs") and B zooms, so Ctrl crouches on foot.
-    // Driving, Shift and Ctrl shift gears up and down, and G and T stay MSC's shift up and boost.
+    // Driving, Shift and Ctrl shift gears up and down, and G and T stay MSC's shift up and boost. T
+    // on foot is Skyrim's Wait menu, so the hitchhike thumb is only MSC's own O.
     // The key table is in docs/PROTOCOL.md, Input. Unity-free.
     public sealed class KeyRemap
     {
@@ -33,7 +34,6 @@ namespace PerkeleRim
             new Alias { Key = B, Action = "Zoom" },
             new Alias { Key = LeftAlt, Action = "Urinate" },  // held, like MSC's P
             new Alias { Key = G, Action = "Push", When = When.OnFoot },
-            new Alias { Key = T, Action = "Hitchhike", When = When.OnFoot },
             new Alias { Key = LeftControl, Action = "Crouch", When = When.OnFoot },
             new Alias { Key = LeftShift, Action = "ShiftUp", When = When.Driving },
             new Alias { Key = LeftControl, Action = "ShiftDown", When = When.Driving },

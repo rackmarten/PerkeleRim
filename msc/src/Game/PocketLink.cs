@@ -162,7 +162,7 @@ namespace PerkeleRim.Game
             return hand != null && Holding(hand.ActiveStateName);
         }
 
-        static PlayMakerFSM PickUp()
+        internal static PlayMakerFSM PickUp()
         {
             if (pickUp != null) return pickUp;
             var hand = GameObject.Find(HandPath);
