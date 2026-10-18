@@ -32,10 +32,10 @@ namespace PerkeleRim::Hud
         constexpr double kSubtitleAbove = 200.0;  // text top, up from the visible frame's bottom edge
 
         // MSC's gear indicator, bottom right.
-        constexpr double kGearSize = 44.0;
-        constexpr double kGearWidth = 260.0;
-        constexpr double kGearRight = 40.0;   // from the visible frame's right edge to the box's right edge
-        constexpr double kGearAbove = 120.0;  // text top, up from the frame's bottom edge
+        constexpr double kGearSize = 22.0;  // the look-at label's size
+        constexpr double kGearWidth = 200.0;
+        constexpr double kGearRight = 30.0;   // from the visible frame's right edge to the box's right edge
+        constexpr double kGearAbove = 70.0;   // text top, up from the frame's bottom edge
 
         // MSC's hands: their own clip on the movie's root, below every vanilla HUD element (those
         // sit at the timeline's negative depths) and below our layer.
