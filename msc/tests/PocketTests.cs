@@ -28,13 +28,13 @@ namespace PerkeleRim.Tests
         {
             Assert.That(Pocket.SlotOfKey(Key1), Is.EqualTo(Pocket.None));  // MSC's hands
             Assert.That(Pocket.SlotOfKey(Key2), Is.EqualTo(Pocket.None));  // MSC's tools
-            Assert.That(Pocket.KindOfSlot(Pocket.SlotOfKey(Key3)), Is.EqualTo(Beer));
-            Assert.That(Pocket.KindOfSlot(Pocket.SlotOfKey(Key4)), Is.EqualTo(Bottle));
+            Assert.That(Pocket.KindOfSlot(Pocket.SlotOfKey(Key4)), Is.EqualTo(Beer));
+            Assert.That(Pocket.KindOfSlot(Pocket.SlotOfKey(Key3)), Is.EqualTo(Bottle));
             Assert.That(Pocket.KindOfSlot(Pocket.SlotOfKey(Key5)), Is.EqualTo((int)Wire.PocketSausages));
             Assert.That(Pocket.KindOfSlot(Pocket.SlotOfKey(Key8)), Is.EqualTo((int)Wire.PocketMacaron));
             Assert.That(Pocket.SlotOfKey(Key9), Is.EqualTo(Pocket.None));
             Assert.That(Pocket.SlotOfKind(Cigs), Is.EqualTo(Pocket.None));
-            Assert.That(Pocket.IsKey(Y) && Pocket.IsKey(Key3) && Pocket.IsKey(Key8), Is.True);
+            Assert.That(Pocket.IsKey(Y) && Pocket.IsKey(Key4) && Pocket.IsKey(Key8), Is.True);
             Assert.That(Pocket.IsKey(Key1) || Pocket.IsKey(Key2) || Pocket.IsKey(Key9), Is.False);
         }
 
@@ -51,28 +51,28 @@ namespace PerkeleRim.Tests
         [Test]
         public void BeerAndFoodAreUsedAtOnce()
         {
-            Assert.That(Pocket.Decide(Key3, Pocket.None, false, Pocket.None, 3), Is.EqualTo(Pocket.Action.Consume));
-            Assert.That(Pocket.Decide(Key3, Beer, true, Pocket.None, 3), Is.EqualTo(Pocket.Action.Consume));  // a case in hand stays there
+            Assert.That(Pocket.Decide(Key4, Pocket.None, false, Pocket.None, 3), Is.EqualTo(Pocket.Action.Consume));
+            Assert.That(Pocket.Decide(Key4, Beer, true, Pocket.None, 3), Is.EqualTo(Pocket.Action.Consume));  // a case in hand stays there
             Assert.That(Pocket.Decide(Key5, Bottle, true, Pocket.None, 1), Is.EqualTo(Pocket.Action.Consume));
-            Assert.That(Pocket.Decide(Key3, Pocket.None, false, Pocket.None, 0), Is.EqualTo(Pocket.Action.Nothing));
+            Assert.That(Pocket.Decide(Key4, Pocket.None, false, Pocket.None, 0), Is.EqualTo(Pocket.Action.Nothing));
             Assert.That(Pocket.Consumable(Bottle) || Pocket.Consumable(Cigs), Is.False);
         }
 
         [Test]
         public void InAVehicleOnlyBeerAndFoodWork()
         {
-            Assert.That(Pocket.WorksInVehicle(Key3) && Pocket.WorksInVehicle(Key5) && Pocket.WorksInVehicle(Key8), Is.True);
-            Assert.That(Pocket.WorksInVehicle(Y) || Pocket.WorksInVehicle(Key4) || Pocket.WorksInVehicle(Key9), Is.False);
+            Assert.That(Pocket.WorksInVehicle(Key4) && Pocket.WorksInVehicle(Key5) && Pocket.WorksInVehicle(Key8), Is.True);
+            Assert.That(Pocket.WorksInVehicle(Y) || Pocket.WorksInVehicle(Key3) || Pocket.WorksInVehicle(Key9), Is.False);
         }
 
         [Test]
         public void EmptyBottlesComeOutSwapAndGoBack()
         {
-            Assert.That(Pocket.Decide(Key4, Pocket.None, false, Pocket.None, 2), Is.EqualTo(Pocket.Action.Take));
-            Assert.That(Pocket.Decide(Key4, Bottle, true, Pocket.None, 2), Is.EqualTo(Pocket.Action.Pocket));  // same number again
-            Assert.That(Pocket.Decide(Key4, (int)Wire.PocketPizza, true, Pocket.None, 1), Is.EqualTo(Pocket.Action.PocketAndTake));
-            Assert.That(Pocket.Decide(Key4, Pocket.None, true, Pocket.None, 1), Is.EqualTo(Pocket.Action.DropAndTake));
-            Assert.That(Pocket.Decide(Key4, Beer, true, Pocket.None, 0), Is.EqualTo(Pocket.Action.Nothing));
+            Assert.That(Pocket.Decide(Key3, Pocket.None, false, Pocket.None, 2), Is.EqualTo(Pocket.Action.Take));
+            Assert.That(Pocket.Decide(Key3, Bottle, true, Pocket.None, 2), Is.EqualTo(Pocket.Action.Pocket));  // same number again
+            Assert.That(Pocket.Decide(Key3, (int)Wire.PocketPizza, true, Pocket.None, 1), Is.EqualTo(Pocket.Action.PocketAndTake));
+            Assert.That(Pocket.Decide(Key3, Pocket.None, true, Pocket.None, 1), Is.EqualTo(Pocket.Action.DropAndTake));
+            Assert.That(Pocket.Decide(Key3, Beer, true, Pocket.None, 0), Is.EqualTo(Pocket.Action.Nothing));
         }
 
         [Test]

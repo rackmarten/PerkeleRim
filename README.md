@@ -38,7 +38,7 @@ F10 hands the player to My Summer Car and back. While MSC has the player you nev
 | F8 (driving) | chase camera for filming, on / off (hides the HUD) |
 | F11 | screenshot of both games, to Screenshots next to Start PerkeleRim.bat (the launcher sets this) |
 | [ / ] / ; (on foot) | call the Jonnez moped / the Hayosiko van / the Kekmet tractor: it's parked in front of you, wherever it was |
-| Y, 3 to 8 | pocket (Skyrim's inventory, never runs out of beer, bottles, food or cigarettes); driving, 3 and 5 to 8 drink and eat |
+| Y, 3 to 8 | pocket (Skyrim's inventory, never runs out of beer, bottles, food or cigarettes); driving, 4 to 8 drink and eat |
 
 Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, P, O, J, I, ...) still work. Kumpo fights with his fists: weapons and spells can't be equipped while MSC has the player, armor works as usual, and the drunker he is, the harder he hits and the more he can take. A punch also cuts spider webs and breaks destructibles in front of him (oil pots, barricades), and so does a thrown bottle that hits one. Sitting in the Hayosiko van or the Kekmet is safe: nothing in Skyrim can hurt Kumpo there (the moped is no shelter, and a crash still hurts). Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).
 

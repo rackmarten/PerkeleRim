@@ -41,7 +41,8 @@ namespace PerkeleRim.Game
         {
             public Rigidbody Body;
             public float Since;
-            public bool Boosted;  // its throw speed seen (and doubled for a bottle)
+            public bool Boosted;  // its throw speed seen (and scaled: a bottle, the charge)
+            public float Charge = 1f;  // the throw distance factor of the hold (ThrowCharge)
             public Vector3 Last;
             public float LastSpeed;  // last frame's, from before a hit that slows it
             public uint Id;
@@ -75,10 +76,12 @@ namespace PerkeleRim.Game
         float listTime;
         float punchAt = -1f;  // when the pending punch's fist is out, -1 = none
         readonly Island island;
+        readonly ThrowCharge charge;
 
-        public ActorLink(Island island, Action<string> log, Action<string> ranOver)
+        public ActorLink(Island island, ThrowCharge charge, Action<string> log, Action<string> ranOver)
         {
             this.island = island;
+            this.charge = charge;
             this.log = log;
             this.ranOver = ranOver;
         }
@@ -225,7 +228,7 @@ namespace PerkeleRim.Game
             {
                 if (body == null || body.transform.IsChildOf(player)) continue;
                 if (Time.time - throwButtonAt > Throwing.ThrowWindow) continue;  // dropped, not thrown
-                flights.Add(new Flight { Body = body, Since = Time.time, Boosted = !Throwing.IsBottle(body.name), Last = body.position, Id = ++flightCount });
+                flights.Add(new Flight { Body = body, Since = Time.time, Charge = charge.Take(Time.realtimeSinceStartup, Throwing.ThrowWindow), Last = body.position, Id = ++flightCount });
                 // Small and fast, it would pass through the island's thin ground between physics steps.
                 body.collisionDetectionMode = CollisionDetectionMode.Continuous;
                 log($"actors: {body.name} thrown");
@@ -248,9 +251,12 @@ namespace PerkeleRim.Game
                 var v = f.Body.velocity;
                 if (!f.Boosted && v.magnitude > 1f)
                 {
-                    f.Body.velocity = v *= Throwing.BottleBoost;
+                    bool bottle = Throwing.IsBottle(f.Body.name);
+                    float scale = Throwing.LaunchScale(bottle, f.Charge);
+                    float was = v.magnitude;
+                    f.Body.velocity = v *= scale;
                     f.Boosted = true;
-                    log($"actors: {f.Body.name} thrown at {v.magnitude:0.0} m/s (a bottle, {Throwing.BottleBoost}x MSC's throw)");
+                    log($"actors: {f.Body.name} thrown at {was:0.0} m/s by MSC, x{scale:0.00} = {v.magnitude:0.0} m/s (distance x{f.Charge:0.00} by the hold, bottle {bottle}, drag {f.Body.drag:0.###}, mass {f.Body.mass:0.##} kg)");
                 }
                 else if (!f.Boosted && Time.time - f.Since > Throwing.BoostWindow) f.Boosted = true;
                 var at = f.Body.position;

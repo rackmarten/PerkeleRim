@@ -5,8 +5,9 @@ namespace PerkeleRim
 {
     // Thrown items and the piss stream as attacks on Skyrim's actors (ActorLink sends them as
     // ImpactEvent). An item that leaves the player's hand within ThrowWindow seconds of the right
-    // mouse button (MSC's throw) is followed for up to FlightMax seconds; a bottle among them flies
-    // BottleBoost times as fast as MSC throws it, to be a ranged attack worth having. The first
+    // mouse button (MSC's throw, let go after ThrowCharge's hold) is followed for up to FlightMax
+    // seconds; it flies as fast as MSC throws it times LaunchScale: the charge, and for a bottle
+    // BottleBoost on top, to be a ranged attack worth having. The first
     // capsule it passes through while still at SpeedMin or faster is hit. Unity-free.
     public static class Throwing
     {
@@ -19,6 +20,11 @@ namespace PerkeleRim
         public const float Bounce = 0.3f;       // share of its speed an item keeps, turned back, after a hit
         public const float PissEvery = 0.5f;    // seconds between piss hits on one actor
         public const float DropRadius = 0.05f;  // meters around one piss drop
+
+        // How much faster than MSC's own throw an item is launched: charge is the distance factor of
+        // the hold (ThrowCharge.Factor), a bottle flies BottleBoost times as fast on top.
+        public static float LaunchScale(bool bottle, float charge) =>
+            (bottle ? BottleBoost : 1f) * ThrowCharge.SpeedScale(charge);
 
         // MSC's bottles: the empty one thrown after a beer, booze and spirit.
         public static bool IsBottle(string name)

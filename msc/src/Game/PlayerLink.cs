@@ -65,6 +65,8 @@ namespace PerkeleRim.Game
         readonly InputFrame input = new InputFrame();
         readonly PunchButton punch = new PunchButton();
         readonly BlockButton block = new BlockButton();
+        readonly ThrowCharge charge = new ThrowCharge();
+        readonly ThrowWindUp windUp = new ThrowWindUp();
         readonly KeyRemap remap = new KeyRemap();
         readonly PauseClock clock = new PauseClock();
         ChaseCamera chase;
@@ -161,7 +163,7 @@ namespace PerkeleRim.Game
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
             particles = new ParticleLink(island, models, () => Array.ConvertAll(vehicles, v => v.Car), log);
-            actors = new ActorLink(island, log, what => voice.Swear(what));
+            actors = new ActorLink(island, charge, log, what => voice.Swear(what));
             voice = new PlayerVoice(log);
             horn = new VehicleHorn(log);
             chase = new ChaseCamera(log);
@@ -212,11 +214,12 @@ namespace PerkeleRim.Game
             input.Update(ref s);
             Freeze(input.Paused);
             InputShim.Active = input.OwnsPlayer;
-            if (!input.OwnsPlayer) { punch.Reset(); block.Reset(); return; }
+            if (!input.OwnsPlayer) { punch.Reset(); block.Reset(); charge.Reset(); return; }
             var state = functions != null ? functions.ActiveStateName : null;
             bool free = HandsFree(BlockButton.Watching(state));
             block.Apply(input.Keys, free, watchKey, hitKey, state, Time.realtimeSinceStartup);
             punch.Apply(input.Keys, free, hitKey, Time.realtimeSinceStartup);
+            charge.Apply(input.Keys, PocketLink.Carrying(), Time.realtimeSinceStartup);
             bool driving = Driven() != null;
             remap.Apply(input.Keys, driving);
             // Driving, H is the horn (VehicleHorn) and never reaches MSC: as its Hit key it punched in the seat.
@@ -329,6 +332,7 @@ namespace PerkeleRim.Game
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             shelves.Update(playing);
             pocket.Update(link, playing, player != null);
+            windUp.Update(charge, Time.realtimeSinceStartup);
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
             particles.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
             var driven = playing ? Driven() : null;
