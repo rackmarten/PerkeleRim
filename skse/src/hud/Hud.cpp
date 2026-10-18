@@ -31,6 +31,12 @@ namespace PerkeleRim::Hud
         constexpr double kSubtitleSize = 24.0;
         constexpr double kSubtitleAbove = 200.0;  // text top, up from the visible frame's bottom edge
 
+        // MSC's gear indicator, bottom right.
+        constexpr double kGearSize = 44.0;
+        constexpr double kGearWidth = 260.0;
+        constexpr double kGearRight = 40.0;   // from the visible frame's right edge to the box's right edge
+        constexpr double kGearAbove = 120.0;  // text top, up from the frame's bottom edge
+
         // MSC's hands: their own clip on the movie's root, below every vanilla HUD element (those
         // sit at the timeline's negative depths) and below our layer.
         constexpr const char*  kHandsClipName = "perkeleRimHands";
@@ -178,6 +184,10 @@ namespace PerkeleRim::Hud
             RE::GFxValue subBox, subtitle;
             a_clip.CreateEmptyMovieClip(&subBox, "subBox", 5);
             MakeText(a_movie, a_clip, "subtitle", 6.0, -500.0, 0.0, 1000.0, kSubtitleSize, "center", 0xFFFFFF, subtitle);
+
+            RE::GFxValue gearBox, gear;
+            a_clip.CreateEmptyMovieClip(&gearBox, "gearBox", 8);
+            MakeText(a_movie, a_clip, "gear", 9.0, -kGearWidth * 0.5, 0.0, kGearWidth, kGearSize, "center", 0xFFFFFF, gear);
 
             RE::GFxValue needs;
             if (a_clip.CreateEmptyMovieClip(&needs, "needs", 7)) {
@@ -352,6 +362,28 @@ namespace PerkeleRim::Hud
                 }
             }
 
+            RE::GFxValue gearText, gearBox;
+            clip.GetMember("gear", &gearText);
+            clip.GetMember("gearBox", &gearBox);
+            if (gearText.IsDisplayObject() && gearBox.IsDisplayObject()) {
+                const double top = static_cast<double>(rect.bottom) - kGearAbove - cy;
+                const bool   has = !a_view.gear.empty();
+                gearText.SetText(a_view.gear.c_str());
+                RE::GFxValue width;
+                gearText.GetMember("textWidth", &width);
+                const double boxWidth = (width.IsNumber() ? width.GetNumber() : 0.0) + 2.0 * kBoxPadX;
+                // The text is centered on the box, the box's right edge kGearRight from the frame's.
+                const double middle = static_cast<double>(rect.right) - kGearRight - boxWidth * 0.5 - cx;
+                gearText.SetMember("_visible", RE::GFxValue(has));
+                gearText.SetMember("_x", RE::GFxValue(middle - kGearWidth * 0.5));
+                gearText.SetMember("_y", RE::GFxValue(top));
+                gearBox.SetMember("_x", RE::GFxValue(middle));
+                Call(gearBox, "clear", {});
+                if (has) {
+                    DrawBox(gearBox, gearText, top, kGearSize);
+                }
+            }
+
             RE::GFxValue needs;
             if (clip.GetMember("needs", &needs) && needs.IsDisplayObject()) {
                 needs.SetMember("_visible", RE::GFxValue(a_view.hasNeeds));
@@ -381,7 +413,7 @@ namespace PerkeleRim::Hud
         }
         const auto needs = Quantize(view);
         const bool textChanged = view.show != current.show || view.label != current.label || view.hand != current.hand ||
-                                 view.subtitle != current.subtitle;
+                                 view.subtitle != current.subtitle || view.gear != current.gear;
         const bool handsChanged = view.handsImage != current.handsImage || view.handsWidth != current.handsWidth ||
                                   view.handsHeight != current.handsHeight;
         const bool handsLoading = !view.handsImage.empty() && !handsSized;

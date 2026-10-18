@@ -6,7 +6,7 @@
 // Our own layer in Skyrim's HUD movie while MSC owns the player: MSC's first-person hands under
 // everything else in the movie, a small dot at the screen center
 // (Skyrim hides its crosshair then), MSC's look-at prompt just below it (its hand icon for things
-// to use, and its text on a dark box so it reads in daylight), MSC's needs bars top left (with room above for Skyrim's own HUD messages), and its subtitle line above Skyrim's own subtitles. Main thread; the Scaleform work runs as an SKSE UI
+// to use, and its text on a dark box so it reads in daylight), MSC's needs bars top left (with room above for Skyrim's own HUD messages), its subtitle line above Skyrim's own subtitles, and the gear bottom right while driving. Main thread; the Scaleform work runs as an SKSE UI
 // task.
 namespace PerkeleRim::Hud
 {
@@ -16,6 +16,7 @@ namespace PerkeleRim::Hud
         std::string          label;             // look-at text, empty = none
         bool                 hand = false;      // look-at hand icon
         std::string          subtitle;          // empty = none
+        std::string          gear;              // MSC's gear indicator while driving ("N", "3 HIGH"), empty = none
         bool                 hasNeeds = false;  // needs below are MSC's
         std::array<float, 7> needs{};           // PlayerState.needs, kNeed* order
         std::string          handsImage;        // MSC's first-person layer (HandView), full screen under the rest; empty = none

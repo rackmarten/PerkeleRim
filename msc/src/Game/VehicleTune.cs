@@ -24,14 +24,18 @@ namespace PerkeleRim.Game
             public float Bump;        // compression damping times this on top, 0 = 1
             public float Rebound;     // rebound damping times this on top, 0 = 1
             public float FrontSpring; // front axle spring rate times this on top (its damping by the root), 0 = 1
+            public float CushionFrom; // share of a wheel's travel from which it pushes back progressively (Springs), 0 = 0.6
+            public float Cushion;     // that push at full travel in vehicle weights per wheel, 0 = none
             public bool Air;          // lands its jumps while ridden (AirAssist)
+            public bool SoftBumps;    // small bumps make no crash sound and never stall the engine (Bumps)
+            public bool FreeLeave;    // the rider may get off while it is tipped or at a walking pace (Leaving)
         }
 
         // The van's wheels sit far behind its bumpers, so the body's overhang reached a lip or a ramp
         // before the wheels and stopped the van dead. With its bottom lifted the overhang clips into
         // the ground instead and the wheels climb. On Skyrim's steep roads the rear wheels spun uphill
         // and locked braking downhill, so the back slid out: more grip both ways, a weaker rear brake.
-        public static readonly Settings Van = new Settings { Mass = 1.2f, CenterDrop = 0.2f, Spring = 0.85f, Travel = 1.2f, BottomLift = 0.25f, Grip = 1.3f, SideGrip = 1.3f, RearBrake = 0.75f };
+        public static readonly Settings Van = new Settings { Mass = 1.2f, CenterDrop = 0.2f, Spring = 0.85f, Travel = 1.2f, BottomLift = 0.25f, Grip = 1.3f, SideGrip = 1.3f, RearBrake = 0.75f, Cushion = 0.5f };
         // The moped keeps MSC's mass and follows MSC's center of mass moves: MSC balances it by moving the center (-0.1 m while
         // ridden, 0.4 m at speed, 0.2 m tipped over or left alone, a bit to the side on its
         // kickstand), and the extra mass stalled its little engine pulling away. Its 8 cm of travel
@@ -40,10 +44,16 @@ namespace PerkeleRim.Game
         // longer, giving way to a bump and slow to spring back. Twice the travel was too much, so
         // 1.6 times; the fork is softer still than the rear. Its center of mass still goes 15 cm
         // below wherever MSC puts it (FollowCenter), or every bump pitched it over the front wheel.
-        public static readonly Settings Moped = new Settings { Mass = 1f, CenterDrop = 0.15f, Spring = 0.6f, Travel = 1.6f, Bump = 0.8f, Rebound = 1.5f, FrontSpring = 0.75f, Air = true };
-        // Skyrim is all hills: the tractor gets the van's softer, longer suspension, twice the engine
-        // torque (it barely got rolling uphill even in low first) and more grip to put it down.
-        public static readonly Settings Kekmet = new Settings { Mass = 1.2f, CenterDrop = 0.1f, Spring = 0.85f, Travel = 1.2f, Power = 2f, Grip = 1.3f };
+        public static readonly Settings Moped = new Settings { Mass = 1f, CenterDrop = 0.15f, Spring = 0.6f, Travel = 2f, Bump = 0.8f, Rebound = 1.5f, FrontSpring = 0.75f, Grip = 1.2f, SideGrip = 1.3f, Cushion = 1.5f, Air = true, SoftBumps = true, FreeLeave = true };
+        // Skyrim is all hills: the tractor gets twice the engine torque (it barely got rolling uphill
+        // even in low first) and more grip to put it down. MSC's tractor has 5 cm of travel and a
+        // 75000 N/m spring, and each rear wheel carries about 9 kN: it sat 12 cm deep, on its bump
+        // stop, so it hopped on the road like a solid block (the van's 1.2x travel changed nothing).
+        // Now 30 cm of travel and a spring 0.96x MSC's (72000 N/m, a ride of about 1.5 Hz, sagging
+        // about half the travel) with the damping to match: the bump stop's 1000 Ns/m was a
+        // twentieth of what such a spring needs. Too much rebound damping (6.5) made it slow to
+        // settle after a turn, now 4.5. Past half its travel the progressive springs take over.
+        public static readonly Settings Kekmet = new Settings { Mass = 1.2f, CenterDrop = 0.1f, Spring = 0.8f, Travel = 6f, Bump = 3.5f, Rebound = 4.5f, CushionFrom = 0.5f, Cushion = 0.7f, Power = 2f, Grip = 1.3f };
         const string BodyCollider = "CarCollider";
 
         // MSC sets things up in its own Start; tune after it.
@@ -56,6 +66,13 @@ namespace PerkeleRim.Game
         Rigidbody body;
         ContactProbe probe;
         AirAssist air;
+        ProgressiveSprings springs;
+        readonly StallGuard stallGuard = new StallGuard();
+        HutongGames.PlayMaker.FsmFloat[] stallLimits;  // the Starter FSM's RPM limits, 50
+        float[] stallLimitValues;
+        bool guarding;
+        int guardLogs;
+        PlayMakerFSM starter, driveTrigger;
         float tuneAt, nextWatch;
         bool tuned;
         float mass0, tunedMass;
@@ -77,6 +94,11 @@ namespace PerkeleRim.Game
             tuned = false;
             probe = car.GetComponent<ContactProbe>();
             if (probe == null) probe = car.gameObject.AddComponent<ContactProbe>();
+            springs = car.GetComponent<ProgressiveSprings>();
+            if (springs == null) springs = car.gameObject.AddComponent<ProgressiveSprings>();
+            springs.From = settings.CushionFrom > 0f ? settings.CushionFrom : 0.6f;
+            springs.Strength = settings.Cushion;
+            springs.Log = log;
             air = null;
             if (settings.Air)
             {
@@ -94,6 +116,8 @@ namespace PerkeleRim.Game
         public void Update(bool riding)
         {
             if (air != null) air.Riding = riding;
+            if (settings.SoftBumps) KeepEngine(riding);
+            if (settings.FreeLeave) FreeLeave(riding);
             if (car == null || body == null || Time.realtimeSinceStartup < tuneAt) return;
             if (!tuned) Tune();
             FollowCenter();
@@ -104,9 +128,96 @@ namespace PerkeleRim.Game
             }
         }
 
+        // The driven vehicle's impacts each physics step (CrashSensor): a bump shields the engine from
+        // stalling for a moment; a crash stalls it (the guard may have held it up through it).
+        public void Impacts(bool inImpact, float impact)
+        {
+            if (!settings.SoftBumps) return;
+            if (!stallGuard.Step(inImpact, impact, Time.realtimeSinceStartup)) return;
+            Guard(false);
+            if (Starter() != null)
+            {
+                starter.SendEvent("OFF");
+                log($"vehicle tune: {name} crash of {impact:0.0} m/s stalls the engine");
+            }
+        }
+
+        // Every frame: the engine can't stall while a bump, a hop or a slide is going on.
+        void KeepEngine(bool riding)
+        {
+            bool hopping = air != null && air.Airborne > 0f;
+            bool sliding = body != null && !body.isKinematic && Bumps.Sliding(Vector3.Dot(body.velocity, car.right));
+            Guard(riding && (hopping || sliding || stallGuard.Protects(Time.realtimeSinceStartup)));
+            if (!riding) stallGuard.Reset();
+        }
+
+        // MSC stalls the moped in its Starter FSM: the Motor running state sends OFF when the
+        // engine's RPM (read from the speedometer) falls under 50. The guard moves that limit below
+        // zero and puts it back; the physics and the Drivetrain are left alone (setting
+        // Drivetrain.canStall instead made the engine's RPM infinite and crashed MSC).
+        const float NeverStalls = -1f;
+
+        void Guard(bool on)
+        {
+            if (on == guarding) return;
+            if (Starter() == null) return;
+            if (stallLimits == null)
+            {
+                var state = Array.Find(starter.FsmStates, st => st.Name == "Motor running");
+                var found = new System.Collections.Generic.List<HutongGames.PlayMaker.FsmFloat>();
+                if (state != null)
+                    foreach (var action in state.Actions)
+                    {
+                        if (action.GetType().Name != "FloatCompare") continue;
+                        var field = action.GetType().GetField("float2");
+                        var limit = field != null ? field.GetValue(action) as HutongGames.PlayMaker.FsmFloat : null;
+                        if (limit != null && !limit.UseVariable) found.Add(limit);
+                    }
+                stallLimits = found.ToArray();
+                stallLimitValues = new float[stallLimits.Length];
+                for (int i = 0; i < stallLimits.Length; i++) stallLimitValues[i] = stallLimits[i].Value;
+                log($"vehicle tune: {name} engine stall limits found: {stallLimits.Length}");
+            }
+            guarding = on;
+            if (guardLogs++ < 20) log($"vehicle tune: {name} engine {(on ? "shielded from stalling" : "may stall again")}");
+            for (int i = 0; i < stallLimits.Length; i++) stallLimits[i].Value = on ? NeverStalls : stallLimitValues[i];
+        }
+
+        PlayMakerFSM Starter()
+        {
+            if (starter == null && car != null) starter = FindFsm("Starter", "Starter");
+            return starter;
+        }
+
+        // A rider on a tipped or slow moped may step off: MSC's DriveTrigger lets the player out when
+        // the vehicle's speed on every axis is under its MinimumRequiredVelocity.
+        void FreeLeave(bool riding)
+        {
+            if (car == null || !riding) return;
+            if (driveTrigger == null) driveTrigger = FindFsm("LOD/PlayerTrigger/DriveTrigger", "PlayerTrigger");
+            if (driveTrigger == null) return;
+            var limit = driveTrigger.FsmVariables.FindFsmFloat("MinimumRequiredVelocity");
+            if (limit == null) return;
+            float wanted = Leaving.Limit(car.up.y);
+            if (Mathf.Abs(limit.Value - wanted) < 1e-3f) return;
+            if ((wanted >= Leaving.Anything) != (limit.Value >= Leaving.Anything))
+                log($"vehicle tune: {name} {(wanted >= Leaving.Anything ? "is tipped, the rider may get off at any speed" : "stands again, the rider may get off at a walking pace")}");
+            limit.Value = wanted;
+        }
+
+        PlayMakerFSM FindFsm(string path, string fsmName)
+        {
+            var t = car.Find(path);
+            if (t == null) return null;
+            foreach (var f in t.GetComponents<PlayMakerFSM>())
+                if (f.FsmName == fsmName) return f;
+            return null;
+        }
+
         void Tune()
         {
             tuned = true;
+            if (settings.SoftBumps) BumpSound.Register(car, log);
             var dynamics = car.GetComponent<CarDynamics>();
             mass0 = body.mass;
             tunedMass = mass0 * settings.Mass;

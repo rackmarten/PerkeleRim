@@ -29,6 +29,12 @@ namespace PerkeleRim.Game
 
             var v = body.velocity;
             float impact = meter.Step(v.x, v.y, v.z, Time.fixedDeltaTime, Physics.gravity.y);
+            if (impact > 0f)
+            {
+                var up = body.transform.up;
+                impact = CrashMeter.Soften(impact, meter.AlongUp(up.x, up.y, up.z), up.y);
+            }
+            driven.Impacts(meter.InImpact, impact);
             if (impact < CrashMeter.LogFloor) return;
             float severity = meter.Hit(impact, Time.realtimeSinceStartup);
             var contact = driven.Contact(0.2f);

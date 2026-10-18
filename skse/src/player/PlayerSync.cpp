@@ -78,6 +78,7 @@ namespace PerkeleRim::PlayerSync
             std::string    lookAt;            // MSC's interaction text
             bool           lookAtUse = false; // MSC shows its hand icon
             std::string    subtitle;          // MSC's subtitle line
+            std::string    gear;              // MSC's gear indicator while driving
             bool           hasNeeds = false;  // needs below came from MSC since the handover
             std::array<float, 7> needs{};     // PlayerState.needs
             bool           cameraParentLogged = false;
@@ -208,6 +209,7 @@ namespace PerkeleRim::PlayerSync
             state.lookAt.clear();
             state.lookAtUse = false;
             state.subtitle.clear();
+            state.gear.clear();
             state.hasNeeds = false;
             Hud::Set({});
             Drink::SetDrunk(0.0f, 0.0f);
@@ -662,7 +664,8 @@ namespace PerkeleRim::PlayerSync
                     Pocket::OnChange(a_player, a_data, a_size);
                     return;
                 }
-                if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle) {
+                if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle &&
+                    a_type != Protocol::MessageType::GearText) {
                     return;
                 }
                 const auto text = LookAt::Decode(a_data, a_size);  // a Subtitle has the same payload
@@ -670,6 +673,8 @@ namespace PerkeleRim::PlayerSync
                     SKSE::log::warn("player sync: bad text message type {} ({} bytes)", static_cast<int>(a_type), a_size);
                 } else if (a_type == Protocol::MessageType::Subtitle) {
                     state.subtitle.assign(text->text);
+                } else if (a_type == Protocol::MessageType::GearText) {
+                    state.gear.assign(text->text);
                 } else {
                     state.lookAt.assign(text->text);
                     state.lookAtUse = (text->flags & Protocol::kLookAtUse) != 0;
@@ -744,6 +749,7 @@ namespace PerkeleRim::PlayerSync
             hud.label = state.lookAt;
             hud.hand = state.lookAtUse;
             hud.subtitle = state.subtitle;
+            hud.gear = state.gear;
             hud.hasNeeds = state.hasNeeds;
             hud.needs = state.needs;
             hud.handsImage = HandView::Image();

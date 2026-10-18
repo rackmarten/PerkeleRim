@@ -31,6 +31,8 @@ namespace PerkeleRim.Game
         readonly string objectName;
         readonly string driverName;   // PlayerCurrentVehicle while driving it
         readonly Vector3 parkOffset;  // from the player's feet, in the player's frame (meters); x = 0: ahead
+        readonly Vector3? callOffset; // where Summon parks it instead of parkOffset, null = parkOffset
+        bool calling;                 // Summon is parking it
         readonly uint wireId;         // VehicleState.vehicle
         readonly bool onCall;         // only parked by Summon, put away until then
         readonly string keyVariable;  // global Int the ignition checks, null = no key needed
@@ -63,8 +65,9 @@ namespace PerkeleRim.Game
         float spotHeading;    // Skyrim radians
 
         public VehicleLink(string objectName, string driverName, Vector3 parkOffset, uint wireId, bool onCall, string keyVariable,
-            VehicleTune.Settings tuning, Island island, Func<Vector3, Vector3?> findGround, Action<string> log)
+            VehicleTune.Settings tuning, Island island, Func<Vector3, Vector3?> findGround, Action<string> log, Vector3? callOffset = null)
         {
+            this.callOffset = callOffset;
             this.objectName = objectName;
             this.driverName = driverName;
             this.parkOffset = parkOffset;
@@ -90,6 +93,8 @@ namespace PerkeleRim.Game
         public Vector3 Position => car != null ? car.position : Vector3.zero;
         public int Moves { get; private set; }
         public string Contact(float within) => tune.Contact(within);
+        // The driven vehicle's impacts this physics step (CrashSensor), for the engine's stall guard.
+        public void Impacts(bool inImpact, float impact) => tune.Impacts(inImpact, impact);
 
         bool PlayerDriving
         {
@@ -279,7 +284,9 @@ namespace PerkeleRim.Game
                 return;
             }
             away = false;
-            Park(player, feet);
+            calling = true;
+            try { Park(player, feet); }
+            finally { calling = false; }
             nextGroundCheck = 0f;  // let it go as soon as the ground under it is there
             log($"vehicle: called the {driverName}");
         }
@@ -535,7 +542,7 @@ namespace PerkeleRim.Game
             Quaternion yaw;
             Vector3 spot;
             Vector3? ground;
-            if (spotGeneration == island.Generation)
+            if (!calling && spotGeneration == island.Generation)
             {
                 var at = island.SkyrimToIsland(this.spot);
                 spot = new Vector3(at.x, at.y, at.z);
@@ -545,7 +552,7 @@ namespace PerkeleRim.Game
             else
             {
                 yaw = Quaternion.Euler(0f, player.eulerAngles.y, 0f);
-                spot = feet + yaw * parkOffset;
+                spot = feet + yaw * Offset;
                 ground = FlatSpot(feet, yaw) ?? findGround(spot);
             }
             spot = (ground ?? spot) + Vector3.up * clearance;
@@ -571,8 +578,11 @@ namespace PerkeleRim.Game
         // moped never pick the same one; a vehicle parked ahead (called) tries further ahead, then
         // ahead to either side, never behind. Parked over a rock, the vehicle spawned inside it and
         // was thrown, sometimes into the player. Returns the highest ground point there, or null.
+        Vector3 Offset => calling && callOffset.HasValue ? callOffset.Value : parkOffset;
+
         Vector3? FlatSpot(Vector3 feet, Quaternion yaw)
         {
+            var parkOffset = Offset;
             var outward = new Vector3(Mathf.Sign(parkOffset.x) * 3f, 0f, 0f);
             var offsets = parkOffset.x == 0f
                 ? new[]

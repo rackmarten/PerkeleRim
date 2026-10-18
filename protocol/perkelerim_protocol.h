@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 37;
+    inline constexpr std::uint32_t kProtocolVersion = 38;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -407,6 +407,7 @@ namespace PerkeleRim::Protocol
         ThrownPath = 22,       // MSC -> Skyrim
         LoadReset = 23,        // Skyrim -> MSC
         TimePassed = 24,       // Skyrim -> MSC
+        GearText = 25,         // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -464,6 +465,10 @@ namespace PerkeleRim::Protocol
     // Subtitle: MSC's subtitle line (global GUIsubtitle: the player's swearing and other speech),
     // sent when it changes and once more each time MSC takes the player. Same payload as LookAtText
     // with flags 0; no text clears it.
+
+    // GearText: the gear MSC shows bottom right while the player drives (global GUIgear: "N", "R",
+    // "2", "3 HIGH", "1 LOW"), sent when it changes and once more each time MSC takes the player.
+    // Same payload as Subtitle; no text (on foot) clears it.
 
     // PlayerDamage: something hit MSC's player that MSC would have died of (a crash, drowning), or a
     // crash it survives (a jump, a flip, a rock; severity below 1, scaled by the impact). MSC never

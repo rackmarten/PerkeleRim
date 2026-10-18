@@ -18,7 +18,8 @@ namespace PerkeleRim.Game
     //    change, and its needs with every pose;
     //  - runs the vehicles (VehicleLink) on the same island, all drawn in Skyrim: the van on the
     //    player's right, or at the spot the anchor names (the garage); the Jonnez moped ([) and the
-    //    Kekmet tractor (]) only once called, parked in front of the player, then left where they are;
+    //    Kekmet tractor (;) only once called, parked in front of the player, then left where they are
+    //    (] calls the van the same way, to wherever the player stands);
     //  - puts what the player carries into Skyrim's inventory and uses it from there (Y, keys 3 to 8),
     //    and keeps MSC's cigarettes and Skyrim's the same (PocketLink);
     //  - reports the physics items around the player (ItemLink), whose models ModelSender sends;
@@ -121,6 +122,7 @@ namespace PerkeleRim.Game
         Camera viewCamera;  // the camera MSC renders with, below fpsCamera
         string lookAtSent;  // interaction prompt Skyrim last got (flags:text); null = send it again
         string subtitleSent;  // subtitle Skyrim last got; null = send it again
+        string gearSent;      // gear text Skyrim last got; null = send it again
         HutongGames.PlayMaker.FsmFloat[] needs;  // PlayerState.needs globals, in Wire.Need* order
 
         static readonly string[] NeedGlobals =
@@ -149,7 +151,7 @@ namespace PerkeleRim.Game
             this.log = log;
             InputShim.Feed = FeedInput;
             Func<Vector3, Vector3?> ground = p => { Vector3 g; return FindGround(p, out g) ? g : (Vector3?)null; };
-            van = new VehicleLink("HAYOSIKO(1500kg, 250)", "Hayosiko", new Vector3(3.5f, 0f, 2f), Wire.VehicleHayosiko, false, "PlayerKeyHayosiko", VehicleTune.Van, island, ground, log);
+            van = new VehicleLink("HAYOSIKO(1500kg, 250)", "Hayosiko", new Vector3(3.5f, 0f, 2f), Wire.VehicleHayosiko, false, "PlayerKeyHayosiko", VehicleTune.Van, island, ground, log, new Vector3(0f, 0f, 6f));
             moped = new VehicleLink("JONNEZ ES(Clone)", "Jonnez", new Vector3(0f, 0f, 2.5f), Wire.VehicleJonnez, true, null, VehicleTune.Moped, island, ground, log);
             kekmet = new VehicleLink("KEKMET(350-400psi)", "Kekmet", new Vector3(0f, 0f, 4.5f), Wire.VehicleKekmet, true, null, VehicleTune.Kekmet, island, ground, log);
             vehicles = new[] { van, moped, kekmet };
@@ -313,12 +315,17 @@ namespace PerkeleRim.Game
             link.WritePlayer(ref state);
             SendLookAt(link, playing);
             SendSubtitle(link, playing);
+            SendGear(link, playing);
             foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero, viewCamera != null ? viewCamera.transform : null);
             foreach (var v in vehicles) v.SendModel(models, player);
             if (playing && Driven() == null && cInput.GetKeyDown("Push"))
                 foreach (var v in vehicles) if (v.RightIfRolled(player)) break;
-            if (playing && InputShim.GetKeyDown(KeyCode.LeftBracket)) moped.Summon(player, Feet());
-            if (playing && InputShim.GetKeyDown(KeyCode.RightBracket)) kekmet.Summon(player, Feet());
+            if (playing && Driven() == null)
+            {
+                if (InputShim.GetKeyDown(KeyCode.LeftBracket)) moped.Summon(player, Feet());
+                if (InputShim.GetKeyDown(KeyCode.RightBracket)) van.Summon(player, Feet());
+                if (InputShim.GetKeyDown(KeyCode.Semicolon)) kekmet.Summon(player, Feet());
+            }
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             shelves.Update(playing);
             pocket.Update(link, playing, player != null);
@@ -1135,6 +1142,22 @@ namespace PerkeleRim.Game
             if (text == subtitleSent) return;
             var payload = LookAt.Encode(text);
             if (link.Send(MessageType.Subtitle, payload, payload.Length)) subtitleSent = text;
+        }
+
+        // The gear MSC's GUIGearObject shows bottom right while driving (global GUIgear, set by the
+        // vehicle's GearIndicator FSM: "N", "2", "3 HIGH"); nothing on foot.
+        void SendGear(Link link, bool playing)
+        {
+            if (!playing) { gearSent = null; return; }
+            string text = "";
+            if (Driven() != null)
+            {
+                var global = HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmString("GUIgear");
+                if (global != null && global.Value != null) text = global.Value;
+            }
+            if (text == gearSent) return;
+            var payload = LookAt.Encode(text);
+            if (link.Send(MessageType.GearText, payload, payload.Length)) gearSent = text;
         }
 
         // Bottom of the player's capsule, which is what Skyrim's position means.

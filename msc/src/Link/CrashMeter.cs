@@ -21,6 +21,20 @@ namespace PerkeleRim
         public const float MaxSeverity = 0.8f;
         // A wreck tumbling down a slope hits many times; one hit per this many seconds counts.
         public const float Cooldown = 1f;
+        // A vehicle on its wheels (its up axis' y from here up) taking an impact along its own up
+        // axis (this share of it or more) is landing a bounce, not hitting a wall: the springs
+        // took it, a tractor at full speed down a hill bounces for 6 to 8 m/s all the time. Such an
+        // impact counts for LandingShare of its size.
+        public const float LandingUpY = 0.7f;
+        public const float LandingAlongUp = 0.75f;
+        public const float LandingShare = 0.5f;
+
+        // The size an impact counts for given how much of it was along the vehicle's up axis
+        // (0..1, AlongUp) and that axis' y.
+        public static float Soften(float impact, float alongUp, float upY)
+        {
+            return upY >= LandingUpY && alongUp >= LandingAlongUp ? impact * LandingShare : impact;
+        }
 
         // PlayerDamage severity for an impact: nothing up to Harmless, then rising slowly at first
         // (a rough landing stings, a rock at speed hurts) to MaxSeverity at Fatal.
@@ -35,7 +49,18 @@ namespace PerkeleRim
         float lastX, lastY, lastZ;
         bool inImpact;
         float sumX, sumY, sumZ;
+        float endX, endY, endZ;  // the impact that ended last
         float lastHit = float.NegativeInfinity;
+
+        // Whether the steps so far are part of an impact that has not ended yet.
+        public bool InImpact => inImpact;
+
+        // How much of the impact that ended last was along the unit axis (x, y, z): 0..1.
+        public float AlongUp(float x, float y, float z)
+        {
+            float length = Length(endX, endY, endZ);
+            return length > 1e-6f ? Math.Abs(endX * x + endY * y + endZ * z) / length : 0f;
+        }
 
         // Forget the last velocity: the vehicle was moved or held, so the next change isn't a hit.
         public void Reset()
@@ -66,6 +91,7 @@ namespace PerkeleRim
             }
             if (!inImpact) return 0f;
             float impact = Length(sumX, sumY, sumZ);
+            endX = sumX; endY = sumY; endZ = sumZ;
             inImpact = false;
             sumX = sumY = sumZ = 0f;
             return impact;
