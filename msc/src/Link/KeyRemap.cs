@@ -6,7 +6,7 @@ namespace PerkeleRim
     // becomes the key MSC's action is bound to, for as long as it is held. MSC's own keys (N, P, O,
     // J, I, G, B) still work, and its bindings stay as they are, so standalone MSC keeps its keys. M
     // never arrives (it opens Skyrim's map, protocol/cpp/input.h), so the finger moves to V (Z is
-    // Skyrim's shout). Alt pisses (held), C smokes ("cigs") and B zooms, so Ctrl crouches on foot.
+    // Skyrim's shout). Alt pisses (Skyrim sends it only after a clean tap, protocol/cpp/piss_tap.h), C smokes ("cigs") and B zooms, so Ctrl crouches on foot.
     // Driving, Shift and Ctrl shift gears up and down, and G and T stay MSC's shift up and boost. T
     // on foot is Skyrim's Wait menu, so the hitchhike thumb is only MSC's own O.
     // The key table is in docs/PROTOCOL.md, Input. Unity-free.
@@ -32,7 +32,7 @@ namespace PerkeleRim
             new Alias { Key = Mouse2, Action = "Swear" },
             new Alias { Key = C, Action = "Smoking" },
             new Alias { Key = B, Action = "Zoom" },
-            new Alias { Key = LeftAlt, Action = "Urinate" },  // held, like MSC's P
+            new Alias { Key = LeftAlt, Action = "Urinate" },  // a tap's pulse, like a press of MSC's P
             new Alias { Key = G, Action = "Push", When = When.OnFoot },
             new Alias { Key = LeftControl, Action = "Crouch", When = When.OnFoot },
             new Alias { Key = LeftShift, Action = "ShiftUp", When = When.Driving },

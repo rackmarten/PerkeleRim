@@ -27,7 +27,7 @@ F10 hands the player to My Summer Car and back. While MSC has the player you nev
 | Left / right click (free hands) | punch / guard (Skyrim blocks) |
 | V | middle finger |
 | Z | Skyrim's shout or power, as usual, but Kumpo yells it (Unrelenting Force: "Perkele!") |
-| Alt (hold) | piss |
+| Alt (tap) | piss: a quick tap starts it and Kumpo goes until he is empty (Alt+Tab no longer starts it) |
 | Middle click | swear |
 | C / B | smoke / zoom |
 | Ctrl / G (on foot) | crouch / push stance on / off (walk into people to shove them aside; rights a rolled van) |

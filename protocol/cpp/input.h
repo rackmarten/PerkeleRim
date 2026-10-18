@@ -44,6 +44,7 @@ namespace PerkeleRim::Input
     inline constexpr std::uint32_t kDikT = 0x14;  // Skyrim's Wait menu on foot (MSC has nothing on it there)
     inline constexpr std::uint32_t kDikH = 0x23;  // MSC's hit
     inline constexpr std::uint32_t kDikLeftShift = 0x2A;  // MSC's run
+    inline constexpr std::uint32_t kDikLeftAlt = 0x38;    // piss, on a clean tap (piss_tap.h)
 
     // DirectInput scan code -> Unity KeyCode, None for keys MSC doesn't get.
     constexpr std::uint16_t KeyFromScanCode(std::uint32_t a_dik)

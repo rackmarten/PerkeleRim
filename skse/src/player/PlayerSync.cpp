@@ -15,6 +15,7 @@
 #include "look_at.h"
 #include "model/ModelView.h"
 #include "particle/ParticleView.h"
+#include "piss_tap.h"
 #include "pocket/Pocket.h"
 #include "rest/Rest.h"
 #include "safe/Safe.h"
@@ -71,6 +72,7 @@ namespace PerkeleRim::PlayerSync
             std::uint32_t  inputFrame = 0;
             Input::Builder input;
             Stamina::Sprint sprint;  // MSC's run costs stamina; an empty bar stops it
+            PissTap::Tap    pissTap;  // Alt reaches MSC only after a clean tap
             bool           seated = false;
             RE::NiPoint3   eye;               // Skyrim's camera relative to the placed feet (MSC's eye), 0 when not posed
             float          savedFov = 0.0f;   // Skyrim's worldFOV before MSC's took over, 0 = untouched
@@ -144,6 +146,9 @@ namespace PerkeleRim::PlayerSync
             if (auto* keyboard = devices->GetKeyboard()) {
                 const auto& down = keyboard->GetRuntimeData().curState;
                 for (std::uint32_t dik = 0; dik < 0x100; dik++) {
+                    if (dik == Input::kDikLeftAlt) {
+                        continue;  // held by the piss tap's pulse, not by the keyboard
+                    }
                     const auto key = Input::KeyFromScanCode(dik);
                     if ((down[dik] & 0x80) == 0 && state.input.IsKeyDown(key)) {
                         state.input.SetKey(key, false);
@@ -161,6 +166,14 @@ namespace PerkeleRim::PlayerSync
                     }
                 }
             }
+        }
+
+        // Skyrim's window is the one in front: an Alt let go after Alt+Tab switched away isn't a tap.
+        bool SkyrimInFront()
+        {
+            DWORD process = 0;
+            ::GetWindowThreadProcessId(::GetForegroundWindow(), &process);
+            return process == ::GetCurrentProcessId();
         }
 
         void SetControls(bool a_enable)
@@ -181,6 +194,7 @@ namespace PerkeleRim::PlayerSync
             state.input.ReleaseAll();
             state.input.Block(Input::KeyFromScanCode(Input::kDikLeftShift), false);
             state.sprint.Reset();
+            state.pissTap.Reset();
             SetControls(true);
             if (auto* player = RE::PlayerCharacter::GetSingleton(); player && (state.sneak || player->IsSneaking())) {
                 player->AsActorState()->actorState1.sneaking = false;
@@ -601,6 +615,7 @@ namespace PerkeleRim::PlayerSync
                 return;
             }
             ReleaseStuckKeys();
+            state.input.SetKey(Input::KeyFromScanCode(Input::kDikLeftAlt), state.pissTap.Tick(a_delta));
             Publish();
             ModelView::Tick(a_delta);
 
@@ -900,6 +915,20 @@ namespace PerkeleRim::PlayerSync
                             }
                             continue;
                         }
+                        if (code == Input::kDikLeftAlt) {
+                            if (button->IsDown()) {
+                                state.pissTap.Press();
+                            } else if (button->IsUp() && state.owned) {
+                                const float held = button->HeldDuration();
+                                const bool  front = SkyrimInFront();
+                                SKSE::log::info("player sync: Alt let go after {:.2f} s{}{}", held, front ? "" : ", Skyrim not in front",
+                                    state.pissTap.Release(held, front) ? ", a tap: MSC pisses" : ", no tap");
+                            }
+                            continue;  // reaches MSC as the tap's pulse (Drive)
+                        }
+                        if (button->IsDown()) {
+                            state.pissTap.OtherKey();  // Alt+Tab and other combinations aren't a tap
+                        }
                         if (code == Input::kDikH && button->IsDown() && state.owned) {
                             Combat::OnSwing(RE::PlayerCharacter::GetSingleton());  // MSC's hit key: webs too
                         }
@@ -912,6 +941,9 @@ namespace PerkeleRim::PlayerSync
                                 state.input.AddWheel(notches);
                             }
                         } else {
+                            if (button->IsDown()) {
+                                state.pissTap.OtherKey();
+                            }
                             if (code == 0 && button->IsDown() && state.owned && !MenuHasInput()) {
                                 Combat::OnSwing(RE::PlayerCharacter::GetSingleton());  // left click punches: webs too
                             }

@@ -269,7 +269,7 @@ Skyrim side (`protocol/cpp/input.h`, `skse/src/player/PlayerSync.cpp`): DirectIn
 
 Running costs stamina (`protocol/cpp/stamina.h`, `PlayerSync::Sprint`; no wire change, Skyrim already owns both the stamina and the key). On foot, while Shift is held and MSC's ground speed is at least 7.5 m/s (MSC's boosted walk is about 5.5, its run about 9.6), Skyrim's stamina drops 7 a second (`DamageActorValue`, about Skyrim's own sprint cost; regen still applies, so a drunk's `StaminaRateMult` and bigger bar last longer). With the bar empty the key is held back from the `keys` sent to MSC (`Builder::Block`; Skyrim still knows it is held) until a fifth of max stamina is back, so MSC walks. Driving, Shift is the gear shift and is never held back. Log: `player sync: out of breath, MSC's run is held back` / `caught its breath, running again`.
 
-MSC's hand actions get keys next to WASD while handed over (`msc/src/Link/KeyRemap.cs`): an alias key held becomes the key MSC's action is bound to (read from cInput, so a player's own bindings are followed), MSC's own keys keep working, and standalone MSC keeps its bindings. V, middle click, Alt (piss, held), C (smoke, "cigs") and B (zoom) work everywhere, so Ctrl crouches on foot. G only on foot, since in a vehicle it is MSC's shift up (T opens Skyrim's Wait menu on foot; driving it is MSC's boost); driving, Shift and Ctrl shift gears up and down instead. Left and right click with free hands are MSC's Hit and Watch keys ([Combat](#combat)), Y and 3 to 8 the pocket ([The pocket](#the-pocket)). Keys are fixed, there is no INI. The whole table, both games:
+MSC's hand actions get keys next to WASD while handed over (`msc/src/Link/KeyRemap.cs`): an alias key held becomes the key MSC's action is bound to (read from cInput, so a player's own bindings are followed), MSC's own keys keep working, and standalone MSC keeps its bindings. V, middle click, Alt (piss, on a tap: Skyrim sends it to MSC for 0.25 s only when Alt was held no longer than 0.35 s, with no other key or button pressed meanwhile and Skyrim still the window in front, so Alt+Tab never starts a stream; `protocol/cpp/piss_tap.h`), C (smoke, "cigs") and B (zoom) work everywhere, so Ctrl crouches on foot. G only on foot, since in a vehicle it is MSC's shift up (T opens Skyrim's Wait menu on foot; driving it is MSC's boost); driving, Shift and Ctrl shift gears up and down instead. Left and right click with free hands are MSC's Hit and Watch keys ([Combat](#combat)), Y and 3 to 8 the pocket ([The pocket](#the-pocket)). Keys are fixed, there is no INI. The whole table, both games:
 
 | Key | On foot | Driving |
 |---|---|---|
@@ -280,7 +280,7 @@ MSC's hand actions get keys next to WASD while handed over (`msc/src/Link/KeyRem
 | Wheel | MSC (radio dial, ...) | MSC |
 | V | middle finger (MSC's M) | same |
 | Z | Skyrim's equipped shout or power (tap or hold); Finn yells instead of the Dragonborn (Unrelenting Force: "Perkele!") | same |
-| Alt (held) | piss (MSC's P) | same |
+| Alt (tap) | piss (MSC's P), runs until Kumpo is empty | same |
 | C | smoke (MSC's I) | same |
 | B | zoom (MSC's Ctrl) | same |
 | Shift | run (MSC) | shift up (MSC's G) |
