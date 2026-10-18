@@ -95,6 +95,28 @@ namespace PerkeleRim.Spike
             if (n == 0) SpikeLog.Write("cmd: inspect: nothing named like " + text);
         }
 
+        // Teleports MSC's player next to a scene object, for filming MSC itself (the pub, the shop).
+        static void Goto(string text)
+        {
+            var player = GameObject.Find("PLAYER");
+            if (player == null) { SpikeLog.Write("cmd: goto: no PLAYER"); return; }
+            GameObject found = null;
+            foreach (GameObject go in Resources.FindObjectsOfTypeAll(typeof(GameObject)))
+            {
+                if (go.hideFlags != HideFlags.None || !go.name.Equals(text, StringComparison.OrdinalIgnoreCase)) continue;
+                // An inactive one (a far LOD) counts only under a root that is in the scene, not a prefab asset.
+                if (go.activeInHierarchy) { found = go; break; }
+                if (found == null && GameObject.Find(go.transform.root.name) != null) found = go;
+            }
+            if (found != null)
+            {
+                player.transform.position = found.transform.position + Vector3.up;
+                SpikeLog.Write($"cmd: goto: player put above {found.name} at {player.transform.position}");
+                return;
+            }
+            SpikeLog.Write("cmd: goto: nothing named " + text);
+        }
+
         // Every particle system (Shuriken and legacy ParticleEmitter), inactive ones too, filtered by a
         // word in its path: what it draws with, where it simulates and whether it runs now.
         static void Particles(string text)
@@ -408,6 +430,16 @@ namespace PerkeleRim.Spike
                         var sunk = GameObject.Find("PLAYER");
                         if (sunk != null) sunk.transform.position += Vector3.down * (words.Length > 1 ? float.Parse(words[1], CultureInfo.InvariantCulture) : 3f);
                         SpikeLog.Write(sunk != null ? $"cmd: player now at {sunk.transform.position}" : "cmd: no PLAYER");
+                        break;
+                    case "time":  // "time 6" moves MSC's sun, clock and day 6 hours on, the needs untouched
+                        float hours;
+                        if (words.Length > 1 && float.TryParse(words[1], NumberStyles.Float, CultureInfo.InvariantCulture, out hours) && hours > 0f && hours <= 48f)
+                            SpikeLog.Write("cmd: time" + PerkeleRim.Game.RestLink.ClockMove(hours));
+                        else
+                            SpikeLog.Write("cmd: time <hours, 0..48>");
+                        break;
+                    case "goto":  // "goto chair_pub 2" puts the player 1 m above the first object with that name (inactive ones too)
+                        Goto(lines[0].Trim().Substring(4).Trim());
                         break;
                     case "pocket":  // "pocket Y", "pocket 1"
                         var pocketLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();

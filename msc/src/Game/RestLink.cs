@@ -60,7 +60,8 @@ namespace PerkeleRim.Game
         }
 
         // Moves the sun, the clock and the day on by the hours; ", time 18:01 -> 02:01, day 3 -> 4" for the log.
-        static string ClockMove(float hours)
+        // Also the spike's "time N", for filming MSC at another hour.
+        public static string ClockMove(float hours)
         {
             var color = SaveSync.FindFsm(SunPath, "Color");
             var clock = SaveSync.FindFsm(SunPath, "Clock");

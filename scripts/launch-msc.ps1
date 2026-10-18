@@ -7,10 +7,13 @@
 .EXAMPLE
     scripts/launch-msc.ps1
     scripts/launch-msc.ps1 -Width 1280 -Height 720
+    scripts/launch-msc.ps1 -Width 2560 -Height 1440 -Fullscreen -Quality Fantastic   # for filming MSC itself
 #>
 param(
     [int] $Width = 640,
     [int] $Height = 480,
+    [string] $Quality = 'Fastest',
+    [switch] $Fullscreen,
     [int] $TimeoutSeconds = 60
 )
 
@@ -31,7 +34,7 @@ Add-Type -Namespace PerkeleRim -Name Win32 -MemberDefinition @'
 $log = Join-Path $msc 'PerkeleRim_spike.log'
 $launched = Get-Date
 Start-Process -WorkingDirectory $msc (Join-Path $msc 'mysummercar.exe') `
-    -ArgumentList '-force-gfx-direct', '-screen-fullscreen', '0', '-screen-width', $Width, '-screen-height', $Height, '-screen-quality', 'Fastest'
+    -ArgumentList '-force-gfx-direct', '-screen-fullscreen', [int]$Fullscreen.IsPresent, '-screen-width', $Width, '-screen-height', $Height, '-screen-quality', $Quality
 
 # Until the spike log says the mod has started (main menu reached):
 #  - click "Play!" on Unity's configuration dialog. The -screen-* arguments don't skip it in MSC's
