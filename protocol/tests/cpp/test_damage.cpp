@@ -62,6 +62,17 @@ TEST_CASE("a thrown item hits by its speed, up to two sober punches")
     CHECK(Damage::Thrown(-5.0f, 15.0f) == 0.0f);
 }
 
+TEST_CASE("a throw from sneak at someone who does not see Kumpo doubles")
+{
+    CHECK(Damage::SneakAttack(true, 0) == 2.0f);
+    CHECK(Damage::SneakAttack(true, -9) == 2.0f);
+    CHECK(Damage::SneakAttack(true, 1) == 1.0f);
+    CHECK(Damage::SneakAttack(false, -9) == 1.0f);
+    // on top of the speed rule: a full-speed throw is four punches
+    const float punch = Damage::Punch(4.0f);
+    CHECK(Damage::Thrown(punch, 15.0f) * Damage::SneakAttack(true, 0) == doctest::Approx(punch * 4.0f));
+}
+
 TEST_CASE("running someone over hits harder than a punch, a nudge softer")
 {
     CHECK(Damage::RunOver(60.0f, false, 35.0f / 3.6f) > Damage::Punch(4.0f, 4.0f));  // a level 1 bandit at 35 km/h

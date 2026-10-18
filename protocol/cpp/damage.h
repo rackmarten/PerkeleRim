@@ -91,6 +91,17 @@ namespace PerkeleRim::Damage
         return (std::max)(0.0f, a_punch) * kThrownShare * scale;
     }
 
+    // A throw that left the player's hand while he sneaked and hits a target that does not see him
+    // (Skyrim's detection level 0 or below, Actor::RequestDetectionLevel) is a sneak attack: kSneakAttack
+    // times the damage, on top of the charge and speed (Thrown). Punches are spells in Skyrim, which
+    // have no sneak attack, and stay as they are.
+    inline constexpr float kSneakAttack = 2.0f;
+
+    inline float SneakAttack(bool a_sneaking, int a_detection)
+    {
+        return a_sneaking && a_detection <= 0 ? kSneakAttack : 1.0f;
+    }
+
     // Skyrim's destructibles (Combat::OnSwing, Combat::OnThrown): a spider web takes more than any
     // web's health, so one hit cuts it; others (oil pots, barricades) a punch's worth, from a thrown
     // item by its speed like Thrown.

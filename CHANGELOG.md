@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A throw from sneak at someone who has not noticed Kumpo (Skyrim's detection level 0 or below) deals double damage on top of the speed rule, with Skyrim's "Sneak attack for 2.0x damage" message. Punches stay as they are.
 - Repository scaffold: README, MIT license, contributing guide, code of conduct, security policy, issue and PR templates.
 - Design document ([docs/DESIGN.md](docs/DESIGN.md)) and protocol proposal ([docs/PROTOCOL.md](docs/PROTOCOL.md)).
 - Windows development setup guide ([docs/DEV_SETUP.md](docs/DEV_SETUP.md)) and `scripts/build.ps1`, `deploy-local.ps1`, `logs.ps1`.
@@ -99,6 +100,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Skyrim's sneak eye no longer stays up after Kumpo stands: the HUD hides it every frame while he stands and Skyrim shows it again for crouch and prone.
 - A punch near an oil puddle no longer sets it alight under the player: destructibles lying flat on the floor are left out of punches and throws.
 - Vehicles no longer die on roads far below where the player was put down: the collision island's origin moved from 100 m to 1000 m up, since MSC treats anything below about -5 m as under water and its AirIntake check flooded the van's engine there.
 - The moped's suspension travel is 1.6 times MSC's instead of twice, and its front fork is softer than the rear (0.75 times the spring rate).

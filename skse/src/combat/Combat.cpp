@@ -32,6 +32,7 @@ namespace PerkeleRim::Combat
         constexpr float         kSwingReach = 200.0f;        // units from the player a swing reaches a web or other destructible
         constexpr float         kFlatUnits = 16.0f;          // a destructible under this tall lies on the floor (an oil puddle)
         constexpr float         kFlightScanUnits = 8000.0f;  // destructibles within about 110 m can be hit by a thrown item
+        constexpr float         kFlightSneakSeconds = 10.0f;  // a throw's launch stance counts for its impact this long
         constexpr float         kItemUnits = 7.0f;           // a thrown item's radius, about 0.1 m
         constexpr float         kObjectRadius = 30.0f;       // a destructible's reach with no 3D loaded to measure
         constexpr float         kWatchUnits = 1000.0f;  // attackers the per-second log follows
@@ -369,6 +370,8 @@ namespace PerkeleRim::Combat
             std::uint32_t                   scanned = 0;  // the flight candidates were gathered for
             std::vector<RE::FormID>         candidates;
             std::unordered_set<std::uint64_t> hit;        // flight << 32 | form id
+            bool                            sneaking = false;  // the newest flight left the hand while the player sneaked
+            float                           sneakAt = -100.0f; // state.clock then
         } flights;
     }
 
@@ -512,6 +515,8 @@ namespace PerkeleRim::Combat
         std::memcpy(&path, a_data, sizeof(path));
         if (path.flight > flights.scanned || flights.scanned - path.flight > 1000) {  // a new flight (or MSC restarted)
             flights.scanned = path.flight;
+            flights.sneaking = a_player->IsSneaking();
+            flights.sneakAt = state.clock;
             flights.candidates.clear();
             tes->ForEachReferenceInRange(a_player, kFlightScanUnits, [&](RE::TESObjectREFR* a_ref) {
                 if (AsDestructible(a_ref)) {
@@ -637,14 +642,23 @@ namespace PerkeleRim::Combat
         if (impact.kind != Protocol::kImpactThrown || !state.punch || !state.stagger) {
             return;
         }
-        const float damage = Damage::Thrown(Damage::Punch(Unarmed(a_player, target)), impact.speed);
+        // Sneak attack: the throw left the hand from sneak (the newest flight's launch; the player's
+        // state now if no flight was seen lately) and the target does not see the player.
+        const bool  sneaking = state.clock - flights.sneakAt < kFlightSneakSeconds ? flights.sneaking : a_player->IsSneaking();
+        const int   detection = target->RequestDetectionLevel(a_player);
+        const float sneak = Damage::SneakAttack(sneaking, detection);
+        const float damage = Damage::Thrown(Damage::Punch(Unarmed(a_player, target)), impact.speed) * sneak;
         if (damage <= 0.0f) {
             SKSE::log::info("combat: a throw at {:.1f} m/s bounced off {} harmlessly", impact.speed, NameOf(target));
             return;
         }
         caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
-        SKSE::log::info("combat: the player's throw at {:.1f} m/s hit {} for {:.0f} of {:.0f} max health", impact.speed, NameOf(target), damage, max);
+        if (sneak > 1.0f) {
+            RE::SendHUDMessage::ShowHUDMessage(fmt::format("Sneak attack for {:.1f}x damage", sneak).c_str());
+        }
+        SKSE::log::info("combat: the player's throw at {:.1f} m/s hit {} for {:.0f} of {:.0f} max health (from sneak {}, its detection level {}, x{:.1f})", impact.speed,
+            NameOf(target), damage, max, sneaking, detection, sneak);
     }
 
     void OnHorn(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)

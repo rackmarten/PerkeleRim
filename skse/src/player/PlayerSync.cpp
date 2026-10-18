@@ -746,6 +746,7 @@ namespace PerkeleRim::PlayerSync
             const bool second = state.statTime >= 1.0f;
             Hud::View hud;
             hud.show = !chase;  // clean shots
+            hud.hideStealth = !state.sneak;  // Skyrim's sneak eye stayed up after standing
             hud.label = state.lookAt;
             hud.hand = state.lookAtUse;
             hud.subtitle = state.subtitle;

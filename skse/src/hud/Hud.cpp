@@ -300,6 +300,23 @@ namespace PerkeleRim::Hud
             }
         }
 
+        // Skyrim's sneak indicator (the eye), a clip of the HUD movie.
+        void HideStealth(bool a_hide)
+        {
+            auto* ui = RE::UI::GetSingleton();
+            auto  menu = ui ? ui->GetMenu(RE::HUDMenu::MENU_NAME) : nullptr;
+            auto* movie = menu ? menu->uiMovie.get() : nullptr;
+            RE::GFxValue eye;
+            if (!movie || !movie->GetVariable(&eye, "_root.HUDMovieBaseInstance.StealthMeterInstance") || !eye.IsDisplayObject()) {
+                static bool logged = false;
+                if (movie && !std::exchange(logged, true)) {
+                    SKSE::log::warn("hud: the sneak eye clip (_root.HUDMovieBaseInstance.StealthMeterInstance) was not found");
+                }
+                return;
+            }
+            eye.SetMember("_visible", RE::GFxValue(!a_hide));
+        }
+
         void Apply(const View& a_view)
         {
             auto* ui = RE::UI::GetSingleton();
@@ -407,6 +424,13 @@ namespace PerkeleRim::Hud
 
     void Set(const View& a_view, bool a_refresh)
     {
+        // The sneak eye is hidden every frame while asked for: Skyrim shows it again by itself.
+        static bool stealthHidden = false;
+        if (a_view.hideStealth || stealthHidden) {
+            stealthHidden = a_view.hideStealth;
+            const bool hide = stealthHidden;
+            SKSE::GetTaskInterface()->AddUITask([hide]() { HideStealth(hide); });
+        }
         View view = a_view;
         if (!view.show) {
             view = View{};
