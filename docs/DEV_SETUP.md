@@ -98,7 +98,7 @@ scripts/spike.ps1 -Command dump    # hidden-MSC spike tools, see docs/SPIKE_HIDD
 scripts/skyrim-key.ps1 -Key F10    # press a key in Skyrim (brings it to the front); -Screenshot FILE saves its window
 ```
 
-For a test loop with no clicks at all, create an empty `PerkeleRim_autoload.txt` in both game folders: MSC then continues its save, and Skyrim continues its most recent save from the main menu (the SKSE plugin does it once per start). Delete the files to get the main menus back. An empty `PerkeleRim_testbeer.txt` in MSC's folder hands out a case of 6 beers on every F10, for testing item rendering.
+For a test loop with no clicks at all, create an empty `PerkeleRim_autoload.txt` in both game folders: MSC then continues its save, and Skyrim continues its most recent save from the main menu (the SKSE plugin does it once per start). Delete the files to get the main menus back.
 
 From WSL, call the same scripts through Windows PowerShell, e.g. `powershell.exe -File scripts/build.ps1`.
 

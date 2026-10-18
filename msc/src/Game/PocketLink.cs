@@ -50,7 +50,6 @@ namespace PerkeleRim.Game
         bool trimmed;            // a new beer case is down to one bottle (spike "hold 0")
         bool eating;             // eaten as soon as it has loaded, never held
         float takingSince;
-        bool topUp;              // test stock wanted (PerkeleRim_testbeer.txt)
 
         // A beer from the pocket is being drunk: the empty bottle MSC throws after it (a new copy of
         // BottleBeerFly) goes back into the pocket, until emptyUntil (-1 = none).
@@ -76,9 +75,6 @@ namespace PerkeleRim.Game
 
         // Spike command "hold <kind>": a new item of a kind into the hand, the pocket untouched.
         public void Hold(int kind) { if (taking == null && takingKind == Pocket.None) StartTake(null, kind, false); }
-
-        // Test loop: tops the pocket up to Pocket.TestStock once Skyrim's counts are known.
-        public void TopUpTestStock() => topUp = true;
 
         public void OnCounts(byte[] payload, int size)
         {
@@ -114,7 +110,7 @@ namespace PerkeleRim.Game
             if (emptyUntil >= 0f) CatchEmpty(link);
             if (taking != null || takingKind != Pocket.None) { AdvanceTake(); presses.Clear(); return; }
             if (!playing) { presses.Clear(); return; }
-            if (topUp && ledger.Known) TopUp(link);
+            if (ledger.Known) TopUp(link);
             if (presses.Count > 0) Press(link, presses.Dequeue());
         }
 
@@ -128,13 +124,14 @@ namespace PerkeleRim.Game
             return true;
         }
 
+        // Endless supplies: what was used, thrown or put away comes back. Available counts the changes
+        // Skyrim hasn't applied yet, so nothing is sent twice; a full ring retries next frame.
         void TopUp(Link link)
         {
-            topUp = false;
             for (int kind = 0; kind < Wire.PocketKinds; kind++)
             {
-                long add = Pocket.TestStock(kind) - ledger.Available(kind);
-                if (add > 0 && Send(link, kind, (int)add)) log($"pocket: test stock, +{add} of kind {kind}");
+                long add = Pocket.Missing(kind, ledger.Available(kind));
+                if (add > 0 && Send(link, kind, (int)add)) log($"pocket: topped up, +{add} of kind {kind}");
             }
         }
 

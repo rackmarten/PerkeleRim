@@ -1,7 +1,5 @@
 #pragma once
 
-#include <string>
-
 // The pocket on Skyrim's side (docs/PROTOCOL.md "The pocket"): Skyrim's inventory holds MSC's
 // beer, empty bottles, food and cigarettes as PerkeleRim.esp misc items (tools/esp-gen), so they
 // travel through load doors and live in Skyrim's saves.
@@ -17,7 +15,4 @@ namespace PerkeleRim::Pocket
     void Update(RE::PlayerCharacter* a_player, float a_delta);
 
     void OnChange(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);  // PocketChange
-
-    // The HUD's slot hint: one line per kind the pocket has ("3  Beer  x3"), empty for none.
-    std::string Hint();
 }

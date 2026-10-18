@@ -214,3 +214,32 @@ TEST_CASE("a thrown item's way passes a destructible or not")
     CHECK(Damage::SegmentDistance(from, to, after) == doctest::Approx(std::sqrt(30.0f * 30.0f * 2.0f)));
     CHECK(Damage::SegmentDistance(from, from, beside) == doctest::Approx(std::sqrt(10.0f * 10.0f + 25.0f * 25.0f)));  // no way at all
 }
+
+TEST_CASE("the van and the Kekmet are safe seats, the moped is not")
+{
+    CHECK(Damage::SafeSeat(Protocol::kVehicleHayosiko));
+    CHECK(Damage::SafeSeat(Protocol::kVehicleKekmet));
+    CHECK_FALSE(Damage::SafeSeat(Protocol::kVehicleJonnez));
+    CHECK_FALSE(Damage::SafeSeat(0));  // on foot
+}
+
+TEST_CASE("enemy hits cost nothing in a safe seat, everything elsewhere")
+{
+    CHECK(Damage::Incoming(Protocol::kVehicleKekmet, 80.0f) == 0.0f);
+    CHECK(Damage::Incoming(Protocol::kVehicleHayosiko, 500.0f) == 0.0f);
+    CHECK(Damage::Incoming(Protocol::kVehicleJonnez, 80.0f) == doctest::Approx(80.0f));
+    CHECK(Damage::Incoming(0, 80.0f) == doctest::Approx(80.0f));
+}
+
+TEST_CASE("staggers, recoils, knockdowns and ragdolls are recognized by their animation event")
+{
+    CHECK(Damage::PullsOutOfSeat("staggerStart"));
+    CHECK(Damage::PullsOutOfSeat("recoilLargeStart"));
+    CHECK(Damage::PullsOutOfSeat("KnockDown"));
+    CHECK(Damage::PullsOutOfSeat("RagdollInstant"));
+    CHECK_FALSE(Damage::PullsOutOfSeat("SneakStop"));
+    CHECK_FALSE(Damage::PullsOutOfSeat("weapEquip"));
+    CHECK_FALSE(Damage::PullsOutOfSeat("stag"));  // shorter than any prefix
+    CHECK_FALSE(Damage::PullsOutOfSeat(""));
+    CHECK_FALSE(Damage::PullsOutOfSeat(nullptr));
+}

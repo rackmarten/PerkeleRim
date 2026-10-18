@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using PerkeleRim.Protocol;
 
@@ -55,10 +56,14 @@ namespace PerkeleRim
             return None;
         }
 
-        // Test loop (PerkeleRim_testbeer.txt): what each handover tops the pocket up to.
-        public static int TestStock(int kind) =>
-            kind == (int)Wire.PocketBeer ? 6 : kind == (int)Wire.PocketBottle ? 10 : kind == (int)Wire.PocketSausages ? 2 : kind == (int)Wire.PocketPizza ? 1
-            : kind == (int)Wire.PocketCigarettes ? 20 : 0;
+        // Endless supplies (v0.1, until Skyrim's own food and drink are the source): the pocket always
+        // holds at least this much of each kind. Using or throwing one tops the stack back up.
+        public static int Stock(int kind) =>
+            kind == (int)Wire.PocketBeer ? 6 : kind == (int)Wire.PocketBottle ? 10 : kind == (int)Wire.PocketCigarettes ? 20
+            : kind >= 0 && kind < Wire.PocketKinds ? 2 : 0;
+
+        // How many of a kind to add so the pocket holds its stock again (0: it does).
+        public static long Missing(int kind, long available) => Math.Max(0, Stock(kind) - available);
 
         public static bool IsKey(int keyCode) => keyCode == PocketKey || SlotOfKey(keyCode) != None;
 

@@ -4,6 +4,7 @@
 #include "hurt.h"
 #include "link/LinkService.h"
 #include "model/ModelView.h"
+#include "safe/Safe.h"
 
 namespace PerkeleRim::Death
 {
@@ -99,7 +100,10 @@ namespace PerkeleRim::Death
                 state.lethalDamage = a_amount;
                 return;
             }
-            values->DamageActorValue(RE::ActorValue::kHealth, a_amount);
+            {
+                const Safe::OwnDamage own;  // a crash hurts even in a safe seat
+                values->DamageActorValue(RE::ActorValue::kHealth, a_amount);
+            }
             Send(a_player, a_cause, a_amount);
         }
 
@@ -280,6 +284,7 @@ namespace PerkeleRim::Death
         state.fall.Reset();
         if (!a_player->IsDead()) {
             SKSE::log::info("death: the hit kills the player");
+            const Safe::OwnDamage own;
             a_player->KillImpl(nullptr, damage, true, false);
         }
     }

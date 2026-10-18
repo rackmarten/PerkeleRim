@@ -76,11 +76,37 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
-        public void TestStockTopsUpBeerBottlesFoodAndCigarettes()
+        public void EveryKindHasAStock()
         {
-            Assert.That(Pocket.TestStock(Beer), Is.EqualTo(6));
-            Assert.That(Pocket.TestStock(Cigs), Is.EqualTo(20));
-            Assert.That(Pocket.TestStock(Bottle), Is.EqualTo(10));
+            Assert.That(Pocket.Stock(Beer), Is.EqualTo(6));
+            Assert.That(Pocket.Stock(Cigs), Is.EqualTo(20));
+            Assert.That(Pocket.Stock(Bottle), Is.EqualTo(10));
+            for (int kind = 0; kind < Wire.PocketKinds; kind++) Assert.That(Pocket.Stock(kind), Is.GreaterThan(0));
+            Assert.That(Pocket.Stock(Pocket.None), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void UsingOneTopsTheStackBackUp()
+        {
+            Assert.That(Pocket.Missing(Beer, 6), Is.EqualTo(0));   // full: nothing to add
+            Assert.That(Pocket.Missing(Beer, 5), Is.EqualTo(1));   // one drunk
+            Assert.That(Pocket.Missing(Beer, 0), Is.EqualTo(6));   // first F10: an empty pocket is filled
+            Assert.That(Pocket.Missing(Beer, 9), Is.EqualTo(0));   // extra bottles pocketed stay
+            Assert.That(Pocket.Missing(Bottle, 9), Is.EqualTo(1)); // one thrown
+            Assert.That(Pocket.Missing(Cigs, 19), Is.EqualTo(1));  // one smoked
+        }
+
+        [Test]
+        public void ARunningTopUpCountsWhatSkyrimHasNotAppliedYet()
+        {
+            var ledger = new PocketLedger(7);
+            ledger.OnCounts(7, 0, Counts(6, 10, 20));
+            var drink = ledger.Next(Beer, -1);
+            ledger.Sent(drink);
+            Assert.That(Pocket.Missing(Beer, ledger.Available(Beer)), Is.EqualTo(1));
+            var back = ledger.Next(Beer, 1);
+            ledger.Sent(back);
+            Assert.That(Pocket.Missing(Beer, ledger.Available(Beer)), Is.EqualTo(0));  // not sent twice
         }
 
         static uint[] Counts(uint beer, uint bottles = 0, uint cigs = 0) => new uint[] { beer, bottles, 0, 0, 0, 0, cigs };

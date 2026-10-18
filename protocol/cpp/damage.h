@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <cstdint>
 
 #include "../perkelerim_protocol.h"
@@ -313,6 +314,42 @@ namespace PerkeleRim::Damage
             return 0.0f;
         }
         return std::pow((a_height - a_settings.min) * a_settings.mult, a_settings.exponent);
+    }
+
+    // Seated in the Hayosiko van or the Kekmet the player is safe from enemies (a stopgap until the
+    // vehicles get a real hitbox in Skyrim): dragon fire, bites, arrows, spells, melee do nothing.
+    // The moped doesn't protect, and MSC's own crash damage still lands (Death::Hurt).
+    inline bool SafeSeat(std::uint32_t a_vehicle)
+    {
+        return a_vehicle == Protocol::kVehicleHayosiko || a_vehicle == Protocol::kVehicleKekmet;
+    }
+
+    // What a hit that Skyrim deals the player costs while it sits in a_vehicle (0 = on foot).
+    inline float Incoming(std::uint32_t a_vehicle, float a_damage)
+    {
+        return SafeSeat(a_vehicle) ? 0.0f : a_damage;
+    }
+
+    // Animation events that throw a seated player out of PlayerSync's seat placement: staggers,
+    // recoils, knockdowns and ragdolls start from these. Matched case-insensitively by prefix.
+    inline bool PullsOutOfSeat(const char* a_event)
+    {
+        if (!a_event) {
+            return false;
+        }
+        constexpr const char* kPrefixes[] = { "stagger", "recoil", "knock", "ragdoll", "pushactor", "bleedout" };
+        for (const char* prefix : kPrefixes) {
+            const char* e = a_event;
+            const char* p = prefix;
+            while (*p && *e && std::tolower(static_cast<unsigned char>(*e)) == *p) {
+                e++;
+                p++;
+            }
+            if (!*p) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Follows MSC's player off the ground and back: the height fallen is from the highest point

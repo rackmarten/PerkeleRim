@@ -14,11 +14,6 @@ namespace PerkeleRim::Pocket
 
         constexpr float kCountEvery = 0.25f;  // seconds between looks at the inventory
 
-        // The HUD hint's names by kind, and the key: 3..8 in kPocket* order (1 and 2 are MSC's hands
-        // and tools); cigarettes are smoked with I (MSC's own key).
-        constexpr const char* kHintNames[] = { "Beer", "Empty bottle", "Sausages", "Pizza", "Potato chips", "Macaron box", "Cigarettes" };
-        static_assert(std::size(kHintNames) == Protocol::kPocketKinds);
-
         using Counts = std::array<std::uint32_t, Protocol::kPocketKinds>;
 
         struct State
@@ -173,18 +168,5 @@ namespace PerkeleRim::Pocket
                 SKSE::log::info("pocket: -{} {}", count, item->GetName());
             }
         }
-    }
-
-    std::string Hint()
-    {
-        std::string hint;
-        for (std::size_t i = 0; i < state.counts.size(); i++) {
-            if (state.counts[i] == 0 || !state.linkUp) {
-                continue;
-            }
-            const auto key = i == Protocol::kPocketCigarettes ? std::string("I") : std::to_string(i + 3);
-            hint += std::format("{}{}  {}  x{}", hint.empty() ? "" : "\n", key, kHintNames[i], state.counts[i]);
-        }
-        return hint;
     }
 }

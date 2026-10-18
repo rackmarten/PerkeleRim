@@ -16,6 +16,7 @@
 #include "model/ModelView.h"
 #include "particle/ParticleView.h"
 #include "pocket/Pocket.h"
+#include "safe/Safe.h"
 #include "shot/Shot.h"
 #include "stamina.h"
 #include "vehicle/VehicleView.h"
@@ -187,6 +188,7 @@ namespace PerkeleRim::PlayerSync
             if (auto* player = RE::PlayerCharacter::GetSingleton(); player && state.seated) {
                 SetSimulated(player, true);
             }
+            Safe::Set(RE::PlayerCharacter::GetSingleton(), 0);
             state.seated = false;
             state.chase = false;
             state.eye = {};
@@ -620,6 +622,7 @@ namespace PerkeleRim::PlayerSync
                 }
             }
             const bool seated = valid && driven != nullptr;
+            Safe::Set(a_player, seated ? driven->vehicle : 0);
             if (seated != state.seated) {
                 state.seated = seated;
                 SetSimulated(a_player, !seated);
@@ -742,7 +745,6 @@ namespace PerkeleRim::PlayerSync
             hud.subtitle = state.subtitle;
             hud.hasNeeds = state.hasNeeds;
             hud.needs = state.needs;
-            hud.pocket = Pocket::Hint();
             hud.handsImage = HandView::Image();
             hud.handsWidth = HandView::Width();
             hud.handsHeight = HandView::Height();
@@ -954,6 +956,7 @@ namespace PerkeleRim::PlayerSync
     {
         REL::Relocation<std::uintptr_t> vtable{ RE::VTABLE_PlayerCharacter[0] };
         UpdateHook::original = vtable.write_vfunc(0xAD, UpdateHook::thunk);
+        Safe::Install();
         REL::Relocation<std::uintptr_t> favorites{ RE::VTABLE_FavoritesHandler[0] };
         FavoritesHook::original = favorites.write_vfunc(0x1, FavoritesHook::thunk);
         REL::Relocation<std::uintptr_t> menuOpen{ RE::VTABLE_MenuOpenHandler[0] };

@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace PerkeleRim.Game
 {
-    // Test beer as MSC beer bottles (the spike's "beer" command, the PerkeleRim_testbeer.txt flag;
+    // Test beer as MSC beer bottles (the spike's "beer" command;
     // beer from Skyrim goes through the pocket now, PocketLink).
     // A beer case's bottles are its children, and its Use FSM counts the ones drunk in
     // DestroyedBottles (saved, and taken off again on load). So bottles go into the nearest of the

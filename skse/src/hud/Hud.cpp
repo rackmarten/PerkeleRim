@@ -11,9 +11,9 @@ namespace PerkeleRim::Hud
         constexpr double      kHandCenter = 34.0;  // hand icon center, below the screen center
         constexpr double      kHandSpace = 34.0;   // the label moves down this much under the hand
 
-        // Needs bars, bottom left above Skyrim's magicka bar, like MSC's own HUD.
+        // Needs bars, top left under Skyrim's own HUD messages (about 3 lines), clear of the inventory and map.
         constexpr double kNeedsLeft = 40.0;     // from the visible frame's left edge
-        constexpr double kNeedsBottom = 90.0;   // last row's bottom, up from the visible frame's bottom edge
+        constexpr double kNeedsTop = 110.0;     // first row's top, down from the visible frame's top edge
         constexpr double kNeedSize = 14.0;      // label font size
         constexpr double kNeedRow = 18.0;
         constexpr double kNeedLabelWidth = 80.0;
@@ -26,9 +26,6 @@ namespace PerkeleRim::Hud
         constexpr std::size_t kUrine = 3;
         constexpr std::uint32_t kUrineColor = 0xF2D21B, kUrineHighColor = 0xFF7A00;
         constexpr std::uint32_t kNeedColor = 0xFFFFFF, kNeedHighColor = 0xE03C3C;
-        // The pocket's slots, a column right of the bars, one line per kind it has.
-        constexpr double kPocketGap = 16.0;
-        constexpr double kPocketWidth = 220.0;
 
         // MSC's subtitle line, bottom center above where Skyrim puts its own.
         constexpr double kSubtitleSize = 24.0;
@@ -193,12 +190,6 @@ namespace PerkeleRim::Hud
                         name.SetText(kNeedNames[i]);
                     }
                     needs.CreateEmptyMovieClip(&bar, barName.c_str(), 30 + static_cast<std::int32_t>(i));
-                }
-                RE::GFxValue pocket;
-                if (MakeText(a_movie, needs, "pocket", 50.0, kNeedLabelWidth + kNeedBarWidth + kPocketGap, -3.0, kPocketWidth, kNeedSize, "left",
-                        kNeedColor, pocket)) {
-                    pocket.SetMember("multiline", RE::GFxValue(true));
-                    pocket.SetMember("_height", RE::GFxValue(kNeedRow * std::size(kNeedNames) + kNeedSize));
                 }
             }
             SKSE::log::info("hud: layer created in the HUD movie");
@@ -365,13 +356,9 @@ namespace PerkeleRim::Hud
             if (clip.GetMember("needs", &needs) && needs.IsDisplayObject()) {
                 needs.SetMember("_visible", RE::GFxValue(a_view.hasNeeds));
                 needs.SetMember("_x", RE::GFxValue(static_cast<double>(rect.left) + kNeedsLeft - cx));
-                needs.SetMember("_y", RE::GFxValue(static_cast<double>(rect.bottom) - kNeedsBottom - kNeedRow * std::size(kNeedNames) - cy));
+                needs.SetMember("_y", RE::GFxValue(static_cast<double>(rect.top) + kNeedsTop - cy));
                 if (a_view.hasNeeds) {
                     DrawNeeds(needs, a_view);
-                }
-                RE::GFxValue pocket;
-                if (needs.GetMember("pocket", &pocket) && pocket.IsDisplayObject()) {
-                    pocket.SetText(a_view.pocket.c_str());
                 }
             }
         }
@@ -400,7 +387,7 @@ namespace PerkeleRim::Hud
         const bool handsLoading = !view.handsImage.empty() && !handsSized;
         const auto light = LightPercent(view);
         const bool lightChanged = !view.handsImage.empty() && light != drawnLight;
-        const bool changed = textChanged || handsChanged || handsLoading || lightChanged || view.hasNeeds != current.hasNeeds || view.pocket != current.pocket ||
+        const bool changed = textChanged || handsChanged || handsLoading || lightChanged || view.hasNeeds != current.hasNeeds ||
                              (view.hasNeeds && needs != drawnNeeds);
         if (!a_refresh && !changed) {
             return;

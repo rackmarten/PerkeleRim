@@ -283,9 +283,6 @@ namespace PerkeleRim.Game
             {
                 lastOwned = owned;
                 log(owned ? "player: Skyrim handed the player to MSC" : "player: Skyrim took the player back");
-                // Test loop: with this flag file next to the game, every handover tops the pocket up.
-                if (owned && System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Application.dataPath), TestBeerFlag)))
-                    pocket.TopUpTestStock();
             }
 
             if (player != null && island.HasAnchor && placedGeneration != island.Generation)
@@ -343,8 +340,6 @@ namespace PerkeleRim.Game
 
         // MSC's blood over the view when the player dies (Systems/Death/PlayerBlood's texture), sent as
         // an overlay model; Skyrim looks it up by this name.
-        const string TestBeerFlag = "PerkeleRim_testbeer.txt";
-
         const string BloodModel = "PlayerBlood";
         const string BloodTexture = "player_blood_vision";
 
