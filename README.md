@@ -94,6 +94,26 @@ Kumpo fights with his fists: weapons and spells can't be equipped while MSC has 
 - Water is mostly ignored: Kumpo walks on the bottom, Skyrim can drown him and vehicles drive through water. Wading in up to the waist washes him (dirtiness to 0), but there is no thirst from water.
 - Vehicles have no hitbox in Skyrim, so arrows and dragons pass through the van. Kumpo is safe inside the van and the Kekmet anyway.
 
+## Roadmap
+
+No dates, just intentions. What comes next depends a lot on what people enjoy, so tell us in `#perkelerim-ideas` on [Discord](https://discord.gg/C687NV4dCp).
+
+**Next**
+
+- **The Satsuma** on the Whiterun tundra, next to the van, moped and Kekmet.
+- **Water and swimming**: swim instead of walking on the bottom, drink from lakes and rivers for thirst, and vehicles that don't just drive through water.
+
+**Later, maybe**
+
+- The Gifu truck, delivery jobs and traffic.
+- More Finnish summer: clear weather, long bright evenings, a sauna by the garage.
+- MSC money and Skyrim gold as one wallet.
+
+**Not planned**
+
+- Multiplayer of any kind.
+- Shipping any assets from My Summer Car or Skyrim (see [Game assets](#game-assets)).
+
 ## Reporting bugs
 
 Double-click **Report a bug.bat** (next to Start PerkeleRim.bat). It puts `PerkeleRim-bug-<date>.zip` in the `Bug reports` folder next to the launcher, with your PerkeleRim logs from both games, `PerkeleRim.ini` and the game versions (your Windows user name is replaced by `%USERPROFILE%`), then opens the bug form on GitHub with the versions filled in. Say what happened and drag the zip into the form. Nothing is sent anywhere until you submit it, and PerkeleRim has no telemetry of any kind.
