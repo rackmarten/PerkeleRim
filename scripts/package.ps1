@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
     Builds the player release zip, tools/out/release/PerkeleRim-<version>.zip: the launcher
-    (launcher/), the built mod files under files/, and the starter MSC save from
-    launcher/saves/MSC (scripts/starter-save.ps1) if it is there. Run scripts/build.ps1 and scripts/build-esp.ps1 first.
+    (launcher/), the built mod files under files/, and the starter saves from
+    launcher/saves/MSC and launcher/saves/Skyrim (scripts/starter-save.ps1) if they are there. Run scripts/build.ps1 and scripts/build-esp.ps1 first.
 .EXAMPLE
     scripts/package.ps1
 #>
@@ -34,11 +34,13 @@ Add-File (Join-Path $RepoRoot 'tools/out/esp/PerkeleRim.esp') 'files/Skyrim/Data
 Add-File (Join-Path $RepoRoot 'msc/bin/Release/net35/PerkeleRim.dll') 'files/MSC/Mods'
 Add-File (Join-Path $RepoRoot 'LICENSE') '.'
 
-$saves = Join-Path $RepoRoot 'launcher/saves/MSC'
-if (Test-Path $saves) {
-    Copy-Item -Recurse $saves (New-Item -ItemType Directory -Force (Join-Path $stage 'saves')).FullName
-} else {
-    Write-Host 'No launcher/saves/MSC (scripts/starter-save.ps1), the zip has no starter MSC save.' -ForegroundColor Yellow
+foreach ($game in 'MSC', 'Skyrim') {
+    $saves = Join-Path $RepoRoot "launcher/saves/$game"
+    if (Test-Path $saves) {
+        Copy-Item -Recurse $saves (New-Item -ItemType Directory -Force (Join-Path $stage 'saves')).FullName
+    } else {
+        Write-Host "No launcher/saves/$game (scripts/starter-save.ps1), the zip has no starter $game save." -ForegroundColor Yellow
+    }
 }
 
 if (Test-Path $zip) { Remove-Item -Force $zip }

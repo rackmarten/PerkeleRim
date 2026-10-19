@@ -4,10 +4,33 @@
     save, with Finn's needs (thirst, hunger, urine, fatigue, stress, drunk, dirtiness) at 0.
     Everything else (money, the world, items) stays as saved. Settings (options.txt), MSCLoader's
     Mods.txt and Steam's file are left out. Save in MSC first; run scripts/package.ps1 after.
+
+    -Skyrim instead copies your newest Skyrim save (.ess and its SKSE co-save) into
+    launcher/saves/Skyrim as PerkeleRim-Kumpo.ess / .skse. Make it before the first F10, with only
+    the base game, the free Creation Club content and PerkeleRim.esp loaded, so it loads anywhere.
+.EXAMPLE
+    scripts/starter-save.ps1
+    scripts/starter-save.ps1 -Skyrim
 #>
-param([string[]] $Reset = @('PlayerThirst', 'PlayerHunger', 'PlayerUrine', 'PlayerFatigue', 'PlayerStress', 'PlayerDrunk', 'PlayerDirtiness'))
+param([string[]] $Reset = @('PlayerThirst', 'PlayerHunger', 'PlayerUrine', 'PlayerFatigue', 'PlayerStress', 'PlayerDrunk', 'PlayerDirtiness'),
+    [switch] $Skyrim)
 
 . "$PSScriptRoot/common.ps1"
+
+if ($Skyrim) {
+    $saves = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games/Skyrim Special Edition/Saves'
+    $newest = Get-ChildItem $saves -Filter *.ess | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $newest) { throw "No Skyrim save in $saves." }
+    $coSave = [IO.Path]::ChangeExtension($newest.FullName, '.skse')
+    if (-not (Test-Path $coSave)) { throw "$($newest.Name) has no SKSE co-save next to it." }
+    $dest = Join-Path $RepoRoot 'launcher/saves/Skyrim'
+    if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+    New-Item -ItemType Directory -Force $dest | Out-Null
+    Copy-Item $newest.FullName (Join-Path $dest 'PerkeleRim-Kumpo.ess')
+    Copy-Item $coSave (Join-Path $dest 'PerkeleRim-Kumpo.skse')
+    Write-Host "Starter Skyrim save in $dest (from $($newest.Name), $($newest.LastWriteTime))"
+    return
+}
 
 $source = Join-Path $env:USERPROFILE 'AppData\LocalLow\Amistech\My Summer Car'
 $dest = Join-Path $RepoRoot 'launcher/saves/MSC'

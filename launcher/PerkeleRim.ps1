@@ -3,7 +3,8 @@
     PerkeleRim player launcher (ships in the release zip; "Start PerkeleRim.bat" runs it).
     Finds Skyrim SE and My Summer Car (PerkeleRim.ini next to this script, else the Steam
     libraries, else asks once), checks SKSE, Address Library and MSCLoader, installs or updates
-    the mod files from files/, adds the starter MSC save from saves/MSC when the player has none,
+    the mod files from files/, adds the starter MSC save from saves/MSC when the player has none
+    and the starter Skyrim save from saves/Skyrim when it isn't there yet,
     starts My Summer Car in a small window that it minimizes once MSC continues its save,
     then starts Skyrim through SKSE.
 
@@ -277,6 +278,16 @@ if ((Test-Path $starterMsc) -and -not (Test-Path (Join-Path $mscSaves 'defaultES
 }
 if (-not (Test-Path (Join-Path $mscSaves 'defaultES2File.txt'))) {
     Write-Host 'My Summer Car has no save yet: start a new game in it once (restore its window), then press F10 in Skyrim.' -ForegroundColor Yellow
+}
+
+# The starter Skyrim save (Kumpo, before his first F10) next to the player's own, never over one.
+# Copy-Item keeps its old date, so Skyrim's Continue still loads the player's newest save.
+$skyrimSaves = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games/Skyrim Special Edition/Saves'
+$starterSkyrim = Join-Path $Root 'saves/Skyrim'
+if ((Test-Path $starterSkyrim) -and -not (Test-Path (Join-Path $skyrimSaves 'PerkeleRim-Kumpo.ess'))) {
+    New-Item -ItemType Directory -Force $skyrimSaves | Out-Null
+    Copy-Item -Force (Join-Path $starterSkyrim '*') $skyrimSaves
+    Write-Host 'Added the starter Skyrim save (Kumpo): pick it under Load.'
 }
 
 # The mod continues MSC's save by itself on its main menu while this file exists.
