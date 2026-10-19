@@ -1,48 +1,22 @@
-# PerkeleRim
+<p align="center">
+  <img src="docs/media/logo.png" alt="PerkeleRim" width="420">
+</p>
 
-> **Fus-Perkele-Dah!** A Finnish summer in Skyrim.
+<p align="center">
+  <b>Fus-Perkele-Dah!</b> A Finnish summer in Skyrim.<br>
+  <a href="https://github.com/rackmarten/PerkeleRim/releases/latest"><b>Download</b></a> ·
+  <a href="https://discord.gg/C687NV4dCp"><b>Discord</b></a> ·
+  <a href="#reporting-bugs"><b>Report a bug</b></a>
+</p>
 
-**My Summer Car** and **Skyrim Anniversary Edition** run at the same time. Skyrim owns the world and draws everything; My Summer Car runs hidden and simulates the player, the vehicles, the beer and the piss. Drive the Satsuma across the Whiterun tundra, get drunk, sneak by crouching, and take the Kekmet tractor up the Throat of the World.
+<p align="center">
+  <a href="https://youtu.be/IJzDb4E7bYA"><img src="docs/media/trailer.jpg" alt="Watch the PerkeleRim trailer on YouTube" width="800"></a><br>
+  <sub>▶ Watch the trailer on YouTube</sub>
+</p>
 
-Inspired by [SkyCraft](https://github.com/chasmlol/SkyCraft), which couples Minecraft and Skyrim the same way.
+**My Summer Car** and **Skyrim Anniversary Edition** run at the same time. Skyrim owns the world and draws everything; My Summer Car runs hidden and simulates Kumpo, the vehicles, the beer and the piss. Drive the Hayosiko van across the Whiterun tundra, get drunk, punch a Thalmor, and take the Kekmet tractor up the Throat of the World.
 
-## Status
-
-**Concept / pre-prototype.** Both halves build as hello-world stubs that only log that they loaded. Follow the [changelog](CHANGELOG.md) for progress.
-
-## How it works
-
-- An **SKSE plugin** (C++) samples Skyrim's collision around the player, mirrors NPCs, and renders the My Summer Car player, vehicles and items inside Skyrim.
-- An **MSCLoader mod** (C#) builds that collision inside My Summer Car, runs the player and vehicle physics on it, and streams poses and events back.
-- The two talk over versioned shared memory.
-
-Details: [docs/DESIGN.md](docs/DESIGN.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md).
-
-## Keys
-
-F10 hands the player to My Summer Car and back. While MSC has the player you never need its window: WASD and the mouse are MSC's, Skyrim keeps Escape (pauses both games), Tab, M (map), F5/F9 and the console, and MSC's hand actions sit next to WASD:
-
-| Key | Action |
-|---|---|
-| Left / right click (free hands) | punch / guard (Skyrim blocks) |
-| V | middle finger |
-| Z | Skyrim's shout or power, as usual, but Kumpo yells it (Unrelenting Force: "Perkele!") |
-| Alt (tap) | piss: a quick tap starts it and Kumpo goes until he is empty (Alt+Tab no longer starts it) |
-| Middle click | swear |
-| C / B | smoke / zoom |
-| Ctrl / G (on foot) | crouch / push stance on / off (walk into people to shove them aside; rights a rolled van) |
-| O | hitchhike thumb |
-| T (on foot) | Skyrim's Wait menu: Kumpo waits or sleeps, MSC's clock and needs go along (8 hours in a bed take fatigue to 0, waiting without one rests slower) |
-| Shift / Ctrl (driving) | shift up / down |
-| H (driving) | horn: people in the way run off |
-| F8 (driving) | chase camera for filming, on / off (hides the HUD) |
-| F11 | screenshot of both games, to Screenshots next to Start PerkeleRim.bat (the launcher sets this) |
-| [ / ] / ; (on foot) | call the Jonnez moped / the Hayosiko van / the Kekmet tractor: it's parked in front of you, wherever it was |
-| Y, 3 to 8 | pocket (Skyrim's inventory, never runs out of beer, bottles, food or cigarettes); driving, 4 to 8 drink and eat |
-
-Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, P, O, J, I, ...) still work. Kumpo fights with his fists: weapons and spells can't be equipped while MSC has the player, armor works as usual, and the drunker he is, the harder he hits and the more he can take. A punch also cuts spider webs and breaks destructibles in front of him (oil pots, barricades), and so does a thrown bottle that hits one. A throw from sneak at someone who has not noticed Kumpo is a sneak attack for double damage. Sitting in the Hayosiko van or the Kekmet is safe: nothing in Skyrim can hurt Kumpo there (the moped is no shelter, and a crash still hurts). Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).
-
-Tip: make your character a male Nord. While MSC has the player, Skyrim's own voice is muted and Kumpo Kempolaari (Finn) does the yelling, grunting and swearing, so a Nord fits best whenever Skyrim has the player back.
+**v0.1.0, the first public release.** It's playable start to finish, but it's young: expect bugs, and please [report them](#reporting-bugs).
 
 ## Install and play
 
@@ -54,20 +28,64 @@ You need:
 
 Then:
 
-1. Extract the release zip anywhere (not inside a game folder).
-2. Double-click **Start PerkeleRim.bat**. Every time, it:
-   - finds both games in your Steam libraries, or asks for their folders once (saved in `PerkeleRim.ini` next to it; delete that file to look again),
-   - tells you if SKSE, Address Library or MSCLoader is missing,
-   - installs or updates the mod (the SKSE plugin and `PerkeleRim.esp` in Skyrim, enabled in `plugins.txt`; the MSCLoader mod where MSCLoader keeps mods),
-   - gives My Summer Car a starter save (needs reset to fresh) when you have none, never over yours,
-   - starts My Summer Car in a small window that minimizes itself and continues your MSC save, then starts Skyrim through SKSE.
-3. Play in Skyrim only. Load a save (or start a new game) and press **F10** to hand over to My Summer Car. Leave MSC minimized.
+1. Download `PerkeleRim-<version>.zip` from [Releases](https://github.com/rackmarten/PerkeleRim/releases/latest) and extract it anywhere (not inside a game folder).
+2. Double-click **Start PerkeleRim.bat**. It finds both games, checks for SKSE, Address Library and MSCLoader, installs or updates the mod, and starts both games (My Summer Car minimizes itself).
+3. Play in Skyrim only. Load the **PerkeleRim-Kumpo** save (or any of your own) and press **F10** to hand over to My Summer Car. Leave MSC minimized.
 
-To build from source, see [docs/DEV_SETUP.md](docs/DEV_SETUP.md); `scripts/package.ps1` builds the release zip.
+<details>
+<summary>What Start PerkeleRim.bat does, in detail</summary>
 
-## Reporting bugs
+Every time you run it, it:
 
-Double-click **Report a bug.bat** (next to Start PerkeleRim.bat). It puts `PerkeleRim-bug-<date>.zip` in the `Bug reports` folder next to the launcher, with your PerkeleRim logs from both games, `PerkeleRim.ini` and the game versions (your Windows user name is replaced by `%USERPROFILE%`), then opens the bug form on GitHub with the versions filled in. Say what happened and drag the zip into the form. Nothing is sent anywhere until you submit it, and PerkeleRim has no telemetry of any kind.
+- finds both games in your Steam libraries, or asks for their folders once (saved in `PerkeleRim.ini` next to it; delete that file to look again),
+- tells you if SKSE, Address Library or MSCLoader is missing,
+- installs or updates the mod (the SKSE plugin and `PerkeleRim.esp` in Skyrim, enabled in `plugins.txt`; the MSCLoader mod where MSCLoader keeps mods),
+- gives My Summer Car a starter save (needs reset to fresh) when you have none, never over yours,
+- adds a starter Skyrim save, **PerkeleRim-Kumpo** (a male Nord just out of Helgen, before his first F10), next to your own saves, never over one,
+- starts My Summer Car in a small window that minimizes itself and continues your MSC save, then starts Skyrim through SKSE.
+
+</details>
+
+Tip: playing your own character? Make him a male Nord, like the starter save's Kumpo. While MSC has the player, Skyrim's own voice is muted and Kumpo Kempolaari (Finn) does the yelling, grunting and swearing, so a Nord fits best whenever Skyrim has the player back.
+
+![The Kekmet tractor under Skyrim's aurora](docs/media/kekmet-aurora.jpg)
+
+<table>
+  <tr>
+    <td><img src="docs/media/van-break.jpg" alt="A smoke break next to the Hayosiko van"></td>
+    <td><img src="docs/media/thalmor-chase.jpg" alt="Thalmor chasing the van"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/rolled-van.jpg" alt="The van rolled over on a mountain path"></td>
+    <td><img src="docs/media/kekmet-crash.jpg" alt="The Kekmet tipped over in the snow at night"></td>
+  </tr>
+</table>
+
+## Keys
+
+F10 hands the player to My Summer Car and back. While MSC has the player you never need its window: WASD and the mouse are MSC's, Skyrim keeps Escape (pauses both games), Tab, M (map), F5/F9 and the console, and MSC's hand actions sit next to WASD:
+
+| Key | Action |
+|---|---|
+| Left / right click (free hands) | punch / guard (Skyrim blocks) |
+| V | middle finger |
+| Z | Skyrim's shout or power, as usual, but Kumpo yells it (Unrelenting Force: "Perkele!") |
+| Alt (tap) | piss: a quick tap starts it and Kumpo goes until he is empty (Alt+Tab doesn't start it) |
+| Middle click | swear |
+| C / B | smoke / zoom |
+| Ctrl / G (on foot) | crouch / push stance on / off (walk into people to shove them aside; rights a rolled van) |
+| O | hitchhike thumb |
+| T (on foot) | Skyrim's Wait menu: Kumpo waits or sleeps, MSC's clock and needs go along (8 hours in a bed take fatigue to 0, waiting without one rests slower) |
+| Shift / Ctrl (driving) | shift up / down |
+| H (driving) | horn: people in the way run off |
+| F8 (driving) | chase camera for filming, on / off (hides the HUD) |
+| F11 | screenshot of both games, to Screenshots next to Start PerkeleRim.bat |
+| [ / ] / ; (on foot) | call the Jonnez moped / the Hayosiko van / the Kekmet tractor: it's parked in front of you, wherever it was |
+| Y, 3 to 8 | pocket (Skyrim's inventory, never runs out of beer, bottles, food or cigarettes); driving, 4 to 8 drink and eat |
+
+Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, P, O, J, I, ...) still work. Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).
+
+Kumpo fights with his fists: weapons and spells can't be equipped while MSC has the player, armor works as usual, and the drunker he is, the harder he hits and the more he can take. A punch also cuts spider webs and breaks destructibles in front of him (oil pots, barricades), and so does a thrown bottle that hits one. A throw from sneak at someone who hasn't noticed Kumpo is a sneak attack for double damage. Sitting in the Hayosiko van or the Kekmet is safe: nothing in Skyrim can hurt Kumpo there (the moped is no shelter, and a crash still hurts).
 
 ## Known issues
 
@@ -75,6 +93,22 @@ Double-click **Report a bug.bat** (next to Start PerkeleRim.bat). It puts `Perke
 - Horses don't work properly, so don't ride them. Kumpo is a drunk, not a horse rider.
 - Water is mostly ignored: Kumpo walks on the bottom, Skyrim can drown him and vehicles drive through water. Wading in up to the waist washes him (dirtiness to 0), but there is no thirst from water.
 - Vehicles have no hitbox in Skyrim, so arrows and dragons pass through the van. Kumpo is safe inside the van and the Kekmet anyway.
+
+## Reporting bugs
+
+Double-click **Report a bug.bat** (next to Start PerkeleRim.bat). It puts `PerkeleRim-bug-<date>.zip` in the `Bug reports` folder next to the launcher, with your PerkeleRim logs from both games, `PerkeleRim.ini` and the game versions (your Windows user name is replaced by `%USERPROFILE%`), then opens the bug form on GitHub with the versions filled in. Say what happened and drag the zip into the form. Nothing is sent anywhere until you submit it, and PerkeleRim has no telemetry of any kind.
+
+Questions, screenshots, or just want to tell us how far up the mountain the tractor got? Come say hi on [Discord](https://discord.gg/C687NV4dCp).
+
+## How it works
+
+- An **SKSE plugin** (C++) samples Skyrim's collision around the player, mirrors NPCs, and renders the My Summer Car player, vehicles and items inside Skyrim.
+- An **MSCLoader mod** (C#) builds that collision inside My Summer Car, runs the player and vehicle physics on it, and streams poses and events back.
+- The two talk over versioned shared memory.
+
+Details: [docs/DESIGN.md](docs/DESIGN.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md). To build from source, see [docs/DEV_SETUP.md](docs/DEV_SETUP.md); `scripts/package.ps1` builds the release zip.
+
+Inspired by [SkyCraft](https://github.com/chasmlol/SkyCraft), which couples Minecraft and Skyrim the same way.
 
 ## Repository layout
 
@@ -95,7 +129,7 @@ This repository contains **no assets from My Summer Car or Skyrim**, and contrib
 
 ## Contributing
 
-Contributions are welcome once the first prototype is up. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md) first.
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md) first, and open an issue before starting anything big.
 
 ## License
 

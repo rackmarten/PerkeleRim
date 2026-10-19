@@ -3,3 +3,6 @@ contact_links:
   - name: Security vulnerability
     url: https://github.com/rackmarten/PerkeleRim/security/advisories/new
     about: Report security issues privately, not as a public issue.
+  - name: Questions and chat (Discord)
+    url: https://discord.gg/C687NV4dCp
+    about: Install help, screenshots and general chat. Bugs still go here as issues.

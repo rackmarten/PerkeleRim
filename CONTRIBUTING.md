@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for wanting to help bring a Finnish summer to Skyrim. The project is still at the prototype stage, so the codebase will move fast and things will break. Opening an issue before starting anything big saves everyone time.
+Thanks for wanting to help bring a Finnish summer to Skyrim. The project is young (v0.1), so the codebase moves fast and things break. Opening an issue before starting anything big saves everyone time.
 
 ## Ground rules
 

@@ -6,9 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-19
+
+First public release.
+
 ### Added
 
 - Van and tractor fixes from a steep-hill drive: the van grips harder uphill (forward grip 1.8x MSC's); a vehicle that sinks into the island goes back where it last stood on its wheels (within 60 m), or onto a surface at most 4 m above it, never onto a cliff far above; a vehicle that comes back from a save inside a wall or rock is stood upright on the nearest clear, flat spot before it is let go; Kumpo can always get out of a van or tractor tipped past 60 degrees, and at a walking pace otherwise, like the moped. The van's thin nose collider no longer digs into downhills (its bottom is lifted), and every vehicle is pushed out of geometry at 4 m/s at most, not thousands of km/h.
+- A starter Skyrim save in the release zip: Kumpo, a male Nord just out of Helgen. The launcher adds it as PerkeleRim-Kumpo next to the player's own saves, never over one (`scripts/starter-save.ps1 -Skyrim` makes it).
 - Wading into water up to Kumpo's waist washes him: his dirtiness goes to 0, once per wade in (ankle- or knee-deep does nothing; getting out re-arms it). Swimming, drowning and vehicles in water are still ignored.
 - A throw from sneak at someone who has not noticed Kumpo (Skyrim's detection level 0 or below) deals double damage on top of the speed rule, with Skyrim's "Sneak attack for 2.0x damage" message. Punches stay as they are.
 - Repository scaffold: README, MIT license, contributing guide, code of conduct, security policy, issue and PR templates.
@@ -132,3 +137,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Handing the player back with F10 while seated sank the van into the ground at the new anchor and threw it, killing the player; it is now set down on its wheels. Parking checks the ground under the whole vehicle and picks another spot on its own side when it is uneven, so a rock no longer launches the van.
 - The Kekmet no longer hops on the road like a solid block: MSC's tractor has 5 cm of travel on a 75000 N/m spring and sat on its bump stop under its own weight; it now has 30 cm of travel, a softer spring and matching damping. A bounce on its wheels counts half as a crash, so a fast run down a hill doesn't hurt.
 - The moped is easier to ride: it balances only near the lean its turn asks for (none at a crawl, at most 23 degrees) and falls over for real past 30 degrees instead of sliding along the ground trying to stand up (no air assist for a bike lying down either), has more travel and 1.2x to 1.3x grip, and small bumps no longer play MSC's crash sound or stall the engine (only an impact over 9 m/s does).
+
+[Unreleased]: https://github.com/rackmarten/PerkeleRim/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/rackmarten/PerkeleRim/releases/tag/v0.1.0
