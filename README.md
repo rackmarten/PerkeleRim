@@ -6,7 +6,8 @@
   <b>Fus-Perkele-Dah!</b> A Finnish summer in Skyrim.<br>
   <a href="https://github.com/rackmarten/PerkeleRim/releases/latest"><b>Download</b></a> ·
   <a href="https://discord.gg/C687NV4dCp"><b>Discord</b></a> ·
-  <a href="#reporting-bugs"><b>Report a bug</b></a>
+  <a href="#reporting-bugs"><b>Report a bug</b></a> ·
+  <a href="https://ko-fi.com/rackmarten"><b>Buy Kumpo a beer</b></a>
 </p>
 
 <p align="center">
