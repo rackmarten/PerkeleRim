@@ -6,6 +6,23 @@ on:
   workflow_dispatch:
 
 jobs:
+  # The game-free tests on Linux (scripts/test.sh): a quick check next to the Windows build.
+  # The shared memory link's tests need Windows and run in the build job's scripts/test.ps1.
+  protocol-tests-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install Ninja
+        run: sudo apt-get update -q && sudo apt-get install -y -q ninja-build
+
+      - name: Unit tests
+        run: ./scripts/test.sh
+
   build:
     runs-on: windows-latest
     steps:

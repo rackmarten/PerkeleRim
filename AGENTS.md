@@ -18,7 +18,7 @@ Everything builds and runs on Windows, where both games are installed:
 - Put code that doesn't need a game somewhere testable (protocol headers, coordinate conversion) and cover it in `scripts/test.ps1`. Keep the game-facing code a thin layer over it.
 - Files are LF (`.gitattributes`). Edit them with your editor tools: PowerShell's `Set-Content` and Python's default text mode on Windows write CRLF.
 
-Without Windows (a Linux sandbox, say) nothing builds. Use the CI build on your pull request as compiler and test runner: `gh pr checks`, then `gh run view <run-id> --log-failed`.
+Without Windows (a Linux sandbox, say), run `scripts/test.sh` first: it builds and runs the C++ protocol tests and the C# tests natively (needs cmake, ninja, a C++23 compiler and the .NET 8 SDK). The shared memory link's tests (C++ `test_link.cpp`, C# `LinkTests`) use Windows' API and are left out, and the plugin and the mod don't build at all. For those, use the CI build on your pull request: `gh pr checks`, then `gh run view <run-id> --log-failed`.
 
 ## Rules
 
