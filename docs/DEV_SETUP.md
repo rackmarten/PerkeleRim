@@ -86,6 +86,7 @@ scripts/build.ps1                  # both halves, Release
 scripts/build.ps1 -Target skse     # SKSE plugin only (-Configuration Debug for a debug build)
 scripts/build.ps1 -Target msc      # MSCLoader mod only
 scripts/test.ps1                   # unit tests: C++ protocol (doctest) and C# link (NUnit), no games needed
+scripts/test.sh                    # the same on Linux, minus the shared memory link tests (see below)
 scripts/deploy-local.ps1           # copy both DLLs (and PerkeleRim.esp once built) into the games (close the games first)
 scripts/build-esp.ps1 -Deploy       # generate PerkeleRim.esp (garage, beer drinks, drunk blur) from your Skyrim.esm, copy and enable it (close Skyrim first)
 scripts/logs.ps1                   # tail of the plugin, SKSE and My Summer Car logs
@@ -102,6 +103,8 @@ scripts/skyrim-key.ps1 -Key F10    # press a key in Skyrim (brings it to the fro
 For a test loop with no clicks at all, create an empty `PerkeleRim_autoload.txt` in both game folders: MSC then continues its save, and Skyrim continues its most recent save from the main menu (the SKSE plugin does it once per start). Delete the files to get the main menus back.
 
 From WSL, call the same scripts through Windows PowerShell, e.g. `powershell.exe -File scripts/build.ps1`.
+
+On Linux (no Windows at all), `scripts/test.sh` runs the same unit tests natively, except the shared memory link's own tests (C++ `test_link.cpp`, C# `LinkTests`), which call Windows' API. It needs CMake 3.21+, Ninja, a C++23 compiler (GCC 13 or a recent Clang) and the .NET 8 SDK; the `linux-tests` CMake preset downloads doctest itself, so there is no vcpkg. `scripts/test.sh cpp` or `scripts/test.sh cs` runs one side. Nothing else builds on Linux.
 
 The first SKSE build takes a while (often 15 to 25 minutes): vcpkg builds the dependencies and CommonLibSSE-NG compiles from source. Later builds are incremental. Outputs:
 
@@ -146,7 +149,7 @@ The first SKSE build takes a while (often 15 to 25 minutes): vcpkg builds the de
 
 ### CI (`.github/workflows/build.yml`)
 
-Runs on GitHub-hosted `windows-latest` for every push and pull request. It uses the same `scripts/build.ps1` as local builds, caches vcpkg binaries, builds the C# mod against the stubs (the game's DLLs can't be redistributed), runs `scripts/test.ps1`, and uploads both DLLs as a build artifact.
+Runs on GitHub-hosted runners for every push and pull request. A quick `ubuntu-latest` job runs `scripts/test.sh`. The `windows-latest` job uses the same `scripts/build.ps1` as local builds, caches vcpkg binaries, builds the C# mod against the stubs (the game's DLLs can't be redistributed), runs `scripts/test.ps1`, and uploads both DLLs as a build artifact.
 
 ## Troubleshooting
 
