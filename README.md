@@ -17,7 +17,7 @@
 
 **My Summer Car** and **Skyrim (Special or Anniversary Edition)** run at the same time. Skyrim owns the world and draws everything; My Summer Car runs hidden and simulates Kumpo, the vehicles, the beer and the piss. Drive the Hayosiko van across the Whiterun tundra, get drunk, punch a Thalmor, and take the Kekmet tractor up the Throat of the World.
 
-**v0.1.0, the first public release.** It's playable start to finish, but it's young: expect bugs, and please [report them](#reporting-bugs).
+**v0.1.1.** It's playable start to finish, but it's young: expect bugs, and please [report them](#reporting-bugs).
 
 ## Install and play
 
@@ -31,7 +31,7 @@ Then:
 
 1. Download `PerkeleRim-<version>.zip` from [Releases](https://github.com/rackmarten/PerkeleRim/releases/latest) and extract it anywhere (not inside a game folder).
 2. Double-click **Start PerkeleRim.bat**. It finds both games, checks for SKSE, Address Library and MSCLoader, installs or updates the mod, and starts both games (My Summer Car minimizes itself).
-3. Play in Skyrim only. Load the **PerkeleRim-Kumpo** save (or any of your own) and press **F10** to hand over to My Summer Car. Leave MSC minimized.
+3. Play in Skyrim only. Load the **PerkeleRim-Kumpo** save (Anniversary Edition only; on Special Edition start a new game or load your own) and press **F10** to hand over to My Summer Car. Leave MSC minimized.
 
 <details>
 <summary>What Start PerkeleRim.bat does, in detail</summary>
@@ -42,7 +42,7 @@ Every time you run it, it:
 - tells you if SKSE, Address Library or MSCLoader is missing,
 - installs or updates the mod (the SKSE plugin and `PerkeleRim.esp` in Skyrim, enabled in `plugins.txt`; the MSCLoader mod where MSCLoader keeps mods),
 - gives My Summer Car a starter save (needs reset to fresh) when you have none, never over yours,
-- adds a starter Skyrim save, **PerkeleRim-Kumpo** (a male Nord just out of Helgen, before his first F10), next to your own saves, never over one,
+- adds a starter Skyrim save, **PerkeleRim-Kumpo** (a male Nord just out of Helgen, before his first F10), next to your own saves, never over one (Anniversary Edition only: Special Edition 1.5.97 can't load it),
 - starts My Summer Car in a small window that minimizes itself and continues your MSC save, then starts Skyrim through SKSE.
 
 </details>

@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
   "name": "perkelerim-protocol-tests",
-  "version-semver": "0.1.0",
+  "version-semver": "0.1.1",
   "description": "Unit tests for the PerkeleRim link protocol (C++ side).",
   "supports": "windows & x64",
   "dependencies": [

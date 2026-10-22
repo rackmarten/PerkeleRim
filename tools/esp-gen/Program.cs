@@ -511,6 +511,8 @@ mod.FormLists.Add(spotList);
 Console.WriteLine($"  910 {spotList.EditorID} ({spotList.Items.Count} spots)");
 
 mod.ModHeader.Stats.NextFormID = 0x917;  // after PerkeleRimDrunkStaminaRate (0x916)
+// Header 1.70, not Mutagen's 1.71: Skyrim SE 1.5.97 skips 1.71 plugins, AE loads both.
+mod.ModHeader.Stats.Version = 1.7f;
 
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
 mod.WriteToBinary(output, new Mutagen.Bethesda.Plugins.Binary.Parameters.BinaryWriteParameters

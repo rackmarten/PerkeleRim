@@ -203,6 +203,7 @@ if (-not (Test-Path (Join-Path $skyrim 'skse64_loader.exe'))) {
     $missing += 'SKSE64 is not installed in Skyrim. Get the build for your Skyrim version from https://skse.silverlock.org and copy skse64_loader.exe and its DLLs into the Skyrim folder.'
 }
 $version = (Get-Item (Join-Path $skyrim 'SkyrimSE.exe')).VersionInfo.FileVersion
+$se = $false
 if ($version -match '^(\d+)\.(\d+)\.(\d+)') {
     # Special Edition (1.5.x) uses Address Library's version-*.bin, Anniversary Edition (1.6+) its versionlib-*.bin.
     $se = [int]$Matches[1] -eq 1 -and [int]$Matches[2] -le 5
@@ -285,9 +286,12 @@ if (-not (Test-Path (Join-Path $mscSaves 'defaultES2File.txt'))) {
 
 # The starter Skyrim save (Kumpo, before his first F10) next to the player's own, never over one.
 # Copy-Item keeps its old date, so Skyrim's Continue still loads the player's newest save.
+# It was made on Anniversary Edition and Special Edition 1.5.x calls it corrupt, so SE gets none.
 $skyrimSaves = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games/Skyrim Special Edition/Saves'
 $starterSkyrim = Join-Path $Root 'saves/Skyrim'
-if ((Test-Path $starterSkyrim) -and -not (Test-Path (Join-Path $skyrimSaves 'PerkeleRim-Kumpo.ess'))) {
+if ($se) {
+    Write-Host "No starter Skyrim save on Skyrim $version (it only loads on Anniversary Edition): start a new game or load your own."
+} elseif ((Test-Path $starterSkyrim) -and -not (Test-Path (Join-Path $skyrimSaves 'PerkeleRim-Kumpo.ess'))) {
     New-Item -ItemType Directory -Force $skyrimSaves | Out-Null
     Copy-Item -Force (Join-Path $starterSkyrim '*') $skyrimSaves
     Write-Host 'Added the starter Skyrim save (Kumpo): pick it under Load.'

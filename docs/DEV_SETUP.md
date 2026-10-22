@@ -116,7 +116,7 @@ The first SKSE build takes a while (often 15 to 25 minutes): vcpkg builds the de
 1. Start Skyrim with `skse64_loader.exe`, wait for the main menu, quit.
 2. Start My Summer Car, wait for the main menu (the MSCLoader console shows `PerkeleRim loaded`), quit.
 3. Run `scripts/logs.ps1`. Expect:
-   - in `PerkeleRim.log`: `PerkeleRim loaded (plugin 0.1.0, Skyrim runtime 1.7.104.0)`
+   - in `PerkeleRim.log`: `PerkeleRim loaded (plugin 0.1.1, Skyrim runtime 1.7.104.0)`
    - in `skse64.log`: a line saying `PerkeleRim.dll` loaded correctly
    - in `output_log.txt` (My Summer Car game folder): `PerkeleRim: PerkeleRim loaded`
 
@@ -129,13 +129,14 @@ The same `PerkeleRim.dll` loads on SE 1.5.97 and AE (CommonLibSSE-NG picks the a
 3. Remove the AE `skse64_1_7_104.dll` from the copy and install the SKSE64 **Special Edition build** (2.0.20, `skse64_1_5_97.dll`) from <https://skse.silverlock.org/>.
 4. Install the Address Library **Special Edition** file. It puts `version-1-5-97-0.bin` (not `versionlib-*`) in `Data/SKSE/Plugins`.
 5. Point `SkyrimPath` in `local.props` at the copy, then `scripts/build.ps1` and `scripts/deploy-local.ps1`. Set it back to the AE folder when you're done. Note that SE and AE share `Documents\My Games\Skyrim Special Edition`, so saves and logs land in the same place.
-6. Run the release launcher against the copy once (with `SkyrimPath` in its config pointing there): it must not report Address Library as missing.
+6. Run the release launcher against the copy once (with `SkyrimPath` in its config pointing there): it must not report Address Library as missing, and it skips the starter Skyrim save.
+7. Move `PerkeleRim_autoload.txt` out of the copy if it came along: it loads your newest save, and that may be an AE save SE can't read.
 
 Then check, in this order:
 
 - [ ] `PerkeleRim.log` says `Skyrim runtime 1.5.97.0`, and `skse64.log` says `PerkeleRim.dll` loaded correctly.
-- [ ] Main menu reached without a crash, `PerkeleRim.esp` active in the load order (its header is 1.71, written by Mutagen; if SE refuses it, pin it to 1.70 in `tools/esp-gen`).
-- [ ] The **PerkeleRim-Kumpo** starter save loads. A warning about missing Creation Club content is expected (1.5.97 doesn't ship it); a crash or a refusal means SE needs its own starter save.
+- [ ] Main menu reached without a crash, and `PerkeleRim.log` doesn't say `PerkeleRim.esp isn't loaded` (its header must stay 1.70: 1.5.97 skips 1.71 plugins).
+- [ ] A save made on SE (or a new game: `coc WhiterunStables` from the main menu console) loads. The AE-made **PerkeleRim-Kumpo** starter save is reported corrupt on 1.5.97, so the launcher doesn't add it on SE. AE saves made later in a playthrough may load, with a warning about missing Creation Club content.
 - [ ] F10 hands over to MSC and back; walking, looking and the camera follow MSC (PlayerCharacter update hook, vfunc `0xAD`).
 - [ ] Favorites, menus and activating things still behave while MSC has the player (handler hooks, vfunc `0x1`).
 - [ ] Damage protection while driving: take a hit in the van (Actor `HandleHealthDamage` hook, vfunc `0x104`).
