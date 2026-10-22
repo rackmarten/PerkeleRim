@@ -204,9 +204,12 @@ if (-not (Test-Path (Join-Path $skyrim 'skse64_loader.exe'))) {
 }
 $version = (Get-Item (Join-Path $skyrim 'SkyrimSE.exe')).VersionInfo.FileVersion
 if ($version -match '^(\d+)\.(\d+)\.(\d+)') {
-    $library = "versionlib-$($Matches[1])-$($Matches[2])-$($Matches[3])-0.bin"
+    # Special Edition (1.5.x) uses Address Library's version-*.bin, Anniversary Edition (1.6+) its versionlib-*.bin.
+    $se = [int]$Matches[1] -eq 1 -and [int]$Matches[2] -le 5
+    $prefix, $file = if ($se) { 'version', 'Special Edition' } else { 'versionlib', 'All in one (Anniversary Edition)' }
+    $library = "$prefix-$($Matches[1])-$($Matches[2])-$($Matches[3])-0.bin"
     if (-not (Test-Path (Join-Path $skyrim "Data\SKSE\Plugins\$library"))) {
-        $missing += "Address Library for SKSE Plugins is not installed for Skyrim $version ($library). Get the All in one (Anniversary Edition) file from https://www.nexusmods.com/skyrimspecialedition/mods/32444 and put it in Data\SKSE\Plugins."
+        $missing += "Address Library for SKSE Plugins is not installed for Skyrim $version ($library). Get the $file file from https://www.nexusmods.com/skyrimspecialedition/mods/32444 and put it in Data\SKSE\Plugins."
     }
 }
 $doorstop = Join-Path $msc 'doorstop_config.ini'

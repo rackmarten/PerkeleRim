@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Skyrim Special Edition 1.5.97 support. The SKSE plugin was already one DLL for SE and AE; the launcher now checks for the SE Address Library file (`version-1-5-97-0.bin`) on 1.5.x.
+
 ## [0.1.0] - 2026-10-19
 
 First public release.

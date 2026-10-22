@@ -23,7 +23,7 @@ This rule is strict because the project can only stay public if it holds:
 
 All building and testing happens on Windows, since both games run there. Follow [docs/DEV_SETUP.md](docs/DEV_SETUP.md). In short you'll need:
 
-- Skyrim Anniversary Edition (Steam, latest), SKSE64, Address Library
+- Skyrim Anniversary Edition (Steam, latest), SKSE64, Address Library (plus a Special Edition 1.5.97 copy if you test SE)
 - My Summer Car (Steam) with MSCLoader
 - Build Tools for Visual Studio 2022 ("Desktop development with C++", which brings CMake, Ninja and vcpkg) and the .NET 8 SDK
 

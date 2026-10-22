@@ -15,7 +15,7 @@
   <sub>▶ Watch the trailer on YouTube</sub>
 </p>
 
-**My Summer Car** and **Skyrim Anniversary Edition** run at the same time. Skyrim owns the world and draws everything; My Summer Car runs hidden and simulates Kumpo, the vehicles, the beer and the piss. Drive the Hayosiko van across the Whiterun tundra, get drunk, punch a Thalmor, and take the Kekmet tractor up the Throat of the World.
+**My Summer Car** and **Skyrim (Special or Anniversary Edition)** run at the same time. Skyrim owns the world and draws everything; My Summer Car runs hidden and simulates Kumpo, the vehicles, the beer and the piss. Drive the Hayosiko van across the Whiterun tundra, get drunk, punch a Thalmor, and take the Kekmet tractor up the Throat of the World.
 
 **v0.1.0, the first public release.** It's playable start to finish, but it's young: expect bugs, and please [report them](#reporting-bugs).
 
@@ -24,7 +24,7 @@
 You need:
 
 - Windows 10/11 and a PC that can run both games at once
-- [The Elder Scrolls V: Skyrim Anniversary Edition](https://store.steampowered.com/app/489830/) (latest Steam version) with [SKSE64](https://skse.silverlock.org) and [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
+- [The Elder Scrolls V: Skyrim Special Edition or Anniversary Edition](https://store.steampowered.com/app/489830/) (latest Steam version, or Special Edition 1.5.97) with [SKSE64](https://skse.silverlock.org) for that version and [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444) (the "Special Edition" file on 1.5.97, "All in one (Anniversary Edition)" otherwise)
 - [My Summer Car](https://store.steampowered.com/app/516750/) (Steam) with [MSCLoader](https://www.nexusmods.com/mysummercar/mods/147)
 
 Then:

@@ -8,9 +8,9 @@ The toolchain is deliberately small: **Build Tools for Visual Studio 2022** (com
 
 You need your own copies of both games. Nothing from them is ever committed to this repo.
 
-### Skyrim Anniversary Edition
+### Skyrim Anniversary Edition (or Special Edition)
 
-1. Install **The Elder Scrolls V: Skyrim Special Edition** from Steam, with the Anniversary upgrade if you own it. Keep it on the latest Steam version.
+1. Install **The Elder Scrolls V: Skyrim Special Edition** from Steam, with the Anniversary upgrade if you own it. Keep it on the latest Steam version. To test Special Edition 1.5.97 as well, see [Testing on Skyrim Special Edition 1.5.97](#testing-on-skyrim-special-edition-1597).
 2. Check the runtime version: right-click `SkyrimSE.exe` > Properties > Details > File version. This guide was written against **1.7.104**. SKSE and Address Library must match it exactly.
 3. Stop Steam from updating Skyrim behind your back: Steam > Skyrim > Properties > Updates > "Only update this game when I launch it", and launch through SKSE (below), not Steam. A Skyrim update breaks SKSE until SKSE ships a matching build.
 4. Install **SKSE64** for your runtime from <https://skse.silverlock.org/> (the "Current Anniversary Edition build", 2.3.1 for 1.7.104). Copy `skse64_loader.exe`, `skse64_1_7_104.dll` and the `Data` folder contents into the Skyrim folder (next to `SkyrimSE.exe`).
@@ -119,6 +119,30 @@ The first SKSE build takes a while (often 15 to 25 minutes): vcpkg builds the de
    - in `PerkeleRim.log`: `PerkeleRim loaded (plugin 0.1.0, Skyrim runtime 1.7.104.0)`
    - in `skse64.log`: a line saying `PerkeleRim.dll` loaded correctly
    - in `output_log.txt` (My Summer Car game folder): `PerkeleRim: PerkeleRim loaded`
+
+### Testing on Skyrim Special Edition 1.5.97
+
+The same `PerkeleRim.dll` loads on SE 1.5.97 and AE (CommonLibSSE-NG picks the addresses at runtime), so there is no separate SE build. Test SE on a second copy of the game so your AE install stays as it is.
+
+1. Copy the whole Skyrim folder somewhere outside the Steam library, e.g. `C:\Games\Skyrim SE 1.5.97`, so Steam never updates it.
+2. Downgrade that copy to 1.5.97 with a Skyrim downgrade patcher from Nexus, or with Steam's `download_depot` and the 1.5.97 manifests from that patcher's guide. Check `SkyrimSE.exe` > Properties > Details > File version reads `1.5.97.0`.
+3. Remove the AE `skse64_1_7_104.dll` from the copy and install the SKSE64 **Special Edition build** (2.0.20, `skse64_1_5_97.dll`) from <https://skse.silverlock.org/>.
+4. Install the Address Library **Special Edition** file. It puts `version-1-5-97-0.bin` (not `versionlib-*`) in `Data/SKSE/Plugins`.
+5. Point `SkyrimPath` in `local.props` at the copy, then `scripts/build.ps1` and `scripts/deploy-local.ps1`. Set it back to the AE folder when you're done. Note that SE and AE share `Documents\My Games\Skyrim Special Edition`, so saves and logs land in the same place.
+6. Run the release launcher against the copy once (with `SkyrimPath` in its config pointing there): it must not report Address Library as missing.
+
+Then check, in this order:
+
+- [ ] `PerkeleRim.log` says `Skyrim runtime 1.5.97.0`, and `skse64.log` says `PerkeleRim.dll` loaded correctly.
+- [ ] Main menu reached without a crash, `PerkeleRim.esp` active in the load order (its header is 1.71, written by Mutagen; if SE refuses it, pin it to 1.70 in `tools/esp-gen`).
+- [ ] The **PerkeleRim-Kumpo** starter save loads. A warning about missing Creation Club content is expected (1.5.97 doesn't ship it); a crash or a refusal means SE needs its own starter save.
+- [ ] F10 hands over to MSC and back; walking, looking and the camera follow MSC (PlayerCharacter update hook, vfunc `0xAD`).
+- [ ] Favorites, menus and activating things still behave while MSC has the player (handler hooks, vfunc `0x1`).
+- [ ] Damage protection while driving: take a hit in the van (Actor `HandleHealthDamage` hook, vfunc `0x104`).
+- [ ] Drive the van, drink, punch, piss; HUD bars and subtitles show; the van's lights work.
+- [ ] Rest / time skip, then save and reload (cosave round trip).
+
+Anything that fails here is an SE vs AE difference in CommonLib (a vfunc index or a runtime-data layout). Note which check failed and the last lines of `PerkeleRim.log`.
 
 ## 5. Debugging and inspection tools (optional)
 
