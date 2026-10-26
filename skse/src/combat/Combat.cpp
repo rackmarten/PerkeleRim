@@ -78,6 +78,8 @@ namespace PerkeleRim::Combat
             bool                          culled = false;    // Guard hid the first-person model
         } state;
 
+        Hit lastHit;
+
         const char* NameOf(RE::TESObjectREFR* a_ref)
         {
             const char* name = a_ref ? a_ref->GetDisplayFullName() : nullptr;
@@ -473,8 +475,14 @@ namespace PerkeleRim::Combat
         const float health = values ? values->GetActorValue(RE::ActorValue::kHealth) : 0.0f;  // the spell lands next frame
         caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
+        lastHit = { lastHit.count + 1, target->GetFormID(), false, damage, unarmed, a_drunk, 0.0f, 1.0f };
         SKSE::log::info("combat: the player punched {} for {:.0f} (unarmed {:.1f}, drunk {:.1f}), it had {:.0f} of {:.0f} max health", NameOf(target),
             damage, unarmed, a_drunk, health, max);
+    }
+
+    const Hit& LastHit()
+    {
+        return lastHit;
     }
 
     void OnSwing(RE::PlayerCharacter* a_player)
@@ -647,13 +655,15 @@ namespace PerkeleRim::Combat
         const bool  sneaking = state.clock - flights.sneakAt < kFlightSneakSeconds ? flights.sneaking : a_player->IsSneaking();
         const int   detection = target->RequestDetectionLevel(a_player);
         const float sneak = Damage::SneakAttack(sneaking, detection);
-        const float damage = Damage::Thrown(Damage::Punch(Unarmed(a_player, target)), impact.speed) * sneak;
+        const float unarmed = Unarmed(a_player, target);
+        const float damage = Damage::Thrown(Damage::Punch(unarmed), impact.speed) * sneak;
         if (damage <= 0.0f) {
             SKSE::log::info("combat: a throw at {:.1f} m/s bounced off {} harmlessly", impact.speed, NameOf(target));
             return;
         }
         caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
+        lastHit = { lastHit.count + 1, target->GetFormID(), true, damage, unarmed, 0.0f, impact.speed, sneak };
         if (sneak > 1.0f) {
             RE::SendHUDMessage::ShowHUDMessage(fmt::format("Sneak attack for {:.1f}x damage", sneak).c_str());
         }

@@ -5,6 +5,7 @@
 #include "collision/CollisionSampler.h"
 #include "combat/Combat.h"
 #include "death/Death.h"
+#include "debug/HitTest.h"
 #include "drink/Drink.h"
 #include "garage/Garage.h"
 #include "intro/Intro.h"
@@ -38,6 +39,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::Combat::OnDataLoaded();
             PerkeleRim::Autoload::OnDataLoaded();
             PerkeleRim::Rest::OnDataLoaded();
+            PerkeleRim::HitTest::OnDataLoaded();
         } else if (a_msg->type == SKSE::MessagingInterface::kPreLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
             PerkeleRim::Death::Hide();  // the reload after a death
             PerkeleRim::Rest::OnGameLoad();  // before the release: MSC stops pissing and the like at once
@@ -50,6 +52,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::Autoload::OnGameLoaded();
             PerkeleRim::SaveSync::OnGameLoaded();
             PerkeleRim::Combat::OnGameLoaded();
+            PerkeleRim::HitTest::OnGameLoaded();
             PerkeleRim::Intro::OnGameLoaded();
             PerkeleRim::PlayerSync::OnGameLoaded();  // after SaveSync's MscLoad
         } else if (a_msg->type == SKSE::MessagingInterface::kSaveGame) {

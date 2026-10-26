@@ -22,5 +22,12 @@ namespace PerkeleRim::PlayerSync
     void OnGameLoaded();  // play mode hands over once the game has settled; call on kPostLoadGame and kNewGame
 
     bool Owned();            // MSC has the player
+    bool Seated();           // ...and it sits in a vehicle
     void RestoreControls();  // the loaded save was taken while MSC had the player and kept its controls off
+    // The hit test (debug/HitTest.h) at the keys: F10 unless MSC has the player or is about to (play mode
+    // hands over by itself after a load), a Unity KeyCode held for MSC on top of what
+    // the devices hold (until let go or the release), and mouse counts as a mouse move brings them.
+    void DebugHandOver();
+    void DebugHold(std::uint16_t a_keyCode, bool a_held);
+    void DebugMouse(std::int32_t a_dx, std::int32_t a_dy);
 }

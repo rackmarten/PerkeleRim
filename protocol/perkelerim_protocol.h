@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 40;
+    inline constexpr std::uint32_t kProtocolVersion = 41;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -112,7 +112,7 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPlayerGrounded = 0x8;  // PlayerState.flags: MSC's player stands on something
     inline constexpr std::uint32_t kPlayerBlocking = 0x10;  // PlayerState.flags: MSC's player guards (right click), Skyrim blocks
     inline constexpr std::uint32_t kPlayerChaseCamera = 0x20;  // PlayerState.flags: MSC's chase camera (its F9, in a vehicle) is on: eye, roll and fov are that camera's, view* its direction
-    inline constexpr std::uint32_t kPlayerInGame = 0x40;  // PlayerState.flags (v40): MSC's player exists (its game is loaded), set whoever has the player; play mode hands over only then
+    inline constexpr std::uint32_t kPlayerInGame = 0x40;  // PlayerState.flags (v41): MSC's player exists (its game is loaded), set whoever has the player; play mode hands over only then
 
     // PlayerState.needs order, MSC's globals: PlayerThirst, PlayerHunger, PlayerStress, PlayerUrine,
     // PlayerFatigue, PlayerDirtiness (0..100, stress can go past it) and PlayerDrunk (0..8).
@@ -410,7 +410,8 @@ namespace PerkeleRim::Protocol
         TimePassed = 24,       // Skyrim -> MSC
         GearText = 25,         // MSC -> Skyrim
         PlayerWashed = 26,     // Skyrim -> MSC
-        IntroCue = 27,         // Skyrim -> MSC
+        DebugCommand = 27,     // Skyrim -> MSC
+        IntroCue = 28,         // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -472,6 +473,10 @@ namespace PerkeleRim::Protocol
     // GearText: the gear MSC shows bottom right while the player drives (global GUIgear: "N", "R",
     // "2", "3 HIGH", "1 LOW"), sent when it changes and once more each time MSC takes the player.
     // Same payload as Subtitle; no text (on foot) clears it.
+
+    // DebugCommand (v40): a line for MSC's spike console (msc/src/Spike/SpikeHost.cs, as in
+    // <MSC>/PerkeleRim_cmd.txt: "drunk 2", "hold 1"), sent only by the hit test
+    // (skse/src/debug/HitTest.cpp, [Debug] HitTest in PerkeleRim.ini). Same payload as Subtitle.
 
     // PlayerWashed: Kumpo waded into water up to his waist (protocol/cpp/wading.h). Empty payload; MSC
     // sets PlayerDirtiness to 0. Sent once per wade in, not every frame.
@@ -584,7 +589,7 @@ namespace PerkeleRim::Protocol
         std::uint32_t flags;  // kTime*
     };
 
-    // IntroCue (v40): Kumpo's Helgen intro on a new game (protocol/cpp/intro_cues.h), whoever has the
+    // IntroCue (v41): Kumpo's Helgen intro on a new game (protocol/cpp/intro_cues.h), whoever has the
     // player. MSC plays the cue's sounds (msc/src/Link/IntroLine.cs); Skyrim captions them.
     inline constexpr std::uint32_t kIntroBlackout = 1;  // IntroCue.cue: Kumpo drinks one beer too many and passes out (the new game opens)
     inline constexpr std::uint32_t kIntroWake = 2;      // IntroCue.cue: he answers Ralof's "You're finally awake" in the cart
