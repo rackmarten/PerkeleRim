@@ -5,6 +5,7 @@
 #include "combat/Combat.h"
 #include "coords.h"
 #include "death/Death.h"
+#include "debug/HitTest.h"
 #include "drink/Drink.h"
 #include "garage/Garage.h"
 #include "hud/Hud.h"
@@ -72,6 +73,7 @@ namespace PerkeleRim::PlayerSync
             int            sneakResend = 0;  // frames until a sneak event the graph ignored is sent again
             std::uint32_t  inputFrame = 0;
             Input::Builder input;
+            std::uint64_t  debugKeys[8]{};  // held by the hit test (DebugHold), on top of the devices'
             Stamina::Sprint sprint;  // MSC's run costs stamina; an empty bar stops it
             PissTap::Tap    pissTap;  // Alt reaches MSC only after a clean tap
             Wading::Edge    wading;   // waist-deep water washes Kumpo once per wade in
@@ -131,6 +133,9 @@ namespace PerkeleRim::PlayerSync
                 return;
             }
             auto       input = state.input.Build(++state.inputFrame, state.owned, !a_menu, a_paused);
+            for (int i = 0; i < 8 && !a_menu; i++) {
+                input.keys[i] |= state.debugKeys[i];
+            }
             const auto screen = RE::BSGraphics::Renderer::GetScreenSize();
             input.screenWidth = screen.width;  // MSC renders its hand layer this size
             input.screenHeight = screen.height;
@@ -195,6 +200,7 @@ namespace PerkeleRim::PlayerSync
             }
             state.owned = false;
             state.input.ReleaseAll();
+            std::fill(std::begin(state.debugKeys), std::end(state.debugKeys), 0);
             state.input.Block(Input::KeyFromScanCode(Input::kDikLeftShift), false);
             state.sprint.Reset();
             state.pissTap.Reset();
@@ -830,6 +836,7 @@ namespace PerkeleRim::PlayerSync
                     Drive(a_player, a_delta);
                     Rest::OnFrame(a_player, a_delta);
                 }
+                HitTest::Update(a_player, a_delta);
             }
             static inline REL::Relocation<decltype(thunk)> original;
         };
@@ -904,6 +911,22 @@ namespace PerkeleRim::PlayerSync
             }
             static inline REL::Relocation<decltype(thunk)> original;
         };
+
+        // F10: hands the player to MSC, or takes it back.
+        void Toggle()
+        {
+            if (state.owned) {
+                Release("F10");
+            } else if (state.resume) {
+                state.resume = false;
+                SKSE::log::info("player sync: F10 before the loaded save's handover resumed, not handing over");
+            } else if (state.garage) {
+                state.garage = nullptr;
+                SKSE::log::info("player sync: F10 again on the way to the garage, not handing over");
+            } else if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+                HandOver(player);
+            }
+        }
 
         class InputSink : public RE::BSTEventSink<RE::InputEvent*>
         {
@@ -985,22 +1008,6 @@ namespace PerkeleRim::PlayerSync
                 }
                 return RE::BSEventNotifyControl::kContinue;
             }
-
-        private:
-            static void Toggle()
-            {
-                if (state.owned) {
-                    Release("F10");
-                } else if (state.resume) {
-                    state.resume = false;
-                    SKSE::log::info("player sync: F10 before the loaded save's handover resumed, not handing over");
-                } else if (state.garage) {
-                    state.garage = nullptr;
-                    SKSE::log::info("player sync: F10 again on the way to the garage, not handing over");
-                } else if (auto* player = RE::PlayerCharacter::GetSingleton()) {
-                    HandOver(player);
-                }
-            }
         };
 
         // A menu that pauses the game stops the Update hook, so publish the cleared input right away
@@ -1075,6 +1082,39 @@ namespace PerkeleRim::PlayerSync
     bool Owned()
     {
         return state.owned;
+    }
+
+    bool Seated()
+    {
+        return state.owned && state.seated;
+    }
+
+    void DebugHandOver()
+    {
+        if (!state.owned && !state.resume && !state.garage) {
+            Toggle();
+        }
+    }
+
+    void DebugHold(std::uint16_t a_keyCode, bool a_held)
+    {
+        if (a_keyCode >= 512) {
+            return;
+        }
+        const auto bit = 1ull << (a_keyCode & 63);
+        if (a_held) {
+            state.debugKeys[a_keyCode >> 6] |= bit;
+        } else {
+            state.debugKeys[a_keyCode >> 6] &= ~bit;
+        }
+        if (state.owned) {
+            Publish();
+        }
+    }
+
+    void DebugMouse(std::int32_t a_dx, std::int32_t a_dy)
+    {
+        state.input.AddMouse(a_dx, a_dy);
     }
 
     void RestoreControls()
