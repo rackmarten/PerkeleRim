@@ -1,14 +1,16 @@
 <#
 .SYNOPSIS
-    Runs the unit tests: the C++ protocol tests (CMake + doctest, ctest) and the C# link tests
-    (dotnet test). Neither needs the games installed.
+    Runs the unit tests: the C++ protocol tests (CMake + doctest, ctest), the C# link tests
+    (dotnet test) and the player launcher's tests (Pester 5, launcher/tests) in PowerShell 7 and
+    in Windows PowerShell 5.1, which the launcher runs on. None needs the games installed.
 .EXAMPLE
-    scripts/test.ps1                  # both
+    scripts/test.ps1                  # all three
     scripts/test.ps1 -Target cpp
+    scripts/test.ps1 -Target launcher
     powershell.exe -File scripts/test.ps1   # from WSL
 #>
 param(
-    [ValidateSet('all', 'cpp', 'cs')] [string] $Target = 'all'
+    [ValidateSet('all', 'cpp', 'cs', 'launcher')] [string] $Target = 'all'
 )
 
 . "$PSScriptRoot/common.ps1"
@@ -33,4 +35,33 @@ if ($Target -in 'all', 'cpp') {
 
 if ($Target -in 'all', 'cs') {
     Invoke-Checked dotnet @('test', (Join-Path $RepoRoot 'msc/tests/PerkeleRim.Tests.csproj'), '-nologo')
+}
+
+if ($Target -in 'all', 'launcher') {
+    # Pester 5 (GitHub's runners have it; Windows PowerShell itself ships only 3.4).
+    if (Get-Module -ListAvailable Pester | Where-Object { $_.Version -ge [version] '5.0' }) {
+        Import-Module Pester -MinimumVersion 5.0
+        $pester = New-PesterConfiguration
+        $pester.Run.Path = Join-Path $RepoRoot 'launcher/tests'
+        $pester.Run.Exit = $false
+        $pester.Run.PassThru = $true
+        $pester.Output.Verbosity = 'Detailed'
+        $result = Invoke-Pester -Configuration $pester
+        if ($result.Result -ne 'Passed') { throw "Launcher tests: $($result.FailedCount) failed." }
+        # Players run the launcher on Windows PowerShell 5.1 ("Start PerkeleRim.bat"), so the tests run there
+        # as well, with the same Pester by path and, as the .bat does, no module path inherited from here.
+        $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        if ($PSVersionTable.PSEdition -eq 'Core' -and (Test-Path $windowsPowerShell)) {
+            $pesterPath = (Get-Module Pester).Path
+            $command = "Import-Module '$pesterPath'; `$c = New-PesterConfiguration; `$c.Run.Path = '$($pester.Run.Path.Value)'; `$c.Run.Exit = `$true; `$c.Output.Verbosity = 'Normal'; Invoke-Pester -Configuration `$c"
+            $modulePath = $env:PSModulePath
+            try { $env:PSModulePath = $null; & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -Command $command }
+            finally { $env:PSModulePath = $modulePath }
+            if ($LASTEXITCODE -ne 0) { throw "Launcher tests on Windows PowerShell 5.1: $LASTEXITCODE failed." }
+        }
+    } elseif ($env:CI) {
+        throw 'Pester 5 is not installed, so the launcher tests could not run.'
+    } else {
+        Write-Host 'Launcher tests skipped: they need Pester 5 (Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck).' -ForegroundColor Yellow
+    }
 }
