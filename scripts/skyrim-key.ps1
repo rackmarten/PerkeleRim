@@ -11,13 +11,13 @@
     scripts/skyrim-key.ps1 -Console 'completequest MQ101'
 #>
 param(
-    [ValidateSet('', 'F10', 'F11', 'F5', 'F9', 'Escape', 'E', 'Space', 'M', 'P', 'J', 'I', 'T')] [string] $Key = '',
+    [ValidateSet('', 'F10', 'F11', 'F5', 'F9', 'Escape', 'E', 'Space', 'M', 'P', 'J', 'I', 'T', 'Enter', 'Up', 'Down')] [string] $Key = '',
     [string] $Console,  # letters, digits, space, - _ . only (Skyrim's console ignores case)
     [string] $Screenshot,
     [double] $Delay = 0
 )
 
-$scanCodes = @{ F10 = 0x44; F11 = 0x57; F5 = 0x3F; F9 = 0x43; Escape = 0x01; E = 0x12; Space = 0x39; M = 0x32; P = 0x19; J = 0x24; I = 0x17; T = 0x14 }
+$scanCodes = @{ F10 = 0x44; F11 = 0x57; F5 = 0x3F; F9 = 0x43; Escape = 0x01; E = 0x12; Space = 0x39; M = 0x32; P = 0x19; J = 0x24; I = 0x17; T = 0x14; Enter = 0x1C; Up = 0x48; Down = 0x50 }  # the arrows are extended keys
 
 Add-Type -AssemblyName System.Drawing
 Add-Type -Namespace PerkeleRim -Name SkyrimKey -MemberDefinition @'
@@ -43,17 +43,18 @@ $frontPid = 0
 if ($frontPid -ne $skyrim.Id) { throw 'Windows did not let Skyrim come to the front.' }
 $hwnd = $front
 
-function Send-Scan([byte] $Scan, [int] $HoldMs = 150, [switch] $Shift) {
+function Send-Scan([byte] $Scan, [int] $HoldMs = 150, [switch] $Shift, [switch] $Extended) {
+    $flags = 0x8 -bor ($(if ($Extended) { 0x1 } else { 0 }))  # KEYEVENTF_SCANCODE, KEYEVENTF_EXTENDEDKEY
     if ($Shift) { [PerkeleRim.SkyrimKey]::keybd_event(0, 0x2A, 0x8, [UIntPtr]::Zero); Start-Sleep -Milliseconds 30 }
-    [PerkeleRim.SkyrimKey]::keybd_event(0, $Scan, 0x8, [UIntPtr]::Zero)          # KEYEVENTF_SCANCODE
+    [PerkeleRim.SkyrimKey]::keybd_event(0, $Scan, $flags, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds $HoldMs
-    [PerkeleRim.SkyrimKey]::keybd_event(0, $Scan, 0x8 -bor 0x2, [UIntPtr]::Zero)  # ... | KEYEVENTF_KEYUP
+    [PerkeleRim.SkyrimKey]::keybd_event(0, $Scan, $flags -bor 0x2, [UIntPtr]::Zero)  # ... | KEYEVENTF_KEYUP
     if ($Shift) { Start-Sleep -Milliseconds 30; [PerkeleRim.SkyrimKey]::keybd_event(0, 0x2A, 0x8 -bor 0x2, [UIntPtr]::Zero) }
     Start-Sleep -Milliseconds 40
 }
 
 if ($Key) {
-    Send-Scan ([byte]$scanCodes[$Key])
+    Send-Scan ([byte]$scanCodes[$Key]) -Extended:($Key -in 'Up', 'Down')
     Write-Host "Pressed $Key in Skyrim."
 }
 
