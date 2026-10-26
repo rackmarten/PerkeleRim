@@ -317,6 +317,18 @@ namespace PerkeleRim.Spike
             string[] lines;
             try { lines = File.ReadAllLines(cmdPath); File.Delete(cmdPath); }
             catch (Exception e) { SpikeLog.Write("cmd: read failed " + e.Message); return; }
+            Execute(lines);
+        }
+
+        // A command line from Skyrim's hit test (the DebugCommand message), as if it came in the file.
+        public static void Run(string line)
+        {
+            if (instance != null) instance.Execute(new[] { line });
+            else SpikeLog.Write("cmd: no spike host for '" + line + "'");
+        }
+
+        void Execute(string[] lines)
+        {
             if (lines.Length == 0) return;
 
             var words = lines[0].Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
