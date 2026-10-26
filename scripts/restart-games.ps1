@@ -4,14 +4,17 @@
     starts My Summer Car (launch-msc.ps1, continues the save if <MSC>/PerkeleRim_autoload.txt
     exists), then starts Skyrim through SKSE (continues the most recent save if
     <Skyrim>/PerkeleRim_autoload.txt exists) and waits until both sides log "link up".
-    Killing the games discards anything unsaved in them.
+    Killing the games discards anything unsaved in them. Unless -NoPlace, both windows are moved to the
+    dev layout: Skyrim in the top right corner of the primary screen, MSC directly left of it, tops aligned.
 .EXAMPLE
     scripts/restart-games.ps1           # deploy what's built and restart
     scripts/restart-games.ps1 -Build    # build first
+    scripts/restart-games.ps1 -NoPlace  # leave the windows where Windows puts them
     powershell -ExecutionPolicy Bypass -File scripts/restart-games.ps1 -Build
 #>
 param(
     [switch] $Build,
+    [switch] $NoPlace,
     [int] $LinkTimeoutSeconds = 180
 )
 
@@ -48,10 +51,15 @@ if (-not (Test-Path (Join-Path $msc 'PerkeleRim_autoload.txt'))) {
 if (-not (Test-Path (Join-Path $skyrim 'PerkeleRim_autoload.txt'))) {
     Write-Host 'No PerkeleRim_autoload.txt in Skyrim: it will stay at its main menu.' -ForegroundColor Yellow
 }
-& "$PSScriptRoot/launch-msc.ps1"
+& "$PSScriptRoot/launch-msc.ps1" -NoPlace:$NoPlace
 
 Write-Host 'Starting Skyrim (SKSE)'
 Start-Process -WorkingDirectory $skyrim (Join-Path $skyrim 'skse64_loader.exe')
+if (-not $NoPlace) {
+    # Skyrim's window opens a while after the loader starts. Its real outer size also decides where MSC goes.
+    if (Wait-GameWindow { Get-SkyrimWindow } 90) { Set-GameWindowLayout }
+    else { Write-Host 'Skyrim window not found, left unplaced.' -ForegroundColor Yellow }
+}
 
 # Both logs are rewritten when their game starts, so a "link up" newer than this run is ours.
 function Test-LinkUp($path) {
