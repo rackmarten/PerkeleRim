@@ -105,6 +105,7 @@ scripts/spike.ps1 -Command dump    # hidden-MSC spike tools, see docs/SPIKE_HIDD
 scripts/skyrim-key.ps1 -Key F10    # press a key in Skyrim (brings it to the front); -Screenshot FILE saves its window
 scripts/skyrim-key.ps1 -Console 'load PerkeleRim-Kumpo'   # type a console command (letters, digits, space, - _ .)
 scripts/hit-test.ps1               # unattended combat check in game (closes both games), results in a CSV; see below
+scripts/voice-picker.ps1           # page for listening to MSC's voice lines by group and copying which one you mean (offline); see section 5
 ```
 
 For a test loop with no clicks at all, create an empty `PerkeleRim_autoload.txt` in both game folders: MSC then continues its save, and Skyrim continues its most recent save from the main menu (the SKSE plugin does it once per start). Delete the files to get the main menus back.
@@ -176,10 +177,32 @@ Anything that fails here is an SE vs AE difference in CommonLib (a vfunc index o
 
 - **Van NIF conversion** (`tools/convert-vehicle.ps1`, Blender, PyNifly, AssetStudioModCLI, texconv; see [tools/README.md](../tools/README.md)) writes the van as a NIF for NifSkope or Blender. Playing doesn't need it: the van comes from MSC's own model at runtime.
 
+- **Voice picker** (`scripts/voice-picker.ps1`, see below) for choosing which of MSC's voice lines a feature plays.
+
 - **VS Code** (`winget install --id Microsoft.VisualStudioCode -e`) with the **C/C++** extension (`ms-vscode.cpptools`). Debug the SKSE plugin by attaching to `SkyrimSE.exe` with the `cppvsdbg` debugger type and a Debug build (`scripts/build.ps1 -Target skse -Configuration Debug`, then deploy it). The `.pdb` is deployed next to the DLL.
 - **Visual Studio Community 2022** is a reasonable upgrade later if you want a full IDE debugger. It isn't needed for anything here.
 - **dnSpyEx** (<https://github.com/dnSpyEx/dnSpy/releases>) to read My Summer Car's `Assembly-CSharp.dll` and MSCLoader. Use it for reading only: never commit decompiled game code.
 - **Developer Toolset** (an MSCLoader mod on Nexus Mods) is the in-game object inspector for My Summer Car. It browses the scene hierarchy and components, and views and edits **PlayMaker FSM** states, variables and events, which is where most of My Summer Car's game logic lives. Generic Unity inspectors such as UnityExplorer need BepInEx or MelonLoader rather than MSCLoader, so they're not the default here.
+
+### Voice picker
+
+PerkeleRim plays MSC's own voice clips from the player's install, so a feature that needs a line asks which one by name. `scripts/voice-picker.ps1` builds a local page for picking them by ear:
+
+```powershell
+pwsh -NoProfile -File scripts/voice-picker.ps1                      # export the clips and open the page
+pwsh -NoProfile -File scripts/voice-picker.ps1 -Transcribe          # also run Whisper (Finnish text + English translation), searchable
+pwsh -NoProfile -File scripts/voice-picker.ps1 -Transcribe -Groups Hangover,Drunk   # only some groups
+```
+
+It reads `<MscPath>\mysummercar_Data` offline (MSC doesn't run) with `tools/voice-picker/` (VoiceExport, on the AssetStudioMod libraries `tools/setup.ps1` downloads) and writes everything to `tools/out/voices/` (gitignored, never commit it): the clips as Ogg Opus (about 80 MB; WAV without ffmpeg, `winget install Gyan.FFmpeg`), `index.json` and `index.html`. The first run takes a few minutes, a rerun seconds. Clips over 60 s (music, radio, the drunk monologues) are listed without audio; `-MaxSeconds 0` exports them too.
+
+The page groups the clips the way MSC does: MSC plays its voices through **MasterAudio**, a scene object whose children are sound groups (`Hangover` with 7 lines, `Swearing` 16, `Drunk`, `Fuck`, `Shit`, `Yes`, `PlayerMisc`, the NPCs' `Teimo`, `Fleetari`, `Suski`...) and whose children are the group's variations. A line's number is its variation's place in the group, so `Hangover #3 (hangover03)` is unambiguous; in code, the clip name (`hangover03`) is what `Resources.FindObjectsOfTypeAll<AudioClip>()` finds and the variation name is the MasterAudio child's (`msc/src/Game/PlayerVoice.cs` looks up both). Clips no MasterAudio group plays follow, under the scene object playing them (`scene: YARD`) or `(no AudioSource)` (PlayMaker and soundbanks play those, e.g. `Human_Perkele`).
+
+Search matches group, clip and variation names, the scene paths and the transcripts. **copy** puts a line's reference on the clipboard, **pick** collects lines for **Copy picked** at the bottom. Keys: `/` search, `↓`/`↑` or `j`/`k` move, `Space` play, `c` copy, `p` pick, `Esc` stop. Picks are kept in that browser.
+
+`-Transcribe` needs `uv` and an NVIDIA GPU: `tools/voice-picker/transcribe.py` runs faster-whisper large-v3 (about 3 GB, downloaded once into the Hugging Face cache, int8 so it fits next to a running game) for the Finnish text and again for an English translation, about one clip a second. It skips clips it has, so reruns are cheap. The text is a guess; listen before you pick.
+
+Agents: when a feature needs particular MSC lines, ask the user to pick them with this page and paste the references back, rather than guessing from clip names.
 
 ## Branches and releases
 
