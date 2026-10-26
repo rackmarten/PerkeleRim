@@ -18,8 +18,9 @@ namespace PerkeleRim.Game
     //    MSC throws goes back into the pocket instead, to be thrown at someone), food a new one from the store's spawner eaten at once (its Use FSM put in Eat);
     //  - taken out: an empty bottle, a copy of the one MSC throws after a beer (BottleBeerFly), put
     //    in the hand the way a click on it would.
-    // Also keeps MSC's cigarette count (PlayerCigarettes) and Skyrim's Cigarette items the same
-    // (CigaretteMirror), while the link is up.
+    // Also keeps MSC's cigarette count (PlayerCigarettes) and Skyrim's Cigarette items the same, and
+    // MSC's money (PlayerMoney) and Skyrim's gold (CountMirror), while the link is up, and puts what
+    // Kumpo ate or drank in Skyrim on MSC's needs (ConsumeEvent).
     public unsafe class PocketLink
     {
         const string HandPath = "PLAYER/Pivot/AnimPivot/Camera/FPSCamera/1Hand_Assemble/Hand";
@@ -34,7 +35,8 @@ namespace PerkeleRim.Game
 
         readonly Action<string> log;
         readonly PocketLedger ledger = new PocketLedger(NewSession());
-        readonly CigaretteMirror cigarettes = new CigaretteMirror();
+        readonly CountMirror cigarettes = new CountMirror(false);
+        readonly CountMirror gold = new CountMirror(true);
         readonly Queue<int> presses = new Queue<int>();
         readonly HashSet<int> keysDown = new HashSet<int>();
         bool wasUp;
@@ -42,6 +44,7 @@ namespace PerkeleRim.Game
         PlayMakerFSM functions;  // off while a beer from the pocket is drunk
         float functionsBackAt;
         FsmInt cigaretteGlobal;
+        FsmFloat moneyGlobal;
 
         // The item being taken out, until it is in the hand.
         GameObject taking;
@@ -85,7 +88,7 @@ namespace PerkeleRim.Game
             for (int i = 0; i < counts.Length; i++) counts[i] = c.counts[i];
             bool first = !ledger.Known;
             ledger.OnCounts(c.session, c.appliedSeq, counts);
-            if (first) log($"pocket: Skyrim has {string.Join(", ", Array.ConvertAll(counts, n => n.ToString()))} (beer, bottles, sausages, pizza, chips, macaron boxes, cigarettes)");
+            if (first) log($"pocket: Skyrim has {string.Join(", ", Array.ConvertAll(counts, n => n.ToString()))} (beer, bottles, sausages, pizza, chips, macaron boxes, cigarettes, gold)");
         }
 
         // Once a frame. playing: MSC has the player on the current island; inGame: MSC's PLAYER exists.
@@ -103,14 +106,14 @@ namespace PerkeleRim.Game
                 {
                     ledger.Reset(NewSession());
                     cigarettes.Reset();
+                    gold.Reset();
                 }
             }
             if (!link.IsUp) { presses.Clear(); return; }
-            if (inGame) MirrorCigarettes(link);
+            if (inGame) { MirrorCigarettes(link); MirrorMoney(link); }
             if (emptyUntil >= 0f) CatchEmpty(link);
             if (taking != null || takingKind != Pocket.None) { AdvanceTake(); presses.Clear(); return; }
             if (!playing) { presses.Clear(); return; }
-            if (ledger.Known) TopUp(link);
             if (presses.Count > 0) Press(link, presses.Dequeue());
         }
 
@@ -122,17 +125,6 @@ namespace PerkeleRim.Game
             if (!link.Send(MessageType.PocketChange, payload, payload.Length)) return false;
             ledger.Sent(change);
             return true;
-        }
-
-        // Endless supplies: what was used, thrown or put away comes back. Available counts the changes
-        // Skyrim hasn't applied yet, so nothing is sent twice; a full ring retries next frame.
-        void TopUp(Link link)
-        {
-            for (int kind = 0; kind < Wire.PocketKinds; kind++)
-            {
-                long add = Pocket.Missing(kind, ledger.Available(kind));
-                if (add > 0 && Send(link, kind, (int)add)) log($"pocket: topped up, +{add} of kind {kind}");
-            }
         }
 
         void MirrorCigarettes(Link link)
@@ -151,6 +143,45 @@ namespace PerkeleRim.Game
             if (delta == 0) return;
             if (Send(link, (int)Wire.PocketCigarettes, delta)) log($"pocket: cigarettes {delta:+0;-0} to Skyrim (MSC has {cigaretteGlobal.Value})");
             else cigarettes.Unsent(delta);
+        }
+
+        void MirrorMoney(Link link)
+        {
+            if (!ledger.Known) return;
+            if (moneyGlobal == null) moneyGlobal = FsmVariables.GlobalVariables.FindFsmFloat("PlayerMoney");
+            if (moneyGlobal == null) return;
+            bool set;
+            long value;
+            int delta = gold.Step(Pocket.Gold(moneyGlobal.Value), ledger.Available((int)Wire.PocketGold), out set, out value);
+            if (set)
+            {
+                float money = Pocket.Money(value, moneyGlobal.Value);
+                log($"pocket: money {moneyGlobal.Value:0.##} -> {money:0.##} from Skyrim's gold");
+                moneyGlobal.Value = money;
+            }
+            if (delta == 0) return;
+            if (Send(link, (int)Wire.PocketGold, delta)) log($"pocket: money {delta:+0;-0} to Skyrim's gold (MSC has {moneyGlobal.Value:0.##})");
+            else gold.Unsent(delta);
+        }
+
+        // Kumpo ate or drank something in Skyrim: its numbers (protocol/cpp/food.h) on MSC's needs.
+        public void OnConsume(byte[] payload, int size)
+        {
+            if (size < sizeof(ConsumeEvent)) return;
+            ConsumeEvent e;
+            fixed (byte* p = payload) e = *(ConsumeEvent*)p;
+            var globals = FsmVariables.GlobalVariables;
+            var hunger = globals.FindFsmFloat("PlayerHunger");
+            var thirst = globals.FindFsmFloat("PlayerThirst");
+            var urine = globals.FindFsmFloat("PlayerUrine");
+            var drunk = globals.FindFsmFloat("PlayerDrunkAdjusted");
+            if (hunger == null || thirst == null || urine == null || drunk == null) { log("food: MSC's need globals aren't there"); return; }
+            float hungerWas = hunger.Value, thirstWas = thirst.Value, drunkWas = drunk.Value;
+            hunger.Value = Consumption.AddNeed(hunger.Value, e.hunger);
+            thirst.Value = Consumption.AddNeed(thirst.Value, e.thirst);
+            urine.Value = Consumption.AddNeed(urine.Value, e.urine);
+            drunk.Value = Consumption.AddDrunk(drunk.Value, e.drunk);
+            log($"food: from Skyrim, hunger {hungerWas:0.#} -> {hunger.Value:0.#}, thirst {thirstWas:0.#} -> {thirst.Value:0.#}, drunk {drunkWas:0.###} -> {drunk.Value:0.###}");
         }
 
         // ---- Keys ----

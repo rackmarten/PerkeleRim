@@ -430,6 +430,8 @@ namespace PerkeleRim.Game
                 OnChunk(payload, size);
             else if (type == MessageType.PocketCounts)
                 pocket.OnCounts(payload, size);
+            else if (type == MessageType.ConsumeEvent)
+                pocket.OnConsume(payload, size);
             else if (type == MessageType.PlayerDeath)
                 DeathGuard.PlayDeathSound();
             else if (type == MessageType.PlayerShout)

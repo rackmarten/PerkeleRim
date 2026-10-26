@@ -75,6 +75,7 @@ namespace PerkeleRim::PlayerSync
             Stamina::Sprint sprint;  // MSC's run costs stamina; an empty bar stops it
             PissTap::Tap    pissTap;  // Alt reaches MSC only after a clean tap
             Wading::Edge    wading;   // waist-deep water washes Kumpo once per wade in
+            std::array<std::uint16_t, 8> hotbar{ 49, 50, 51, 52, 53, 54, 55, 56 };  // MSC's key for each number held (Pocket::Hotkey)
             bool           seated = false;
             float          waterLevel = 0.0f;  // fraction of Kumpo under water, for the log
             RE::NiPoint3   eye;              // Skyrim's camera relative to the placed feet (MSC's eye), 0 when not posed
@@ -905,6 +906,8 @@ namespace PerkeleRim::PlayerSync
             static inline REL::Relocation<decltype(thunk)> original;
         };
 
+        constexpr std::uint32_t kDik1 = 0x02;  // number keys 1 to 8: 0x02..0x09
+
         class InputSink : public RE::BSTEventSink<RE::InputEvent*>
         {
         public:
@@ -953,6 +956,18 @@ namespace PerkeleRim::PlayerSync
                         }
                         if (button->IsDown()) {
                             state.pissTap.OtherKey();  // Alt+Tab and other combinations aren't a tap
+                        }
+                        if (code >= kDik1 && code < kDik1 + state.hotbar.size()) {
+                            // Skyrim's hotbar: what the number's hotkey holds, decided when it goes down
+                            // (protocol/cpp/hotbar.h); a menu's own use of numbers (binding hotkeys) is left alone.
+                            auto& key = state.hotbar[code - kDik1];
+                            if (button->IsDown()) {
+                                key =state.owned && !MenuHasInput() ? Pocket::Hotkey(RE::PlayerCharacter::GetSingleton(), static_cast<int>(code - kDik1))
+                                                                     : Input::KeyFromScanCode(code);
+                            }
+                            state.input.SetKey(key, button->IsPressed());
+                            changed = true;
+                            break;
                         }
                         if (code == Input::kDikH && button->IsDown() && state.owned) {
                             Combat::OnSwing(RE::PlayerCharacter::GetSingleton());  // MSC's hit key: webs too

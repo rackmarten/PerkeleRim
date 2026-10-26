@@ -293,15 +293,9 @@ foreach (var p in markers.Concat(pieces))
 
 // ---- Drinks ----
 //
-// Fixed ids the SKSE plugin looks up (skse/src/drink/Drink.cpp, skse/src/pocket/Pocket.cpp), clear of
-// the garage's.
-//
-// The mead and ale that turn into MSC beer (the pocket's PerkeleRimBeer) when the player picks them up. Quest drinks
-// (MQ101JuniperMead, FreeformDragonBridgeMead) stay out: taking them away would break their quests.
-var drinks = new FormList(new FormKey(mod.ModKey, 0x900), SkyrimRelease.SkyrimSE) { EditorID = "PerkeleRimBeerDrinks" };
-foreach (var id in new[] { "FoodMead", "Ale", "FoodHonningbrewMead", "FoodBlackBriarMead", "FoodBlackBriarMeadPrivateReserve" })
-    drinks.Items.Add(new FormLink<ISkyrimMajorRecordGetter>(Base(skyrim.Ingestibles, id)));
-mod.FormLists.Add(drinks);
+// Fixed ids the SKSE plugin looks up (skse/src/drink/Drink.cpp), clear of the garage's. 0x900 was
+// PerkeleRimBeerDrinks (until protocol v40), the mead and ale that became MSC beer when picked up:
+// mead stays mead now and Kumpo drinks it in Skyrim (protocol/cpp/food.h).
 
 // MSC's drunk level as a blur with wobbling double vision. A 4 s loop the plugin retriggers, its
 // strength the drunk level; copied from a vanilla static blur so every other track stays neutral.
@@ -317,7 +311,6 @@ drunk.DoubleVisionStrength = Track((0f, 0.01f), (0.25f, 0.025f), (0.5f, 0.008f),
 var clear = System.Drawing.Color.FromArgb(0, 255, 255, 255);
 drunk.FadeColor = new ExtendedList<ColorFrame> { new ColorFrame { Time = 0f, Color = clear }, new ColorFrame { Time = 1f, Color = clear } };
 mod.ImageSpaceAdapters.Add(drunk);
-Console.WriteLine($"  900 {drinks.EditorID} ({drinks.Items.Count} drinks)");
 Console.WriteLine($"  901 {drunk.EditorID}");
 
 // ---- Combat ----
@@ -402,9 +395,12 @@ foreach (var (effect, spell) in new[] {
 // ---- Pocket ----
 //
 // Fixed ids the SKSE plugin looks up (skse/src/pocket/Pocket.cpp): 0x906 + the protocol's kPocket*
-// kind. MSC's beer, empty bottles, food and cigarettes as plain misc items in Skyrim's inventory, so
-// nothing can be eaten or drunk on Skyrim's side; they come out into MSC's hand. Each looks like the
-// vanilla item named (model, bounds and sounds copied).
+// kind. MSC's beer, empty bottles, food and cigarettes in Skyrim's inventory. Beer and food are food
+// items Kumpo eats and drinks in Skyrim like any other (protocol/cpp/food.h lists what they do to
+// MSC's needs; a hotkey on them plays MSC's own drinking and eating instead), with the vanilla
+// look-alike's effects, keywords and use sound. The empty bottle and cigarettes are misc items: the
+// bottle comes out into MSC's hand, cigarettes are smoked in MSC. Each looks like the vanilla item
+// named (model, bounds and sounds copied).
 (IModelGetter? Model, IObjectBoundsGetter? Bounds, FormKey? Up, FormKey? Down) Look(string editorId)
 {
     var food = skyrim.Ingestibles.FirstOrDefault(r => r.EditorID == editorId);
@@ -413,21 +409,44 @@ foreach (var (effect, spell) in new[] {
         ?? throw new InvalidOperationException($"{editorId} not in Skyrim.esm as food or misc item");
     return (misc.Model, misc.ObjectBounds, misc.PickUpSound.FormKeyNullable, misc.PutDownSound.FormKeyNullable);
 }
-var pocket = new (string EditorId, string Name, string LooksLike, float Weight, uint Value)[]
+var pocket = new (string EditorId, string Name, string LooksLike, float Weight, uint Value, bool Food)[]
 {
-    ("PerkeleRimBeer", "MSC Beer", "Ale", 0.5f, 3),
-    ("PerkeleRimEmptyBottle", "Empty Bottle", "WineBottle01AEmpty", 0.3f, 0),
-    ("PerkeleRimSausages", "Sausages", "FoodBeefCooked", 0.8f, 4),
-    ("PerkeleRimPizza", "Pizza", "FoodPie", 0.5f, 5),
-    ("PerkeleRimPotatoChips", "Potato Chips", "FoodPotatoesBaked", 0.3f, 2),
-    ("PerkeleRimMacaronBox", "Macaron Box", "FoodSweetroll", 0.5f, 3),
-    ("PerkeleRimCigarette", "Cigarette", "Quill01", 0f, 1),
+    ("PerkeleRimBeer", "MSC Beer", "Ale", 0.5f, 3, true),
+    ("PerkeleRimEmptyBottle", "Empty Bottle", "WineBottle01AEmpty", 0.3f, 0, false),
+    ("PerkeleRimSausages", "Sausages", "FoodBeefCooked", 0.8f, 4, true),
+    ("PerkeleRimPizza", "Pizza", "FoodPie", 0.5f, 5, true),
+    ("PerkeleRimPotatoChips", "Potato Chips", "FoodPotatoesBaked", 0.3f, 2, true),
+    ("PerkeleRimMacaronBox", "Macaron Box", "FoodSweetroll", 0.5f, 3, true),
+    ("PerkeleRimCigarette", "Cigarette", "Quill01", 0f, 1, false),
 };
 for (uint i = 0; i < pocket.Length; i++)
 {
     var p = pocket[i];
     var look = Look(p.LooksLike);
-    var item = new MiscItem(new FormKey(mod.ModKey, 0x906 + i), SkyrimRelease.SkyrimSE)
+    var key = new FormKey(mod.ModKey, 0x906 + i);
+    if (p.Food)
+    {
+        var vanilla = skyrim.Ingestibles.First(r => r.EditorID == p.LooksLike);
+        var food = new Ingestible(key, SkyrimRelease.SkyrimSE)
+        {
+            EditorID = p.EditorId,
+            Name = p.Name,
+            Model = look.Model?.DeepCopy(),
+            ObjectBounds = look.Bounds?.DeepCopy() ?? new ObjectBounds(),
+            Weight = p.Weight,
+            Value = p.Value,
+            Flags = Ingestible.Flag.FoodItem,
+            Effects = new ExtendedList<Effect>(vanilla.Effects.Select(e => e.DeepCopy())),
+        };
+        if (vanilla.Keywords != null) food.Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>>(vanilla.Keywords);
+        if (vanilla.ConsumeSound.FormKeyNullable is { } sound) food.ConsumeSound.SetTo(sound);
+        if (look.Up != null) food.PickUpSound.SetTo(look.Up.Value);
+        if (look.Down != null) food.PutDownSound.SetTo(look.Down.Value);
+        mod.Ingestibles.Add(food);
+        Console.WriteLine($"  {key.ID:X3} {p.EditorId} (food, looks like {p.LooksLike})");
+        continue;
+    }
+    var item = new MiscItem(key, SkyrimRelease.SkyrimSE)
     {
         EditorID = p.EditorId,
         Name = p.Name,
@@ -440,6 +459,46 @@ for (uint i = 0; i < pocket.Length; i++)
     if (look.Down != null) item.PutDownSound.SetTo(look.Down.Value);
     mod.MiscItems.Add(item);
     Console.WriteLine($"  {item.FormKey.ID:X3} {item.EditorID} (looks like {p.LooksLike})");
+}
+
+// ---- Hotbar ----
+//
+// Fixed ids the SKSE plugin looks up (skse/src/pocket/Pocket.cpp, protocol/cpp/hotbar.h): three lesser
+// powers the plugin gives the player, so Skyrim's Favorites menu can bind MSC's own keys to numbers.
+// While MSC has the player a number bound to one does that power's MSC key; casting one does nothing
+// (a script effect without a script).
+var hotbarEffect = new MagicEffect(new FormKey(mod.ModKey, 0x919), SkyrimRelease.SkyrimSE)
+{
+    EditorID = "PerkeleRimHotbarEffect",
+    Name = "Kumpo's Hotbar",
+    Flags = MagicEffect.Flag.NoDuration | MagicEffect.Flag.NoArea | MagicEffect.Flag.NoMagnitude | MagicEffect.Flag.HideInUI,
+    Archetype = new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Script),
+    CastType = CastType.FireAndForget,
+    TargetType = TargetType.Self,
+    MagicSkill = ActorValue.None,
+    ResistValue = ActorValue.None,
+};
+mod.MagicEffects.Add(hotbarEffect);
+Console.WriteLine($"  {hotbarEffect.FormKey.ID:X3} {hotbarEffect.EditorID}");
+foreach (var (id, editorId, name, description) in new[] {
+    (0x91Au, "PerkeleRimHotbarHands", "Empty Hands", "Kumpo puts his hands to use (My Summer Car's key 1). Favorite it and bind a number key."),
+    (0x91Bu, "PerkeleRimHotbarTools", "Tools", "Kumpo takes his tools out (My Summer Car's key 2). Favorite it and bind a number key."),
+    (0x91Cu, "PerkeleRimHotbarBottle", "Throw Empty Bottle", "Kumpo takes an Empty Bottle into his hand, to throw. Favorite it and bind a number key.") })
+{
+    var power = new Spell(new FormKey(mod.ModKey, id), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = editorId,
+        Name = name,
+        Description = description,
+        Type = SpellType.LesserPower,
+        CastType = CastType.FireAndForget,
+        TargetType = TargetType.Self,
+        Flags = SpellDataFlag.ManualCostCalc,
+        BaseCost = 0,
+    };
+    power.Effects.Add(new Effect { BaseEffect = hotbarEffect.ToNullableLink(), Data = new EffectData() });
+    mod.Spells.Add(power);
+    Console.WriteLine($"  {power.FormKey.ID:X3} {power.EditorID}");
 }
 
 // ---- Finn's voice ----
@@ -510,7 +569,7 @@ foreach (var spot in stockSpots)
 mod.FormLists.Add(spotList);
 Console.WriteLine($"  910 {spotList.EditorID} ({spotList.Items.Count} spots)");
 
-mod.ModHeader.Stats.NextFormID = 0x917;  // after PerkeleRimDrunkStaminaRate (0x916)
+mod.ModHeader.Stats.NextFormID = 0x91D;  // after PerkeleRimHotbarBottle (0x91C)
 // Header 1.70, not Mutagen's 1.71: Skyrim SE 1.5.97 skips 1.71 plugins, AE loads both.
 mod.ModHeader.Stats.Version = 1.7f;
 

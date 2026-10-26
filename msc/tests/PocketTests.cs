@@ -75,41 +75,7 @@ namespace PerkeleRim.Tests
             Assert.That(Pocket.Decide(Key3, Beer, true, Pocket.None, 0), Is.EqualTo(Pocket.Action.Nothing));
         }
 
-        [Test]
-        public void EveryKindHasAStock()
-        {
-            Assert.That(Pocket.Stock(Beer), Is.EqualTo(6));
-            Assert.That(Pocket.Stock(Cigs), Is.EqualTo(20));
-            Assert.That(Pocket.Stock(Bottle), Is.EqualTo(10));
-            for (int kind = 0; kind < Wire.PocketKinds; kind++) Assert.That(Pocket.Stock(kind), Is.GreaterThan(0));
-            Assert.That(Pocket.Stock(Pocket.None), Is.EqualTo(0));
-        }
-
-        [Test]
-        public void UsingOneTopsTheStackBackUp()
-        {
-            Assert.That(Pocket.Missing(Beer, 6), Is.EqualTo(0));   // full: nothing to add
-            Assert.That(Pocket.Missing(Beer, 5), Is.EqualTo(1));   // one drunk
-            Assert.That(Pocket.Missing(Beer, 0), Is.EqualTo(6));   // first F10: an empty pocket is filled
-            Assert.That(Pocket.Missing(Beer, 9), Is.EqualTo(0));   // extra bottles pocketed stay
-            Assert.That(Pocket.Missing(Bottle, 9), Is.EqualTo(1)); // one thrown
-            Assert.That(Pocket.Missing(Cigs, 19), Is.EqualTo(1));  // one smoked
-        }
-
-        [Test]
-        public void ARunningTopUpCountsWhatSkyrimHasNotAppliedYet()
-        {
-            var ledger = new PocketLedger(7);
-            ledger.OnCounts(7, 0, Counts(6, 10, 20));
-            var drink = ledger.Next(Beer, -1);
-            ledger.Sent(drink);
-            Assert.That(Pocket.Missing(Beer, ledger.Available(Beer)), Is.EqualTo(1));
-            var back = ledger.Next(Beer, 1);
-            ledger.Sent(back);
-            Assert.That(Pocket.Missing(Beer, ledger.Available(Beer)), Is.EqualTo(0));  // not sent twice
-        }
-
-        static uint[] Counts(uint beer, uint bottles = 0, uint cigs = 0) => new uint[] { beer, bottles, 0, 0, 0, 0, cigs };
+        static uint[] Counts(uint beer, uint bottles = 0, uint cigs = 0, uint gold = 0) => new uint[] { beer, bottles, 0, 0, 0, 0, cigs, gold };
 
         [Test]
         public void LedgerCountsChangesSkyrimHasNotAppliedYet()
@@ -149,7 +115,7 @@ namespace PerkeleRim.Tests
         [Test]
         public void CigarettesStartFromMscThenFollowEitherSide()
         {
-            var mirror = new CigaretteMirror();
+            var mirror = new CountMirror(false);
             bool set;
             long value;
             Assert.That(mirror.Step(15, 0, out set, out value), Is.EqualTo(15));  // MSC's count wins at link up
@@ -167,7 +133,7 @@ namespace PerkeleRim.Tests
         [Test]
         public void UnsentCigaretteChangesComeBack()
         {
-            var mirror = new CigaretteMirror();
+            var mirror = new CountMirror(false);
             bool set;
             long value;
             int delta = mirror.Step(10, 4, out set, out value);
@@ -179,6 +145,37 @@ namespace PerkeleRim.Tests
             Assert.That(mirror.Step(9, 10, out set, out value), Is.EqualTo(-1));
             mirror.Reset();
             Assert.That(mirror.Step(9, 3, out set, out value), Is.EqualTo(6));
+        }
+        [Test]
+        public void GoldStartsFromSkyrimThenFollowsEitherSide()
+        {
+            var mirror = new CountMirror(true);
+            bool set;
+            long value;
+            Assert.That(mirror.Step(3000, 120, out set, out value), Is.EqualTo(0));  // Skyrim's gold wins at link up
+            Assert.That(set && value == 120, Is.True);
+            Assert.That(mirror.Step(120, 120, out set, out value), Is.EqualTo(0));
+            Assert.That(set, Is.False);
+            Assert.That(mirror.Step(68, 120, out set, out value), Is.EqualTo(-52));  // a beer case bought in MSC
+            Assert.That(mirror.Step(68, 168, out set, out value), Is.EqualTo(0));    // 100 gold looted in Skyrim
+            Assert.That(set && value == 168, Is.True);
+            Assert.That(mirror.Step(168, 168, out set, out value), Is.EqualTo(0));
+            Assert.That(set, Is.False);
+            mirror.Reset();
+            Assert.That(mirror.Step(168, 168, out set, out value), Is.EqualTo(0));   // equal at link up: nothing to set
+            Assert.That(set, Is.False);
+        }
+
+        [Test]
+        public void MoneyIsWholeMarksAndKeepsThePennies()
+        {
+            Assert.That(Pocket.Gold(152.75f), Is.EqualTo(152));
+            Assert.That(Pocket.Gold(0.5f), Is.EqualTo(0));
+            Assert.That(Pocket.Gold(-10f), Is.EqualTo(0));
+            Assert.That(Pocket.Money(200, 152.75f), Is.EqualTo(200.75f).Within(0.001f));
+            Assert.That(Pocket.Money(0, 152.75f), Is.EqualTo(0.75f).Within(0.001f));
+            Assert.That(Pocket.Money(40, -3f), Is.EqualTo(40f));
+            Assert.That(Pocket.Gold(Pocket.Money(41, 152.75f)), Is.EqualTo(41));
         }
     }
 }

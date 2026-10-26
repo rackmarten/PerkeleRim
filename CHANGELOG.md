@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Skyrim's food and drink feed Kumpo: eating lowers My Summer Car's hunger, drinks lower thirst, and ale, mead, wine, brandy and Skooma raise his drunk level by strength. A bottle of alcohol leaves an Empty Bottle in the inventory, ready to throw. MSC Beer and MSC's food can be eaten and drunk from Skyrim's inventory too.
+- Gold is Kumpo's money: My Summer Car's money follows Skyrim's gold both ways (one mark per gold). The Skyrim save is the truth, so loading a save brings its money back.
+- Skyrim's favorites hotkeys are Kumpo's hotbar: three new powers (Empty Hands, Tools, Throw Empty Bottle), MSC Beer, MSC's food and any Skyrim food or drink can be bound to 1 to 8 in the Favorites menu (after F10). Unbound numbers work as before.
+
+### Removed
+
+- The endless pocket (beer, bottles and food topped back up) and mead and ale turning into MSC Beer when picked up: mead stays mead and is drunk in Skyrim.
+
 ## [0.1.1] - 2026-10-22
 
 ### Added

@@ -82,9 +82,12 @@ F10 hands the player to My Summer Car and back. While MSC has the player you nev
 | F8 (driving) | chase camera for filming, on / off (hides the HUD) |
 | F11 | screenshot of both games, to Screenshots next to Start PerkeleRim.bat |
 | [ / ] / ; (on foot) | call the Jonnez moped / the Hayosiko van / the Kekmet tractor: it's parked in front of you, wherever it was |
-| Y, 3 to 8 | pocket (Skyrim's inventory, never runs out of beer, bottles, food or cigarettes); driving, 4 to 8 drink and eat |
+| Y, 3 to 8 | pocket (Skyrim's inventory): Y puts away, 3 an empty bottle into the hand, 4 to 8 drink a beer and eat (driving too) |
+| 1 to 8 | Skyrim's favorites hotkeys, if bound: food and drink, MSC Beer, or the Empty Hands / Tools / Throw Empty Bottle powers (bind them in the Favorites menu after F10) |
 
 Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, P, O, J, I, ...) still work. Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).
+
+Kumpo eats and drinks Skyrim's food: it feeds his MSC hunger and thirst, and Skyrim's ale, mead, wine and Skooma get him drunk (a bottle leaves an empty one to throw). Skyrim's gold is his MSC money, both ways.
 
 Kumpo fights with his fists: weapons and spells can't be equipped while MSC has the player, armor works as usual, and the drunker he is, the harder he hits and the more he can take. A punch also cuts spider webs and breaks destructibles in front of him (oil pots, barricades), and so does a thrown bottle that hits one. A throw from sneak at someone who hasn't noticed Kumpo is a sneak attack for double damage. Sitting in the Hayosiko van or the Kekmet is safe: nothing in Skyrim can hurt Kumpo there (the moped is no shelter, and a crash still hurts).
 
@@ -108,7 +111,6 @@ No dates, just intentions. What comes next depends a lot on what people enjoy, s
 
 - The Gifu truck, delivery jobs and traffic.
 - More Finnish summer: clear weather, long bright evenings, a sauna by the garage.
-- MSC money and Skyrim gold as one wallet.
 
 **Not planned**
 

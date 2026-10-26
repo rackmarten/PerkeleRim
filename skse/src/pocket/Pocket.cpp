@@ -1,5 +1,7 @@
 #include "pocket/Pocket.h"
 
+#include "food.h"
+#include "hotbar.h"
 #include "link/LinkService.h"
 
 namespace PerkeleRim::Pocket
@@ -7,10 +9,13 @@ namespace PerkeleRim::Pocket
     namespace
     {
         constexpr auto kPlugin = "PerkeleRim.esp"sv;
-        // Fixed local form ids, assigned by tools/esp-gen: the drinks list, and the items at
-        // kFirstItem + kPocket* kind.
-        constexpr RE::FormID kBeerDrinks = 0x900;
+        // Fixed local form ids, assigned by tools/esp-gen: the items at kFirstItem + kPocket* kind
+        // (gold is Skyrim's own), and the hotbar powers.
         constexpr RE::FormID kFirstItem = 0x906;
+        constexpr RE::FormID kGold = 0x00000F;  // Skyrim.esm Gold001
+        constexpr RE::FormID kHotbarHands = 0x91A;
+        constexpr RE::FormID kHotbarTools = 0x91B;
+        constexpr RE::FormID kHotbarBottle = 0x91C;
 
         constexpr float kCountEvery = 0.25f;  // seconds between looks at the inventory
 
@@ -19,7 +24,8 @@ namespace PerkeleRim::Pocket
         struct State
         {
             std::array<RE::TESBoundObject*, Protocol::kPocketKinds> items{};
-            RE::BGSListForm*                                         drinks = nullptr;
+            std::array<RE::SpellItem*, 3>                            powers{};  // Hands, Tools, Bottle
+            std::unordered_map<RE::FormID, Food::Effect>             food;      // food.h's table, resolved
             std::uint32_t                                            session = 0;  // MSC's, of the last PocketChange
             std::uint32_t                                            applied = 0;  // its seq
             Counts                                                   counts{};
@@ -32,40 +38,59 @@ namespace PerkeleRim::Pocket
 
         bool Loaded()
         {
-            return std::ranges::all_of(state.items, [](auto* a_item) { return a_item != nullptr; });
+            return std::ranges::all_of(state.items, [](auto* a_item) { return a_item != nullptr; }) &&
+                   std::ranges::all_of(state.powers, [](auto* a_power) { return a_power != nullptr; });
         }
 
-        // Mead or ale picked up becomes as much MSC beer.
-        void SwapForBeer(RE::FormID a_drink, std::int32_t a_count)
+        // What an ingestible does to MSC's needs: food.h's table, else by its sound and weight for
+        // other food; nothing for potions that aren't listed.
+        std::optional<Food::Effect> EffectOf(RE::AlchemyItem* a_item)
+        {
+            if (const auto it = state.food.find(a_item->GetFormID()); it != state.food.end()) {
+                return it->second;
+            }
+            if (!a_item->IsFood()) {
+                return std::nullopt;
+            }
+            const auto* sound = a_item->data.consumptionSound;
+            const auto  id = sound ? sound->GetFormID() : 0;
+            const auto  kind = id == Food::kSoundBottle ? Food::Sound::Bottle : id == Food::kSoundSoup ? Food::Sound::Soup : Food::Sound::Eat;
+            return Food::Fallback(kind, a_item->GetWeight());
+        }
+
+        // Kumpo ate or drank a_item in Skyrim.
+        void Consumed(RE::FormID a_item)
         {
             auto* player = RE::PlayerCharacter::GetSingleton();
-            auto* drink = RE::TESForm::LookupByID<RE::TESBoundObject>(a_drink);
-            auto* beer = state.items[Protocol::kPocketBeer];
-            if (!player || !drink || !beer) {
+            auto* item = RE::TESForm::LookupByID<RE::AlchemyItem>(a_item);
+            if (!player || !item) {
                 return;
             }
-            const auto count = (std::min)(a_count, player->GetItemCount(drink));
-            if (count <= 0) {
+            const auto effect = EffectOf(item);
+            if (!effect) {
                 return;
             }
-            player->RemoveItem(drink, count, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
-            player->AddObjectToContainer(beer, nullptr, count, nullptr);
-            const auto text = std::format("{} became {}", drink->GetName(), beer->GetName());
-            RE::SendHUDMessage::ShowHUDMessage(text.c_str());
-            SKSE::log::info("pocket: {} x{} became {}", drink->GetName(), count, beer->GetName());
+            Protocol::ConsumeEvent message{ effect->hunger, effect->thirst, effect->urine, effect->drunk };
+            const bool sent = LinkService::Get().Send(Protocol::MessageType::ConsumeEvent, &message, sizeof(message));
+            SKSE::log::info("food: {} hunger {:+.0f} thirst {:+.0f} urine {:+.0f} drunk {:+.3f}{}", item->GetName(), effect->hunger, effect->thirst,
+                effect->urine, effect->drunk, sent ? "" : " (not sent, no link)");
+            if (effect->bottle) {
+                player->AddObjectToContainer(state.items[Protocol::kPocketBottle], nullptr, 1, nullptr);
+                state.dirty = true;
+            }
         }
 
-        class ContainerSink : public RE::BSTEventSink<RE::TESContainerChangedEvent>
+        // Skyrim sends an equip event for every potion drunk and food eaten.
+        class EquipSink : public RE::BSTEventSink<RE::TESEquipEvent>
         {
         public:
-            RE::BSEventNotifyControl ProcessEvent(const RE::TESContainerChangedEvent* a_event, RE::BSTEventSource<RE::TESContainerChangedEvent>*) override
+            RE::BSEventNotifyControl ProcessEvent(const RE::TESEquipEvent* a_event, RE::BSTEventSource<RE::TESEquipEvent>*) override
             {
-                if (a_event && a_event->itemCount > 0 && a_event->newContainer == 0x14 && state.drinks &&
-                    state.drinks->HasForm(a_event->baseObj)) {
-                    // Not from inside the inventory change itself.
-                    const auto drink = a_event->baseObj;
-                    const auto count = a_event->itemCount;
-                    SKSE::GetTaskInterface()->AddTask([drink, count]() { SwapForBeer(drink, count); });
+                if (a_event && a_event->equipped && a_event->actor && a_event->actor->IsPlayerRef()) {
+                    const auto item = a_event->baseObject;
+                    if (auto* form = RE::TESForm::LookupByID(item); form && form->Is(RE::FormType::AlchemyItem)) {
+                        SKSE::GetTaskInterface()->AddTask([item]() { Consumed(item); });  // not from inside the equip itself
+                    }
                 }
                 return RE::BSEventNotifyControl::kContinue;
             }
@@ -79,22 +104,86 @@ namespace PerkeleRim::Pocket
             }
             return counts;
         }
+
+        // The hotbar powers, so the Favorites menu can bind them. Skyrim says "Power added" once.
+        void GivePowers(RE::PlayerCharacter* a_player)
+        {
+            for (auto* power : state.powers) {
+                if (!a_player->HasSpell(power)) {
+                    a_player->AddSpell(power);
+                    SKSE::log::info("hotbar: gave the player {}", power->GetName());
+                }
+            }
+        }
+
+        // What Skyrim's hotkey a_slot holds: a spell (MagicFavorites) or an item in the inventory
+        // with that ExtraHotkey.
+        Hotbar::Bound BoundTo(RE::PlayerCharacter* a_player, int a_slot, RE::TESBoundObject*& a_item)
+        {
+            a_item = nullptr;
+            if (auto* magic = RE::MagicFavorites::GetSingleton(); magic && static_cast<std::uint32_t>(a_slot) < magic->hotkeys.size()) {
+                if (auto* form = magic->hotkeys[a_slot]) {
+                    return form == state.powers[0] ? Hotbar::Bound::Hands
+                         : form == state.powers[1] ? Hotbar::Bound::Tools
+                         : form == state.powers[2] ? Hotbar::Bound::Bottle
+                                                    : Hotbar::Bound::Other;
+                }
+            }
+            auto* changes = a_player->GetInventoryChanges();
+            if (!changes || !changes->entryList) {
+                return Hotbar::Bound::None;
+            }
+            for (auto* entry : *changes->entryList) {
+                if (!entry || !entry->object || !entry->extraLists) {
+                    continue;
+                }
+                for (auto* extra : *entry->extraLists) {
+                    auto* hotkey = extra ? extra->GetByType<RE::ExtraHotkey>() : nullptr;
+                    if (!hotkey || static_cast<int>(hotkey->hotkey.get()) != a_slot) {
+                        continue;
+                    }
+                    a_item = entry->object;
+                    if (a_item == state.items[Protocol::kPocketBeer]) return Hotbar::Bound::Beer;
+                    if (a_item == state.items[Protocol::kPocketSausages]) return Hotbar::Bound::Sausages;
+                    if (a_item == state.items[Protocol::kPocketPizza]) return Hotbar::Bound::Pizza;
+                    if (a_item == state.items[Protocol::kPocketChips]) return Hotbar::Bound::Chips;
+                    if (a_item == state.items[Protocol::kPocketMacaron]) return Hotbar::Bound::Macaron;
+                    return a_item->Is(RE::FormType::AlchemyItem) ? Hotbar::Bound::Consumable : Hotbar::Bound::Other;
+                }
+            }
+            return Hotbar::Bound::None;
+        }
     }
 
     void OnDataLoaded()
     {
-        static ContainerSink containerSink;
+        static EquipSink equipSink;
         auto* data = RE::TESDataHandler::GetSingleton();
-        state.drinks = data ? data->LookupForm<RE::BGSListForm>(kBeerDrinks, kPlugin) : nullptr;
         for (std::uint32_t i = 0; i < Protocol::kPocketKinds; i++) {
-            state.items[i] = data ? data->LookupForm<RE::TESObjectMISC>(kFirstItem + i, kPlugin) : nullptr;
+            state.items[i] = !data ? nullptr
+                           : i == Protocol::kPocketGold ? RE::TESForm::LookupByID<RE::TESBoundObject>(kGold)
+                                                        : data->LookupForm<RE::TESBoundObject>(kFirstItem + i, kPlugin);
         }
-        if (!state.drinks || !Loaded()) {
-            SKSE::log::warn("pocket: {} has no drink list or pocket items, rebuild it with scripts/build-esp.ps1", kPlugin);
+        const RE::FormID powers[] = { kHotbarHands, kHotbarTools, kHotbarBottle };
+        for (std::size_t i = 0; i < state.powers.size(); i++) {
+            state.powers[i] = data ? data->LookupForm<RE::SpellItem>(powers[i], kPlugin) : nullptr;
+        }
+        if (!Loaded()) {
+            SKSE::log::warn("pocket: {} has no pocket items or hotbar powers, rebuild it with scripts/build-esp.ps1", kPlugin);
             return;
         }
+        std::size_t missing = 0;
+        for (const auto& entry : Food::kTable) {
+            const auto* file = Food::kPluginFiles[static_cast<std::size_t>(entry.plugin)];
+            if (auto* form = data->LookupForm(entry.id, file)) {
+                state.food[form->GetFormID()] = entry.effect;
+            } else {
+                missing++;  // a DLC that isn't installed
+            }
+        }
+        SKSE::log::info("food: {} of {} listed foods and drinks found ({} in a DLC that isn't loaded)", state.food.size(), std::size(Food::kTable), missing);
         if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
-            events->AddEventSink<RE::TESContainerChangedEvent>(&containerSink);
+            events->AddEventSink<RE::TESEquipEvent>(&equipSink);
         }
     }
 
@@ -116,6 +205,7 @@ namespace PerkeleRim::Pocket
             return;
         }
         state.sinceCount = 0.0f;
+        GivePowers(a_player);
         state.counts = Count(a_player);
         if (state.sentValid && !state.dirty && state.counts == state.sent) {
             return;
@@ -124,8 +214,8 @@ namespace PerkeleRim::Pocket
         std::ranges::copy(state.counts, message.counts);
         if (LinkService::Get().Send(Protocol::MessageType::PocketCounts, &message, sizeof(message))) {
             if (!state.sentValid || state.counts != state.sent) {
-                SKSE::log::info("pocket: counts to MSC {} {} {} {} {} {} {} (applied {}:{})", state.counts[0], state.counts[1], state.counts[2],
-                    state.counts[3], state.counts[4], state.counts[5], state.counts[6], state.session, state.applied);
+                SKSE::log::info("pocket: counts to MSC {} {} {} {} {} {} {} gold {} (applied {}:{})", state.counts[0], state.counts[1], state.counts[2],
+                    state.counts[3], state.counts[4], state.counts[5], state.counts[6], state.counts[7], state.session, state.applied);
             }
             state.sent = state.counts;
             state.sentValid = true;
@@ -168,5 +258,19 @@ namespace PerkeleRim::Pocket
                 SKSE::log::info("pocket: -{} {}", count, item->GetName());
             }
         }
+    }
+
+    std::uint16_t Hotkey(RE::PlayerCharacter* a_player, int a_slot)
+    {
+        RE::TESBoundObject* item = nullptr;
+        const auto bound = Loaded() && a_player ? BoundTo(a_player, a_slot, item) : Hotbar::Bound::None;
+        const auto action = Hotbar::Resolve(a_slot, bound);
+        if (action.use && item) {
+            SKSE::log::info("hotbar: {} uses {}", a_slot + 1, item->GetName());
+            RE::ActorEquipManager::GetSingleton()->EquipObject(a_player, item);  // eaten or drunk, EquipSink follows
+        } else if (bound != Hotbar::Bound::None) {
+            SKSE::log::info("hotbar: {} is MSC's key {} ({})", a_slot + 1, action.mscKey, item ? item->GetName() : "a power or spell");
+        }
+        return action.mscKey;
     }
 }

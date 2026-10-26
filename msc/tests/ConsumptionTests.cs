@@ -61,5 +61,23 @@ namespace PerkeleRim.Tests
             Assert.That(Consumption.Kind("Use", null, "Destroy", false), Is.Zero);
             Assert.That(Consumption.Kind(null, "Eat", "Destroy", false), Is.Zero);
         }
+
+        [Test]
+        public void SkyrimFoodLowersNeedsDownToZero()
+        {
+            Assert.That(Consumption.AddNeed(60f, -15f), Is.EqualTo(45f));   // a sweet roll
+            Assert.That(Consumption.AddNeed(10f, -15f), Is.EqualTo(0f));    // full
+            Assert.That(Consumption.AddNeed(-5f, -15f), Is.EqualTo(-5f));   // already below 0 from MSC: stays
+            Assert.That(Consumption.AddNeed(30f, 5f), Is.EqualTo(35f));     // chips make him thirsty
+            Assert.That(Consumption.AddNeed(-5f, 2f), Is.EqualTo(-3f));
+        }
+
+        [Test]
+        public void SkyrimAlcoholAddsDrunkUpToEight()
+        {
+            Assert.That(Consumption.AddDrunk(0.4f, 0.08f), Is.EqualTo(0.48f).Within(0.0001f));  // an ale
+            Assert.That(Consumption.AddDrunk(7f, 2.5f), Is.EqualTo(8f));                          // Skooma on top
+            Assert.That(Consumption.AddDrunk(0f, 0f), Is.EqualTo(0f));
+        }
     }
 }

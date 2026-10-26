@@ -5,9 +5,11 @@ using PerkeleRim.Protocol;
 namespace PerkeleRim
 {
     // The pocket's rules (docs/PROTOCOL.md "The pocket"): Skyrim's inventory holds MSC's beer, empty
-    // bottles, food and cigarettes. Y puts what MSC's player carries (or, hands empty, what the
-    // crosshair is on) in it; keys 3 to 8 drink a beer or eat food from it, or take an empty bottle
-    // out into MSC's hand. 1 and 2 stay MSC's (hands, tools). Unity-free.
+    // bottles, food and cigarettes, and its gold is MSC's money. Y puts what MSC's player carries
+    // (or, hands empty, what the crosshair is on) in it; keys 3 to 8 drink a beer or eat food from
+    // it, or take an empty bottle out into MSC's hand. 1 and 2 stay MSC's (hands, tools). Skyrim's
+    // hotbar can put these on other numbers (protocol/cpp/hotbar.h): MSC gets the key they stand
+    // for. Unity-free.
     public static class Pocket
     {
         public const int None = -1;
@@ -56,14 +58,11 @@ namespace PerkeleRim
             return None;
         }
 
-        // Endless supplies (v0.1, until Skyrim's own food and drink are the source): the pocket always
-        // holds at least this much of each kind. Using or throwing one tops the stack back up.
-        public static int Stock(int kind) =>
-            kind == (int)Wire.PocketBeer ? 6 : kind == (int)Wire.PocketBottle ? 10 : kind == (int)Wire.PocketCigarettes ? 20
-            : kind >= 0 && kind < Wire.PocketKinds ? 2 : 0;
+        // MSC's money (PlayerMoney, marks with pennies) as Skyrim's gold: whole marks.
+        public static long Gold(float money) => money <= 0f ? 0 : (long)Math.Floor(money);
 
-        // How many of a kind to add so the pocket holds its stock again (0: it does).
-        public static long Missing(int kind, long available) => Math.Max(0, Stock(kind) - available);
+        // MSC's money for Skyrim's gold, keeping the pennies MSC had.
+        public static float Money(long gold, float money) => gold + (money > 0f ? money - (float)Math.Floor(money) : 0f);
 
         public static bool IsKey(int keyCode) => keyCode == PocketKey || SlotOfKey(keyCode) != None;
 
@@ -149,18 +148,23 @@ namespace PerkeleRim
         }
     }
 
-    // Keeps MSC's cigarette count (global PlayerCigarettes) and Skyrim's Cigarette items equal. When
-    // the link comes up MSC's count wins (Skyrim has none of MSC's cigarettes the first time);
-    // after that a change on either side is copied to the other.
-    public class CigaretteMirror
+    // Keeps one of MSC's counts and a pocket kind equal: cigarettes (global PlayerCigarettes and
+    // Skyrim's Cigarette items) and money (PlayerMoney in whole marks and Skyrim's gold). When the
+    // link comes up one side wins: MSC's cigarettes (Skyrim has none of MSC's the first time),
+    // Skyrim's gold (the Skyrim save is the truth). After that a change on either side is copied to
+    // the other.
+    public class CountMirror
     {
+        readonly bool skyrimFirst;
         bool synced;
         long last;  // the count both sides agreed on
 
+        public CountMirror(bool skyrimFirst) { this.skyrimFirst = skyrimFirst; }
+
         public void Reset() { synced = false; }
 
-        // msc: PlayerCigarettes now, skyrim: the pocket's count (PocketLedger.Available). Returns the
-        // change to send to Skyrim (0: none) and sets setMsc when MSC's count must become newMsc.
+        // msc: MSC's count now, skyrim: the pocket's (PocketLedger.Available). Returns the change to
+        // send to Skyrim (0: none) and sets setMsc when MSC's count must become newMsc.
         public int Step(long msc, long skyrim, out bool setMsc, out long newMsc)
         {
             setMsc = false;
@@ -169,6 +173,13 @@ namespace PerkeleRim
             if (!synced)
             {
                 synced = true;
+                if (skyrimFirst)
+                {
+                    last = skyrim;
+                    setMsc = msc != skyrim;
+                    newMsc = skyrim;
+                    return 0;
+                }
                 last = msc;
                 return (int)(msc - skyrim);
             }
@@ -180,7 +191,7 @@ namespace PerkeleRim
                 return 0;
             }
             if (msc == last) return 0;
-            int delta = (int)(msc - last);  // smoked, or a pack bought or picked up in MSC
+            int delta = (int)(msc - last);  // smoked or paid, or bought or picked up in MSC
             last = msc;
             return delta;
         }
