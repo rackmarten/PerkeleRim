@@ -76,7 +76,6 @@ namespace PerkeleRim
         public static string Pick(uint kind, uint shout, IList<KeyValuePair<string, string>> lines, double variant)
         {
             var thunder = new List<string>();
-            var perkele = new List<string>();
             var swears = new List<string>();
             var names = new List<string>();
             foreach (var line in lines)
@@ -84,7 +83,6 @@ namespace PerkeleRim
                 if (line.Key == null) continue;
                 Add(names, line.Key);
                 if (IsThunder(line.Value)) Add(thunder, line.Key);
-                else if (IsPerkele(line.Key, line.Value)) Add(perkele, line.Key);
                 else if (System.Array.IndexOf(Swears, line.Key) >= 0) Add(swears, line.Key);
             }
             if (kind != Wire.ShoutUnrelentingForce)
@@ -93,8 +91,8 @@ namespace PerkeleRim
                 if (word.HasValue && names.Contains(word.Value.Clip)) return word.Value.Clip;
                 if (swears.Count > 0) return One(swears, variant);
             }
-            if (thunder.Count > 0) return thunder[0];
-            return perkele.Count > 0 ? One(perkele, variant) : null;
+            // Only swear09: Human_Perkele sounds distorted, so it's never yelled.
+            return thunder.Count > 0 ? thunder[0] : null;
         }
 
         // How much of the Perkele clip (length seconds long) to play for a shout of words words:

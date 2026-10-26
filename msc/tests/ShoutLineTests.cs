@@ -82,11 +82,11 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
-        public void FallsBackToWhateverPerkeleThereIs()
+        public void NeverYellsHumanPerkele()
         {
             var onlyPerkele = new List<KeyValuePair<string, string>> { L("Human_Perkele", null), L("Human_Royh", null) };
-            Assert.That(ShoutLine.Pick(Wire.ShoutUnrelentingForce, UnrelentingForce, onlyPerkele, 0.5), Is.EqualTo("Human_Perkele"));
-            Assert.That(ShoutLine.Pick(Wire.ShoutOther, Disarm, onlyPerkele, 0.5), Is.EqualTo("Human_Perkele"));
+            Assert.That(ShoutLine.Pick(Wire.ShoutUnrelentingForce, UnrelentingForce, onlyPerkele, 0.5), Is.Null);
+            Assert.That(ShoutLine.Pick(Wire.ShoutOther, Disarm, onlyPerkele, 0.5), Is.Null);
             Assert.That(ShoutLine.Pick(Wire.ShoutUnrelentingForce, UnrelentingForce, new List<KeyValuePair<string, string>> { L("Human_Vittu", null) }, 0.5), Is.Null);
         }
 
