@@ -327,6 +327,7 @@ namespace PerkeleRim::VehicleView
             return;
         }
         if (!Load(view, name)) {
+            Hitbox::Hide(a_vehicle);
             return;
         }
         Attach(view, name);

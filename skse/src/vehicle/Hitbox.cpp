@@ -124,7 +124,8 @@ namespace PerkeleRim::Hitbox
         {
             RE::NiPointer<RE::bhkShape>     shape;
             RE::NiPointer<RE::bhkRigidBody> body;
-            RE::NiPointer<RE::NiNode>       node;  // holds the collision object, for Skyrim to find the body's owner (none: no reference)
+            RE::NiPointer<RE::NiNode>             node;       // the collision object's, for Skyrim to find the body's owner (none: no reference)
+            RE::NiPointer<RE::bhkCollisionObject> collision;  // links node and body
         };
 
         struct Body
@@ -138,9 +139,10 @@ namespace PerkeleRim::Hitbox
             RE::NiPoint3                last;          // where it was keyframed last
             std::string                 out;           // why it is out of the world, as last logged
         };
-        std::array<Body, Protocol::kVehicleCount> bodies;
-        // Parts of a model MSC replaced (MSC restarted): out of the world, kept alive like ModelView's nodes.
-        std::vector<Part> retired;
+        // Never destroyed, like ModelView's nodes: at exit the game's destructors would run after its
+        // heap and Havok are gone. Parts of a model MSC replaced (MSC restarted) go to retired, out of the world.
+        auto& bodies = *new std::array<Body, Protocol::kVehicleCount>();
+        auto& retired = *new std::vector<Part>();
 
         RE::hkVector4 HavokPosition(const float (&a_position)[3])
         {
@@ -206,6 +208,7 @@ namespace PerkeleRim::Hitbox
             static REL::Relocation<std::uintptr_t> vtable{ RE::VTABLE_bhkCollisionObject[0] };
             *reinterpret_cast<std::uintptr_t*>(collision) = vtable.address();
             Havok::SetWorldObject(collision, body);
+            part.collision.reset(collision);
             return part;
         }
 
@@ -309,7 +312,11 @@ namespace PerkeleRim::Hitbox
 
     void Show(std::uint32_t a_vehicle, std::string_view a_name, std::uint32_t a_model, const Protocol::VehicleState& a_state)
     {
-        if (a_vehicle < 1 || a_vehicle > Protocol::kVehicleCount || a_model == 0) {
+        if (a_vehicle < 1 || a_vehicle > Protocol::kVehicleCount) {
+            return;
+        }
+        if (a_model == 0) {
+            Hide(a_vehicle);
             return;
         }
         auto& body = bodies[a_vehicle - 1];
