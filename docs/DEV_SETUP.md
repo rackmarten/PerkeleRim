@@ -94,13 +94,15 @@ scripts/package.ps1                # player release zip (launcher/ + built files
 scripts/starter-save.ps1           # copy your current MSC save into launcher/saves/MSC with thirst, hunger, urine, fatigue, stress, drunk and dirtiness at 0
 scripts/starter-save.ps1 -Skyrim   # copy your newest Skyrim save (made before the first F10) into launcher/saves/Skyrim as PerkeleRim-Kumpo
 scripts/launch-msc.ps1             # start MSC windowed at 640x480, lowest quality, single-threaded rendering, with no clicks (clicks Play! on the config dialog, presses past the news screen)
-scripts/restart-games.ps1 -Build    # close both games, build, deploy, start MSC and Skyrim (SKSE), wait for "link up"
+scripts/restart-games.ps1 -Build    # close both games, build, deploy, start MSC and Skyrim (SKSE), wait for "link up"; -NoPlace skips the window layout
 scripts/msc-save.ps1 snapshot NAME  # save MSC save data outside the repo; "restore NAME" puts it back
 scripts/spike.ps1 -Command dump    # hidden-MSC spike tools, see docs/SPIKE_HIDDEN_MSC.md
 scripts/skyrim-key.ps1 -Key F10    # press a key in Skyrim (brings it to the front); -Screenshot FILE saves its window
 ```
 
 For a test loop with no clicks at all, create an empty `PerkeleRim_autoload.txt` in both game folders: MSC then continues its save, and Skyrim continues its most recent save from the main menu (the SKSE plugin does it once per start). Delete the files to get the main menus back.
+
+`restart-games.ps1` and `launch-msc.ps1` also lay the two windows out so you can watch both: Skyrim in the top right corner of the primary screen, My Summer Car directly left of it with the top edges aligned. The positions are worked out from the screen's working area (taskbar excluded) and the real window sizes. Pass `-NoPlace` to leave the windows where Windows puts them; `launch-msc.ps1 -Fullscreen` is never moved.
 
 From WSL, call the same scripts through Windows PowerShell, e.g. `powershell.exe -File scripts/build.ps1`.
 

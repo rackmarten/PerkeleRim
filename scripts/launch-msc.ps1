@@ -8,12 +8,17 @@
     scripts/launch-msc.ps1
     scripts/launch-msc.ps1 -Width 1280 -Height 720
     scripts/launch-msc.ps1 -Width 2560 -Height 1440 -Fullscreen -Quality Fantastic   # for filming MSC itself
+    scripts/launch-msc.ps1 -NoPlace   # leave the window where Windows puts it
+.NOTES
+    Windowed MSC is moved to the left of Skyrim's spot in the top right corner of the primary screen,
+    top edges aligned (see Set-GameWindowLayout in common.ps1). Fullscreen is never moved.
 #>
 param(
     [int] $Width = 640,
     [int] $Height = 480,
     [string] $Quality = 'Fastest',
     [switch] $Fullscreen,
+    [switch] $NoPlace,
     [int] $TimeoutSeconds = 60
 )
 
@@ -44,10 +49,13 @@ Start-Process -WorkingDirectory $msc (Join-Path $msc 'mysummercar.exe') `
 #    the Amistech news screen waits for "press any key" before the menu (and MSCLoader) loads. A real
 #    key press on the focused window: with -force-gfx-direct, Unity ignores posted key messages.
 $clicked = $false
+$place = -not $NoPlace -and -not $Fullscreen
+$placed = $false
 $deadline = $launched.AddSeconds($TimeoutSeconds * 3)
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Milliseconds 500
     if ((Test-Path $log) -and (Get-Item $log).LastWriteTime -gt $launched) {
+        if ($place) { Set-GameWindowLayout }
         Write-Host 'Mod started (main menu reached).'
         return
     }
@@ -65,6 +73,7 @@ while ((Get-Date) -lt $deadline) {
     }
     $game = [PerkeleRim.Win32]::FindWindowEx([IntPtr]::Zero, [IntPtr]::Zero, 'UnityWndClass', 'My Summer Car')
     if ($game -ne [IntPtr]::Zero -and [PerkeleRim.Win32]::IsWindowVisible($game)) {
+        if ($place -and -not $placed) { Set-GameWindowLayout; $placed = $true }
         [PerkeleRim.Win32]::SetForegroundWindow($game) | Out-Null
         Start-Sleep -Milliseconds 200
         [PerkeleRim.Win32]::keybd_event(0x20, 0x39, 0, [UIntPtr]::Zero)  # Space down
