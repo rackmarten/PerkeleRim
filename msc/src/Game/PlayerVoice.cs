@@ -24,8 +24,13 @@ namespace PerkeleRim.Game
         List<string> grunts;  // clip names
         const float SwearEvery = 3f;
         float nextSwear;
-        readonly List<KeyValuePair<float, string>> queued = new List<KeyValuePair<float, string>>();  // intro clips: when, which
-        float introEnd;  // when the last queued intro clip is over: a cue never talks over the one before
+        // Intro clips, one at a time on a source of their own, each cut at its step's Max (MSC's drinking
+        // and snore clips are 20 s loops).
+        struct Queued { public float At; public string Clip; public float Max; }
+        readonly List<Queued> queued = new List<Queued>();
+        AudioSource introVoice;
+        float introStop;  // when the playing intro clip is cut
+        float introEnd;   // when the last queued intro clip is over: a cue never talks over the one before
 
         public PlayerVoice(Action<string> log)
         {
@@ -71,7 +76,7 @@ namespace PerkeleRim.Game
             Intro(c.cue, "Skyrim's intro cue");
         }
 
-        // Also the spike's "intro 1|2".
+        // Also the spike's "intro 1|2|3".
         public void Intro(uint cue, string what)
         {
             Find();
@@ -81,8 +86,9 @@ namespace PerkeleRim.Game
             {
                 var name = IntroLine.Pick(step.Clips, clips.Keys);
                 if (name == null) { log($"intro: no clip for {string.Join("/", step.Clips)}"); continue; }
-                queued.Add(new KeyValuePair<float, string>(start + step.At, name));
-                introEnd = Mathf.Max(introEnd, start + step.At + clips[name].length);
+                float seconds = IntroLine.Seconds(step, clips[name].length);
+                queued.Add(new Queued { At = start + step.At, Clip = name, Max = seconds });
+                introEnd = Mathf.Max(introEnd, start + step.At + seconds);
                 picked.Add(name);
             }
             log($"intro: cue {cue} ({what}): {string.Join(", ", picked.ToArray())}");
@@ -102,12 +108,27 @@ namespace PerkeleRim.Game
         {
             var sound = hurt.Due(Time.realtimeSinceStartup);
             if (sound != HurtSound.None) Say(sound, "low health, after the cooldown");
+            float now = Time.realtimeSinceStartup;
+            if (introVoice != null && introVoice.isPlaying && now >= introStop) introVoice.Stop();
             for (int i = 0; i < queued.Count; i++)
             {
-                if (queued[i].Key > Time.realtimeSinceStartup) continue;
-                Play(queued[i].Value, "plays", "the intro");
+                if (queued[i].At > now) continue;
+                PlayIntro(queued[i]);
                 queued.RemoveAt(i--);
             }
+        }
+
+        void PlayIntro(Queued q)
+        {
+            var listener = UnityEngine.Object.FindObjectOfType<AudioListener>();
+            if (listener == null) { log($"intro: no listener for {q.Clip}"); return; }
+            if (introVoice == null || introVoice.gameObject != listener.gameObject) introVoice = listener.gameObject.AddComponent<AudioSource>();
+            introVoice.spatialBlend = 0f;
+            introVoice.loop = false;
+            introVoice.clip = clips[q.Clip];
+            introVoice.Play();  // stops the clip before it, if it still runs
+            introStop = Time.realtimeSinceStartup + q.Max;
+            log($"voice: the player plays {q.Clip} for {q.Max:0.0} s (the intro)");
         }
 
         void Say(HurtSound sound, string what)

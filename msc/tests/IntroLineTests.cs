@@ -6,7 +6,7 @@ namespace PerkeleRim.Tests
 {
     public class IntroLineTests
     {
-        static readonly string[] Names = { "drinking", "Human_Snore2", "Human_Snore1", "Human_Burp", "yawn01", "Human_Perkele", "swear09", "hangover01", "hangover05" };
+        static readonly string[] Names = { "drinking", "Human_Snore2", "Human_Snore1", "Human_Burp", "burb01", "yawn01", "Human_Perkele", "swear09", "hangover01", "hangover05" };
 
         [Test]
         public void EachCueHasItsSteps()
@@ -40,12 +40,27 @@ namespace PerkeleRim.Tests
         public void TheCartSnoresThenGroansTheHangoverLineThenSaysTheGoodPerkele()
         {
             var blackout = IntroLine.Blackout.Select(s => IntroLine.Pick(s.Clips, Names)).ToArray();
-            Assert.That(blackout, Is.EqualTo(new[] { "drinking", "Human_Burp", "Human_Snore1", "hangover05" }));
+            Assert.That(blackout, Is.EqualTo(new[] { "Human_Snore1", "hangover05" }));
             Assert.That(IntroLine.Blackout.Last().At, Is.EqualTo(IntroLine.HangoverAt));
             Assert.That(IntroLine.Pick(IntroLine.Wake[0].Clips, Names), Is.EqualTo("swear09"));
             Assert.That(IntroLine.Hangover.Select(s => IntroLine.Pick(s.Clips, Names)), Is.EqualTo(new[] { "hangover05" }));
             foreach (var step in IntroLine.Blackout.Concat(IntroLine.Wake).Concat(IntroLine.Hangover))
                 Assert.That(step.Clips, Has.None.Contains("Perkele"), "the distorted Human_Perkele isn't used");
+        }
+
+        [Test]
+        public void TheBlackoutsClipsNeverOverlap()
+        {
+            // The longest each step can play (its Max, or the hangover line's 9.7 s) ends before the next starts.
+            var steps = IntroLine.Blackout;
+            for (int i = 0; i + 1 < steps.Length; i++)
+            {
+                Assert.That(steps[i].Max, Is.GreaterThan(0f), $"step {i} must be cut, MSC's clips are long loops");
+                Assert.That(steps[i].At + steps[i].Max, Is.LessThanOrEqualTo(steps[i + 1].At), $"step {i} runs into step {i + 1}");
+            }
+            Assert.That(IntroLine.Seconds(steps[0], 24.5f), Is.EqualTo(4f));
+            Assert.That(IntroLine.Seconds(steps[0], 2f), Is.EqualTo(2f));
+            Assert.That(IntroLine.Seconds(steps[1], 9.7f), Is.EqualTo(9.7f));
         }
 
         [Test]

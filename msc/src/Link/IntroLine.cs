@@ -4,8 +4,7 @@ using PerkeleRim.Protocol;
 namespace PerkeleRim
 {
     // What MSC plays for Kumpo's Helgen intro (IntroCue, protocol/cpp/intro_cues.h): steps of a clip
-    // some seconds after the cue. Blackout: Kumpo drinks, burps, snores, then groans MSC's hangover
-    // line hangover05 ("Ei hittoa, toi on kyllä viimeinen kerta, kun mä otan mitä. Ai saatana, mikä
+    // some seconds after the cue. Blackout: Kumpo snores, then groans MSC's hangover line hangover05 ("Ei hittoa, toi on kyllä viimeinen kerta, kun mä otan mitä. Ai saatana, mikä
     // olo.", picked by ear, at intro_cues.h's kHangoverAt) while Skyrim's new game fades up from
     // black. Wake: Perkele (swear09, "God of thunder!"; MSC's Human_Perkele sounds distorted) after
     // Ralof's "You're finally awake". Hangover: the hangover line alone, waking up in the shack on a
@@ -18,16 +17,20 @@ namespace PerkeleRim
         {
             public float At;  // seconds after the cue
             public string[] Clips;
+            public float Max;  // seconds it plays at most, 0 = the whole clip (MSC's drinking and snore clips are 20 s loops)
         }
 
-        public const string HangoverLine = "hangover05";
-        public const float HangoverAt = 7.5f;  // intro_cues.h kHangoverAt, which the captions follow
+        // How long a step plays a clip of that length.
+        public static float Seconds(Step step, float clipLength) => step.Max > 0f && step.Max < clipLength ? step.Max : clipLength;
 
+        public const string HangoverLine = "hangover05";
+        public const float HangoverAt = 4.5f;  // intro_cues.h kHangoverAt, which the captions follow
+
+        // One after the other: snoring 0-4 s (MSC's snore clip is a 24 s loop), the hangover line
+        // from 4.5 s (9.7 s long), both over before Ralof speaks.
         public static readonly Step[] Blackout =
         {
-            new Step { At = 0f, Clips = new[] { "drinking" } },
-            new Step { At = 2.5f, Clips = new[] { "burp" } },
-            new Step { At = 4.5f, Clips = new[] { "snore" } },
+            new Step { At = 0f, Clips = new[] { "snore" }, Max = 4f },
             new Step { At = HangoverAt, Clips = new[] { HangoverLine } },
         };
 

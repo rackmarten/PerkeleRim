@@ -591,7 +591,7 @@ namespace PerkeleRim::Protocol
 
     // IntroCue (v41): Kumpo's Helgen intro on a new game (protocol/cpp/intro_cues.h), whoever has the
     // player. MSC plays the cue's sounds (msc/src/Link/IntroLine.cs); Skyrim captions them.
-    inline constexpr std::uint32_t kIntroBlackout = 1;  // IntroCue.cue: Kumpo drinks one beer too many, passes out, snores and wakes up hungover (the new game opens)
+    inline constexpr std::uint32_t kIntroBlackout = 1;  // IntroCue.cue: Kumpo, passed out drunk, snores and wakes up hungover (the new game opens)
     inline constexpr std::uint32_t kIntroWake = 2;      // IntroCue.cue: he says Perkele after Ralof's "You're finally awake" in the cart
     inline constexpr std::uint32_t kIntroHangover = 3;  // IntroCue.cue: he wakes up hungover in the shack (a save's first handover)
 

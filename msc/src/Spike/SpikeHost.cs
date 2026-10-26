@@ -534,7 +534,7 @@ namespace PerkeleRim.Spike
                         if (shoutLink == null) SpikeLog.Write("cmd: no PlayerLink");
                         else shoutLink.Yell(words.Length > 1 ? uint.Parse(words[1]) : 1u);
                         break;
-                    case "intro":  // "intro 1": what Skyrim's IntroCue plays as a new game opens, "intro 2" after Ralof's line
+                    case "intro":  // "intro 1": what Skyrim's IntroCue plays as a new game opens, "intro 2" after Ralof's line, "intro 3" the shack
                         var introLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
                         if (introLink == null) SpikeLog.Write("cmd: no PlayerLink");
                         else introLink.Intro(words.Length > 1 ? uint.Parse(words[1]) : 1u);

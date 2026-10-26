@@ -1,6 +1,6 @@
 // Kumpo's Helgen intro: he drinks himself unconscious in MSC and wakes up in Skyrim's Helgen cart.
-// A new game is the intro (Skyrim's own cart ride, untouched). As it opens, MSC plays Kumpo
-// drinking one beer too many, snoring and then groaning his hangover line (IntroCue kIntroBlackout)
+// A new game is the intro (Skyrim's own cart ride, untouched). As it opens, MSC plays Kumpo, who
+// drank one beer too many, snoring and then groaning his hangover line (IntroCue kIntroBlackout)
 // while Skyrim fades up from black again and captions it; right after Ralof's "Hey, you. You're
 // finally awake." (Skyrim's topic event for MQ101's INFO 00101AEA, AhShitRim's trigger for CJ's
 // line), and not before the blackout's sounds are over, Kumpo says Perkele (kIntroWake). A save's
@@ -27,7 +27,7 @@ namespace PerkeleRim::Intro
     inline constexpr float kWakeDelay = 0.3f;        // Kumpo answers this long after Ralof's line ends
     // MSC's hangover line, hangover05 ("Ei hittoa, toi on kyllä viimeinen kerta, kun mä otan mitä.
     // Ai saatana, mikä olo.", 9.65 s), starts this long into the blackout (IntroLine.Blackout).
-    inline constexpr float kHangoverAt = 7.5f;
+    inline constexpr float kHangoverAt = 4.5f;
     inline constexpr float kHangoverSeconds = 9.65f;
     inline constexpr float kBlackoutSeconds = kHangoverAt + kHangoverSeconds;  // the blackout's sounds are over
 
@@ -40,7 +40,7 @@ namespace PerkeleRim::Intro
     };
 
     inline constexpr Line kBlackoutLines[] = {
-        { 0.0f, "[Kumpo drinks one beer too many and passes out]", 7.0f },
+        { 0.0f, "[Kumpo drank one beer too many and passed out]", 4.0f },
         { kHangoverAt, "Kumpo: Damn, that was definitely the last time I drink anything.", 5.0f },
         { kHangoverAt + 5.0f, "Kumpo: Oh satan, what a feeling.", kHangoverSeconds - 5.0f },
     };
