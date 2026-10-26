@@ -160,9 +160,9 @@ namespace PerkeleRim::Pocket
         static EquipSink equipSink;
         auto* data = RE::TESDataHandler::GetSingleton();
         for (std::uint32_t i = 0; i < Protocol::kPocketKinds; i++) {
-            state.items[i] = !data ? nullptr
-                           : i == Protocol::kPocketGold ? RE::TESForm::LookupByID<RE::TESBoundObject>(kGold)
-                                                        : data->LookupForm<RE::TESBoundObject>(kFirstItem + i, kPlugin);
+            // Food or misc item: untyped lookups (the typed ones match one exact form type).
+            auto* form = !data ? nullptr : i == Protocol::kPocketGold ? RE::TESForm::LookupByID(kGold) : data->LookupForm(kFirstItem + i, kPlugin);
+            state.items[i] = form ? form->As<RE::TESBoundObject>() : nullptr;
         }
         const RE::FormID powers[] = { kHotbarHands, kHotbarTools, kHotbarBottle };
         for (std::size_t i = 0; i < state.powers.size(); i++) {
