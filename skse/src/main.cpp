@@ -7,6 +7,7 @@
 #include "death/Death.h"
 #include "drink/Drink.h"
 #include "garage/Garage.h"
+#include "intro/Intro.h"
 #include "link/LinkService.h"
 #include "player/PlayerSync.h"
 #include "pocket/Pocket.h"
@@ -30,6 +31,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
         if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
             PerkeleRim::PlayerSync::OnDataLoaded();
             PerkeleRim::Garage::OnDataLoaded();
+            PerkeleRim::Intro::OnDataLoaded();
             PerkeleRim::Drink::OnDataLoaded();
             PerkeleRim::Pocket::OnDataLoaded();
             PerkeleRim::CollisionSampler::OnDataLoaded();
@@ -40,10 +42,16 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::Death::Hide();  // the reload after a death
             PerkeleRim::Rest::OnGameLoad();  // before the release: MSC stops pissing and the like at once
             PerkeleRim::PlayerSync::OnGameLoad();
+            if (a_msg->type == SKSE::MessagingInterface::kNewGame) {
+                PerkeleRim::Intro::OnNewGame();
+                PerkeleRim::PlayerSync::OnGameLoaded();
+            }
         } else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame) {
             PerkeleRim::Autoload::OnGameLoaded();
             PerkeleRim::SaveSync::OnGameLoaded();
             PerkeleRim::Combat::OnGameLoaded();
+            PerkeleRim::Intro::OnGameLoaded();
+            PerkeleRim::PlayerSync::OnGameLoaded();  // after SaveSync's MscLoad
         } else if (a_msg->type == SKSE::MessagingInterface::kSaveGame) {
             PerkeleRim::SaveSync::OnSaveGame(static_cast<const char*>(a_msg->data));
         }

@@ -115,6 +115,14 @@ namespace PerkeleRim::Garage
         state.visited = true;
     }
 
+    void CartStart()
+    {
+        if (!state.visited) {
+            state.visited = true;
+            SKSE::log::info("garage: this save started in the Helgen cart, its first handover starts where Kumpo stands");
+        }
+    }
+
     void WakeUp(RE::TESObjectREFR* a_marker)
     {
         if (!a_marker || a_marker != state.wake || !state.fade) {

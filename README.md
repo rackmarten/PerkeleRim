@@ -31,7 +31,7 @@ Then:
 
 1. Download `PerkeleRim-<version>.zip` from [Releases](https://github.com/rackmarten/PerkeleRim/releases/latest) and extract it anywhere (not inside a game folder).
 2. Double-click **Start PerkeleRim.bat**. It finds both games, checks for SKSE, Address Library and MSCLoader, installs or updates the mod, and starts both games (My Summer Car minimizes itself).
-3. Play in Skyrim only. Load the **PerkeleRim-Kumpo** save (Anniversary Edition only; on Special Edition start a new game or load your own) and press **F10** to hand over to My Summer Car. Leave MSC minimized.
+3. Play in Skyrim only. Load the **PerkeleRim-Kumpo** save (Anniversary Edition only) or one of your own, and Kumpo goes over to My Summer Car by himself once it has loaded. Or start a new game: Kumpo drinks one beer too many in My Summer Car and wakes up in the Helgen cart, and goes over once he's out of Helgen. Leave MSC minimized.
 
 <details>
 <summary>What Start PerkeleRim.bat does, in detail</summary>
@@ -42,7 +42,7 @@ Every time you run it, it:
 - tells you if SKSE, Address Library or MSCLoader is missing,
 - installs or updates the mod (the SKSE plugin and `PerkeleRim.esp` in Skyrim, enabled in `plugins.txt`; the MSCLoader mod where MSCLoader keeps mods),
 - gives My Summer Car a starter save (needs reset to fresh) when you have none, never over yours,
-- adds a starter Skyrim save, **PerkeleRim-Kumpo** (a male Nord just out of Helgen, before his first F10), next to your own saves, never over one (Anniversary Edition only: Special Edition 1.5.97 can't load it),
+- adds a starter Skyrim save, **PerkeleRim-Kumpo** (a male Nord just out of Helgen, never handed over yet), next to your own saves, never over one (Anniversary Edition only: Special Edition 1.5.97 can't load it),
 - starts My Summer Car in a small window that minimizes itself and continues your MSC save, then starts Skyrim through SKSE.
 
 </details>
@@ -64,7 +64,7 @@ Tip: playing your own character? Make him a male Nord, like the starter save's K
 
 ## Keys
 
-F10 hands the player to My Summer Car and back. While MSC has the player you never need its window: WASD and the mouse are MSC's, Skyrim keeps Escape (pauses both games), Tab, M (map), F5/F9 and the console, and MSC's hand actions sit next to WASD:
+Loading a save hands the player to My Summer Car by itself; if MSC isn't running, Skyrim says so and Kumpo goes over once it is. F10 takes him back to Skyrim and hands him over again (handy for debugging). While MSC has the player you never need its window: WASD and the mouse are MSC's, Skyrim keeps Escape (pauses both games), Tab, M (map), F5/F9 and the console, and MSC's hand actions sit next to WASD:
 
 | Key | Action |
 |---|---|

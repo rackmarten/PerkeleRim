@@ -281,10 +281,10 @@ if ((Test-Path $starterMsc) -and -not (Test-Path (Join-Path $mscSaves 'defaultES
     Write-Host 'Added the starter My Summer Car save.'
 }
 if (-not (Test-Path (Join-Path $mscSaves 'defaultES2File.txt'))) {
-    Write-Host 'My Summer Car has no save yet: start a new game in it once (restore its window), then press F10 in Skyrim.' -ForegroundColor Yellow
+    Write-Host 'My Summer Car has no save yet: start a new game in it once (restore its window), then load a save in Skyrim.' -ForegroundColor Yellow
 }
 
-# The starter Skyrim save (Kumpo, before his first F10) next to the player's own, never over one.
+# The starter Skyrim save (Kumpo, never handed over yet) next to the player's own, never over one.
 # Copy-Item keeps its old date, so Skyrim's Continue still loads the player's newest save.
 # It was made on Anniversary Edition and Special Edition 1.5.x calls it corrupt, so SE gets none.
 $skyrimSaves = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games/Skyrim Special Edition/Saves'
@@ -369,4 +369,4 @@ if ($mscRunning) {
 Write-Host 'Starting Skyrim (SKSE)'
 Start-Process -WorkingDirectory $skyrim (Join-Path $skyrim 'skse64_loader.exe')
 Write-Host ''
-Write-Host 'Load a save in Skyrim (or start a new game) and press F10 to hand over to My Summer Car.' -ForegroundColor Green
+Write-Host 'Load a save in Skyrim (or start a new game): Kumpo goes over to My Summer Car by himself.' -ForegroundColor Green

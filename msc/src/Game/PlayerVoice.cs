@@ -9,9 +9,10 @@ namespace PerkeleRim.Game
     // muted meanwhile). The player shouted (PlayerShout): MSC yells instead, the clip ShoutLine picks
     // among MSC's voice clips: the player's swear01..swear16 with their subtitle lines
     // (ShoutLine.SwearLines) and the Human_ soundbank clips, which have none. Something hurt the
-    // player (PlayerHurt): a grunt (the player's ouch clips) or a swear, as HurtLine decides. Played
-    // straight on the listener in 2D, like DeathGuard's death grunt, so it's heard wherever the
-    // player is.
+    // player (PlayerHurt): a grunt (the player's ouch clips) or a swear, as HurtLine decides. Kumpo's
+    // Helgen intro (IntroCue, whoever has the player): the steps IntroLine lists, one clip at a time.
+    // Played straight on the listener in 2D, like DeathGuard's death grunt, so it's heard wherever
+    // the player is.
     public unsafe class PlayerVoice
     {
         readonly Action<string> log;
@@ -23,6 +24,7 @@ namespace PerkeleRim.Game
         List<string> grunts;  // clip names
         const float SwearEvery = 3f;
         float nextSwear;
+        readonly List<KeyValuePair<float, string>> queued = new List<KeyValuePair<float, string>>();  // intro clips: when, which
 
         public PlayerVoice(Action<string> log)
         {
@@ -60,6 +62,30 @@ namespace PerkeleRim.Game
             else Say(sound, what);
         }
 
+        public void OnIntro(byte[] payload, int size)
+        {
+            if (size < sizeof(IntroCue)) return;
+            IntroCue c;
+            fixed (byte* p = payload) c = *(IntroCue*)p;
+            Intro(c.cue, "Skyrim's intro cue");
+        }
+
+        // Also the spike's "intro 1|2".
+        public void Intro(uint cue, string what)
+        {
+            Find();
+            float now = Time.realtimeSinceStartup;
+            var picked = new List<string>();
+            foreach (var step in IntroLine.For(cue))
+            {
+                var name = IntroLine.Pick(step.Clips, clips.Keys);
+                if (name == null) { log($"intro: no clip for {string.Join("/", step.Clips)}"); continue; }
+                queued.Add(new KeyValuePair<float, string>(now + step.At, name));
+                picked.Add(name);
+            }
+            log($"intro: cue {cue} ({what}): {string.Join(", ", picked.ToArray())}");
+        }
+
         // The vehicle the player drives hit someone: a swear, at most one every SwearEvery seconds
         // (plowing through a crowd is one outburst).
         public void Swear(string what)
@@ -74,6 +100,12 @@ namespace PerkeleRim.Game
         {
             var sound = hurt.Due(Time.realtimeSinceStartup);
             if (sound != HurtSound.None) Say(sound, "low health, after the cooldown");
+            for (int i = 0; i < queued.Count; i++)
+            {
+                if (queued[i].Key > Time.realtimeSinceStartup) continue;
+                Play(queued[i].Value, "plays", "the intro");
+                queued.RemoveAt(i--);
+            }
         }
 
         void Say(HurtSound sound, string what)

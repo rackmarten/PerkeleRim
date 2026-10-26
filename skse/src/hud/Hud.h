@@ -13,6 +13,7 @@ namespace PerkeleRim::Hud
     struct View
     {
         bool                 show = false;      // false hides everything else too
+        bool                 dot = true;        // the dot at the screen center (off for the intro's captions)
         bool                 hideStealth = false;  // Skyrim's sneak eye hidden (every frame while true; shown again once it is false): it stayed up after standing
         std::string          label;             // look-at text, empty = none
         bool                 hand = false;      // look-at hand icon

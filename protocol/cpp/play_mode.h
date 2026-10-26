@@ -1,0 +1,133 @@
+// Play mode: players never press F10. Loading a save (or starting a new game) hands Kumpo to MSC by
+// itself once the game has settled; F10 stays a debug toggle, which also cancels a handover still
+// waiting here. Header-only and free of Skyrim types, so the protocol tests cover it;
+// skse/src/player/PlayerSync.cpp feeds it a Frame every frame Skyrim has the player.
+//
+// A load arms it (Load). It then waits for:
+//  - Skyrim to settle: kSettleSeconds of normal frames in a row (no loading screen, not paused, the
+//    player's 3D in, its cell attached). AhShitRim took the player while Skyrim was still finishing
+//    a load and crashed in a vanilla actor's AI the same second;
+//  - Skyrim to let the player move: a scene with the movement controls taken away keeps the player
+//    (the Helgen cart, the execution);
+//  - the Helgen intro (Unbound) to be over: nothing hands over while it runs, the escape through the
+//    keep included, so Helgen plays with Skyrim's own controls;
+//  - MSC: linked and in its game. If it isn't, it says so once (NoMsc, or MscLoading while MSC is
+//    linked but on its menu or loading its save) and hands over once MSC has been in its game for
+//    kMscSeconds (MSC applies a snapshot that waited for it 3 s after its player shows up).
+// The link dropping while MSC had the player arms it again (Lost), without saying NoMsc again.
+
+#pragma once
+
+namespace PerkeleRim::PlayMode
+{
+    inline constexpr float kSettleSeconds = 2.0f;
+    inline constexpr float kMscSeconds = 4.0f;
+
+    struct Frame
+    {
+        bool  linkUp = false;
+        bool  mscInGame = false;     // PlayerState kPlayerInGame: MSC's player exists
+        bool  loading = false;       // Skyrim's loading screen is up
+        bool  paused = false;        // a menu pauses the game
+        bool  player3D = false;      // the player's 3D is loaded
+        bool  cellAttached = false;  // the player's cell is in
+        bool  controls = false;      // Skyrim lets the player move (no scene took the movement controls)
+        bool  intro = false;         // the Helgen intro (Unbound, MQ101) is running
+        float delta = 0.0f;          // seconds since the last frame
+    };
+
+    enum class Phase
+    {
+        Off,       // nothing to do: handed over, cancelled, or no load yet
+        Settling,  // waiting for Skyrim to settle and let the player move
+        Intro,     // waiting for the player to get out of Helgen
+        Msc,       // Skyrim is ready, MSC isn't (yet)
+    };
+
+    enum class Say
+    {
+        None,
+        HandOver,    // hand the player to MSC now
+        NoMsc,       // tell the player MSC isn't running
+        MscLoading,  // tell the player MSC is still loading
+    };
+
+    constexpr bool SkyrimReady(const Frame& a_frame)
+    {
+        return !a_frame.loading && !a_frame.paused && a_frame.player3D && a_frame.cellAttached && a_frame.controls &&
+               a_frame.delta >= 0.0f;
+    }
+
+    class Machine
+    {
+    public:
+        // A save loaded or a new game started.
+        void Load()
+        {
+            *this = Machine{};
+            _phase = Phase::Settling;
+        }
+
+        // The link dropped while MSC had the player: hand over again once it's back. The caller
+        // already told the player.
+        void Lost()
+        {
+            Load();
+            _said = true;
+        }
+
+        // F10 while waiting, or a handover by hand: stay as things are.
+        void Cancel() { _phase = Phase::Off; }
+
+        Say Tick(const Frame& a_frame)
+        {
+            if (_phase == Phase::Off) {
+                return Say::None;
+            }
+            if (a_frame.intro) {
+                _phase = Phase::Intro;
+                _settled = _msc = 0.0f;
+                return Say::None;
+            }
+            if (_phase == Phase::Intro) {
+                _phase = Phase::Settling;  // out of Helgen: settle again
+            }
+            if (!SkyrimReady(a_frame)) {
+                _settled = _msc = 0.0f;  // anything off starts the wait over
+                return Say::None;
+            }
+            if (_settled < kSettleSeconds) {
+                _settled += a_frame.delta;
+                if (_settled < kSettleSeconds) {
+                    return Say::None;
+                }
+            }
+            if (!a_frame.linkUp || !a_frame.mscInGame) {
+                _phase = Phase::Msc;
+                _msc = 0.0f;
+                if (_said) {
+                    return Say::None;
+                }
+                _said = true;
+                return a_frame.linkUp ? Say::MscLoading : Say::NoMsc;
+            }
+            if (_phase == Phase::Msc) {
+                _msc += a_frame.delta;  // MSC just arrived: give it a moment
+                if (_msc < kMscSeconds) {
+                    return Say::None;
+                }
+            }
+            _phase = Phase::Off;
+            return Say::HandOver;
+        }
+
+        Phase Current() const { return _phase; }
+        bool  Waiting() const { return _phase != Phase::Off; }
+
+    private:
+        Phase _phase = Phase::Off;
+        float _settled = 0.0f;  // seconds Skyrim has been ready in a row
+        float _msc = 0.0f;      // seconds MSC has been in its game in a row, while Phase::Msc
+        bool  _said = false;    // NoMsc or MscLoading was said for this load
+    };
+}

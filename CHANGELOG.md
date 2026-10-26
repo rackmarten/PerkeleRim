@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Play mode: no more F10. Loading a save (the PerkeleRim-Kumpo starter, your own, a quickload, the reload after a death) hands Kumpo to My Summer Car by itself a couple of seconds after it has loaded, and again after quitting to the main menu and loading another one. If My Summer Car isn't running, Skyrim says so and Kumpo goes over once it is (also when MSC is still loading, or drops out mid-game). F10 stays as a debug toggle (protocol v40).
+- Kumpo's Helgen intro, from the most liked comment on the PerkeleRim video: a new game opens with Kumpo drinking one beer too many in My Summer Car and passing out (MSC's drinking, burp and snore, on black), and he wakes up in Skyrim's Helgen cart, answering Ralof's "Hey, you. You're finally awake." with a Perkele. Helgen plays with Skyrim's own controls; Kumpo goes over to My Summer Car once he's out of the keep's cave, where he stands (the van parks next to him). Saves that never had the handover still wake him in the shack bed by the garage.
+
 ## [0.1.1] - 2026-10-22
 
 ### Added
