@@ -10,15 +10,18 @@ namespace PerkeleRim::HitboxTest
 {
     namespace
     {
-        constexpr RE::FormID kArcher = 0x000F62D8;  // Skyrim.esm LvlBanditMissileAggro1536, AI off: only the shooter of our arrows
+        constexpr RE::FormID kArcher = 0x000F62D8;  // Skyrim.esm LvlBanditMissileAggro1536, AI off: only the shooters of our arrows
         constexpr RE::FormID kMelee = 0x000B6FCD;   // Skyrim.esm LvlBanditMelee1HAggro1024
         constexpr RE::FormID kArrow = 0x0001397D;   // Skyrim.esm IronArrow
         constexpr RE::FormID kBow = 0x00013985;     // Skyrim.esm Hunting Bow
-        constexpr float      kArcherBehind = 1500.0f;  // units behind the van's center, away from Kumpo
-        constexpr float      kMeleeBehind = 400.0f;
-        constexpr float      kShotBehind = 300.0f;   // where the arrows through the van start
-        constexpr float      kShotSide = 600.0f;     // ...and the control arrows, beside Kumpo
-        constexpr float      kChest = 90.0f;         // above Kumpo's feet, what every arrow aims at
+        // Skyrim checks the line from an arrow's shooter to where it starts first (it hit the ground on
+        // the way from an archer far off), so every arrow starts at its archer: one just behind the van,
+        // away from Kumpo, one beside Kumpo for the control shots.
+        constexpr float      kArcherBehind = 300.0f;  // units behind the van's center, away from Kumpo
+        constexpr float      kArcherSide = 600.0f;    // ...and beside Kumpo
+        constexpr float      kMeleeBehind = 600.0f;
+        constexpr float      kMeleeAside = 200.0f;    // off the arrows' line
+        constexpr float      kChest = 90.0f;          // above Kumpo's feet, what the control arrows aim at
         constexpr float      kDropHeight = 150.0f;   // placed this far above the van's origin, to fall onto the ground
         constexpr float      kVanReach = 2500.0f;    // the van must be this close to Kumpo
         constexpr float      kWaitSeconds = 120.0f;  // for the van to be solid near Kumpo
@@ -44,7 +47,8 @@ namespace PerkeleRim::HitboxTest
             int                 throughStopped = 0, throughOnKumpo = 0;  // where they ended
             int                 sideOnKumpo = 0;
             std::unordered_set<std::uint32_t> throughShots, sideShots, seen;  // projectile handles
-            RE::ObjectRefHandle archer;
+            RE::ObjectRefHandle archer;      // behind the van
+            RE::ObjectRefHandle sideArcher;  // beside Kumpo
             RE::ObjectRefHandle melee;
             float               closest = 1e9f;  // the melee bandit's least distance to Kumpo
             float               deepest = 0.0f;  // the deepest he ever stood inside the van's box
@@ -129,18 +133,51 @@ namespace PerkeleRim::HitboxTest
             state.obstaclesAtStart = Obstacles();
             SKSE::log::info("hitbox test: armed, the van at ({:.0f},{:.0f},{:.0f}) {:.0f} units from Kumpo at ({:.0f},{:.0f},{:.0f}), {} navmesh obstacles loaded", at.x,
                 at.y, at.z, distance, kumpo.x, kumpo.y, kumpo.z, state.obstaclesAtStart);
-            state.archer = Place(a_player, kArcher, at + away * kArcherBehind + RE::NiPoint3(0.0f, 0.0f, kDropHeight), "archer");
-            if (auto archer = state.archer.get(); archer && archer->As<RE::Actor>()) {
-                archer->As<RE::Actor>()->EnableAI(false);
+            const RE::NiPoint3 aside(-away.y, away.x, 0.0f);
+            const RE::NiPoint3 drop(0.0f, 0.0f, kDropHeight);
+            state.archer = Place(a_player, kArcher, at + away * kArcherBehind + drop, "archer behind the van");
+            state.sideArcher = Place(a_player, kArcher, kumpo + aside * kArcherSide + drop, "archer beside Kumpo");
+            for (auto handle : { state.archer, state.sideArcher }) {
+                if (auto archer = handle.get(); archer && archer->As<RE::Actor>()) {
+                    archer->As<RE::Actor>()->EnableAI(false);
+                }
             }
-            state.melee = Place(a_player, kMelee, at + away * kMeleeBehind + RE::NiPoint3(0.0f, 0.0f, kDropHeight), "melee bandit");
+            state.melee = Place(a_player, kMelee, at + away * kMeleeBehind + aside * kMeleeAside + drop, "melee bandit");
             return true;
         }
 
-        // One arrow from a_from at Kumpo's chest, the archer its shooter.
-        void Shoot(RE::PlayerCharacter* a_player, const RE::NiPoint3& a_from, bool a_through)
+        // What a projectile's ray from a_from to a_to meets first in the player's world: a check of
+        // the capsules that doesn't depend on how an arrow flies.
+        void Probe(RE::PlayerCharacter* a_player, const RE::NiPoint3& a_from, const RE::NiPoint3& a_to)
         {
-            auto  archer = state.archer.get();
+            auto* cell = a_player->GetParentCell();
+            auto* world = cell ? cell->GetbhkWorld() : nullptr;
+            if (!world) {
+                return;
+            }
+            const float     scale = RE::bhkWorld::GetWorldScale();
+            RE::bhkPickData pick;
+            pick.rayInput.from = RE::hkVector4(a_from.x * scale, a_from.y * scale, a_from.z * scale, 0.0f);
+            pick.rayInput.to = RE::hkVector4(a_to.x * scale, a_to.y * scale, a_to.z * scale, 0.0f);
+            pick.rayInput.filterInfo.SetCollisionLayer(RE::COL_LAYER::kProjectile);
+            {
+                RE::BSReadLockGuard lock(world->worldLock);
+                world->PickObject(pick);
+            }
+            const auto* hit = pick.rayOutput.rootCollidable;
+            const float at = a_from.GetDistance(a_to) * (hit ? pick.rayOutput.hitFraction : 1.0f);
+            SKSE::log::info("hitbox test: a projectile's ray from ({:.0f},{:.0f},{:.0f}) meets {} after {:.0f} units", a_from.x, a_from.y, a_from.z,
+                !hit              ? std::string("nothing") :
+                Hitbox::Owns(hit) ? std::string("the van's hitbox") :
+                                    fmt::format("layer {}", static_cast<int>(hit->GetCollisionLayer())),
+                at);
+        }
+
+        // One arrow from an archer at Kumpo: through the van from the one behind it, level at the
+        // middle of the van's box; or at his chest from the one beside him.
+        void Shoot(RE::PlayerCharacter* a_player, const Protocol::VehicleState& a_van, const Hitbox::Box& a_box, bool a_through)
+        {
+            auto  archer = (a_through ? state.archer : state.sideArcher).get();
             auto* shooter = archer ? archer->As<RE::Actor>() : nullptr;
             auto* ammo = RE::TESForm::LookupByID<RE::TESAmmo>(kArrow);
             auto* bow = RE::TESForm::LookupByID<RE::TESObjectWEAP>(kBow);
@@ -148,17 +185,25 @@ namespace PerkeleRim::HitboxTest
                 SKSE::log::warn("hitbox test: no shooter, arrow or bow for a shot");
                 return;
             }
-            const auto                          target = a_player->GetPosition() + RE::NiPoint3(0.0f, 0.0f, kChest);
-            const auto                          d = target - a_from;
+            auto from = shooter->GetPosition();
+            auto target = a_player->GetPosition();
+            if (a_through) {
+                from.z = target.z = a_van.position[2] + (a_box.lo[2] + a_box.hi[2]) * 0.5f;
+                Probe(a_player, from, target);
+            } else {
+                from.z += kChest;
+                target.z += kChest;
+            }
+            const auto                          d = target - from;
             const float                         flat = std::sqrt(d.x * d.x + d.y * d.y);
             const RE::Projectile::ProjectileRot angles{ -std::atan2(d.z, flat), std::atan2(d.x, d.y) };
             RE::ProjectileHandle                handle;
-            RE::Projectile::LaunchArrow(&handle, shooter, ammo, bow, a_from, angles);
+            RE::Projectile::LaunchArrow(&handle, shooter, ammo, bow, from, angles);
             const auto id = handle.native_handle();
             (a_through ? state.throughShots : state.sideShots).insert(id);
             (a_through ? state.through : state.side)++;
-            SKSE::log::info("hitbox test: {} arrow {:08X} from ({:.0f},{:.0f},{:.0f}) at Kumpo's chest", a_through ? "through-the-van" : "control", id, a_from.x,
-                a_from.y, a_from.z);
+            SKSE::log::info("hitbox test: {} arrow {:08X} from ({:.0f},{:.0f},{:.0f}) at Kumpo", a_through ? "through-the-van" : "control", id, from.x,
+                from.y, from.z);
         }
 
         // Every new impact of a projectile near the van: what it hit (one of the van's capsules,
@@ -210,6 +255,7 @@ namespace PerkeleRim::HitboxTest
         {
             state.done = true;
             Remove(state.archer);
+            Remove(state.sideArcher);
             Remove(state.melee);
             SKSE::log::info("hitbox test: done: {} through-the-van arrows, {} stopped by the van, {} on Kumpo; {} control arrows, {} on Kumpo; {} projectile(s) counted on the van; "
                             "the melee bandit came within {:.0f} units of Kumpo and stood inside the van's box in {} of {} samples, at most {:.0f} units deep; navmesh obstacles {} at the start, {} now",
@@ -257,13 +303,7 @@ namespace PerkeleRim::HitboxTest
         state.shotAt += a_delta;
         if (solid && state.shots < kShots && state.time > 3.0f && state.shotAt >= kShotEvery) {
             state.shotAt = 0.0f;
-            const auto   kumpo = a_player->GetPosition();
-            RE::NiPoint3 away(at.x - kumpo.x, at.y - kumpo.y, 0.0f);
-            away.Unitize();
-            const bool through = state.shots % 3 != 2;
-            const auto from = through ? at + away * kShotBehind + RE::NiPoint3(0.0f, 0.0f, (box.lo[2] + box.hi[2]) * 0.5f)
-                                      : kumpo + RE::NiPoint3(-away.y, away.x, 0.0f) * kShotSide + RE::NiPoint3(0.0f, 0.0f, kChest);
-            Shoot(a_player, from, through);
+            Shoot(a_player, van, box, state.shots % 3 != 2);
             state.shots++;
         }
 

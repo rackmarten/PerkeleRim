@@ -6,8 +6,8 @@
     -Build builds first), so they load their newest saves (Skyrim the -Save one). Once Skyrim is in,
     F10 hands Kumpo to MSC unless the save resumes that itself, and ] calls the van in front of him
     (again after 30 s if the test hasn't started). The plugin's driver (skse/src/vehicle/HitboxTest.cpp)
-    then places a bandit archer behind the Hayosiko van and a melee bandit just behind it and logs for
-    a minute. This takes two screenshots, prints the hitbox lines of PerkeleRim.log, closes both games
+    then places two bandit archers (behind the Hayosiko van and beside Kumpo) and a melee bandit behind
+    the van and logs for a minute. This prints the hitbox lines of PerkeleRim.log, closes both games
     (-KeepOpen leaves them) and takes its ini lines and flag files away again. Any save with Kumpo
     outdoors works (the van can't be called into an interior). Exits 1 when the test didn't finish or
     Skyrim went away.
@@ -31,7 +31,6 @@ $msc = Get-RequiredSetting $config 'MscPath'
 $docs = [Environment]::GetFolderPath('MyDocuments')
 $log = Join-Path $docs 'My Games\Skyrim Special Edition\SKSE\PerkeleRim.log'
 $ini = Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.ini'
-$shots = Join-Path $RepoRoot 'build\hitbox-test'
 $utf8 = New-Object System.Text.UTF8Encoding $false
 if ($Save) {
     $Save = $Save -replace '\.ess$', ''
@@ -51,7 +50,6 @@ function Remove-TestLines {
     [IO.File]::WriteAllLines($ini, [string[]] $kept, $utf8)
 }
 
-New-Item -ItemType Directory -Force $shots | Out-Null
 $flags = @((Join-Path $skyrim 'PerkeleRim_autoload.txt'), (Join-Path $msc 'PerkeleRim_autoload.txt'))
 $made = @($flags | Where-Object { -not (Test-Path $_) })
 $ok = $false
@@ -68,10 +66,8 @@ try {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $stage = 'loading'
     $loadedAt = $null
-    $armedAt = $null
     $calledAt = $null
     $recalled = $false
-    $shot = 0
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Seconds 2
         if (-not (Test-Skyrim)) { Write-Host 'Skyrim went away (a crash?)'; break }
@@ -94,13 +90,8 @@ try {
             & "$PSScriptRoot/skyrim-key.ps1" -Key RightBracket
             $recalled = $true
         }
-        if ($stage -eq 'calling' -and (Test-Log 'hitbox test: (armed|.*not run)')) { $stage = 'running'; $armedAt = Get-Date }
+        if ($stage -eq 'calling' -and (Test-Log 'hitbox test: (armed|.*not run)')) { $stage = 'running' }
         if ($stage -eq 'running') {
-            $since = ((Get-Date) - $armedAt).TotalSeconds
-            if (($shot -eq 0 -and $since -gt 15) -or ($shot -eq 1 -and $since -gt 40)) {
-                $shot++
-                & "$PSScriptRoot/skyrim-key.ps1" -Screenshot (Join-Path $shots "shot$shot.png")
-            }
             if (Test-Log 'hitbox test: done') { $ok = $true; break }
             if (Test-Log 'hitbox test: .*not run') { break }
         }
@@ -113,6 +104,5 @@ try {
     }
     Remove-TestLines
     $made | ForEach-Object { Remove-Item $_ -ErrorAction SilentlyContinue }
-    Write-Host "Screenshots: $shots"
 }
 if (-not $ok) { exit 1 }

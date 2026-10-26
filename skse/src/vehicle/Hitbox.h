@@ -23,4 +23,6 @@ namespace PerkeleRim::Hitbox
     std::uint32_t Hits(std::uint32_t a_vehicle);
     // Whether a collision object is one of the vehicles' capsules (a projectile's impact names it).
     bool Owns(const RE::bhkCollisionObject* a_object);
+    // ...or a Havok collidable is (a ray cast's hit names it).
+    bool Owns(const RE::hkpCollidable* a_collidable);
 }

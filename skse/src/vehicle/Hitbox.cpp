@@ -471,4 +471,17 @@ namespace PerkeleRim::Hitbox
         }
         return false;
     }
+
+    bool Owns(const RE::hkpCollidable* a_collidable)
+    {
+        for (const auto& body : bodies) {
+            for (const auto& part : body.parts) {
+                auto* rb = part.body->GetRigidBody();
+                if (a_collidable && rb && rb->GetCollidable() == a_collidable) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 }
