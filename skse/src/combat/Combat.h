@@ -27,6 +27,21 @@ namespace PerkeleRim::Combat
     // actor, or MSC's push (staggered aside, no hit).
     void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
 
+    // The latest punch or throw Skyrim cast on an actor, for the hit test (debug/HitTest.h); count goes
+    // up with each one.
+    struct Hit
+    {
+        std::uint32_t count = 0;
+        RE::FormID    actor = 0;
+        bool          thrown = false;
+        float         damage = 0.0f;
+        float         unarmed = 0.0f;
+        float         drunk = 0.0f;
+        float         speed = 0.0f;
+        float         sneak = 1.0f;
+    };
+    const Hit& LastHit();
+
     // MSC's player swung (left click or H while MSC has it): a destructible within reach in front
     // takes a hit, a spider web enough to cut it (Arvel's in Bleak Falls Barrow has to be), an oil pot
     // or barricade a punch's worth. MSC's punch only lands on actors. Oil puddles on the floor are

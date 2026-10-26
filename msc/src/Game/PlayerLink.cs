@@ -450,6 +450,14 @@ namespace PerkeleRim.Game
                 rest.OnTimePassed(payload, size);
             else if (type == MessageType.MscSave || type == MessageType.MscLoad)
                 saves.OnMessage(type, payload, size);
+            else if (type == MessageType.DebugCommand)
+            {
+                var line = LookAt.Decode(payload, size);
+                if (line == null) log($"debug: malformed DebugCommand ({size} bytes)");
+#if PERKELERIM_SPIKE
+                else Spike.SpikeHost.Run(line);
+#endif
+            }
             else if (type == MessageType.ScreenshotEvent)
             {
                 if (!Screenshot.Decode(payload, size, out shotPath)) log($"shot: malformed ScreenshotEvent ({size} bytes)");

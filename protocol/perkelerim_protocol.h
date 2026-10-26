@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 40;
+    inline constexpr std::uint32_t kProtocolVersion = 41;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -398,7 +398,7 @@ namespace PerkeleRim::Protocol
         PocketChange = 13,     // MSC -> Skyrim
         PocketCounts = 14,     // Skyrim -> MSC
         ImpactEvent = 15,      // MSC -> Skyrim
-        MiddleFinger = 16,     // MSC -> Skyrim (v21 to v23 it shouted Fus; since v40 the law minds it)
+        MiddleFinger = 16,     // MSC -> Skyrim (v21 to v23 it shouted Fus; since v41 the law minds it)
         PlayerShout = 17,      // Skyrim -> MSC
         PlayerHurt = 18,       // Skyrim -> MSC
         StockShelves = 19,     // Skyrim -> MSC
@@ -409,6 +409,7 @@ namespace PerkeleRim::Protocol
         TimePassed = 24,       // Skyrim -> MSC
         GearText = 25,         // MSC -> Skyrim
         PlayerWashed = 26,     // Skyrim -> MSC
+        DebugCommand = 27,     // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -470,6 +471,10 @@ namespace PerkeleRim::Protocol
     // GearText: the gear MSC shows bottom right while the player drives (global GUIgear: "N", "R",
     // "2", "3 HIGH", "1 LOW"), sent when it changes and once more each time MSC takes the player.
     // Same payload as Subtitle; no text (on foot) clears it.
+
+    // DebugCommand (v40): a line for MSC's spike console (msc/src/Spike/SpikeHost.cs, as in
+    // <MSC>/PerkeleRim_cmd.txt: "drunk 2", "hold 1"), sent only by the hit test
+    // (skse/src/debug/HitTest.cpp, [Debug] HitTest in PerkeleRim.ini). Same payload as Subtitle.
 
     // PlayerWashed: Kumpo waded into water up to his waist (protocol/cpp/wading.h). Empty payload; MSC
     // sets PlayerDirtiness to 0. Sent once per wade in, not every frame.
@@ -597,7 +602,7 @@ namespace PerkeleRim::Protocol
         std::uint32_t reserved;
     };
 
-    // MiddleFinger (v40): MSC's player started giving the finger (V, PlayerFunctions entering Finger).
+    // MiddleFinger (v41): MSC's player started giving the finger (V, PlayerFunctions entering Finger).
     // Skyrim puts a bounty on the player for each guard or Jarl that sees it (protocol/cpp/finger.h).
     struct MiddleFinger
     {
