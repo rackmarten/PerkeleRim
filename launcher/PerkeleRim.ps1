@@ -214,6 +214,8 @@ if ($config['ModManager'] -eq 'MO2') {
 
 $skyrimExe = Join-Path $skyrim 'SkyrimSE.exe'
 $getProblems = {
+    # Read again on every Retry: Address Library may have just gone in as an MO2 mod.
+    if ($mo2) { $script:mo2 = @(Get-Mo2Instances $skyrim (Get-Mo2InstanceDirs $config['Mo2Path']) | Where-Object { Test-SamePath $_.Dir $mo2.Dir }) + $mo2 | Select-Object -First 1 }
     $pluginFiles = @(Get-FileNames (Join-Path $skyrim 'Data\SKSE\Plugins')) + @(if ($mo2) { $mo2.PluginFiles })
     @(Get-MscProblems (Get-FileNames $msc) (Get-FileNames (Join-Path $msc 'mysummercar_Data\Managed'))) +
         @(Get-SkyrimProblems (Get-Item -LiteralPath $skyrimExe).VersionInfo.FileVersion (Get-FileNames $skyrim) $pluginFiles)
@@ -278,7 +280,9 @@ if (-not (Test-Path (Join-Path $mscSaves 'defaultES2File.txt'))) {
 # The starter Skyrim save (Kumpo, before his first F10) next to the player's own, never over one.
 # It was made on Anniversary Edition and Special Edition 1.5.x calls it corrupt, so SE gets none.
 $skyrimSaves = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\Skyrim Special Edition\Saves'
-if ($se) {
+if ($mo2 -and $mo2.LocalSaves) {
+    Write-Host "No starter Skyrim save: MO2's profile keeps its own saves. Start a new game or load your own."
+} elseif ($se) {
     Write-Host "No starter Skyrim save on Skyrim $($runtime.Version) (it only loads on Anniversary Edition): start a new game or load your own."
 } elseif (Add-StarterSave (Join-Path $Root 'saves\Skyrim') $skyrimSaves 'PerkeleRim-Kumpo.ess') {
     Write-Host 'Added the starter Skyrim save (Kumpo): pick it under Load.'
@@ -302,6 +306,8 @@ Add-Type -Namespace PerkeleRimLauncher -Name Win32 -MemberDefinition @'
 '@
 $win32 = [PerkeleRimLauncher.Win32]
 
+# Setup may have taken a while, and the player may have started MSC from Steam meanwhile.
+$mscRunning = Get-Process mysummercar -ErrorAction SilentlyContinue
 if ($mscRunning) {
     Write-Host 'My Summer Car is already running, leaving it as it is.'
     # Its screen settings from before still wait to go back: make sure something waits for it.

@@ -46,7 +46,7 @@ Every time you run it, it:
 - starts My Summer Car in a small window that minimizes itself and continues your MSC save, then starts Skyrim through SKSE,
 - puts My Summer Car's own resolution and quality back once MSC closes, so MSC started from Steam afterwards looks as you set it up.
 
-With **Mod Organizer 2** managing your Skyrim, setup asks once whether to start Skyrim through MO2 (`ModManager=MO2` in `PerkeleRim.ini`). Then your MO2 mods load too, Address Library may be an MO2 mod, PerkeleRim's Skyrim files still go in Skyrim's own Data folder (MO2 shows them to Skyrim) and `PerkeleRim.esp` is ticked in MO2's selected profile. If an older PerkeleRim is an MO2 mod as well, the launcher tells you to untick it, since MO2 would load that one instead. Vortex needs nothing special.
+With **Mod Organizer 2** managing your Skyrim, setup asks once whether to start Skyrim through MO2 (`ModManager=MO2` in `PerkeleRim.ini`). Then your MO2 mods load too, Address Library may be an MO2 mod, PerkeleRim's Skyrim files still go in Skyrim's own Data folder (MO2 shows them to Skyrim) and `PerkeleRim.esp` is ticked in MO2's selected profile (while MO2 is open, the launcher asks you to tick it there). If an older PerkeleRim is an MO2 mod as well, the launcher tells you to untick it, since MO2 would load that one instead. Vortex needs nothing special.
 
 </details>
 

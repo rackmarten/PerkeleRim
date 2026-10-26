@@ -104,6 +104,17 @@ Describe 'Installing files' {
         Enable-SkyrimPlugin $plugins 'PerkeleRim.esp' | Should -BeFalse
         Get-Content $plugins | Should -Be '*PerkeleRim.esp'
     }
+    It 'keeps the other plugins'' bytes and the line endings in plugins.txt' {
+        $plugins = "$TestDrive\MO2 profile\plugins.txt"
+        New-Item -ItemType Directory -Force (Split-Path $plugins) | Out-Null
+        # A UTF-8 BOM, a comment and a plugin named with a UTF-8 a-umlaut, CRLF line ends, as MO2 writes them.
+        $before = [byte[]] (0xEF, 0xBB, 0xBF) + [Text.Encoding]::ASCII.GetBytes("# MO2`r`n*Kyl") + [byte[]] (0xC3, 0xA4) + [Text.Encoding]::ASCII.GetBytes(".esp`r`nPerkeleRim.esp`r`n")
+        [IO.File]::WriteAllBytes($plugins, $before)
+        Enable-SkyrimPlugin $plugins 'PerkeleRim.esp' | Should -BeTrue
+        $after = [IO.File]::ReadAllBytes($plugins)
+        $expected = [byte[]] (0xEF, 0xBB, 0xBF) + [Text.Encoding]::ASCII.GetBytes("# MO2`r`n*Kyl") + [byte[]] (0xC3, 0xA4) + [Text.Encoding]::ASCII.GetBytes(".esp`r`n*PerkeleRim.esp`r`n")
+        [Convert]::ToBase64String($after) | Should -Be ([Convert]::ToBase64String($expected))
+    }
     It 'adds a starter save only where there is none' {
         $starter = New-Item -ItemType Directory "$TestDrive\saves\MSC"
         Set-Content "$starter\defaultES2File.txt" 'starter'
@@ -143,6 +154,28 @@ Describe 'Get-Mo2Instances' {
         $instances[0].PluginFiles | Should -Not -Contain 'Other.dll'
         $instances[0].PerkeleRimMods | Should -Be @('PerkeleRim old')
         $instances[0].SkseTitle | Should -Be 'SKSE'
+        $instances[0].LocalSaves | Should -BeFalse
+    }
+    It 'sees a profile that keeps its own saves' {
+        Set-Content "$mo2\profiles\Default\settings.ini" "[General]`nLocalSaves=true"
+        (@(Get-Mo2Instances "$skyrim" @($mo2))[0]).LocalSaves | Should -BeTrue
+        Remove-Item "$mo2\profiles\Default\settings.ini"
+    }
+    It 'reads a non-ASCII game folder and mod name from MO2''s UTF-8 files' {
+        # Built from a char code: Windows PowerShell reads this file as ANSI.
+        $a = [string] [char] 0xE4
+        $finnish = New-Game "$TestDrive\Pelit\Skyrim P$($a)$($a)si$($a)inen" 'SkyrimSE.exe'
+        $dir = "$TestDrive\MO2 Finnish"
+        New-Instance $dir "$finnish" @("+Osoitekirjasto $a")
+        New-Item -ItemType Directory -Force "$dir\mods\Osoitekirjasto $a\SKSE\Plugins" | Out-Null
+        Set-Content "$dir\mods\Osoitekirjasto $a\SKSE\Plugins\versionlib-1-6-1170-0.bin" ''
+        foreach ($file in "$dir\ModOrganizer.ini", "$dir\profiles\Default\modlist.txt") {
+            [IO.File]::WriteAllText($file, (Get-Content -Raw -LiteralPath $file), (New-Object Text.UTF8Encoding $false))  # Set-Content wrote ANSI on 5.1
+        }
+        @(Get-Mo2Instances "$finnish" @($dir))[0].PluginFiles | Should -Contain 'versionlib-1-6-1170-0.bin'
+    }
+    It 'puts the configured instance first' {
+        (Get-Mo2InstanceDirs 'D:\Portable MO2')[0] | Should -Be 'D:\Portable MO2'
     }
 }
 

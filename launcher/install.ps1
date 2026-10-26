@@ -121,13 +121,16 @@ function Set-ScreenshotDir([string] $IniPath, [string] $Dir) {
 }
 
 # Makes $Plugin active in a plugins.txt (Skyrim's own in %LOCALAPPDATA%, or an MO2 profile's).
-# $true when it wrote.
+# Read and written as Latin-1, byte for byte, so the other plugins' names keep whatever encoding
+# they're in, and so do the line endings. $true when it wrote.
 function Enable-SkyrimPlugin([string] $PluginsTxt, [string] $Plugin) {
-    $old = if (Test-Path -LiteralPath $PluginsTxt) { @(Get-Content -LiteralPath $PluginsTxt) } else { @() }
-    $lines = Get-EnabledPluginLines $old $Plugin
+    $latin1 = [Text.Encoding]::GetEncoding(28591)
+    $text = if (Test-Path -LiteralPath $PluginsTxt) { $latin1.GetString([IO.File]::ReadAllBytes($PluginsTxt)) } else { '' }
+    $newline = if ($text -match "`r`n" -or -not $text) { "`r`n" } else { "`n" }
+    $lines = Get-EnabledPluginLines @($text -split "`r?`n" | Where-Object { $_ }) $Plugin
     if (-not $lines) { return $false }
     New-Item -ItemType Directory -Force (Split-Path $PluginsTxt) | Out-Null
-    Set-Content -LiteralPath $PluginsTxt -Encoding ascii -Value $lines
+    [IO.File]::WriteAllBytes($PluginsTxt, $latin1.GetBytes(($lines -join $newline) + $newline))
     return $true
 }
 
@@ -143,28 +146,31 @@ function Add-StarterSave([string] $StarterDir, [string] $SavesDir, [string] $Mar
 
 # --- Mod Organizer 2 ----------------------------------------------------------------------------
 
-# Where MO2 instances live: the global ones in %LOCALAPPDATA%\ModOrganizer, and a portable one the
-# player named (Mo2Path in PerkeleRim.ini).
+# Where MO2 instances live: one the player named (Mo2Path in PerkeleRim.ini, a portable one say)
+# first, then the global ones in %LOCALAPPDATA%\ModOrganizer.
 function Get-Mo2InstanceDirs([string] $Configured) {
     $dirs = @()
+    if ($Configured) { $dirs += $Configured }
     $local = Join-Path $env:LOCALAPPDATA 'ModOrganizer'
     if (Test-Path -LiteralPath $local) { $dirs += Get-ChildItem -LiteralPath $local -Directory | ForEach-Object FullName }
-    if ($Configured) { $dirs += $Configured }
     return $dirs
 }
 
 # The MO2 instances that manage this Skyrim. Per instance: its selected profile's folder, the SKSE
 # plugin files its enabled mods bring (Address Library is often one), the enabled mods that have
-# PerkeleRim's Skyrim files, and the executable that runs this Skyrim's skse64_loader.exe.
+# PerkeleRim's Skyrim files, the executable that runs this Skyrim's skse64_loader.exe, and whether
+# the profile keeps its own saves. MO2 writes its files as UTF-8.
 function Get-Mo2Instances([string] $SkyrimPath, [string[]] $Dirs) {
     foreach ($dir in $Dirs) {
         $ini = Join-Path $dir 'ModOrganizer.ini'
         if (-not (Test-Path -LiteralPath $ini)) { continue }
-        $mo2 = Read-Mo2Ini (Get-Content -Raw -LiteralPath $ini) $dir
+        $mo2 = Read-Mo2Ini (Get-Content -Raw -Encoding UTF8 -LiteralPath $ini) $dir
         if (-not (Test-SamePath $mo2.GamePath $SkyrimPath)) { continue }
         $profileDir = Join-Path $mo2.ProfilesDir $mo2.SelectedProfile
         $modlist = Join-Path $profileDir 'modlist.txt'
-        $enabled = if (Test-Path -LiteralPath $modlist) { @(Get-Mo2EnabledMods (Get-Content -Raw -LiteralPath $modlist)) } else { @() }
+        $enabled = if (Test-Path -LiteralPath $modlist) { @(Get-Mo2EnabledMods (Get-Content -Raw -Encoding UTF8 -LiteralPath $modlist)) } else { @() }
+        $settings = Join-Path $profileDir 'settings.ini'
+        $localSaves = (Test-Path -LiteralPath $settings) -and [bool] (Select-String -LiteralPath $settings -Pattern '^\s*LocalSaves\s*=\s*true' -Quiet)
         $enabled = @($enabled | Where-Object { Test-Path -LiteralPath (Join-Path $mo2.ModsDir $_) })
         $portable = Test-Path -LiteralPath (Join-Path $dir 'portable.txt')
         [pscustomobject] @{
@@ -175,6 +181,7 @@ function Get-Mo2Instances([string] $SkyrimPath, [string[]] $Dirs) {
             PluginFiles    = @(foreach ($mod in $enabled) { Get-FileNames (Join-Path $mo2.ModsDir "$mod\SKSE\Plugins") })
             PerkeleRimMods = @($enabled | Where-Object { (Test-Path -LiteralPath (Join-Path $mo2.ModsDir "$_\SKSE\Plugins\PerkeleRim.dll")) -or (Test-Path -LiteralPath (Join-Path $mo2.ModsDir "$_\PerkeleRim.esp")) })
             SkseTitle      = Find-Mo2SkseExecutable $mo2.Executables $SkyrimPath
+            LocalSaves     = $localSaves
         }
     }
 }
@@ -227,7 +234,8 @@ function Restore-MscScreenSettings([string] $Key, [string] $File) {
     foreach ($name in @((Get-MscScreenValues $Key).Keys)) {
         if (-not $saved.Contains($name)) { Remove-ItemProperty -LiteralPath $Key -Name $name }
     }
-    Remove-Item -LiteralPath $File -Force
+    # Another watcher may have restored and deleted it just now.
+    Remove-Item -LiteralPath $File -Force -ErrorAction SilentlyContinue
     return $true
 }
 
