@@ -27,7 +27,7 @@ namespace PerkeleRim::Intro
     inline constexpr float kWakeDelay = 0.3f;        // Kumpo answers this long after Ralof's line ends
     // MSC's hangover line, hangover05 ("Ei hittoa, toi on kyllä viimeinen kerta, kun mä otan mitä.
     // Ai saatana, mikä olo.", 9.65 s), starts this long into the blackout (IntroLine.Blackout).
-    inline constexpr float kHangoverAt = 4.5f;
+    inline constexpr float kHangoverAt = 14.0f;
     inline constexpr float kHangoverSeconds = 9.65f;
     inline constexpr float kBlackoutSeconds = kHangoverAt + kHangoverSeconds;  // the blackout's sounds are over
 
@@ -40,7 +40,7 @@ namespace PerkeleRim::Intro
     };
 
     inline constexpr Line kBlackoutLines[] = {
-        { 0.0f, "[Kumpo drank one beer too many and passed out]", 4.0f },
+        { 0.0f, "[Kumpo drank one beer too many and passed out]", 13.5f },
         { kHangoverAt, "Kumpo: Damn, that was definitely the last time I drink anything.", 5.0f },
         { kHangoverAt + 5.0f, "Kumpo: Oh satan, what a feeling.", kHangoverSeconds - 5.0f },
     };

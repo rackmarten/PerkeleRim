@@ -21,9 +21,9 @@ namespace PerkeleRim.Tests
         [Test]
         public void StepsGoForwardInTime()
         {
-            foreach (var steps in new[] { IntroLine.Blackout, IntroLine.Wake })
+            foreach (var steps in new[] { IntroLine.Blackout, IntroLine.Wake, IntroLine.Hangover })
             {
-                Assert.That(steps[0].At, Is.EqualTo(0f));
+                Assert.That(steps[0].At, Is.GreaterThanOrEqualTo(0f));  // the blackout opens on a quiet moment
                 for (int i = 1; i < steps.Length; i++) Assert.That(steps[i].At, Is.GreaterThan(steps[i - 1].At));
             }
         }
@@ -58,7 +58,7 @@ namespace PerkeleRim.Tests
                 Assert.That(steps[i].Max, Is.GreaterThan(0f), $"step {i} must be cut, MSC's clips are long loops");
                 Assert.That(steps[i].At + steps[i].Max, Is.LessThanOrEqualTo(steps[i + 1].At), $"step {i} runs into step {i + 1}");
             }
-            Assert.That(IntroLine.Seconds(steps[0], 24.5f), Is.EqualTo(4f));
+            Assert.That(IntroLine.Seconds(steps[0], 24.5f), Is.EqualTo(9.5f));
             Assert.That(IntroLine.Seconds(steps[0], 2f), Is.EqualTo(2f));
             Assert.That(IntroLine.Seconds(steps[1], 9.7f), Is.EqualTo(9.7f));
         }

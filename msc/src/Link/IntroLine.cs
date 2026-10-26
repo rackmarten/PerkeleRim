@@ -24,13 +24,13 @@ namespace PerkeleRim
         public static float Seconds(Step step, float clipLength) => step.Max > 0f && step.Max < clipLength ? step.Max : clipLength;
 
         public const string HangoverLine = "hangover05";
-        public const float HangoverAt = 4.5f;  // intro_cues.h kHangoverAt, which the captions follow
+        public const float HangoverAt = 14f;  // intro_cues.h kHangoverAt, which the captions follow
 
-        // One after the other: snoring 0-4 s (MSC's snore clip is a 24 s loop), the hangover line
-        // from 4.5 s (9.7 s long), both over before Ralof speaks.
+        // One after the other on the black opening: quiet for 4 s, snoring 4-13.5 s (MSC's snore clip
+        // is a 24 s loop), the hangover line from 14 s (9.7 s long).
         public static readonly Step[] Blackout =
         {
-            new Step { At = 0f, Clips = new[] { "snore" }, Max = 4f },
+            new Step { At = 4f, Clips = new[] { "snore" }, Max = 9.5f },
             new Step { At = HangoverAt, Clips = new[] { HangoverLine } },
         };
 
