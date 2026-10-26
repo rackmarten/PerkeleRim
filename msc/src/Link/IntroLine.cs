@@ -5,8 +5,9 @@ namespace PerkeleRim
 {
     // What MSC plays for Kumpo's Helgen intro (IntroCue, protocol/cpp/intro_cues.h): steps of a clip
     // some seconds after the cue. Blackout: Kumpo drinks, burps, nods off and snores while Skyrim's
-    // new game fades up from black. Wake: he yawns and says Perkele after Ralof's "You're finally
-    // awake". Each step names the clips it may use, best first: an exact MSC clip name, else the
+    // new game fades up from black. Wake: he wakes up hungover, with MSC's own hangover line
+    // hangover05 ("Saaatanaa... oy oy ooooy", picked by ear), after Ralof's "You're finally awake" in
+    // the cart and when he wakes up in the shack on a save's first handover. Each step names the clips it may use, best first: an exact MSC clip name, else the
     // first name (in ordinal order) that has it as a part, ignoring case (the Pieno-soundbank's
     // Human_ snores and burps, whose names aren't mapped). A step with no clip is skipped. Unity-free.
     public static class IntroLine
@@ -27,8 +28,7 @@ namespace PerkeleRim
 
         public static readonly Step[] Wake =
         {
-            new Step { At = 0f, Clips = new[] { "yawn01" } },
-            new Step { At = 1.6f, Clips = new[] { ShoutLine.Perkele } },
+            new Step { At = 0f, Clips = new[] { "hangover05" } },
         };
 
         public static Step[] For(uint cue) =>

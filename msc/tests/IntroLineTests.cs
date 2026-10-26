@@ -6,7 +6,7 @@ namespace PerkeleRim.Tests
 {
     public class IntroLineTests
     {
-        static readonly string[] Names = { "drinking", "Human_Snore2", "Human_Snore1", "Human_Burp", "yawn01", "Human_Perkele", "swear09" };
+        static readonly string[] Names = { "drinking", "Human_Snore2", "Human_Snore1", "Human_Burp", "yawn01", "Human_Perkele", "swear09", "hangover01", "hangover05" };
 
         [Test]
         public void EachCueHasItsSteps()
@@ -33,6 +33,15 @@ namespace PerkeleRim.Tests
             Assert.That(IntroLine.Pick(new[] { "drinking" }, Names), Is.EqualTo("drinking"));
             Assert.That(IntroLine.Pick(new[] { "tosleep", "yawn01" }, Names), Is.EqualTo("yawn01"));
             Assert.That(IntroLine.Pick(new[] { ShoutLine.Perkele }, Names), Is.EqualTo("Human_Perkele"));
+        }
+
+        [Test]
+        public void TheWakeIsTheHangoverLineAlone()
+        {
+            Assert.That(IntroLine.Wake.Length, Is.EqualTo(1));
+            Assert.That(IntroLine.Pick(IntroLine.Wake[0].Clips, Names), Is.EqualTo("hangover05"));
+            foreach (var step in IntroLine.Blackout.Concat(IntroLine.Wake))
+                Assert.That(step.Clips, Has.None.Contains("Perkele"), "the distorted Human_Perkele isn't used");
         }
 
         [Test]

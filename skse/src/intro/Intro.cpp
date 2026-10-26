@@ -48,7 +48,7 @@ namespace PerkeleRim::Intro
             }
             state.caption = Caption(a_cue);
             state.captionLeft = CaptionSeconds(a_cue);
-            SKSE::log::info("intro: {}", a_cue == Protocol::kIntroBlackout ? "Kumpo passes out (MSC plays it)" : "Kumpo answers Ralof (MSC plays it)");
+            SKSE::log::info("intro: {}", a_cue == Protocol::kIntroBlackout ? "Kumpo passes out (MSC plays it)" : "Kumpo wakes up hungover (MSC plays it)");
         }
     }
 
@@ -79,6 +79,16 @@ namespace PerkeleRim::Intro
         state.captionLeft = 0.0f;
     }
 
+    void WakeUp()
+    {
+        Send(Protocol::kIntroWake);
+    }
+
+    std::string_view Caption()
+    {
+        return state.captionLeft > 0.0f ? std::string_view(state.caption) : std::string_view{};
+    }
+
     bool Running()
     {
         // IsRunning() is only "not stopping", true for a quest that never started (a coc start, a
@@ -95,15 +105,16 @@ namespace PerkeleRim::Intro
         if (const auto cue = state.cues.Tick(a_delta, a_msc && Running())) {  // no cart (a mod that skips it): no cues
             Send(cue);
         }
+        const float before = state.captionLeft;
+        if (state.captionLeft > 0.0f) {
+            state.captionLeft -= a_delta;
+        }
         if (a_owned) {
-            state.captionLeft = 0.0f;  // the handover's HUD has the subtitle line now
-            return;
+            return;  // the handover's HUD shows Caption() as its subtitle line
         }
         Hud::View view;
         bool      refresh = false;
         if (state.captionLeft > 0.0f) {
-            const float before = state.captionLeft;
-            state.captionLeft -= a_delta;
             refresh = std::floor(before) != std::floor(state.captionLeft);  // once a second, in case the HUD movie wasn't up yet
             view.show = true;
             view.dot = false;

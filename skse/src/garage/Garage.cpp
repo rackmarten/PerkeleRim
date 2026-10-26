@@ -123,13 +123,14 @@ namespace PerkeleRim::Garage
         }
     }
 
-    void WakeUp(RE::TESObjectREFR* a_marker)
+    bool WakeUp(RE::TESObjectREFR* a_marker)
     {
         if (!a_marker || a_marker != state.wake || !state.fade) {
-            return;
+            return false;
         }
         RE::ImageSpaceModifierInstanceForm::Trigger(state.fade, 1.0f, nullptr);
         SKSE::log::info("garage: waking up in the shack");
+        return true;
     }
 
     std::optional<Spot> Van()

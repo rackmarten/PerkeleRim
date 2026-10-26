@@ -394,8 +394,8 @@ namespace PerkeleRim::PlayerSync
             auto*      cell = a_player->GetParentCell();
             const bool there = cell && cell->IsAttached() && a_player->Is3DLoaded() &&
                                a_player->GetPosition().GetDistance(state.garage->GetPosition()) < kGarageArrivedUnits;
-            if (there && state.garageFrames == 0) {
-                Garage::WakeUp(state.garage);  // fades up from black while the handover settles
+            if (there && state.garageFrames == 0 && Garage::WakeUp(state.garage)) {  // fades up from black while the handover settles
+                Intro::WakeUp();  // with Kumpo's hangover line, as in the Helgen cart
             }
             if (!there || ++state.garageFrames < kGarageSettleFrames) {
                 return;
@@ -865,7 +865,7 @@ namespace PerkeleRim::PlayerSync
             hud.hideStealth = !state.sneak;  // Skyrim's sneak eye stayed up after standing
             hud.label = state.lookAt;
             hud.hand = state.lookAtUse;
-            hud.subtitle = state.subtitle;
+            hud.subtitle = state.subtitle.empty() ? std::string(Intro::Caption()) : state.subtitle;  // the shack's wake-up caption carries over the handover
             hud.gear = state.gear;
             hud.hasNeeds = state.hasNeeds;
             hud.needs = state.needs;

@@ -2,8 +2,10 @@
 // A new game is the intro (Skyrim's own cart ride, untouched). As it opens, MSC plays Kumpo
 // drinking one beer too many and passing out (IntroCue kIntroBlackout) while Skyrim fades up from
 // black again and captions it; right after Ralof's "Hey, you. You're finally awake." (Skyrim's
-// topic event for MQ101's INFO 00101AEA, AhShitRim's trigger for CJ's line) Kumpo answers with a
-// groan and a Perkele (kIntroWake). Nothing hands over during the intro (play_mode.h). Header-only
+// topic event for MQ101's INFO 00101AEA, AhShitRim's trigger for CJ's line) Kumpo wakes up
+// hungover with MSC's hangover line (kIntroWake). The same line plays when a save's first handover
+// wakes him up in the shack by the garage, so both stories start with him waking up after a night
+// out. Nothing hands over during the intro (play_mode.h). Header-only
 // and free of Skyrim types, so the protocol tests cover it; skse/src/intro/Intro.cpp feeds it.
 
 #pragma once
@@ -23,8 +25,8 @@ namespace PerkeleRim::Intro
 
     inline constexpr std::string_view kBlackoutCaption = "[Kumpo drinks one beer too many and passes out]";
     inline constexpr float            kBlackoutCaptionSeconds = 7.0f;
-    inline constexpr std::string_view kWakeCaption = "Kumpo: Perkele...";
-    inline constexpr float            kWakeCaptionSeconds = 3.0f;
+    inline constexpr std::string_view kWakeCaption = "Kumpo: Saaatanaa... oy oy ooooy...";
+    inline constexpr float            kWakeCaptionSeconds = 4.0f;
 
     // When each cue goes to MSC. A cue MSC isn't there for is dropped, not kept for later.
     class Cues

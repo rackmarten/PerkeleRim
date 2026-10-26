@@ -24,7 +24,7 @@ namespace PerkeleRim::Garage
     RE::TESObjectREFR* FirstVisit();  // the wake-up (else spawn) marker if this save hasn't been to the garage yet, else null
     void               Visited();     // the player arrived; later handovers start where it stands
     void               CartStart();   // the save started in the Helgen cart: its first handover starts where the player stands too
-    void               WakeUp(RE::TESObjectREFR* a_marker);  // the player is at a_marker: fades up from black if it's the shack's
+    bool               WakeUp(RE::TESObjectREFR* a_marker);  // the player is at a_marker: fades up from black if it's the shack's (true then)
     std::optional<Spot> Van();         // where the van parks
 
     // The shelves are stocked once per save, at a handover near the garage (the items need the
