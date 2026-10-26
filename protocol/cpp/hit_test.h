@@ -32,10 +32,12 @@ namespace PerkeleRim::HitTest
     };
 
     // Drunk 2, not 3: MSC's player sways so much around 2.5 that the camera is hard to keep level.
+    // Drunk goes last: MSC's camera keeps swaying for a while after the level is back at 0 (Drunk
+    // Mode eases to random targets), and a throw then misses a capsule 3 m away.
     inline constexpr std::array kScenarios = {
         Scenario{ "punch", Attack::kPunch, 0.0f, 3, 0.4f },
-        Scenario{ "drunk", Attack::kPunch, 2.0f, 3, 0.4f },
         Scenario{ "bottle", Attack::kThrow, 0.0f, 3, 3.0f },
+        Scenario{ "drunk", Attack::kPunch, 2.0f, 3, 0.4f },
     };
 
     // "all", or scenario names separated by commas (spaces ignored, case matters), in the order

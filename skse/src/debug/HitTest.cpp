@@ -16,7 +16,9 @@ namespace PerkeleRim::HitTest
 {
     namespace
     {
-        constexpr RE::FormID    kGiant = 0x0003053F;  // Skyrim.esm's LvlGiant: tall and tough, a capsule the view can't miss
+        // Skyrim.esm's Whiterun guard (GuardWhiterunImperialTemplate): a person, who takes a hit as cast.
+        // Giants (LvlGiant, 0003053F) take only two thirds of it, which the pass rules would count as a fail.
+        constexpr RE::FormID    kGuard = 0x000EA0A2;
         constexpr std::uint16_t kKeyH = 104;          // Unity KeyCode.H, MSC's Hit
         constexpr std::uint16_t kMouse1 = 324;        // Unity KeyCode.Mouse1, MSC's throw
         constexpr float         kPlayerRadius = 0.3f;  // meters, MSC's player capsule (Actors.Touching)
@@ -56,7 +58,7 @@ namespace PerkeleRim::HitTest
             float                    timer = 0.0f;
             float                    step = 0.0f;  // the camera levelling's own clock
             float                    owned = 0.0f;  // seconds MSC has had the player on the ground
-            RE::FormID               targetBase = kGiant;
+            RE::FormID               targetBase = kGuard;
             RE::ObjectRefHandle      target;
             std::string              targetName;
             std::uint32_t            hitsBefore = 0;  // Combat::LastHit().count before the key
@@ -124,9 +126,10 @@ namespace PerkeleRim::HitTest
 
         void RemoveTarget()
         {
+            // Only disabled: markfordelete crashed Skyrim (a null in the target's MovementControllerNPC
+            // job) while a light one still slid on from a stagger. Nothing is saved, so it can stay.
             if (auto ref = state.target.get()) {
                 RunConsole("disable", ref.get());
-                RunConsole("markfordelete", ref.get());
             }
             state.target = {};
         }
@@ -217,8 +220,10 @@ namespace PerkeleRim::HitTest
         }
 
         // The target just ahead of the player along MSC's view, its capsule a_gap meters from the
-        // player's (radius as Combat sizes it: half the narrower side of its bounds).
-        void Stand(RE::PlayerCharacter* a_player, RE::Actor* a_target, const Protocol::PlayerState& a_pose)
+        // player's (radius as Combat sizes it: half the narrower side of its bounds). Again every frame
+        // until the attack: a light target with its AI off slides on after a stagger, and MSC's camera
+        // sways while drunk.
+        void Stand(RE::PlayerCharacter* a_player, RE::Actor* a_target, const Protocol::PlayerState& a_pose, bool a_log = false)
         {
             const auto  min = a_target->GetBoundMin();
             const auto  max = a_target->GetBoundMax();
@@ -229,6 +234,9 @@ namespace PerkeleRim::HitTest
             const auto  at = a_player->GetPosition() + RE::NiPoint3(std::sin(heading) * ahead, std::cos(heading) * ahead, 0.0f);
             a_target->SetPosition(at, true);
             a_target->SetHeading(heading + 3.14159265f);  // facing the player
+            if (!a_log) {
+                return;
+            }
             SKSE::log::info("hit test: {} ({:08X}) stands {:.0f} units ahead (radius {:.0f}), health {:.0f}", state.targetName,
                 a_target->GetFormID(), ahead, radius, Health(a_target));
         }
@@ -299,7 +307,7 @@ namespace PerkeleRim::HitTest
             try {
                 state.targetBase = static_cast<RE::FormID>(std::stoul(base, nullptr, 16));
             } catch (...) {
-                SKSE::log::warn("hit test: HitTestTarget={} isn't a hex form id, a giant instead", base);
+                SKSE::log::warn("hit test: HitTestTarget={} isn't a hex form id, a guard instead", base);
             }
         }
         const auto csv = Ini::Value("HitTestCsv");
@@ -410,7 +418,7 @@ namespace PerkeleRim::HitTest
                 break;
             }
             RunConsole("tai", target);  // its AI off: it stands, doesn't fight back and nobody hears of it
-            Stand(a_player, target, pose);
+            Stand(a_player, target, pose, true);
             Go(Current().attack == Attack::kThrow ? Phase::Holding : Phase::Aiming);
             if (Current().attack == Attack::kThrow) {
                 Command("hold " + std::to_string(Protocol::kPocketBottle));
@@ -418,12 +426,12 @@ namespace PerkeleRim::HitTest
             break;
         }
         case Phase::Holding:
-            if (state.timer >= kHoldSeconds) {
-                Press();
-            }
-            break;
         case Phase::Aiming:
-            if (state.timer >= 1.5f) {  // MSC has the capsule in the next ActorList, and a stagger is over
+            if (auto* target = Target(); target && posed) {
+                Stand(a_player, target, pose);
+            }
+            // A punch waits for MSC to have the capsule and a stagger to be over, a throw for the bottle.
+            if (state.timer >= (state.phase == Phase::Holding ? kHoldSeconds : 1.5f)) {
                 Press();
             }
             break;

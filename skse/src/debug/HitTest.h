@@ -5,7 +5,7 @@
 // scenarios are protocol/cpp/hit_test.h's) it waits for the save Autoload loads, hands the player to
 // MSC as F10 would and, scenario by scenario, sets MSC's drunk level and what is in Kumpo's hand over
 // the link (DebugCommand, MSC's spike commands), levels MSC's camera with mouse moves, places a target
-// (HitTestTarget, Skyrim.esm's LvlGiant by default) just ahead with its AI off, and presses MSC's keys
+// (HitTestTarget, Skyrim.esm's Whiterun guard by default) just ahead with its AI off, and presses MSC's keys
 // for it (H to punch, the right button to throw). Each attack's damage, as Combat cast it and as the
 // target's health took it, goes to a CSV (HitTestCsv, else Documents/My Games/PerkeleRim/hittest.csv)
 // with a pass or fail by damage.h. Nothing is saved. Main thread only.

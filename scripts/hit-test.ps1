@@ -4,8 +4,8 @@
     to PerkeleRim.ini and restarts both games with restart-games.ps1 (closing them discards anything
     unsaved; it deploys this checkout's build, -Build builds first), so they load their newest saves.
     The SKSE plugin's driver (skse/src/debug/HitTest.cpp) then hands Kumpo to MSC and runs the
-    scenarios of protocol/cpp/hit_test.h: punch (sober), drunk (MSC's drunk level 2) and bottle (an
-    empty bottle thrown at full charge), each at a giant placed just ahead with its AI off. Meanwhile
+    scenarios of protocol/cpp/hit_test.h: punch (sober), bottle (an empty bottle thrown at full
+    charge) and drunk (MSC's drunk level 2), each at a Whiterun guard placed just ahead with its AI off. Meanwhile
     this watches for a crash (a new crash-*.log), either game gone and a hang (PerkeleRim.log still for
     -HangSeconds). At the end it prints the driver's log lines and the CSV (Documents/My Games/
     PerkeleRim/hittest.csv), closes both games and takes [Debug] out of the ini again. Exits 1 when a
@@ -22,7 +22,7 @@ param(
     [string] $Scenarios = 'all',
     [string] $Save = '',    # AutoloadSave: a Skyrim save's file name instead of the newest save
     [switch] $Build,
-    [string] $Target = '',  # HitTestTarget: an actor base's form id in hex instead of Skyrim.esm's LvlGiant
+    [string] $Target = '',  # HitTestTarget: an actor base's form id in hex instead of Skyrim.esm's Whiterun guard (000EA0A2)
     [int] $TimeoutSeconds = 600,
     [int] $HangSeconds = 120,
     [switch] $KeepOpen
@@ -95,6 +95,11 @@ try {
     }
 } finally {
     if (-not $KeepOpen) { Stop-Games }
+    # MSC rewrites its logs at the next start: keep this run's next to the CSV.
+    foreach ($kept in @(@('output_log.txt', 'hittest-msc.log'), @('PerkeleRim_spike.log', 'hittest-msc-spike.log'))) {
+        $from = Join-Path $msc $kept[0]
+        if (Test-Path $from) { Copy-Item -Force $from (Join-Path (Split-Path $csv) $kept[1]) }
+    }
     Remove-HitTestLines
     $made | ForEach-Object { Remove-Item -ErrorAction SilentlyContinue $_ }
 }

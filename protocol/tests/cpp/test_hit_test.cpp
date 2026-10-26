@@ -41,8 +41,8 @@ TEST_CASE("the hit test's scenarios come from the ini's list")
     const auto all = HitTest::Parse("all");
     REQUIRE(all.size() == HitTest::kScenarios.size());
     CHECK(all[0].name == "punch");
-    CHECK(all[1].name == "drunk");
-    CHECK(all[2].name == "bottle");
+    CHECK(all[1].name == "bottle");
+    CHECK(all[2].name == "drunk");  // last: MSC's camera sways on after it
 
     std::vector<std::string> unknown;
     const auto picked = HitTest::Parse(" bottle , punch,,run-over\r", &unknown);
@@ -63,9 +63,10 @@ TEST_CASE("the scenarios cover sober and drunk punches and a throw")
         CHECK(scenario.gap > 0.0f);
     }
     CHECK(HitTest::kScenarios[0].drunk == 0.0f);
-    CHECK(HitTest::kScenarios[1].drunk > 0.0f);
-    CHECK(HitTest::kScenarios[1].drunk < 2.5f);  // below where MSC's player can't stand still
-    CHECK(HitTest::kScenarios[2].attack == HitTest::Attack::kThrow);
+    CHECK(HitTest::kScenarios[2].drunk > 0.0f);
+    CHECK(HitTest::kScenarios[2].drunk < 2.5f);  // below where MSC's player can't stand still
+    CHECK(HitTest::kScenarios[1].attack == HitTest::Attack::kThrow);
+    CHECK(HitTest::kScenarios[1].drunk == 0.0f);
 }
 
 TEST_CASE("a punch that landed passes when Skyrim cast and took what damage.h says")
@@ -94,7 +95,7 @@ TEST_CASE("a punch that landed passes when Skyrim cast and took what damage.h sa
 
 TEST_CASE("a drunk punch fails when MSC didn't take the drunk level")
 {
-    const auto& drunk = HitTest::kScenarios[1];
+    const auto& drunk = HitTest::kScenarios[2];
     CHECK(HitTest::Check(drunk, Punched(4.0f, 2.0f)).pass);
     CHECK(HitTest::Check(drunk, Punched(4.0f, 1.2f)).pass);  // MSC's level moves on its own a little
     CHECK(HitTest::Check(drunk, Punched(4.0f, 0.3f)).note == "MSC's drunk level was 0.3, not 2.0");
@@ -102,7 +103,7 @@ TEST_CASE("a drunk punch fails when MSC didn't take the drunk level")
 
 TEST_CASE("a throw passes by its speed, harmless ones fail")
 {
-    const auto&  bottle = HitTest::kScenarios[2];
+    const auto&  bottle = HitTest::kScenarios[1];
     HitTest::Hit hit;
     hit.landed = true;
     hit.unarmed = 4.0f;
