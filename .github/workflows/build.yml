@@ -1,14 +1,48 @@
 name: build
 
+# Pushes to main (development) and production (what players get, docs/DEV_SETUP.md, "Branches and
+# releases") build too, so both branches' heads are checked, and so is every PR into either.
 on:
   push:
+    branches: [main, production]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  # Every PR runs, docs-only ones too: `build` and `protocol-tests-linux` are required checks on
+  # main and production, and a check that never reports would block the merge. The `changes` job
+  # skips them instead, and GitHub counts a skipped job as passed.
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Whether a PR touches more than docs/ and Markdown files (pushes and manual runs always build).
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ] || git diff --name-only "$BASE" HEAD | grep -qvE '^docs/|\.md$'; then
+            echo code=true >> "$GITHUB_OUTPUT"
+          else
+            echo code=false >> "$GITHUB_OUTPUT"
+          fi
+
   # The game-free tests on Linux (scripts/test.sh): a quick check next to the Windows build.
   # The shared memory link's tests need Windows and run in the build job's scripts/test.ps1.
   protocol-tests-linux:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +58,8 @@ jobs:
         run: ./scripts/test.sh
 
   build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,7 +95,10 @@ jobs:
         shell: pwsh
         run: ./scripts/test.ps1
 
+      # Kept short: the account's free artifact storage is small, and a full store must not fail
+      # the build.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: PerkeleRim-${{ github.sha }}
           path: |
@@ -67,3 +106,4 @@ jobs:
             skse/build/release/PerkeleRim.pdb
             msc/bin/stubs/Release/net35/PerkeleRim.dll
           if-no-files-found: error
+          retention-days: 7
