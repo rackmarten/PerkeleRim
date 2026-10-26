@@ -3,7 +3,8 @@
     Starts My Summer Car windowed at its lowest resolution and quality (640x480, "Fastest") with single-threaded
     rendering (-force-gfx-direct, which the hand layer needs) and clicks "Play!" on Unity's
     configuration dialog if it appears, then presses Space past the news screen, so a test run needs no clicks. Combine with the spike's auto-load
-    (<MSC>/PerkeleRim_autoload.txt) to go straight into the saved game.
+    (<MSC>/PerkeleRim_autoload.txt) to go straight into the saved game. MSC's own screen settings
+    are saved first and put back once it closes, as the player launcher does (launcher/install.ps1).
 .EXAMPLE
     scripts/launch-msc.ps1
     scripts/launch-msc.ps1 -Width 1280 -Height 720
@@ -18,6 +19,8 @@ param(
 )
 
 . "$PSScriptRoot/common.ps1"
+. "$RepoRoot/launcher/checks.ps1"
+. "$RepoRoot/launcher/install.ps1"
 $msc = Get-RequiredSetting (Get-LocalConfig) 'MscPath'
 
 if (Get-Process mysummercar -ErrorAction SilentlyContinue) { throw 'My Summer Car is already running.' }
@@ -31,10 +34,14 @@ Add-Type -Namespace PerkeleRim -Name Win32 -MemberDefinition @'
 [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
 '@
 
+# Unity keeps the screen mode MSC ran in as its own settings when it quits: the player launcher's
+# hidden watcher puts the ones from before back once MSC has closed.
+[void] (Save-MscScreenSettings $MscRegistryKey $MscScreenBackup)
 $log = Join-Path $msc 'PerkeleRim_spike.log'
 $launched = Get-Date
 Start-Process -WorkingDirectory $msc (Join-Path $msc 'mysummercar.exe') `
     -ArgumentList '-force-gfx-direct', '-screen-fullscreen', [int]$Fullscreen.IsPresent, '-screen-width', $Width, '-screen-height', $Height, '-screen-quality', $Quality
+Start-MscScreenWatcher (Join-Path $RepoRoot 'launcher/PerkeleRim.ps1')
 
 # Until the spike log says the mod has started (main menu reached):
 #  - click "Play!" on Unity's configuration dialog. The -screen-* arguments don't skip it in MSC's
