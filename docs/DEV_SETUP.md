@@ -199,7 +199,7 @@ The page groups the clips the way MSC does: MSC plays its voices through **Maste
 
 Search matches group, clip and variation names, the scene paths and the transcripts. **copy** puts a line's reference on the clipboard, **pick** collects lines for **Copy picked** at the bottom. Keys: `/` search, `↓`/`↑` or `j`/`k` move, `Space` play, `c` copy, `p` pick, `Esc` stop. Picks are kept in that browser.
 
-`-Transcribe` needs `uv` and an NVIDIA GPU: `tools/voice-picker/transcribe.py` runs faster-whisper large-v3 (about 3 GB, downloaded once into the Hugging Face cache, int8 so it fits next to a running game) for the Finnish text and again for an English translation, about one clip a second. It skips clips it has, so reruns are cheap. The text is a guess; listen before you pick.
+`-Transcribe` needs `uv` and an NVIDIA GPU: `tools/voice-picker/transcribe.py` runs faster-whisper large-v3 (about 3 GB, downloaded once into the Hugging Face cache, int8 so it fits next to a running game) for the Finnish text and again for an English translation: all 1,666 clips take about 45 minutes on an RTX 4070 (`-Groups` does a few in seconds). It skips clips it has, so reruns are cheap. The text is a guess; listen before you pick.
 
 Agents: when a feature needs particular MSC lines, ask the user to pick them with this page and paste the references back, rather than guessing from clip names.
 
