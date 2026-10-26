@@ -52,7 +52,6 @@ namespace PerkeleRim::Hitbox
             static_assert(sizeof(BodyInfo) == sizeof(RE::bhkRigidBodyCinfo::hkCinfo));
 
             constexpr std::uint8_t kKeyframedQuality = 1;     // hkpCollidableQualityType
-            constexpr std::uint8_t kSolverDeactivationOff = 1;
             constexpr int          kDoActivate = 1;           // hkpEntityActivation
 
             void NewCapsule(RE::bhkShape* a_this)
@@ -139,6 +138,8 @@ namespace PerkeleRim::Hitbox
             std::uint32_t               group = 0;   // the player's collision group they are in
             bool                        solid = true;  // by Hitbox::Solid
             RE::NiPoint3                last;          // where it was keyframed last
+            float                       lastRotation[4]{};
+            bool                        moving = true;  // keyframed with a velocity last frame
             std::string                 out;           // why it is out of the world, as last logged
             Box                         box{};
             Protocol::VehicleState      state{};       // the pose it follows, this frame
@@ -192,8 +193,9 @@ namespace PerkeleRim::Hitbox
             info.collisionFilterInfo = hk.collisionFilterInfo = static_cast<std::uint32_t>(kLayer);
             info.shape = hk.shape = hkShape;
             hk.motionType = static_cast<std::uint8_t>(RE::hkpMotion::MotionType::kKeyframed);
-            hk.enableDeactivation = false;  // a sleeping keyframed body ignores its keyframes
-            hk.solverDeactivation = Havok::kSolverDeactivationOff;
+            // Parked, it may fall asleep, which is when Skyrim cuts the navmesh for a body on a
+            // navmesh-obstacle layer (L_TRANSPARENT_SMALL_ANIM is one); Follow wakes it to move it.
+            hk.enableDeactivation = true;
             hk.qualityType = Havok::kKeyframedQuality;
             hk.position = HavokPosition(a_state.position);
             hk.rotation = HavokRotation(a_state.rotation).vec;
@@ -291,6 +293,8 @@ namespace PerkeleRim::Hitbox
             a_body.world.reset(a_world);
             a_body.group = a_group;
             a_body.last = RE::NiPoint3(a_state.position[0], a_state.position[1], a_state.position[2]);
+            std::copy(a_state.rotation, a_state.rotation + 4, a_body.lastRotation);
+            a_body.moving = true;
             a_body.out.clear();
             SKSE::log::info("hitbox: the {} is solid in Skyrim's world at ({:.0f},{:.0f},{:.0f}), {} capsules in the player's collision group {}", a_body.name,
                 a_state.position[0], a_state.position[1], a_state.position[2], a_body.parts.size(), a_group);
@@ -347,13 +351,27 @@ namespace PerkeleRim::Hitbox
         void Follow(Body& a_body, const Protocol::VehicleState& a_state)
         {
             const RE::NiPoint3 at(a_state.position[0], a_state.position[1], a_state.position[2]);
-            const bool         jump = at.GetDistance(a_body.last) > kTeleport;
+            const float        moved = at.GetDistance(a_body.last);
+            float              turned = 0.0f;
+            for (int k = 0; k < 4; k++) {
+                turned = (std::max)(turned, std::fabs(a_state.rotation[k] - a_body.lastRotation[k]));
+            }
+            const bool jump = moved > kTeleport;
+            const bool still = moved < 0.05f && turned < 1e-5f;
+            if (still && !a_body.moving) {
+                return;  // left asleep
+            }
+            a_body.moving = !still;
             a_body.last = at;
+            std::copy(a_state.rotation, a_state.rotation + 4, a_body.lastRotation);
             auto        position = HavokPosition(a_state.position);
             auto        rotation = HavokRotation(a_state.rotation);
             const float delta = std::clamp(RE::GetSecondsSinceLastFrame(), 1.0f / 240.0f, 0.1f);
             RE::BSWriteLockGuard lock(a_body.world->worldLock);
             for (auto& part : a_body.parts) {
+                if (!still) {
+                    Havok::SetActivated(part.body.get(), true);
+                }
                 if (jump) {
                     part.body->SetPositionAndRotation(position, rotation);
                     part.body->SetLinearVelocity(RE::hkVector4(0.0f, 0.0f, 0.0f, 0.0f));
@@ -440,5 +458,17 @@ namespace PerkeleRim::Hitbox
     std::uint32_t Hits(std::uint32_t a_vehicle)
     {
         return a_vehicle >= 1 && a_vehicle <= Protocol::kVehicleCount ? bodies[a_vehicle - 1].hits : 0;
+    }
+
+    bool Owns(const RE::bhkCollisionObject* a_object)
+    {
+        for (const auto& body : bodies) {
+            for (const auto& part : body.parts) {
+                if (a_object && part.collision.get() == a_object) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

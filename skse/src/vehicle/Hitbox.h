@@ -21,4 +21,6 @@ namespace PerkeleRim::Hitbox
     bool Where(std::uint32_t a_vehicle, Protocol::VehicleState& a_state, Box& a_box);
     // Projectiles that have hit vehicle a_vehicle's hitbox since the game started (each logged, the first few in full).
     std::uint32_t Hits(std::uint32_t a_vehicle);
+    // Whether a collision object is one of the vehicles' capsules (a projectile's impact names it).
+    bool Owns(const RE::bhkCollisionObject* a_object);
 }
