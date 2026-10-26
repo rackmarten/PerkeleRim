@@ -21,9 +21,8 @@ namespace PerkeleRim::Combat
         constexpr RE::FormID    kStaggerSpell = 0x905;  // PerkeleRimPunchStagger
         constexpr RE::FormID    kPissSpell = 0x90E;     // PerkeleRimPiss: poison, magnitude (per second) set per cast
         constexpr RE::FormID    kMuteVoice = 0x90F;     // PerkeleRimMuteVoice: 1 keeps the player quiet on shout and grunt lines
-        // PerkeleRimDrunkArmor, PerkeleRimDrunkStamina, PerkeleRimDrunkStaminaRate: fortify; PerkeleRimDrunkShout: less
-        // ShoutRecoveryMult. Magnitude set per cast (Damage::Drunk, in this order), kDrunkSeconds.
-        constexpr RE::FormID    kDrunkSpells[] = { 0x914, 0x915, 0x916, 0x918 };
+        // PerkeleRimDrunkArmor, PerkeleRimDrunkStamina, PerkeleRimDrunkStaminaRate: fortify, magnitude set per cast, kDrunkSeconds.
+        constexpr RE::FormID    kDrunkSpells[] = { 0x914, 0x915, 0x916 };
         constexpr std::size_t   kDrunkSpellCount = std::size(kDrunkSpells);
         constexpr RE::FormID    kJarls = 0x50920;       // Skyrim.esm's JobJarlFaction
         constexpr float         kDrunkSeconds = 10.0f;  // their duration (esp-gen): a save taken meanwhile loses them soon after
@@ -65,6 +64,7 @@ namespace PerkeleRim::Combat
             float                         drunkApplied = 0.0f;   // drunk level the spells were cast for, 0 = none on
             int                           drunkLogged = -1;      // tenth of full drunk last logged
             float                         drunkAge = 0.0f;       // seconds since they were cast
+            float                         drunk = 0.0f;          // MSC's drunk level this frame, for the shout cooldown
             float                         refusedAt = -100.0f;   // when the last "fists only" showed
             float                         clock = 0.0f;
             bool                          unarmedLogged = false;
@@ -306,6 +306,7 @@ namespace PerkeleRim::Combat
         {
             DispelDrunk(a_player);
             state.drunkApplied = 0.0f;
+            state.drunk = 0.0f;
             state.drunkLogged = -1;
         }
 
@@ -807,9 +808,18 @@ namespace PerkeleRim::Combat
         message.shout = shout ? shout->GetFormID() : 0;
         message.kind = Shout::KindOf(message.shout);
         message.words = Shout::Words(state.charged, cooldowns, mult, recovery);
+        // Drunk, the cooldown Skyrim just started is cut short (Damage::DrunkShoutCooldown), written
+        // straight to the recovery time: a PerkeleRim.esp spell on ShoutRecoveryMult lengthened it in
+        // game whichever sign it was cast with.
+        float cooldown = recovery;
+        if (state.drunk > 0.0f && high) {
+            cooldown = Damage::DrunkShoutCooldown(recovery, state.drunk);
+            high->voiceRecoveryTime = cooldown;
+        }
         const bool sent = LinkService::Get().Send(Protocol::MessageType::PlayerShout, &message, sizeof(message));
-        SKSE::log::info("combat: the player shouted {} ({:08X}, {} words{}), cooldown {:.1f} s (shout recovery x{:.2f}){}", shout ? shout->GetFullName() : "?",
-            message.shout, message.words, state.charged < 0 ? " by the cooldown" : "", recovery, mult, sent ? "" : ", but the ring to MSC is full");
+        SKSE::log::info("combat: the player shouted {} ({:08X}, {} words{}), cooldown {:.1f} s (shout recovery x{:.2f}), drunk {:.2f}: {:.1f} s{}",
+            shout ? shout->GetFullName() : "?", message.shout, message.words, state.charged < 0 ? " by the cooldown" : "", recovery, mult, state.drunk, cooldown,
+            sent ? "" : ", but the ring to MSC is full");
         state.charged = -1;
         state.charging = nullptr;
     }
@@ -854,6 +864,7 @@ namespace PerkeleRim::Combat
         state.clock += a_delta;
         state.drunkAge += a_delta;
         const float level = (std::clamp)(a_drunk, 0.0f, Damage::kDrunkLevels);
+        state.drunk = level;
         const bool  on = state.drunkApplied > 0.0f;
         if (level <= 0.0f && !on) {
             return;
@@ -876,7 +887,7 @@ namespace PerkeleRim::Combat
             DispelDrunk(a_player);
         }
         const auto  buffs = Damage::Drunk(level);
-        const float magnitudes[] = { buffs.armor, buffs.stamina, buffs.staminaRate, buffs.shoutRecovery };
+        const float magnitudes[] = { buffs.armor, buffs.stamina, buffs.staminaRate };
         static_assert(std::size(magnitudes) == kDrunkSpellCount);
         for (std::size_t i = 0; i < kDrunkSpellCount; i++) {
             caster->CastSpellImmediate(state.drunkSpells[i], false, a_player, 1.0f, false, magnitudes[i], a_player);
@@ -887,11 +898,11 @@ namespace PerkeleRim::Combat
         if (tenth != state.drunkLogged) {
             state.drunkLogged = tenth;
             auto* values = a_player->AsActorValueOwner();
-            SKSE::log::info("combat: drunk {:.2f}: casting armor +{:.0f}, stamina +{:.0f}, stamina regen +{:.0f}%, shout recovery -{:.2f} (the player has "
-                            "armor {:.0f}, max stamina {:.0f}, stamina regen {:.0f}%, shout recovery x{:.2f})",
-                level, buffs.armor, buffs.stamina, buffs.staminaRate, buffs.shoutRecovery, values ? values->GetActorValue(RE::ActorValue::kDamageResist) : -1.0f,
+            SKSE::log::info("combat: drunk {:.2f}: casting armor +{:.0f}, stamina +{:.0f}, stamina regen +{:.0f}% (the player has armor {:.0f}, "
+                            "max stamina {:.0f}, stamina regen {:.0f}%)",
+                level, buffs.armor, buffs.stamina, buffs.staminaRate, values ? values->GetActorValue(RE::ActorValue::kDamageResist) : -1.0f,
                 values ? values->GetPermanentActorValue(RE::ActorValue::kStamina) + a_player->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, RE::ActorValue::kStamina) : -1.0f,
-                values ? values->GetActorValue(RE::ActorValue::kStaminaRateMult) : -1.0f, values ? values->GetActorValue(RE::ActorValue::kShoutRecoveryMult) : -1.0f);
+                values ? values->GetActorValue(RE::ActorValue::kStaminaRateMult) : -1.0f);
         }
         state.drunkApplied = level;
         state.drunkAge = 0.0f;

@@ -49,7 +49,8 @@ namespace PerkeleRim::Combat
     // Every frame MSC has the player: Skyrim's shouting (Z) works as in vanilla, aimed along MSC's
     // camera, but PerkeleRim.esp's shout and grunt lines aren't the player's while its
     // PerkeleRimMuteVoice global is 1, so Skyrim's shout voice and grunts are muted; each shout released goes to MSC (PlayerShout)
-    // with its words (seen while it charged, else by its cooldown), and MSC yells instead.
+    // with its words (seen while it charged, else by its cooldown), and MSC yells instead. Drunk, the
+    // cooldown it started is shortened (Damage::DrunkShoutCooldown).
     void Shouts(RE::PlayerCharacter* a_player);
 
     // Every frame MSC has the player: keeps its hands drawn (Skyrim only blocks with them out; fists
@@ -60,9 +61,9 @@ namespace PerkeleRim::Combat
     void Guard(RE::PlayerCharacter* a_player, bool a_block, bool a_draw);
 
     // Every frame MSC has the player: the drunker (a_drunk, MSC's level 0..8), the tougher. PerkeleRim.esp's
-    // drunk spells on the player, armor, max stamina, stamina regen and a shorter shout cooldown (less
-    // ShoutRecoveryMult) by Damage::Drunk, recast as the level moves and before they run out (10 s, so
-    // a save taken meanwhile doesn't keep them); dispelled when Skyrim has the player back.
+    // drunk spells on the player, armor, max stamina and stamina regen by Damage::Drunk, recast as the
+    // level moves and before they run out (10 s, so a save taken meanwhile doesn't keep them). Shouts
+    // reads the level for the shout cooldown.
     void Drunk(RE::PlayerCharacter* a_player, float a_drunk, float a_delta);
 
     // Every frame MSC has the player: Finn fights with his fists. A weapon, spell or scroll in either

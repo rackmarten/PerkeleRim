@@ -379,19 +379,16 @@ foreach (var r in new IMajorRecordGetter[] { pissPoison, piss })
     Console.WriteLine($"  {r.FormKey.ID:X3} {r.EditorID}");
 
 // The drunker, the tougher, while MSC has the player: fortify armor rating, max stamina and stamina
-// regen on the player itself, and a shorter shout cooldown (ShoutRecoveryMult lowered: Detrimental
-// takes the magnitude off, as the Blessing of Talos does), magnitude set per cast (Damage::Drunk),
-// recast while it lasts. The duration is short so a save taken meanwhile doesn't keep them; Recover
-// takes the bonus off at the end. Active Effects lists each by its name and description (<mag> is
-// the magnitude cast).
-(MagicEffect Effect, Spell Spell) DrunkBuff(uint id, string editorId, ActorValue value, string name, string description, uint? spellId = null,
-    bool lowers = false)
+// regen on the player itself, magnitude set per cast (Damage::Drunk), recast while it lasts. The
+// duration is short so a save taken meanwhile doesn't keep them; Recover takes the bonus off at the end.
+// Active Effects lists each by its name and description (<mag> is the magnitude cast).
+(MagicEffect Effect, Spell Spell) DrunkBuff(uint id, string editorId, ActorValue value, string name, string description)
 {
     var effect = Effect(id, editorId + "Effect", name, new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.ValueModifier) { ActorValue = value });
-    effect.Flags = MagicEffect.Flag.Recover | MagicEffect.Flag.NoArea | (lowers ? MagicEffect.Flag.Detrimental : 0);
+    effect.Flags = MagicEffect.Flag.Recover | MagicEffect.Flag.NoArea;
     effect.TargetType = TargetType.Self;
     effect.Description = description;
-    var spell = Spell(spellId ?? id + 3, editorId, name, effect, 1f);
+    var spell = Spell(id + 3, editorId, name, effect, 1f);
     spell.TargetType = TargetType.Self;
     spell.Effects[0].Data!.Duration = 10;  // kDrunkSeconds in skse/src/combat/Combat.cpp
     return (effect, spell);
@@ -399,8 +396,7 @@ foreach (var r in new IMajorRecordGetter[] { pissPoison, piss })
 foreach (var (effect, spell) in new[] {
     DrunkBuff(0x911, "PerkeleRimDrunkArmor", ActorValue.DamageResist, "Drunk: Thick Skin", "Armor rating is increased by <mag> points."),
     DrunkBuff(0x912, "PerkeleRimDrunkStamina", ActorValue.Stamina, "Drunk: Liquid Courage", "Stamina is increased by <mag> points."),
-    DrunkBuff(0x913, "PerkeleRimDrunkStaminaRate", ActorValue.StaminaRateMult, "Drunk: Second Wind", "Stamina regenerates <mag>% faster."),
-    DrunkBuff(0x917, "PerkeleRimDrunkShout", ActorValue.ShoutRecoveryMult, "Drunk: Loud Mouth", "Time between shouts is shorter.", 0x918, lowers: true) })
+    DrunkBuff(0x913, "PerkeleRimDrunkStaminaRate", ActorValue.StaminaRateMult, "Drunk: Second Wind", "Stamina regenerates <mag>% faster.") })
     Console.WriteLine($"  {effect.FormKey.ID:X3} {effect.EditorID}, {spell.FormKey.ID:X3} {spell.EditorID}");
 
 // ---- Pocket ----
@@ -514,7 +510,7 @@ foreach (var spot in stockSpots)
 mod.FormLists.Add(spotList);
 Console.WriteLine($"  910 {spotList.EditorID} ({spotList.Items.Count} spots)");
 
-mod.ModHeader.Stats.NextFormID = 0x919;  // after PerkeleRimDrunkShout (0x918)
+mod.ModHeader.Stats.NextFormID = 0x917;  // after PerkeleRimDrunkStaminaRate (0x916)
 // Header 1.70, not Mutagen's 1.71: Skyrim SE 1.5.97 skips 1.71 plugins, AE loads both.
 mod.ModHeader.Stats.Version = 1.7f;
 
