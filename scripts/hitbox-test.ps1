@@ -9,7 +9,8 @@
     behind the Hayosiko van and a melee bandit just behind it and logs for a minute. This takes two
     screenshots, prints the hitbox lines of PerkeleRim.log, closes both games (-KeepOpen leaves them)
     and takes its flag files away again. Any save with Kumpo outdoors works (the van can't be called
-    into an interior); -Save makes that one the newest by its file time, so Autoload picks it. Exits 1
+    into an interior); -Save makes that one the newest by its file time for the run, so Autoload picks it
+    (its own time is put back afterwards, so Continue still goes to the real latest save). Exits 1
     when the test didn't finish or Skyrim went away.
 .EXAMPLE
     scripts/hitbox-test.ps1
@@ -42,13 +43,14 @@ if ($Save) {
     $Save = $Save -replace '\.ess$', ''
     $files = @(Get-Item (Join-Path $saves "$Save.ess"), (Join-Path $saves "$Save.skse") -ErrorAction SilentlyContinue)
     if (-not ($files | Where-Object Extension -eq '.ess')) { throw "No save $Save.ess in $saves" }
-    $files | ForEach-Object { $_.LastWriteTime = Get-Date }
+    $restoreTimes = @($files | ForEach-Object { [pscustomobject]@{ Path = $_.FullName; Time = $_.LastWriteTime } })
 }
 New-Item -ItemType Directory -Force $shots | Out-Null
 Set-Content -Path $flag -Value 'hitbox test'
 if ($ownAutoload) { Set-Content -Path $autoload -Value 'hitbox test' }
 $ok = $false
 try {
+    if ($Save) { $files | ForEach-Object { $_.LastWriteTime = Get-Date } }
     $restart = @{}
     if ($Build) { $restart.Build = $true }
     & "$PSScriptRoot/restart-games.ps1" @restart
@@ -99,6 +101,9 @@ try {
         Get-Process SkyrimSE, skse64_loader, mysummercar -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     }
     Remove-Item $flag -ErrorAction SilentlyContinue
+    foreach ($restore in @($restoreTimes)) {
+        if ($restore) { (Get-Item $restore.Path).LastWriteTime = $restore.Time }
+    }
     if ($ownAutoload) { Remove-Item $autoload -ErrorAction SilentlyContinue }
     Write-Host "Screenshots: $shots"
 }
