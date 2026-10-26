@@ -9,6 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Vehicles are solid in Skyrim: the van, the moped and the Kekmet stop arrows and spells (hiding behind the parked van works, and arrows hit it with a metal clang) and people walk around them instead of through them. Ragdolls and dropped items bounce off too. Kumpo himself still walks through, and NPCs still see him through the van. At driving speed (from about 7 km/h) the hitbox steps aside so running people over works as before; Kumpo stays safe in the van and the Kekmet while seated.
+- Setup in the launcher: the first time, Start PerkeleRim.bat finds My Summer Car and Skyrim (Steam libraries, Steam's own install records, or folders you pick), lists what's missing of MSCLoader, SKSE and Address Library, opens their download pages and waits while you install them, then installs PerkeleRim into both games. Skyrim's SKSE build is checked against the Skyrim version too.
+- Mod Organizer 2: when MO2 manages your Skyrim, the launcher asks once whether to start Skyrim through it; then Address Library may be an MO2 mod, `PerkeleRim.esp` is ticked in MO2's selected profile, and an older PerkeleRim installed as an MO2 mod gets a warning.
+
+### Fixed
+
+- My Summer Car started from Steam after a PerkeleRim session keeps your own resolution and graphics quality: the launcher puts them back once MSC closes (PerkeleRim runs MSC in a small window at its lowest quality, and Unity kept that). If an earlier PerkeleRim already left MSC at 640x480, set your resolution and quality in MSC once more and they stay.
+- MSCLoader's console (~) stays quiet during play: it shows only the link coming up or going down and anything that failed. Every PerkeleRim line still goes to `output_log.txt`.
+- The launcher no longer stops at a Steam library on a drive that isn't there any more.
 
 ## [0.1.1] - 2026-10-22
 

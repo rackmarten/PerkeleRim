@@ -11,7 +11,7 @@ Notes for coding agents working on PerkeleRim. Humans: [CONTRIBUTING.md](CONTRIB
 Everything builds and runs on Windows, where both games are installed:
 
 - Run `scripts/*.ps1` from PowerShell, or `pwsh -NoProfile -File scripts/<name>.ps1` from Git Bash. They set up the MSVC dev shell themselves; `cmake` isn't on PATH outside them.
-- `scripts/build.ps1` builds both sides, `scripts/test.ps1` runs the game-free tests (C++ doctest and C# link tests), `scripts/logs.ps1` tails both logs.
+- `scripts/build.ps1` builds both sides, `scripts/test.ps1` runs the game-free tests (C++ doctest, C# link tests, and the launcher's Pester tests on pwsh and Windows PowerShell 5.1), `scripts/logs.ps1` tails both logs.
 - `scripts/restart-games.ps1` is the whole in-game loop: it closes both games, optionally builds, then deploys and starts them. Closing the games discards anything unsaved in them.
 - `scripts/msc-save.ps1` snapshots and restores My Summer Car's save, so a test can start from a known state.
 - `scripts/skyrim-key.ps1` presses a key in Skyrim (e.g. F10 for the handover) and can take a screenshot.

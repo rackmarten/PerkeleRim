@@ -18,6 +18,14 @@ namespace PerkeleRim.Game
 
         public static Link Current => instance != null ? instance.link : null;
 
+        // Every line goes to output_log.txt; MSCLoader's console (which writes there too) only gets
+        // the ones a player should see (ConsoleLine).
+        public static void Log(string line)
+        {
+            if (ConsoleLine.IsForPlayer(line)) ModConsole.Print("PerkeleRim: " + line);
+            else UnityEngine.Debug.Log("PerkeleRim: " + line);
+        }
+
         public static void Ensure()
         {
             if (instance != null) return;
@@ -30,7 +38,7 @@ namespace PerkeleRim.Game
         {
             // MSC runs hidden behind Skyrim; without this Unity pauses it as soon as it loses focus.
             Application.runInBackground = true;
-            Action<string> log = line => ModConsole.Print("PerkeleRim: " + line);
+            Action<string> log = Log;
             link = new Link(Side.Msc, log);
             // Redirect the game's Input calls to InputShim before the game scene loads.
             try { InputRedirect.Apply(log); }
