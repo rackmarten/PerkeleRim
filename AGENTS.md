@@ -14,7 +14,7 @@ Everything builds and runs on Windows, where both games are installed:
 - `scripts/build.ps1` builds both sides, `scripts/test.ps1` runs the game-free tests (C++ doctest and C# link tests), `scripts/logs.ps1` tails both logs.
 - `scripts/restart-games.ps1` is the whole in-game loop: it closes both games, optionally builds, then deploys and starts them. Closing the games discards anything unsaved in them.
 - `scripts/msc-save.ps1` snapshots and restores My Summer Car's save, so a test can start from a known state.
-- `scripts/skyrim-key.ps1` presses a key in Skyrim (e.g. F10 for the handover) and can take a screenshot.
+- `scripts/skyrim-key.ps1` presses a key in Skyrim and can take a screenshot. Loading a save hands the player to MSC by itself (play mode); F10 takes it back, and pressing F10 before the automatic handover cancels it.
 - Put code that doesn't need a game somewhere testable (protocol headers, coordinate conversion) and cover it in `scripts/test.ps1`. Keep the game-facing code a thin layer over it.
 - Files are LF (`.gitattributes`). Edit them with your editor tools: PowerShell's `Set-Content` and Python's default text mode on Windows write CRLF.
 

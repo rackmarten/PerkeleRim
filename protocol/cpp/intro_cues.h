@@ -47,7 +47,8 @@ namespace PerkeleRim::Intro
             }
         }
 
-        // Once a frame; a_msc: MSC is linked and in its game. Returns the cue to send this frame,
+        // Once a frame; a_msc: MSC is linked and in its game (and, for Skyrim, the cart is there:
+        // Unbound runs). Returns the cue to send this frame,
         // 0 for none (kIntroBlackout first if both are due).
         std::uint32_t Tick(float a_delta, bool a_msc)
         {

@@ -19,7 +19,7 @@ namespace PerkeleRim::Intro
             RE::TESImageSpaceModifier* fade = nullptr;
             Cues                       cues;
             std::string                caption;      // shown while Skyrim has the player
-            float                      captionLeft = 0.0f;
+            float                      captionLeft = 0.0f;  // seconds
             std::atomic<bool>          ralofDone = false;  // set by the topic sink
         } state;
 
@@ -81,7 +81,9 @@ namespace PerkeleRim::Intro
 
     bool Running()
     {
-        return state.unbound && state.unbound->IsRunning() && !state.unbound->IsCompleted();
+        // IsRunning() is only "not stopping", true for a quest that never started (a coc start, a
+        // mod that skips Helgen); enabled is what runs.
+        return state.unbound && state.unbound->IsEnabled() && !state.unbound->IsCompleted();
     }
 
     void Tick(float a_delta, bool a_msc, bool a_owned)
@@ -90,7 +92,7 @@ namespace PerkeleRim::Intro
             SKSE::log::info("intro: Ralof's first line in the cart ended");
             state.cues.OnTopicEnd(kRalofFinallyAwake);
         }
-        if (const auto cue = state.cues.Tick(a_delta, a_msc)) {
+        if (const auto cue = state.cues.Tick(a_delta, a_msc && Running())) {  // no cart (a mod that skips it): no cues
             Send(cue);
         }
         if (a_owned) {
@@ -98,12 +100,15 @@ namespace PerkeleRim::Intro
             return;
         }
         Hud::View view;
+        bool      refresh = false;
         if (state.captionLeft > 0.0f) {
+            const float before = state.captionLeft;
             state.captionLeft -= a_delta;
+            refresh = std::floor(before) != std::floor(state.captionLeft);  // once a second, in case the HUD movie wasn't up yet
             view.show = true;
             view.dot = false;
             view.subtitle = state.caption;
         }
-        Hud::Set(view);
+        Hud::Set(view, refresh);
     }
 }

@@ -92,7 +92,7 @@ scripts/build-esp.ps1 -Deploy       # generate PerkeleRim.esp (garage, beer drin
 scripts/logs.ps1                   # tail of the plugin, SKSE and My Summer Car logs
 scripts/package.ps1                # player release zip (launcher/ + built files + launcher/saves/MSC and Skyrim if present) in tools/out/release/ (build and build-esp first)
 scripts/starter-save.ps1           # copy your current MSC save into launcher/saves/MSC with thirst, hunger, urine, fatigue, stress, drunk and dirtiness at 0
-scripts/starter-save.ps1 -Skyrim   # copy your newest Skyrim save (made before the first F10) into launcher/saves/Skyrim as PerkeleRim-Kumpo
+scripts/starter-save.ps1 -Skyrim   # copy your newest Skyrim save (made before the first handover) into launcher/saves/Skyrim as PerkeleRim-Kumpo
 scripts/launch-msc.ps1             # start MSC windowed at 640x480, lowest quality, single-threaded rendering, with no clicks (clicks Play! on the config dialog, presses past the news screen)
 scripts/restart-games.ps1 -Build    # close both games, build, deploy, start MSC and Skyrim (SKSE), wait for "link up"
 scripts/msc-save.ps1 snapshot NAME  # save MSC save data outside the repo; "restore NAME" puts it back
@@ -137,7 +137,7 @@ Then check, in this order:
 - [ ] `PerkeleRim.log` says `Skyrim runtime 1.5.97.0`, and `skse64.log` says `PerkeleRim.dll` loaded correctly.
 - [ ] Main menu reached without a crash, and `PerkeleRim.log` doesn't say `PerkeleRim.esp isn't loaded` (its header must stay 1.70: 1.5.97 skips 1.71 plugins).
 - [ ] A save made on SE (or a new game: `coc WhiterunStables` from the main menu console) loads. The AE-made **PerkeleRim-Kumpo** starter save is reported corrupt on 1.5.97, so the launcher doesn't add it on SE. AE saves made later in a playthrough may load, with a warning about missing Creation Club content.
-- [ ] F10 hands over to MSC and back; walking, looking and the camera follow MSC (PlayerCharacter update hook, vfunc `0xAD`).
+- [ ] Loading a save hands over to MSC by itself, and F10 takes the player back and hands over again; walking, looking and the camera follow MSC (PlayerCharacter update hook, vfunc `0xAD`).
 - [ ] Favorites, menus and activating things still behave while MSC has the player (handler hooks, vfunc `0x1`).
 - [ ] Damage protection while driving: take a hit in the van (Actor `HandleHealthDamage` hook, vfunc `0x104`).
 - [ ] Drive the van, drink, punch, piss; HUD bars and subtitles show; the van's lights work.
