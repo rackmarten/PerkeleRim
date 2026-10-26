@@ -473,7 +473,7 @@ namespace PerkeleRim::Protocol
     // Same payload as Subtitle; no text (on foot) clears it.
 
     // DebugCommand (v40): a line for MSC's spike console (msc/src/Spike/SpikeHost.cs, as in
-    // <MSC>/PerkeleRim_cmd.txt: "global PlayerDrunk 2", "hold 1"), sent only by the hit test
+    // <MSC>/PerkeleRim_cmd.txt: "drunk 2", "hold 1"), sent only by the hit test
     // (skse/src/debug/HitTest.cpp, [Debug] HitTest in PerkeleRim.ini). Same payload as Subtitle.
 
     // PlayerWashed: Kumpo waded into water up to his waist (protocol/cpp/wading.h). Empty payload; MSC

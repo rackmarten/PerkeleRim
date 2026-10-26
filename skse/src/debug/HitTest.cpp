@@ -27,7 +27,7 @@ namespace PerkeleRim::HitTest
         constexpr float         kLevelPitch = 0.05f;  // radians, about 3 degrees: level enough
         constexpr float         kHitTimeout = 4.0f;   // from the key's press until the hit reaches Skyrim
         constexpr float         kSpellSeconds = 0.5f;  // from the hit until its spell has landed on the health
-        constexpr float         kPunchHold = 0.15f;
+        constexpr float         kPunchHold = 0.3f;   // past MSC's 0.15 s from the key to the fist's sweep
         constexpr float         kThrowHold = 1.0f;     // a full charge (ThrowCharge)
         constexpr float         kHoldSeconds = 2.0f;   // for MSC's "hold" to put the bottle in the hand
 
@@ -173,7 +173,7 @@ namespace PerkeleRim::HitTest
                 state.passed += verdict.pass ? 1 : 0;
                 SKSE::log::info("hit test: drunk vs punch, {}{}", verdict.pass ? "pass" : "FAIL", verdict.note.empty() ? "" : ": " + verdict.note);
             }
-            Command("global PlayerDrunk 0");
+            Command("drunk 0");
             SendCommands();
             state.csv.close();
             if (a_why) {
@@ -205,7 +205,7 @@ namespace PerkeleRim::HitTest
             SKSE::log::info("hit test: scenario {}", Current().name);
             char drunk[32];
             std::snprintf(drunk, sizeof(drunk), "%.2f", Current().drunk);
-            Command(std::string("global PlayerDrunk ") + drunk);
+            Command(std::string("drunk ") + drunk);
             Go(Phase::Drunk);
         }
 
@@ -275,7 +275,7 @@ namespace PerkeleRim::HitTest
             SKSE::log::info("hit test: {} {}: {}, {:.1f} cast ({:.1f} by damage.h), health {:.1f} -> {:.1f}, {}{}", Current().name, state.hit + 1,
                 hit.landed ? "landed" : "missed", hit.damage, Expected(Current(), hit), hit.before, hit.after, verdict.pass ? "pass" : "FAIL",
                 verdict.note.empty() ? "" : ": " + verdict.note);
-            if (verdict.pass && Current().attack == Attack::kPunch) {
+            if (hit.landed && Current().attack == Attack::kPunch) {  // the ratio is of what Combat cast, so a health mismatch doesn't hide it
                 if (Current().drunk > 0.0f) {
                     state.drunkSum += hit.damage;
                     state.drunkLevel += hit.drunk;
@@ -373,7 +373,7 @@ namespace PerkeleRim::HitTest
         case Phase::Settling:
             if (a_player->Is3DLoaded() && a_player->GetParentCell() && a_player->GetParentCell()->IsAttached() && state.timer >= kSettleSeconds) {
                 SKSE::log::info("hit test: the save is in, handing the player to MSC");
-                PlayerSync::DebugToggle();
+                PlayerSync::DebugHandOver();
                 Go(Phase::Handing);
             }
             break;

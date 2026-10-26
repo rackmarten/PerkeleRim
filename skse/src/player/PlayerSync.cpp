@@ -1089,9 +1089,11 @@ namespace PerkeleRim::PlayerSync
         return state.owned && state.seated;
     }
 
-    void DebugToggle()
+    void DebugHandOver()
     {
-        Toggle();
+        if (!state.owned && !state.resume && !state.garage) {
+            Toggle();
+        }
     }
 
     void DebugHold(std::uint16_t a_keyCode, bool a_held)

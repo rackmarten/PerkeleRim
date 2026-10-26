@@ -31,6 +31,8 @@ namespace PerkeleRim.Spike
     //   island steps [m]     log the island triangles over 30 degrees within m (8) of the player whose top is within 1 m of the feet
     //   island why [m]       what the ramp pass made of the steep triangles within m (2) of where MSC's camera looks
     //   global <name> <v>    set a global PlayMaker float or int (global PlayerUrine 100, global PlayerCigarettes 20)
+    //   drunk <level>        MSC's drunk level (0..8), set at its source PlayerDrunkAdjusted (by PlayerWeight),
+    //                        since a global PlayerDrunk is overwritten from it the next frame
     //   fsmvar <object> <fsm> <var> <v>  set a float, int or bool of every FSM of that name on objects of
     //                        that name (fsmvar FPSCamera Hangover TimeLeft 0 ends MSC's hangover shaking)
     //   spawn <product> [n]  a shop product in front of the player, from its Spawner/CreateItems FSM
@@ -415,6 +417,19 @@ namespace PerkeleRim.Spike
                         if (globalInt != null) globalInt.Value = int.Parse(words[2], CultureInfo.InvariantCulture);
                         SpikeLog.Write(global != null ? $"cmd: {words[1]} = {global.Value}"
                             : globalInt != null ? $"cmd: {words[1]} = {globalInt.Value}" : "cmd: no such global float or int");
+                        break;
+                    case "drunk":  // "drunk 2": MSC's drunk level 2, set at its source (PlayerDrunkAdjusted, by PlayerWeight; docs/FSM_MAP.md)
+                        var drunkGlobals = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
+                        var adjusted = drunkGlobals.FindFsmFloat("PlayerDrunkAdjusted");
+                        var weight = drunkGlobals.FindFsmFloat("PlayerWeight");
+                        var level = drunkGlobals.FindFsmFloat("PlayerDrunk");
+                        float wanted;
+                        if (words.Length < 2 || adjusted == null || level == null || !float.TryParse(words[1], NumberStyles.Float, CultureInfo.InvariantCulture, out wanted))
+                        { SpikeLog.Write("cmd: drunk <level 0..8>, in game"); break; }
+                        wanted = Mathf.Clamp(wanted, 0f, 8f);
+                        adjusted.Value = Mathf.Clamp(wanted * (weight != null && weight.Value > 0f ? weight.Value / 83f : 1f), 0f, 8f);
+                        level.Value = wanted;
+                        SpikeLog.Write($"cmd: drunk {wanted}, PlayerDrunkAdjusted = {adjusted.Value}");
                         break;
                     case "spawn":
                         if (words.Length < 2) { SpikeLog.Write("cmd: spawn <product> [count]"); break; }

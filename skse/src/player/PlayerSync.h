@@ -21,9 +21,10 @@ namespace PerkeleRim::PlayerSync
     void RestoreControls();  // the loaded save was taken while MSC had the player and kept its controls off
     void ResumeHandover();   // and hands the player to MSC again once it's in its cell (F10 cancels)
 
-    // The hit test (debug/HitTest.h) at the keys: F10, a Unity KeyCode held for MSC on top of what
+    // The hit test (debug/HitTest.h) at the keys: F10 unless MSC has the player or is about to (a save
+    // taken while it had it resumes the handover by itself), a Unity KeyCode held for MSC on top of what
     // the devices hold (until let go or the release), and mouse counts as a mouse move brings them.
-    void DebugToggle();
+    void DebugHandOver();
     void DebugHold(std::uint16_t a_keyCode, bool a_held);
     void DebugMouse(std::int32_t a_dx, std::int32_t a_dy);
 }
