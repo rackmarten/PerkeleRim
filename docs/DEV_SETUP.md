@@ -280,3 +280,4 @@ Both jobs are required checks on `main` and `production`. A `changes` job looks 
 - **`... was unexpected at this time` when entering the developer shell:** a quote character in your `PATH` confuses `VsDevCmd.bat`. `scripts/build.ps1` strips quotes for its own process, but it's worth fixing the entry in System Properties > Environment Variables.
 - **`MSCLoader.dll not found`:** MSCLoader isn't installed yet, or `MscPath` in `local.props` is wrong.
 - **Skyrim crashes at start, or SKSE says the plugin is incompatible:** the game updated. Check the runtime version, then update SKSE and Address Library to match.
+
