@@ -1,17 +1,16 @@
 <#
 .SYNOPSIS
-    The hitbox test with nobody at the keys: puts PerkeleRim_hitboxtest.txt (and, if missing,
-    PerkeleRim_autoload.txt) in Skyrim's folder and restarts both games with restart-games.ps1
-    (closing them discards anything unsaved; it deploys this checkout's build, -Build builds first),
-    so Skyrim loads its newest save. Once it is in, F10 hands Kumpo to MSC unless the save resumes
-    that itself, and ] calls the van in front of him (again after 30 s if the test hasn't started). The
-    plugin's driver (skse/src/vehicle/HitboxTest.cpp) then places a bandit archer
-    behind the Hayosiko van and a melee bandit just behind it and logs for a minute. This takes two
-    screenshots, prints the hitbox lines of PerkeleRim.log, closes both games (-KeepOpen leaves them)
-    and takes its flag files away again. Any save with Kumpo outdoors works (the van can't be called
-    into an interior); -Save makes that one the newest by its file time for the run, so Autoload picks it
-    (its own time is put back afterwards, so Continue still goes to the real latest save). Exits 1
-    when the test didn't finish or Skyrim went away.
+    The hitbox test with nobody at the keys: adds [Debug] HitboxTest=1 (and AutoloadSave=<-Save>) to
+    PerkeleRim.ini, puts PerkeleRim_autoload.txt in both games' folders where missing and restarts them
+    with restart-games.ps1 (closing them discards anything unsaved; it deploys this checkout's build,
+    -Build builds first), so they load their newest saves (Skyrim the -Save one). Once Skyrim is in,
+    F10 hands Kumpo to MSC unless the save resumes that itself, and ] calls the van in front of him
+    (again after 30 s if the test hasn't started). The plugin's driver (skse/src/vehicle/HitboxTest.cpp)
+    then places a bandit archer behind the Hayosiko van and a melee bandit just behind it and logs for
+    a minute. This takes two screenshots, prints the hitbox lines of PerkeleRim.log, closes both games
+    (-KeepOpen leaves them) and takes its ini lines and flag files away again. Any save with Kumpo
+    outdoors works (the van can't be called into an interior). Exits 1 when the test didn't finish or
+    Skyrim went away.
 .EXAMPLE
     scripts/hitbox-test.ps1
     scripts/hitbox-test.ps1 -Build -KeepOpen
@@ -20,37 +19,49 @@
 param(
     [switch] $Build,
     [switch] $KeepOpen,
-    [string] $Save = '',  # a save's file name in Documents/My Games/Skyrim Special Edition/Saves, .ess or not
+    [string] $Save = '',  # AutoloadSave: a Skyrim save's file name instead of the newest save
     [int] $TimeoutSeconds = 420
 )
 
 . "$PSScriptRoot/common.ps1"
 $ErrorActionPreference = 'Stop'
-$skyrim = Get-RequiredSetting (Get-LocalConfig) 'SkyrimPath'
+$config = Get-LocalConfig
+$skyrim = Get-RequiredSetting $config 'SkyrimPath'
+$msc = Get-RequiredSetting $config 'MscPath'
 $docs = [Environment]::GetFolderPath('MyDocuments')
 $log = Join-Path $docs 'My Games\Skyrim Special Edition\SKSE\PerkeleRim.log'
+$ini = Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.ini'
 $shots = Join-Path $RepoRoot 'build\hitbox-test'
-$flag = Join-Path $skyrim 'PerkeleRim_hitboxtest.txt'
-$autoload = Join-Path $skyrim 'PerkeleRim_autoload.txt'
-$ownAutoload = -not (Test-Path $autoload)
+$utf8 = New-Object System.Text.UTF8Encoding $false
+if ($Save) {
+    $Save = $Save -replace '\.ess$', ''
+    $saveFile = Join-Path $docs "My Games\Skyrim Special Edition\Saves\$Save.ess"
+    if (-not (Test-Path $saveFile)) { throw "No save $saveFile" }
+}
 
 function Get-Log { if (Test-Path $log) { @(Get-Content $log -Encoding UTF8) } else { @() } }
 function Test-Log([string] $Pattern) { [bool]((Get-Log) -match $Pattern) }
 function Test-Skyrim { [bool](Get-Process SkyrimSE -ErrorAction SilentlyContinue) }
 
-if ($Save) {
-    $saves = Join-Path $docs 'My Games\Skyrim Special Edition\Saves'
-    $Save = $Save -replace '\.ess$', ''
-    $files = @(Get-Item (Join-Path $saves "$Save.ess"), (Join-Path $saves "$Save.skse") -ErrorAction SilentlyContinue)
-    if (-not ($files | Where-Object Extension -eq '.ess')) { throw "No save $Save.ess in $saves" }
-    $restoreTimes = @($files | ForEach-Object { [pscustomobject]@{ Path = $_.FullName; Time = $_.LastWriteTime } })
+# The ini without this test's lines (the rest stays).
+function Remove-TestLines {
+    if (-not (Test-Path $ini)) { return }
+    $kept = @(Get-Content $ini -Encoding UTF8 | Where-Object { $_ -notmatch '^\s*(\[Debug\]|HitboxTest|AutoloadSave)' })
+    while ($kept.Count -gt 0 -and $kept[-1].Trim() -eq '') { $kept = @($kept | Select-Object -SkipLast 1) }
+    [IO.File]::WriteAllLines($ini, [string[]] $kept, $utf8)
 }
+
 New-Item -ItemType Directory -Force $shots | Out-Null
-Set-Content -Path $flag -Value 'hitbox test'
-if ($ownAutoload) { Set-Content -Path $autoload -Value 'hitbox test' }
+$flags = @((Join-Path $skyrim 'PerkeleRim_autoload.txt'), (Join-Path $msc 'PerkeleRim_autoload.txt'))
+$made = @($flags | Where-Object { -not (Test-Path $_) })
 $ok = $false
 try {
-    if ($Save) { $files | ForEach-Object { $_.LastWriteTime = Get-Date } }
+    $made | ForEach-Object { New-Item -ItemType File $_ | Out-Null }
+    Remove-TestLines
+    $lines = @('', '[Debug]', 'HitboxTest=1')
+    if ($Save) { $lines += "AutoloadSave=$Save" }
+    New-Item -ItemType Directory -Force (Split-Path $ini) | Out-Null
+    [IO.File]::AppendAllLines($ini, [string[]] $lines, $utf8)
     $restart = @{}
     if ($Build) { $restart.Build = $true }
     & "$PSScriptRoot/restart-games.ps1" @restart
@@ -100,11 +111,8 @@ try {
     if (-not $KeepOpen) {
         Get-Process SkyrimSE, skse64_loader, mysummercar -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     }
-    Remove-Item $flag -ErrorAction SilentlyContinue
-    foreach ($restore in @($restoreTimes)) {
-        if ($restore) { (Get-Item $restore.Path).LastWriteTime = $restore.Time }
-    }
-    if ($ownAutoload) { Remove-Item $autoload -ErrorAction SilentlyContinue }
+    Remove-TestLines
+    $made | ForEach-Object { Remove-Item $_ -ErrorAction SilentlyContinue }
     Write-Host "Screenshots: $shots"
 }
 if (-not $ok) { exit 1 }

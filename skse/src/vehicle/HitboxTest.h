@@ -1,6 +1,6 @@
 #pragma once
 
-// The hitbox test (scripts/hitbox-test.ps1): with PerkeleRim_hitboxtest.txt in Skyrim's folder, the
+// The hitbox test (scripts/hitbox-test.ps1): with HitboxTest=1 in PerkeleRim.ini, the
 // first time MSC has the player with the Hayosiko van standing solid near him for a few seconds (the
 // script calls it with ]), a bandit archer is placed behind
 // the van (seen from Kumpo) and a melee bandit just behind it. For a minute it logs the arrows that hit

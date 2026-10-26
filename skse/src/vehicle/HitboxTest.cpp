@@ -1,5 +1,6 @@
 #include "vehicle/HitboxTest.h"
 
+#include "Ini.h"
 #include "coords.h"
 #include "vehicle/Hitbox.h"
 
@@ -7,7 +8,6 @@ namespace PerkeleRim::HitboxTest
 {
     namespace
     {
-        constexpr auto        kFlagFile = "PerkeleRim_hitboxtest.txt";
         constexpr RE::FormID  kArcher = 0x000F62D8;  // Skyrim.esm LvlBanditMissileAggro1536
         constexpr RE::FormID  kMelee = 0x000B6FCD;   // Skyrim.esm LvlBanditMelee1HAggro1024
         constexpr float       kArcherBehind = 1400.0f;  // units behind the van's center, away from Kumpo
@@ -114,11 +114,11 @@ namespace PerkeleRim::HitboxTest
         }
         if (!state.checked) {
             state.checked = true;
-            state.done = !std::filesystem::exists(kFlagFile);
+            state.done = Ini::Value("HitboxTest") != "1";
             if (state.done) {
                 return;
             }
-            SKSE::log::info("hitbox test: {} found, waiting for the van", kFlagFile);
+            SKSE::log::info("hitbox test: HitboxTest=1 in PerkeleRim.ini, waiting for the van");
         }
         if (!state.started) {
             state.waited += a_delta;
