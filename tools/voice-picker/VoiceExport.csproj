@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Exports My Summer Car's audio clips as WAVs with an index of where MSC uses them, through
+       AssetStudioMod's libraries in tools/.deps (run tools/setup.ps1 first). For scripts/voice-picker.ps1. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net472</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>VoiceExport</AssemblyName>
+    <Copyright>Copyright (c) Marek Uncik</Copyright>
+    <AssetStudioDir>$(MSBuildThisFileDirectory)..\.deps\AssetStudioModCLI\</AssetStudioDir>
+    <!-- Runs from the AssetStudio folder, which has every dependency and the native FMOD wrapper. -->
+    <OutputPath>$(AssetStudioDir)</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <Reference Include="AssetStudio" HintPath="$(AssetStudioDir)AssetStudio.dll" Private="false" />
+    <Reference Include="AssetStudioUtility" HintPath="$(AssetStudioDir)AssetStudioUtility.dll" Private="false" />
+    <Reference Include="Newtonsoft.Json" HintPath="$(AssetStudioDir)Newtonsoft.Json.dll" Private="false" />
+  </ItemGroup>
+
+</Project>
