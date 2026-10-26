@@ -61,8 +61,10 @@ namespace PerkeleRim
         // MSC's money (PlayerMoney, marks with pennies) as Skyrim's gold: whole marks.
         public static long Gold(float money) => money <= 0f ? 0 : (long)Math.Floor(money);
 
-        // MSC's money for Skyrim's gold, keeping the pennies MSC had.
-        public static float Money(long gold, float money) => gold + (money > 0f ? money - (float)Math.Floor(money) : 0f);
+        // MSC's money for Skyrim's gold, keeping the pennies MSC had (below 0.99, so float rounding
+        // never makes them a whole mark and Gold gives back gold + 1).
+        public static float Money(long gold, float money) =>
+            gold + (money > 0f ? Math.Min(0.99f, money - (float)Math.Floor(money)) : 0f);
 
         public static bool IsKey(int keyCode) => keyCode == PocketKey || SlotOfKey(keyCode) != None;
 

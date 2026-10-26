@@ -45,6 +45,8 @@ namespace PerkeleRim.Game
         float functionsBackAt;
         FsmInt cigaretteGlobal;
         FsmFloat moneyGlobal;
+        const float MoneySettle = 3f;  // seconds after MSC's PLAYER shows up (SaveSync's GameSettle)
+        float inGameSince = -1f;
 
         // The item being taken out, until it is in the hand.
         GameObject taking;
@@ -106,11 +108,17 @@ namespace PerkeleRim.Game
                 {
                     ledger.Reset(NewSession());
                     cigarettes.Reset();
-                    gold.Reset();
+                    // Not gold: Skyrim's gold wins once per MSC run. After a link flap (a long load)
+                    // the last agreed count still holds, and a change on either side is copied.
                 }
             }
             if (!link.IsUp) { presses.Clear(); return; }
-            if (inGame) { MirrorCigarettes(link); MirrorMoney(link); }
+            if (!inGame) inGameSince = -1f;
+            else if (inGameSince < 0f) inGameSince = Time.realtimeSinceStartup;
+            if (inGame) MirrorCigarettes(link);
+            // Money only once MSC's own save has surely been applied, so its loaded PlayerMoney
+            // isn't taken for money spent or earned.
+            if (inGame && Time.realtimeSinceStartup - inGameSince >= MoneySettle) MirrorMoney(link);
             if (emptyUntil >= 0f) CatchEmpty(link);
             if (taking != null || takingKind != Pocket.None) { AdvanceTake(); presses.Clear(); return; }
             if (!playing) { presses.Clear(); return; }

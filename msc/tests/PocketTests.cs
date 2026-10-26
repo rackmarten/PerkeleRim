@@ -176,6 +176,7 @@ namespace PerkeleRim.Tests
             Assert.That(Pocket.Money(0, 152.75f), Is.EqualTo(0.75f).Within(0.001f));
             Assert.That(Pocket.Money(40, -3f), Is.EqualTo(40f));
             Assert.That(Pocket.Gold(Pocket.Money(41, 152.75f)), Is.EqualTo(41));
+            Assert.That(Pocket.Gold(Pocket.Money(16777, 152.99999f)), Is.EqualTo(16777));  // no mark minted by rounding
         }
     }
 }

@@ -138,6 +138,8 @@ namespace PerkeleRim::PlayerSync
             link.WriteInput(input);
         }
 
+        constexpr std::uint32_t kDik1 = 0x02;  // number keys 1 to 8: 0x02..0x09, Skyrim's hotbar
+
         // Releases keys the devices no longer hold. A release event can get lost (a crash or menu at
         // the wrong moment), and MSC would then see the key held forever and never a new press, so
         // clicks on door handles and the like stop working until Skyrim loses focus.
@@ -149,12 +151,22 @@ namespace PerkeleRim::PlayerSync
             }
             if (auto* keyboard = devices->GetKeyboard()) {
                 const auto& down = keyboard->GetRuntimeData().curState;
+                // A number key held holds the MSC key its hotbar slot resolved to, not its own.
+                const auto viaHotbar = [&](std::uint16_t a_key) {
+                    for (std::uint32_t slot = 0; slot < state.hotbar.size(); slot++) {
+                        if ((down[kDik1 + slot] & 0x80) != 0 && state.hotbar[slot] == a_key) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
                 for (std::uint32_t dik = 0; dik < 0x100; dik++) {
                     if (dik == Input::kDikLeftAlt) {
                         continue;  // held by the piss tap's pulse, not by the keyboard
                     }
-                    const auto key = Input::KeyFromScanCode(dik);
-                    if ((down[dik] & 0x80) == 0 && state.input.IsKeyDown(key)) {
+                    const bool number = dik >= kDik1 && dik < kDik1 + state.hotbar.size();
+                    const auto key = number ? state.hotbar[dik - kDik1] : Input::KeyFromScanCode(dik);
+                    if ((down[dik] & 0x80) == 0 && state.input.IsKeyDown(key) && !viaHotbar(key)) {
                         state.input.SetKey(key, false);
                         SKSE::log::info("player sync: released stuck key {} (scan code {:02X})", key, dik);
                     }
@@ -905,8 +917,6 @@ namespace PerkeleRim::PlayerSync
             }
             static inline REL::Relocation<decltype(thunk)> original;
         };
-
-        constexpr std::uint32_t kDik1 = 0x02;  // number keys 1 to 8: 0x02..0x09
 
         class InputSink : public RE::BSTEventSink<RE::InputEvent*>
         {

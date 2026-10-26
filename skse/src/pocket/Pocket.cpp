@@ -263,7 +263,19 @@ namespace PerkeleRim::Pocket
     std::uint16_t Hotkey(RE::PlayerCharacter* a_player, int a_slot)
     {
         RE::TESBoundObject* item = nullptr;
-        const auto bound = Loaded() && a_player ? BoundTo(a_player, a_slot, item) : Hotbar::Bound::None;
+        // The last thing bound to each number this session: Skyrim drops an item's hotkey with its
+        // last one, and the default key then would eat something else (beer on 7 gone: 7 eats chips).
+        static std::array<Hotbar::Bound, Hotbar::kSlots> last{};
+        auto bound = Loaded() && a_player ? BoundTo(a_player, a_slot, item) : Hotbar::Bound::None;
+        if (a_slot < 0 || a_slot >= Hotbar::kSlots) {
+            return 0;
+        }
+        if (bound != Hotbar::Bound::None) {
+            last[a_slot] = bound;
+        } else if (last[a_slot] >= Hotbar::Bound::Beer) {
+            SKSE::log::info("hotbar: {} had an item bound, none left", a_slot + 1);
+            return 0;
+        }
         const auto action = Hotbar::Resolve(a_slot, bound);
         if (action.use && item) {
             SKSE::log::info("hotbar: {} uses {}", a_slot + 1, item->GetName());
