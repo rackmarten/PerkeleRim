@@ -7,9 +7,12 @@
     scripts/skyrim-key.ps1 -Key F10
     scripts/skyrim-key.ps1 -Key F5                        # quicksave (F9 quickloads)
     scripts/skyrim-key.ps1 -Screenshot shot.png -Delay 2   # no key, just a screenshot after 2 s
+    scripts/skyrim-key.ps1 -Console 'load PerkeleRim-Kumpo' # types a console command (~, the text, Enter, ~)
+    scripts/skyrim-key.ps1 -Console 'completequest MQ101'
 #>
 param(
     [ValidateSet('', 'F10', 'F11', 'F5', 'F9', 'Escape', 'E', 'Space', 'M', 'P', 'J', 'I', 'T')] [string] $Key = '',
+    [string] $Console,  # letters, digits, space, - _ . only (Skyrim's console ignores case)
     [string] $Screenshot,
     [double] $Delay = 0
 )
@@ -40,12 +43,39 @@ $frontPid = 0
 if ($frontPid -ne $skyrim.Id) { throw 'Windows did not let Skyrim come to the front.' }
 $hwnd = $front
 
+function Send-Scan([byte] $Scan, [int] $HoldMs = 150, [switch] $Shift) {
+    if ($Shift) { [PerkeleRim.SkyrimKey]::keybd_event(0, 0x2A, 0x8, [UIntPtr]::Zero); Start-Sleep -Milliseconds 30 }
+    [PerkeleRim.SkyrimKey]::keybd_event(0, $Scan, 0x8, [UIntPtr]::Zero)          # KEYEVENTF_SCANCODE
+    Start-Sleep -Milliseconds $HoldMs
+    [PerkeleRim.SkyrimKey]::keybd_event(0, $Scan, 0x8 -bor 0x2, [UIntPtr]::Zero)  # ... | KEYEVENTF_KEYUP
+    if ($Shift) { Start-Sleep -Milliseconds 30; [PerkeleRim.SkyrimKey]::keybd_event(0, 0x2A, 0x8 -bor 0x2, [UIntPtr]::Zero) }
+    Start-Sleep -Milliseconds 40
+}
+
 if ($Key) {
-    $scan = [byte]$scanCodes[$Key]
-    [PerkeleRim.SkyrimKey]::keybd_event(0, $scan, 0x8, [UIntPtr]::Zero)          # KEYEVENTF_SCANCODE
-    Start-Sleep -Milliseconds 150
-    [PerkeleRim.SkyrimKey]::keybd_event(0, $scan, 0x8 -bor 0x2, [UIntPtr]::Zero)  # ... | KEYEVENTF_KEYUP
+    Send-Scan ([byte]$scanCodes[$Key])
     Write-Host "Pressed $Key in Skyrim."
+}
+
+if ($Console) {
+    # DirectInput set 1 scan codes of a US layout, by character.
+    $rows = @{ 0x10 = 'qwertyuiop'; 0x1E = 'asdfghjkl'; 0x2C = 'zxcvbnm' }
+    $chars = @{ ' ' = 0x39; '-' = 0x0C; '.' = 0x34; '0' = 0x0B }
+    foreach ($start in $rows.Keys) { for ($i = 0; $i -lt $rows[$start].Length; $i++) { $chars[[string]$rows[$start][$i]] = $start + $i } }
+    for ($d = 1; $d -le 9; $d++) { $chars[[string]$d] = 0x01 + $d }
+    Send-Scan 0x29  # ~ opens the console
+    Start-Sleep -Milliseconds 300
+    foreach ($c in $Console.ToCharArray()) {
+        if ($c -eq '_') { Send-Scan 0x0C -HoldMs 60 -Shift; continue }
+        $code = $chars[([string]$c).ToLowerInvariant()]
+        if ($null -eq $code) { throw "Can't type '$c' into Skyrim's console." }
+        Send-Scan ([byte]$code) -HoldMs 60
+    }
+    Send-Scan 0x1C  # Enter
+    Start-Sleep -Milliseconds 300
+    # ~ closes it; a load or coc closes it by itself, and another ~ would open it over the loading screen.
+    if ($Console -notmatch '^\s*(load|coc|coe)\s') { Send-Scan 0x29 }
+    Write-Host "Typed '$Console' into Skyrim's console."
 }
 
 if ($Screenshot) {
