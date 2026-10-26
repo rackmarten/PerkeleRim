@@ -30,7 +30,21 @@ namespace PerkeleRim::HitboxTest
         constexpr float      kSampleSeconds = 0.5f;
         constexpr float      kShotEvery = 2.0f;
         constexpr int        kShots = 12;             // every third one a control shot from the side
-        constexpr float      kImpactRange = 1500.0f;  // impacts this close to the van are logged
+        constexpr float      kImpactRange = 1500.0f;  // impacts of other projectiles this close to the van are logged
+        constexpr float      kFlightSeconds = 5.0f;   // our arrows are followed this long
+
+        // One of our arrows, followed every frame until it is gone.
+        struct Flight
+        {
+            RE::ProjectileHandle handle;
+            std::uint32_t        id = 0;
+            bool                 through = false;
+            float                age = 0.0f;
+            float                closestVan = 1e9f;    // least distance to the van's center
+            float                closestKumpo = 1e9f;  // ...and to Kumpo's chest
+            RE::NiPoint3         last;
+            bool                 hit = false;  // its impacts are logged
+        };
 
         struct State
         {
@@ -46,7 +60,8 @@ namespace PerkeleRim::HitboxTest
             int                 through = 0, side = 0;                   // arrows fired of each kind
             int                 throughStopped = 0, throughOnKumpo = 0;  // where they ended
             int                 sideOnKumpo = 0;
-            std::unordered_set<std::uint32_t> throughShots, sideShots, seen;  // projectile handles
+            std::vector<Flight>               flights;  // our arrows in the air
+            std::unordered_set<std::uint32_t> ours, seen;  // projectile handles: ours, other impacts logged
             RE::ObjectRefHandle archer;      // behind the van
             RE::ObjectRefHandle sideArcher;  // beside Kumpo
             RE::ObjectRefHandle melee;
@@ -104,9 +119,13 @@ namespace PerkeleRim::HitboxTest
 
         void Remove(RE::ObjectRefHandle a_handle)
         {
+            // Deleted with its AI off, a bandit's movement controller crashed the next frame; a
+            // disabled reference goes when its cell does.
             if (auto ref = a_handle.get()) {
+                if (auto* actor = ref->As<RE::Actor>()) {
+                    actor->EnableAI(true);
+                }
                 ref->Disable();
-                ref->SetDelete(true);
             }
         }
 
@@ -200,7 +219,8 @@ namespace PerkeleRim::HitboxTest
             RE::ProjectileHandle                handle;
             RE::Projectile::LaunchArrow(&handle, shooter, ammo, bow, from, angles);
             const auto id = handle.native_handle();
-            (a_through ? state.throughShots : state.sideShots).insert(id);
+            state.ours.insert(id);
+            state.flights.push_back({ .handle = handle, .id = id, .through = a_through, .last = from });
             (a_through ? state.through : state.side)++;
             SKSE::log::info("hitbox test: {} arrow {:08X} from ({:.0f},{:.0f},{:.0f}) at Kumpo", a_through ? "through-the-van" : "control", id, from.x,
                 from.y, from.z);
@@ -223,7 +243,7 @@ namespace PerkeleRim::HitboxTest
                         continue;
                     }
                     const std::uint32_t id = handle.native_handle();
-                    if (state.seen.contains(id)) {
+                    if (state.seen.contains(id) || state.ours.contains(id)) {
                         continue;
                     }
                     const auto at = projectile->GetPosition();
@@ -231,24 +251,59 @@ namespace PerkeleRim::HitboxTest
                         continue;
                     }
                     state.seen.insert(id);
-                    const bool through = state.throughShots.contains(id);
-                    const bool side = state.sideShots.contains(id);
                     for (auto* impact : projectile->GetProjectileRuntimeData().impacts) {
-                        if (!impact) {
-                            continue;
+                        if (impact) {
+                            const auto collidee = impact->collidee.get();
+                            SKSE::log::info("hitbox test: projectile {:08X} hit {} on layer {} at ({:.0f},{:.0f},{:.0f}), {:.0f} from the van", id,
+                                impact->colObj && Hitbox::Owns(impact->colObj.get()) ? "the van's hitbox" : collidee.get() == a_player ? "Kumpo" : collidee ? collidee->GetName() : "no reference",
+                                static_cast<int>(impact->collidedLayer.get()), at.x, at.y, at.z, at.GetDistance(a_van));
                         }
-                        const bool ours = impact->colObj && Hitbox::Owns(impact->colObj.get());
-                        const auto collidee = impact->collidee.get();
-                        const bool kumpo = collidee.get() == a_player;
-                        state.throughStopped += through && ours ? 1 : 0;
-                        state.throughOnKumpo += through && kumpo ? 1 : 0;
-                        state.sideOnKumpo += side && kumpo ? 1 : 0;
-                        SKSE::log::info("hitbox test: projectile {:08X}{} hit {} on layer {} at ({:.0f},{:.0f},{:.0f}), {:.0f} from the van", id,
-                            through ? " (through-the-van)" : side ? " (control)" : "", ours ? "the van's hitbox" : kumpo ? "Kumpo" : collidee ? collidee->GetName() : "no reference",
-                            static_cast<int>(impact->collidedLayer.get()), at.x, at.y, at.z, at.GetDistance(a_van));
                     }
                 }
             }
+        }
+
+        // Our arrows, every frame: how close each comes to the van and to Kumpo, what it hits (its
+        // impacts, logged once) and where it ends, wherever that is.
+        void Track(RE::PlayerCharacter* a_player, const RE::NiPoint3& a_van, float a_delta)
+        {
+            const auto chest = a_player->GetPosition() + RE::NiPoint3(0.0f, 0.0f, kChest);
+            std::erase_if(state.flights, [&](Flight& a_flight) {
+                a_flight.age += a_delta;
+                auto  ptr = a_flight.handle.get();
+                auto* projectile = ptr.get();
+                const char* kind = a_flight.through ? "through-the-van" : "control";
+                if (projectile) {
+                    a_flight.last = projectile->GetPosition();
+                    a_flight.closestVan = (std::min)(a_flight.closestVan, a_flight.last.GetDistance(a_van));
+                    a_flight.closestKumpo = (std::min)(a_flight.closestKumpo, a_flight.last.GetDistance(chest));
+                    auto& impacts = projectile->GetProjectileRuntimeData().impacts;
+                    if (!a_flight.hit && !impacts.empty()) {
+                        a_flight.hit = true;
+                        for (auto* impact : impacts) {
+                            if (!impact) {
+                                continue;
+                            }
+                            const bool ours = impact->colObj && Hitbox::Owns(impact->colObj.get());
+                            const auto collidee = impact->collidee.get();
+                            const bool kumpo = collidee.get() == a_player;
+                            state.throughStopped += a_flight.through && ours ? 1 : 0;
+                            state.throughOnKumpo += a_flight.through && kumpo ? 1 : 0;
+                            state.sideOnKumpo += !a_flight.through && kumpo ? 1 : 0;
+                            SKSE::log::info("hitbox test: {} arrow {:08X} hit {} on layer {} at ({:.0f},{:.0f},{:.0f}) after {:.2f} s, {:.0f} from the van", kind, a_flight.id,
+                                ours ? "the van's hitbox" : kumpo ? "Kumpo" : collidee ? collidee->GetName() : "no reference", static_cast<int>(impact->collidedLayer.get()),
+                                a_flight.last.x, a_flight.last.y, a_flight.last.z, a_flight.age, a_flight.last.GetDistance(a_van));
+                        }
+                    }
+                }
+                if (projectile && a_flight.age < kFlightSeconds) {
+                    return false;
+                }
+                SKSE::log::info("hitbox test: {} arrow {:08X} {} at ({:.0f},{:.0f},{:.0f}) after {:.2f} s, {}; it came within {:.0f} of the van's center and {:.0f} of Kumpo's chest",
+                    kind, a_flight.id, projectile ? "still flies" : "is gone", a_flight.last.x, a_flight.last.y, a_flight.last.z, a_flight.age,
+                    a_flight.hit ? "after its hit" : "with no hit", a_flight.closestVan, a_flight.closestKumpo);
+                return true;
+            });
         }
 
         void Finish()
@@ -298,6 +353,7 @@ namespace PerkeleRim::HitboxTest
         state.time += a_delta;
         if (solid) {
             Impacts(a_player, at);
+            Track(a_player, at, a_delta);
         }
 
         state.shotAt += a_delta;

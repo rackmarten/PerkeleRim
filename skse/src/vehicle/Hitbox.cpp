@@ -2,6 +2,7 @@
 
 #include <unordered_set>
 
+#include "Ini.h"
 #include "model/ModelView.h"
 
 namespace PerkeleRim::Hitbox
@@ -118,6 +119,20 @@ namespace PerkeleRim::Hitbox
         static_assert(sizeof(RE::bhkShape) == 0x28);  // bhkCapsuleShape adds nothing
 
         constexpr auto  kLayer = RE::COL_LAYER::kTransparentSmallAnim;
+        // [Debug] HitboxLayer=<n> in PerkeleRim.ini tries another layer (the hitbox test), read once.
+        std::uint32_t Layer()
+        {
+            static const std::uint32_t layer = [] {
+                const auto value = Ini::Value("HitboxLayer");
+                const int  n = value.empty() ? 0 : std::atoi(value.c_str());
+                if (n > 0 && n < 64) {
+                    SKSE::log::info("hitbox: on layer {} (HitboxLayer in PerkeleRim.ini)", n);
+                    return static_cast<std::uint32_t>(n);
+                }
+                return static_cast<std::uint32_t>(kLayer);
+            }();
+            return layer;
+        }
         constexpr float kTeleport = 300.0f;  // units: a jump this long (a respawn, a new anchor) is a teleport, not a motion
         constexpr int   kHitsLogged = 16;    // the first projectile hits are logged in full
 
@@ -190,7 +205,7 @@ namespace PerkeleRim::Hitbox
             alignas(16) RE::bhkRigidBodyCinfo info;
             Havok::NewBodyInfo(&info);
             auto& hk = *reinterpret_cast<Havok::BodyInfo*>(info.hkCinfo);
-            info.collisionFilterInfo = hk.collisionFilterInfo = static_cast<std::uint32_t>(kLayer);
+            info.collisionFilterInfo = hk.collisionFilterInfo = Layer();
             info.shape = hk.shape = hkShape;
             hk.motionType = static_cast<std::uint8_t>(RE::hkpMotion::MotionType::kKeyframed);
             // Parked, it may fall asleep, which is when Skyrim cuts the navmesh for a body on a
@@ -282,7 +297,7 @@ namespace PerkeleRim::Hitbox
                 RE::BSWriteLockGuard lock(a_world->worldLock);
                 for (auto& part : a_body.parts) {
                     auto* rb = part.body->GetRigidBody();
-                    rb->collidable.broadPhaseHandle.collisionFilterInfo.filter = (a_group << 16) | static_cast<std::uint32_t>(kLayer);
+                    rb->collidable.broadPhaseHandle.collisionFilterInfo.filter = (a_group << 16) | Layer();
                     part.body->SetPositionAndRotation(position, rotation);
                     part.body->SetLinearVelocity(RE::hkVector4(0.0f, 0.0f, 0.0f, 0.0f));
                     part.body->SetAngularVelocity(RE::hkVector4(0.0f, 0.0f, 0.0f, 0.0f));

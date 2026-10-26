@@ -15,11 +15,13 @@
     scripts/hitbox-test.ps1
     scripts/hitbox-test.ps1 -Build -KeepOpen
     scripts/hitbox-test.ps1 -Save Save10_2494F6F2_1_4B756D706F_Tamriel_000116_20261026170454_1_1
+    scripts/hitbox-test.ps1 -Layer 2   # the capsules on L_ANIMSTATIC instead
 #>
 param(
     [switch] $Build,
     [switch] $KeepOpen,
     [string] $Save = '',  # AutoloadSave: a Skyrim save's file name instead of the newest save
+    [int] $Layer = 0,     # HitboxLayer: another Havok layer for the capsules (0: the usual, L_TRANSPARENT_SMALL_ANIM)
     [int] $TimeoutSeconds = 420
 )
 
@@ -45,7 +47,7 @@ function Test-Skyrim { [bool](Get-Process SkyrimSE -ErrorAction SilentlyContinue
 # The ini without this test's lines (the rest stays).
 function Remove-TestLines {
     if (-not (Test-Path $ini)) { return }
-    $kept = @(Get-Content $ini -Encoding UTF8 | Where-Object { $_ -notmatch '^\s*(\[Debug\]|HitboxTest|AutoloadSave)' })
+    $kept = @(Get-Content $ini -Encoding UTF8 | Where-Object { $_ -notmatch '^\s*(\[Debug\]|HitboxTest|HitboxLayer|AutoloadSave)' })
     while ($kept.Count -gt 0 -and $kept[-1].Trim() -eq '') { $kept = @($kept | Select-Object -SkipLast 1) }
     [IO.File]::WriteAllLines($ini, [string[]] $kept, $utf8)
 }
@@ -58,6 +60,7 @@ try {
     Remove-TestLines
     $lines = @('', '[Debug]', 'HitboxTest=1')
     if ($Save) { $lines += "AutoloadSave=$Save" }
+    if ($Layer -gt 0) { $lines += "HitboxLayer=$Layer" }
     New-Item -ItemType Directory -Force (Split-Path $ini) | Out-Null
     [IO.File]::AppendAllLines($ini, [string[]] $lines, $utf8)
     $restart = @{}
