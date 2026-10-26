@@ -45,6 +45,9 @@ try {
         'PerkeleRim.ps1'       = 'launcher/PerkeleRim.ps1'
         'Start PerkeleRim.bat' = 'launcher/Start PerkeleRim.bat'
         'Report a bug.bat'     = 'launcher/Report a bug.bat'
+        'checks.ps1'           = 'launcher/checks.ps1'
+        'install.ps1'          = 'launcher/install.ps1'
+        'wizard.ps1'           = 'launcher/wizard.ps1'
         'LICENSE'              = 'LICENSE'
     }
     $savesDir = Join-Path $Source 'launcher/saves'
