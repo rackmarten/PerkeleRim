@@ -92,6 +92,7 @@ namespace PerkeleRim.Protocol
         public const uint ImpactPush = 4;
         public const uint IntroBlackout = 1;
         public const uint IntroWake = 2;
+        public const uint IntroHangover = 3;
         public const uint ShoutOther = 0;
         public const uint ShoutUnrelentingForce = 1;
         public const uint HurtHit = 0;

@@ -25,6 +25,7 @@ namespace PerkeleRim.Game
         const float SwearEvery = 3f;
         float nextSwear;
         readonly List<KeyValuePair<float, string>> queued = new List<KeyValuePair<float, string>>();  // intro clips: when, which
+        float introEnd;  // when the last queued intro clip is over: a cue never talks over the one before
 
         public PlayerVoice(Action<string> log)
         {
@@ -74,13 +75,14 @@ namespace PerkeleRim.Game
         public void Intro(uint cue, string what)
         {
             Find();
-            float now = Time.realtimeSinceStartup;
+            float start = Mathf.Max(Time.realtimeSinceStartup, introEnd);
             var picked = new List<string>();
             foreach (var step in IntroLine.For(cue))
             {
                 var name = IntroLine.Pick(step.Clips, clips.Keys);
                 if (name == null) { log($"intro: no clip for {string.Join("/", step.Clips)}"); continue; }
-                queued.Add(new KeyValuePair<float, string>(now + step.At, name));
+                queued.Add(new KeyValuePair<float, string>(start + step.At, name));
+                introEnd = Mathf.Max(introEnd, start + step.At + clips[name].length);
                 picked.Add(name);
             }
             log($"intro: cue {cue} ({what}): {string.Join(", ", picked.ToArray())}");

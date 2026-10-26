@@ -18,8 +18,8 @@ namespace PerkeleRim::Intro
             RE::TESQuest*              unbound = nullptr;
             RE::TESImageSpaceModifier* fade = nullptr;
             Cues                       cues;
-            std::string                caption;      // shown while Skyrim has the player
-            float                      captionLeft = 0.0f;  // seconds
+            std::uint32_t              captionCue = 0;  // the last cue sent, while its captions run (Captions)
+            float                      captionSince = 0.0f;  // seconds since it went out
             std::atomic<bool>          ralofDone = false;  // set by the topic sink
         } state;
 
@@ -46,9 +46,11 @@ namespace PerkeleRim::Intro
             if (a_cue == Protocol::kIntroBlackout && state.fade) {
                 RE::ImageSpaceModifierInstanceForm::Trigger(state.fade, 1.0f, nullptr);
             }
-            state.caption = Caption(a_cue);
-            state.captionLeft = CaptionSeconds(a_cue);
-            SKSE::log::info("intro: {}", a_cue == Protocol::kIntroBlackout ? "Kumpo passes out (MSC plays it)" : "Kumpo wakes up hungover (MSC plays it)");
+            state.captionCue = a_cue;
+            state.captionSince = 0.0f;
+            SKSE::log::info("intro: {}", a_cue == Protocol::kIntroBlackout ? "Kumpo passes out, snores and wakes up hungover (MSC plays it)" :
+                                         a_cue == Protocol::kIntroWake      ? "Kumpo says Perkele (MSC plays it)" :
+                                                                              "Kumpo wakes up hungover (MSC plays it)");
         }
     }
 
@@ -68,7 +70,7 @@ namespace PerkeleRim::Intro
     {
         state.cues.NewGame();
         state.ralofDone = false;
-        state.captionLeft = 0.0f;
+        state.captionCue = 0;
         SKSE::log::info("intro: new game, Kumpo passes out once MSC is in its game");
     }
 
@@ -76,17 +78,17 @@ namespace PerkeleRim::Intro
     {
         state.cues.Loaded();
         state.ralofDone = false;
-        state.captionLeft = 0.0f;
+        state.captionCue = 0;
     }
 
     void WakeUp()
     {
-        Send(Protocol::kIntroWake);
+        Send(Protocol::kIntroHangover);
     }
 
     std::string_view Caption()
     {
-        return state.captionLeft > 0.0f ? std::string_view(state.caption) : std::string_view{};
+        return state.captionCue ? CaptionAt(state.captionCue, state.captionSince) : std::string_view{};
     }
 
     bool Running()
@@ -105,21 +107,23 @@ namespace PerkeleRim::Intro
         if (const auto cue = state.cues.Tick(a_delta, a_msc && Running())) {  // no cart (a mod that skips it): no cues
             Send(cue);
         }
-        const float before = state.captionLeft;
-        if (state.captionLeft > 0.0f) {
-            state.captionLeft -= a_delta;
+        const float before = state.captionSince;
+        if (state.captionCue) {
+            state.captionSince += a_delta;
+            if (state.captionSince > CaptionsSeconds(state.captionCue)) {
+                state.captionCue = 0;
+            }
         }
         if (a_owned) {
             return;  // the handover's HUD shows Caption() as its subtitle line
         }
-        Hud::View view;
-        bool      refresh = false;
-        if (state.captionLeft > 0.0f) {
-            refresh = std::floor(before) != std::floor(state.captionLeft);  // once a second, in case the HUD movie wasn't up yet
+        Hud::View  view;
+        const auto caption = Caption();
+        if (!caption.empty()) {
             view.show = true;
             view.dot = false;
-            view.subtitle = state.caption;
+            view.subtitle = caption;
         }
-        Hud::Set(view, refresh);
+        Hud::Set(view, std::floor(before) != std::floor(state.captionSince));  // once a second, in case the HUD movie wasn't up yet
     }
 }

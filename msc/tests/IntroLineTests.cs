@@ -13,6 +13,7 @@ namespace PerkeleRim.Tests
         {
             Assert.That(IntroLine.For(Wire.IntroBlackout), Is.SameAs(IntroLine.Blackout));
             Assert.That(IntroLine.For(Wire.IntroWake), Is.SameAs(IntroLine.Wake));
+            Assert.That(IntroLine.For(Wire.IntroHangover), Is.SameAs(IntroLine.Hangover));
             Assert.That(IntroLine.For(0), Is.Empty);
             Assert.That(IntroLine.For(99), Is.Empty);
         }
@@ -36,12 +37,24 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
-        public void TheWakeIsTheHangoverLineAlone()
+        public void TheCartSnoresThenGroansTheHangoverLineThenSaysTheGoodPerkele()
         {
-            Assert.That(IntroLine.Wake.Length, Is.EqualTo(1));
-            Assert.That(IntroLine.Pick(IntroLine.Wake[0].Clips, Names), Is.EqualTo("hangover05"));
-            foreach (var step in IntroLine.Blackout.Concat(IntroLine.Wake))
+            var blackout = IntroLine.Blackout.Select(s => IntroLine.Pick(s.Clips, Names)).ToArray();
+            Assert.That(blackout, Is.EqualTo(new[] { "drinking", "Human_Burp", "Human_Snore1", "hangover05" }));
+            Assert.That(IntroLine.Blackout.Last().At, Is.EqualTo(IntroLine.HangoverAt));
+            Assert.That(IntroLine.Pick(IntroLine.Wake[0].Clips, Names), Is.EqualTo("swear09"));
+            Assert.That(IntroLine.Hangover.Select(s => IntroLine.Pick(s.Clips, Names)), Is.EqualTo(new[] { "hangover05" }));
+            foreach (var step in IntroLine.Blackout.Concat(IntroLine.Wake).Concat(IntroLine.Hangover))
                 Assert.That(step.Clips, Has.None.Contains("Perkele"), "the distorted Human_Perkele isn't used");
+        }
+
+        [Test]
+        public void TheHangoverTimeMatchesTheCaptions()
+        {
+            var header = System.IO.File.ReadAllText(System.IO.Path.Combine(Paths.ProtocolDir, "cpp", "intro_cues.h"));
+            var at = System.Text.RegularExpressions.Regex.Match(header, @"kHangoverAt = ([\d.]+)f;");
+            Assert.That(at.Success, Is.True);
+            Assert.That(float.Parse(at.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture), Is.EqualTo(IntroLine.HangoverAt));
         }
 
         [Test]
@@ -58,11 +71,5 @@ namespace PerkeleRim.Tests
             Assert.That(IntroLine.Pick(new[] { "snore" }, new string[0]), Is.Null);
         }
 
-        [Test]
-        public void TheWholeBlackoutFindsItsClipsInMscsNames()
-        {
-            var picks = IntroLine.Blackout.Select(s => IntroLine.Pick(s.Clips, Names)).ToArray();
-            Assert.That(picks, Is.EqualTo(new[] { "drinking", "Human_Burp", "yawn01", "Human_Snore1" }));
-        }
     }
 }
