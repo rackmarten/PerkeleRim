@@ -6,15 +6,16 @@
 .EXAMPLE
     scripts/skyrim-key.ps1 -Key F10
     scripts/skyrim-key.ps1 -Key F5                        # quicksave (F9 quickloads)
+    scripts/skyrim-key.ps1 -Key RightBracket              # ] calls the van while MSC has the player
     scripts/skyrim-key.ps1 -Screenshot shot.png -Delay 2   # no key, just a screenshot after 2 s
 #>
 param(
-    [ValidateSet('', 'F10', 'F11', 'F5', 'F9', 'Escape', 'E', 'Space', 'M', 'P', 'J', 'I', 'T')] [string] $Key = '',
+    [ValidateSet('', 'F10', 'F11', 'F5', 'F9', 'Escape', 'E', 'Space', 'M', 'P', 'J', 'I', 'T', 'RightBracket')] [string] $Key = '',
     [string] $Screenshot,
     [double] $Delay = 0
 )
 
-$scanCodes = @{ F10 = 0x44; F11 = 0x57; F5 = 0x3F; F9 = 0x43; Escape = 0x01; E = 0x12; Space = 0x39; M = 0x32; P = 0x19; J = 0x24; I = 0x17; T = 0x14 }
+$scanCodes = @{ F10 = 0x44; F11 = 0x57; F5 = 0x3F; F9 = 0x43; Escape = 0x01; E = 0x12; Space = 0x39; M = 0x32; P = 0x19; J = 0x24; I = 0x17; T = 0x14; RightBracket = 0x1B }
 
 Add-Type -AssemblyName System.Drawing
 Add-Type -Namespace PerkeleRim -Name SkyrimKey -MemberDefinition @'

@@ -14,7 +14,8 @@ namespace PerkeleRim::HitboxTest
         constexpr float       kMeleeBehind = 400.0f;
         constexpr float       kDropHeight = 150.0f;     // placed this far above the van's origin, to fall onto the ground
         constexpr float       kVanReach = 2500.0f;      // the van must be this close to Kumpo
-        constexpr float       kWaitSeconds = 120.0f;    // for the van to be solid
+        constexpr float       kWaitSeconds = 120.0f;    // for the van to be solid near Kumpo
+        constexpr float       kStandSeconds = 3.0f;     // ...and to have stood there this long (a called van lands first)
         constexpr float       kRunSeconds = 60.0f;
         constexpr float       kSampleSeconds = 0.5f;
 
@@ -24,6 +25,7 @@ namespace PerkeleRim::HitboxTest
             bool                 done = false;
             bool                 started = false;
             float                waited = 0.0f;
+            float                stood = 0.0f;  // the van has been solid near Kumpo this long
             float                time = 0.0f;
             float                sample = 0.0f;
             RE::ObjectRefHandle  archer;
@@ -68,7 +70,7 @@ namespace PerkeleRim::HitboxTest
             }
         }
 
-        bool Start(RE::PlayerCharacter* a_player)
+        bool Start(RE::PlayerCharacter* a_player, float a_delta)
         {
             Protocol::VehicleState van{};
             Hitbox::Box            box{};
@@ -80,9 +82,12 @@ namespace PerkeleRim::HitboxTest
             RE::NiPoint3       away(at.x - kumpo.x, at.y - kumpo.y, 0.0f);
             const float        distance = away.Length();
             if (distance > kVanReach || distance < 1.0f) {
-                SKSE::log::warn("hitbox test: the van is {:.0f} units from Kumpo, not run", distance);
-                state.done = true;
-                return true;
+                state.stood = 0.0f;
+                return false;  // until it is called (]) or the wait runs out
+            }
+            state.stood += a_delta;
+            if (state.stood < kStandSeconds) {
+                return false;
             }
             away /= distance;
             SKSE::log::info("hitbox test: armed, the van at ({:.0f},{:.0f},{:.0f}) {:.0f} units from Kumpo at ({:.0f},{:.0f},{:.0f})", at.x, at.y, at.z, distance,
@@ -117,10 +122,10 @@ namespace PerkeleRim::HitboxTest
         }
         if (!state.started) {
             state.waited += a_delta;
-            if (Start(a_player)) {
+            if (Start(a_player, a_delta)) {
                 state.started = true;
             } else if (state.waited > kWaitSeconds) {
-                SKSE::log::warn("hitbox test: the van wasn't solid within {:.0f} s, not run", kWaitSeconds);
+                SKSE::log::warn("hitbox test: the van wasn't solid within {:.0f} units of Kumpo within {:.0f} s, not run", kVanReach, kWaitSeconds);
                 state.done = true;
             }
             return;

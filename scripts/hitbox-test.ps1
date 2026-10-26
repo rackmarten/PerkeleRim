@@ -4,18 +4,22 @@
     PerkeleRim_autoload.txt) in Skyrim's folder and restarts both games with restart-games.ps1
     (closing them discards anything unsaved; it deploys this checkout's build, -Build builds first),
     so Skyrim loads its newest save. Once it is in, F10 hands Kumpo to MSC unless the save resumes
-    that itself. The plugin's driver (skse/src/vehicle/HitboxTest.cpp) then places a bandit archer
+    that itself, and ] calls the van in front of him (again after 30 s if the test hasn't started). The
+    plugin's driver (skse/src/vehicle/HitboxTest.cpp) then places a bandit archer
     behind the Hayosiko van and a melee bandit just behind it and logs for a minute. This takes two
     screenshots, prints the hitbox lines of PerkeleRim.log, closes both games (-KeepOpen leaves them)
-    and takes its flag files away again. The newest save needs Kumpo within 35 m of the van. Exits 1
+    and takes its flag files away again. Any save with Kumpo outdoors works (the van can't be called
+    into an interior); -Save makes that one the newest by its file time, so Autoload picks it. Exits 1
     when the test didn't finish or Skyrim went away.
 .EXAMPLE
     scripts/hitbox-test.ps1
     scripts/hitbox-test.ps1 -Build -KeepOpen
+    scripts/hitbox-test.ps1 -Save Save10_2494F6F2_1_4B756D706F_Tamriel_000116_20261026170454_1_1
 #>
 param(
     [switch] $Build,
     [switch] $KeepOpen,
+    [string] $Save = '',  # a save's file name in Documents/My Games/Skyrim Special Edition/Saves, .ess or not
     [int] $TimeoutSeconds = 420
 )
 
@@ -33,6 +37,13 @@ function Get-Log { if (Test-Path $log) { @(Get-Content $log -Encoding UTF8) } el
 function Test-Log([string] $Pattern) { [bool]((Get-Log) -match $Pattern) }
 function Test-Skyrim { [bool](Get-Process SkyrimSE -ErrorAction SilentlyContinue) }
 
+if ($Save) {
+    $saves = Join-Path $docs 'My Games\Skyrim Special Edition\Saves'
+    $Save = $Save -replace '\.ess$', ''
+    $files = @(Get-Item (Join-Path $saves "$Save.ess"), (Join-Path $saves "$Save.skse") -ErrorAction SilentlyContinue)
+    if (-not ($files | Where-Object Extension -eq '.ess')) { throw "No save $Save.ess in $saves" }
+    $files | ForEach-Object { $_.LastWriteTime = Get-Date }
+}
 New-Item -ItemType Directory -Force $shots | Out-Null
 Set-Content -Path $flag -Value 'hitbox test'
 if ($ownAutoload) { Set-Content -Path $autoload -Value 'hitbox test' }
@@ -45,6 +56,8 @@ try {
     $stage = 'loading'
     $loadedAt = $null
     $armedAt = $null
+    $calledAt = $null
+    $recalled = $false
     $shot = 0
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Seconds 2
@@ -57,7 +70,18 @@ try {
             }
             $stage = 'waiting'
         }
-        if ($stage -eq 'waiting' -and (Test-Log 'hitbox test: (armed|the van .* not run|not run)')) { $stage = 'running'; $armedAt = Get-Date }
+        if ($stage -eq 'waiting' -and (Test-Log 'hitbox test: .*waiting for the van')) {
+            Write-Host 'Calling the van (])'
+            & "$PSScriptRoot/skyrim-key.ps1" -Key RightBracket
+            $stage = 'calling'
+            $calledAt = Get-Date
+        }
+        if ($stage -eq 'calling' -and -not $recalled -and ((Get-Date) - $calledAt).TotalSeconds -gt 30 -and -not (Test-Log 'hitbox test: armed')) {
+            Write-Host 'Calling the van again (])'
+            & "$PSScriptRoot/skyrim-key.ps1" -Key RightBracket
+            $recalled = $true
+        }
+        if ($stage -eq 'calling' -and (Test-Log 'hitbox test: (armed|.*not run)')) { $stage = 'running'; $armedAt = Get-Date }
         if ($stage -eq 'running') {
             $since = ((Get-Date) - $armedAt).TotalSeconds
             if (($shot -eq 0 -and $since -gt 15) -or ($shot -eq 1 -and $since -gt 40)) {

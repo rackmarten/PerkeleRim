@@ -1,7 +1,8 @@
 #pragma once
 
 // The hitbox test (scripts/hitbox-test.ps1): with PerkeleRim_hitboxtest.txt in Skyrim's folder, the
-// first time MSC has the player with the Hayosiko van solid near him, a bandit archer is placed behind
+// first time MSC has the player with the Hayosiko van standing solid near him for a few seconds (the
+// script calls it with ]), a bandit archer is placed behind
 // the van (seen from Kumpo) and a melee bandit just behind it. For a minute it logs the arrows that hit
 // the van (Hitbox::Hits), how close the melee bandit comes to Kumpo and how deep he ever stands inside
 // the van's box, keeps Kumpo alive, then takes both bandits away and logs "hitbox test: done". Main
