@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     Brings Skyrim to the front and presses one key there as a real key press (DirectInput sees it),
-    e.g. F10 to hand the player to MSC without touching the keyboard. Optionally saves a screenshot
+    e.g. F10 to hand the player back and forth without touching the keyboard. Optionally saves a screenshot
     of the Skyrim window afterwards.
 .EXAMPLE
     scripts/skyrim-key.ps1 -Key F10

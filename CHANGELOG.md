@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Play mode: no more F10. Loading a save (the PerkeleRim-Kumpo starter, your own, a quickload, the reload after a death) hands Kumpo to My Summer Car by itself a couple of seconds after it has loaded, and again after quitting to the main menu and loading another one. If My Summer Car isn't running, Skyrim says so and Kumpo goes over once it is (also when MSC is still loading, or drops out mid-game). F10 stays as a debug toggle (protocol v40).
 - Kumpo's Helgen intro, from the most liked comment on the PerkeleRim video: a new game opens with Kumpo drinking one beer too many in My Summer Car and passing out (MSC's drinking, burp and snore, on black), and he wakes up in Skyrim's Helgen cart, answering Ralof's "Hey, you. You're finally awake." with a Perkele. Helgen plays with Skyrim's own controls; Kumpo goes over to My Summer Car once he's out of the keep's cave, where he stands (the van parks next to him). Saves that never had the handover still wake him in the shack bed by the garage.
+- Setup in the launcher: the first time, Start PerkeleRim.bat finds My Summer Car and Skyrim (Steam libraries, Steam's own install records, or folders you pick), lists what's missing of MSCLoader, SKSE and Address Library, opens their download pages and waits while you install them, then installs PerkeleRim into both games. Skyrim's SKSE build is checked against the Skyrim version too.
+- Mod Organizer 2: when MO2 manages your Skyrim, the launcher asks once whether to start Skyrim through it; then Address Library may be an MO2 mod, `PerkeleRim.esp` is ticked in MO2's selected profile, and an older PerkeleRim installed as an MO2 mod gets a warning.
+
+### Fixed
+
+- My Summer Car started from Steam after a PerkeleRim session keeps your own resolution and graphics quality: the launcher puts them back once MSC closes (PerkeleRim runs MSC in a small window at its lowest quality, and Unity kept that). If an earlier PerkeleRim already left MSC at 640x480, set your resolution and quality in MSC once more and they stay.
+- MSCLoader's console (~) stays quiet during play: it shows only the link coming up or going down and anything that failed. Every PerkeleRim line still goes to `output_log.txt`.
+- The launcher no longer stops at a Steam library on a drive that isn't there any more.
 
 ## [0.1.1] - 2026-10-22
 
