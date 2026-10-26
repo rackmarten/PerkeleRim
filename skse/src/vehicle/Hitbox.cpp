@@ -298,6 +298,16 @@ namespace PerkeleRim::Hitbox
             a_body.out.clear();
             SKSE::log::info("hitbox: the {} is solid in Skyrim's world at ({:.0f},{:.0f},{:.0f}), {} capsules in the player's collision group {}", a_body.name,
                 a_state.position[0], a_state.position[1], a_state.position[2], a_body.parts.size(), a_group);
+            // Where Havok has them, back in game units, to tell a scale or world mix-up from the van's pose.
+            const float scale = RE::bhkWorld::GetWorldScale();
+            int         i = 0;
+            for (auto& part : a_body.parts) {
+                auto*       rb = part.body->GetRigidBody();
+                float       t[4];
+                _mm_storeu_ps(t, rb->motion.motionState.transform.translation.quad);
+                SKSE::log::info("hitbox: the {}'s capsule {} is {} Havok's world at ({:.0f},{:.0f},{:.0f}), filter {:08X}, world scale {}", a_body.name, i++,
+                    rb->world == hkWorld ? "in" : "NOT in", t[0] / scale, t[1] / scale, t[2] / scale, rb->collidable.broadPhaseHandle.collisionFilterInfo.filter, scale);
+            }
         }
 
         // Every projectile Skyrim stopped at one of the capsules (its impact names the capsule's
