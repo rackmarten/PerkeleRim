@@ -103,6 +103,7 @@ scripts/restart-games.ps1 -Build    # close both games, build, deploy, start MSC
 scripts/msc-save.ps1 snapshot NAME  # save MSC save data outside the repo; "restore NAME" puts it back
 scripts/spike.ps1 -Command dump    # hidden-MSC spike tools, see docs/SPIKE_HIDDEN_MSC.md
 scripts/skyrim-key.ps1 -Key F10    # press a key in Skyrim (brings it to the front); -Screenshot FILE saves its window
+scripts/hit-test.ps1               # unattended combat check in game (closes both games), results in a CSV; see below
 ```
 
 For a test loop with no clicks at all, create an empty `PerkeleRim_autoload.txt` in both game folders: MSC then continues its save, and Skyrim continues its most recent save from the main menu (the SKSE plugin does it once per start). Delete the files to get the main menus back.
@@ -126,6 +127,24 @@ The first SKSE build takes a while (often 15 to 25 minutes): vcpkg builds the de
    - in `PerkeleRim.log`: `PerkeleRim loaded (plugin 0.1.1, Skyrim runtime 1.7.104.0)`
    - in `skse64.log`: a line saying `PerkeleRim.dll` loaded correctly
    - in `output_log.txt` (My Summer Car game folder): `PerkeleRim: PerkeleRim loaded`
+
+### Hit test (combat, unattended)
+
+`scripts/hit-test.ps1` checks PerkeleRim's attacks in game with nobody at the keys. It closes both games (anything unsaved is lost), so don't run it while you play. It:
+
+1. adds `[Debug] HitTest=<scenarios>` to `<SkyrimPath>\Data\SKSE\Plugins\PerkeleRim.ini` and creates `PerkeleRim_autoload.txt` in both game folders if missing, so both load their newest save;
+2. runs `scripts/restart-games.ps1` (`-Build` builds first), which deploys and starts both games;
+3. waits while the SKSE plugin's driver (`skse/src/debug/HitTest.cpp`) hands Kumpo to MSC as F10 would and runs each scenario: it sets MSC's drunk level and what Kumpo holds over the link (the `DebugCommand` message, a line for MSC's spike commands: `drunk 2`, `hold 1`), turns MSC's camera level with mouse moves, places a target just ahead and keeps it there until the attack (Skyrim.esm's Whiterun guard, `tai` so it doesn't fight back) and presses MSC's keys (H to punch, the right button held for a full charge to throw);
+4. watches for a crash (a new `crash-*.log`), either game gone, a hang (`PerkeleRim.log` still for 120 s) and a 10 minute timeout;
+5. prints the driver's log lines and the CSV, closes both games, takes the `[Debug]` lines out of the ini and deletes the flag files it created. It exits 1 if a row failed or the test didn't finish.
+
+The scenarios (`protocol/cpp/hit_test.h`, unit tested): `punch` (sober, three punches), `bottle` (an empty bottle from the pocket thrown three times from 3 m) and `drunk` (punches at MSC's drunk level 2; last, since MSC's camera sways on for a while after and throws then miss), plus a `drunk vs punch` row checking the drunk punches against the sober ones by `Damage::DrunkPunch`. Each row says whether the hit reached Skyrim, what Combat cast against what `protocol/cpp/damage.h` says, and how far the target's health fell. `-Save <file name>` loads that Skyrim save instead of the newest (`AutoloadSave=` in the ini, which Autoload follows), for when other tests have saved since. Pick some with `-Scenarios punch,bottle`; `-Target <hex form id>` uses another actor base (a giant, `0003053F`, takes only two thirds of a hit, so its rows fail the health check); `-KeepOpen` leaves the games running at the end to look around.
+
+Results go to `Documents\My Games\PerkeleRim\hittest.csv` (`HitTestCsv=<path>` in the ini moves it), one row per attack, with MSC's logs of the run next to it (`hittest-msc.log`, `hittest-msc-spike.log`):
+
+`scenario,hit,target,landed,drunk,unarmed,speed,sneak,expected,damage,before,after,drop,pass,note`
+
+Start from a save where Kumpo stands on foot outdoors with a few metres of open ground ahead. Not in the shed or the garage: the island has their walls, and thrown bottles hit the planks (the starter save wakes him in the shed). A save where he sits in a vehicle stops the test; one taken while MSC had him is fine, the handover resumes by itself. Nothing is saved in either game. The driver is off unless the ini asks for it, and the release never ships the `[Debug]` lines. What it doesn't cover (stagger, ragdolls, how a hit looks and sounds) stays a manual check.
 
 ### Testing on Skyrim Special Edition 1.5.97
 

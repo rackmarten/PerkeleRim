@@ -15,6 +15,7 @@ Everything builds and runs on Windows, where both games are installed:
 - `scripts/restart-games.ps1` is the whole in-game loop: it closes both games, optionally builds, then deploys and starts them. Closing the games discards anything unsaved in them.
 - `scripts/msc-save.ps1` snapshots and restores My Summer Car's save, so a test can start from a known state.
 - `scripts/skyrim-key.ps1` presses a key in Skyrim (e.g. F10 for the handover) and can take a screenshot.
+- `scripts/hit-test.ps1` runs the unattended combat check (punch sober and drunk, a thrown bottle) and writes `Documents/My Games/PerkeleRim/hittest.csv`; it closes both games too. Scenarios and pass rules are in `protocol/cpp/hit_test.h`, the in-game driver in `skse/src/debug/HitTest.cpp` (DEV_SETUP, "Hit test"). Add a scenario there when you change combat damage.
 - `scripts/hitbox-test.ps1` checks the vehicle hitbox with nobody at the keys: restarts both games, places bandits behind the van and logs arrows on it and how the melee bandit walks around it.
 - Put code that doesn't need a game somewhere testable (protocol headers, coordinate conversion) and cover it in `scripts/test.ps1`. Keep the game-facing code a thin layer over it.
 - Files are LF (`.gitattributes`). Edit them with your editor tools: PowerShell's `Set-Content` and Python's default text mode on Windows write CRLF.
