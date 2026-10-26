@@ -93,7 +93,7 @@ Kumpo fights with his fists: weapons and spells can't be equipped while MSC has 
 - Followers get in the way and are easy to run over. We don't recommend taking one along in v0.1.
 - Horses don't work properly, so don't ride them. Kumpo is a drunk, not a horse rider.
 - Water is mostly ignored: Kumpo walks on the bottom, Skyrim can drown him and vehicles drive through water. Wading in up to the waist washes him (dirtiness to 0), but there is no thirst from water.
-- Vehicles have no hitbox in Skyrim, so arrows and dragons pass through the van. Kumpo is safe inside the van and the Kekmet anyway.
+- Vehicles are solid in Skyrim only while they stand or crawl: parked, they stop arrows and spells and people walk around them, but from about 7 km/h they leave Skyrim's world so MSC can run people over, and arrows fly through them again. Flames, blasts and melee reach through them even when parked. Kumpo is safe inside the van and the Kekmet anyway.
 
 ## Roadmap
 

@@ -26,6 +26,9 @@ namespace PerkeleRim::ModelView
     // The lights of a received model (vehicles: MSC's own Unity Lights), null for an unknown model.
     const std::vector<Model::Light>* Lights(std::uint32_t a_model);
 
+    // A received model as parsed (Hitbox sizes a vehicle by its meshes), null for an unknown one.
+    const Model::Model* Get(std::uint32_t a_model);
+
     void Tick(float a_delta);  // every frame the player is handed over; logs the frame cost around a build
 
     // A GPU texture and its view wrapped in a NiSourceTexture the game's shaders and Scaleform can

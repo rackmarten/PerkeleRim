@@ -552,6 +552,12 @@ namespace PerkeleRim::ModelView
         return found != state.models.end() ? &found->second->model.lights : nullptr;
     }
 
+    const Model::Model* Get(std::uint32_t a_model)
+    {
+        const auto found = state.models.find(a_model);
+        return found != state.models.end() ? &found->second->model : nullptr;
+    }
+
     void Tick(float a_delta)
     {
         state.frameTime += a_delta;

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Vehicles are solid in Skyrim: the van, the moped and the Kekmet stop arrows and spells (hiding behind the parked van works, and arrows hit it with a metal clang) and people walk around them instead of through them. Ragdolls and dropped items bounce off too. Kumpo himself still walks through, and NPCs still see him through the van. At driving speed (from about 7 km/h) the hitbox steps aside so running people over works as before; Kumpo stays safe in the van and the Kekmet while seated.
+
 ## [0.1.1] - 2026-10-22
 
 ### Added
