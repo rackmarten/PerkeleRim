@@ -175,7 +175,8 @@ Describe 'Get-Mo2Instances' {
         @(Get-Mo2Instances "$finnish" @($dir))[0].PluginFiles | Should -Contain 'versionlib-1-6-1170-0.bin'
     }
     It 'puts the configured instance first' {
-        (Get-Mo2InstanceDirs 'D:\Portable MO2')[0] | Should -Be 'D:\Portable MO2'
+        # @(): with no global instances (CI) the one folder comes back as a plain string.
+        @(Get-Mo2InstanceDirs 'D:\Portable MO2')[0] | Should -Be 'D:\Portable MO2'
     }
 }
 
