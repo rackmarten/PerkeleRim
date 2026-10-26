@@ -9,8 +9,11 @@
 //    a load and crashed in a vanilla actor's AI the same second;
 //  - Skyrim to let the player move: a scene with the movement controls taken away keeps the player
 //    (the Helgen cart, the execution);
-//  - the Helgen intro (Unbound) to be over: nothing hands over while it runs, the escape through the
-//    keep included, so Helgen plays with Skyrim's own controls;
+//  - a calm moment: not fighting, riding, swimming, knocked down or ragdolled, sitting or lying in
+//    furniture, or talking (the dialogue menu), so MSC doesn't take over mid-action;
+//  - the Helgen intro (Unbound) to be over: nothing hands over by itself while it runs, the escape
+//    through the keep included, so Helgen plays with Skyrim's own controls. F10 is refused only while
+//    a scene has the player in it (F10Refused), so a quest that never completes can't keep him;
 //  - MSC: linked and in its game. If it isn't, it says so once (NoMsc, or MscLoading while MSC is
 //    linked but on its menu or loading its save) and hands over once MSC has been in its game for
 //    kMscSeconds (MSC applies a snapshot that waited for it 3 s after its player shows up).
@@ -32,6 +35,12 @@ namespace PerkeleRim::PlayMode
         bool  player3D = false;      // the player's 3D is loaded
         bool  cellAttached = false;  // the player's cell is in
         bool  controls = false;      // Skyrim lets the player move (no scene took the movement controls)
+        bool  combat = false;        // the player is in combat
+        bool  mounted = false;       // on a horse
+        bool  swimming = false;
+        bool  knocked = false;       // knocked down, staggered to the ground or ragdolled
+        bool  sitting = false;       // sitting, sleeping or getting in or out of furniture
+        bool  talking = false;       // the dialogue menu is open
         bool  intro = false;         // the Helgen intro (Unbound, MQ101) is running
         float delta = 0.0f;          // seconds since the last frame
     };
@@ -52,11 +61,29 @@ namespace PerkeleRim::PlayMode
         MscLoading,  // tell the player MSC is still loading
     };
 
-    constexpr bool SkyrimReady(const Frame& a_frame)
+    // Why Skyrim isn't ready for the handover, for the log; null when it is.
+    constexpr const char* NotReady(const Frame& a_frame)
     {
-        return !a_frame.loading && !a_frame.paused && a_frame.player3D && a_frame.cellAttached && a_frame.controls &&
-               a_frame.delta >= 0.0f;
+        if (a_frame.loading) return "loading";
+        if (a_frame.paused) return "paused";
+        if (!a_frame.player3D || !a_frame.cellAttached) return "the player isn't in yet";
+        if (!a_frame.controls) return "a scene has the controls";
+        if (a_frame.combat) return "in combat";
+        if (a_frame.mounted) return "riding";
+        if (a_frame.swimming) return "swimming";
+        if (a_frame.knocked) return "knocked down";
+        if (a_frame.sitting) return "sitting";
+        if (a_frame.talking) return "talking";
+        if (!(a_frame.delta >= 0.0f)) return "a broken frame time";
+        return nullptr;
     }
+
+    constexpr bool SkyrimReady(const Frame& a_frame) { return NotReady(a_frame) == nullptr; }
+
+    // F10 in the Helgen intro: refused while its scene has the player (the cart, the execution), so
+    // nobody leaves the cart by accident; once he can move it hands over, the way out if Unbound never
+    // completes (another start, a mod, a stuck stage).
+    constexpr bool F10Refused(bool a_intro, bool a_controls) { return a_intro && !a_controls; }
 
     class Machine
     {

@@ -1,3 +1,6 @@
+#include <ostream>
+#include <string_view>
+
 #include <doctest/doctest.h>
 
 #include "../../cpp/play_mode.h"
@@ -74,6 +77,46 @@ TEST_CASE("anything off while settling starts the wait over")
     never([](PlayMode::Frame& f) { f.player3D = false; });
     never([](PlayMode::Frame& f) { f.cellAttached = false; });
     never([](PlayMode::Frame& f) { f.controls = false; });
+}
+
+TEST_CASE("it waits for a calm moment: no fight, horse, swim, fall, seat or dialogue")
+{
+    PlayMode::Machine m;
+    const auto busy = [&](void (*a_set)(PlayMode::Frame&), const char* a_reason) {
+        m.Load();
+        auto f = Ready();
+        a_set(f);
+        CHECK(std::string_view(PlayMode::NotReady(f)) == a_reason);
+        CHECK(Run(m, f, 30.0f) == Say::None);
+        CHECK(Run(m, Ready(), 1.0f) == Say::None);  // calm again: it settles from the start
+        CHECK(Run(m, Ready(), 1.5f) == Say::HandOver);
+    };
+    busy([](PlayMode::Frame& f) { f.combat = true; }, "in combat");
+    busy([](PlayMode::Frame& f) { f.mounted = true; }, "riding");
+    busy([](PlayMode::Frame& f) { f.swimming = true; }, "swimming");
+    busy([](PlayMode::Frame& f) { f.knocked = true; }, "knocked down");
+    busy([](PlayMode::Frame& f) { f.sitting = true; }, "sitting");
+    busy([](PlayMode::Frame& f) { f.talking = true; }, "talking");
+    CHECK(PlayMode::NotReady(Ready()) == nullptr);
+}
+
+TEST_CASE("after MSC came back from a restart it still waits for a calm moment")
+{
+    PlayMode::Machine m;
+    m.Lost();
+    auto fight = Ready();
+    fight.combat = true;
+    CHECK(Run(m, fight, 30.0f) == Say::None);
+    CHECK(Run(m, Ready(), 1.0f) == Say::None);
+    CHECK(Run(m, Ready(), 1.5f) == Say::HandOver);
+}
+
+TEST_CASE("F10 in Helgen is refused only while a scene has the player")
+{
+    CHECK(PlayMode::F10Refused(true, false));   // the cart, the execution
+    CHECK_FALSE(PlayMode::F10Refused(true, true));  // he can move: F10 is the way out of a stuck Unbound
+    CHECK_FALSE(PlayMode::F10Refused(false, false));
+    CHECK_FALSE(PlayMode::F10Refused(false, true));
 }
 
 TEST_CASE("a scene that took the controls keeps the player until it lets go")

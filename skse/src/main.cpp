@@ -54,7 +54,9 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::Combat::OnGameLoaded();
             PerkeleRim::HitTest::OnGameLoaded();
             PerkeleRim::Intro::OnGameLoaded();
-            PerkeleRim::PlayerSync::OnGameLoaded();  // after SaveSync's MscLoad
+            if (a_msg->data) {  // the load worked (its success flag is the pointer's value)
+                PerkeleRim::PlayerSync::OnGameLoaded();  // after SaveSync's MscLoad
+            }
         } else if (a_msg->type == SKSE::MessagingInterface::kSaveGame) {
             PerkeleRim::SaveSync::OnSaveGame(static_cast<const char*>(a_msg->data));
         }

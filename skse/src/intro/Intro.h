@@ -11,7 +11,8 @@ namespace PerkeleRim::Intro
     void OnNewGame();     // call on kNewGame
     void OnGameLoaded();  // call on kPostLoadGame
 
-    bool Running();  // the Helgen intro (Unbound) is running
+    bool        Running();   // the Helgen intro (Unbound) is running
+    std::string Describe();  // Unbound's stage and flags, for the log
 
     // Kumpo wakes up in the shack on a save's first handover: MSC plays the hangover line now.
     void WakeUp();

@@ -63,6 +63,7 @@ namespace PerkeleRim::PlayerSync
             int                garageFrames = 0;
             PlayMode::Machine  play;  // hands over by itself after a load (protocol/cpp/play_mode.h)
             bool               mscInGame = false;  // MSC's player exists (PlayerState kPlayerInGame)
+            const char*        notReady = nullptr;  // why play mode last waited, for the log
             std::uint32_t  generation = 0;
             std::uint32_t  anchorWorldspace = 0;
             std::uint32_t  anchorCell = 0;
@@ -388,6 +389,9 @@ namespace PerkeleRim::PlayerSync
                 state.garage = nullptr;
                 if (!LinkService::Get().IsUp()) {
                     state.play.Lost();  // hands over where the player stands once MSC is back
+                } else {
+                    Garage::Visited();  // the shack didn't work out: the next handover starts where he stands
+                    state.play.Load();
                 }
                 return;
             }
@@ -446,13 +450,24 @@ namespace PerkeleRim::PlayerSync
             frame.player3D = a_player->Is3DLoaded();
             frame.cellAttached = cell && cell->IsAttached();
             frame.controls = controls && controls->IsMovementControlsEnabled();
+            auto* actorState = a_player->AsActorState();
+            frame.combat = a_player->IsInCombat();
+            frame.mounted = a_player->IsOnMount();
+            frame.swimming = actorState && actorState->IsSwimming();
+            frame.knocked = a_player->IsInRagdollState() ||
+                            (actorState && actorState->GetKnockState() != RE::KNOCK_STATE_ENUM::kNormal);
+            frame.sitting = actorState && actorState->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal;
+            frame.talking = ui && ui->IsMenuOpen(RE::DialogueMenu::MENU_NAME);
             frame.intro = intro;
             frame.delta = a_delta;
-            const auto before = state.play.Current();
-            const auto say = state.play.Tick(frame);
-            if (state.play.Current() != before && state.play.Waiting()) {
-                SKSE::log::info("player sync: play mode {}", PhaseName(state.play.Current()));
+            const auto  before = state.play.Current();
+            const auto  say = state.play.Tick(frame);
+            const char* reason = state.play.Current() == PlayMode::Phase::Settling ? PlayMode::NotReady(frame) : nullptr;
+            if ((state.play.Current() != before || reason != state.notReady) && state.play.Waiting()) {
+                SKSE::log::info("player sync: play mode {}{}{} ({})", PhaseName(state.play.Current()), reason ? ": " : "", reason ? reason : "",
+                    Intro::Describe());
             }
+            state.notReady = reason;
             switch (say) {
             case PlayMode::Say::HandOver:
                 SKSE::log::info("player sync: play mode hands the player to MSC");
@@ -992,8 +1007,9 @@ namespace PerkeleRim::PlayerSync
         {
             if (state.owned) {
                 Release("F10");
-            } else if (Intro::Running()) {
-                SKSE::log::info("player sync: F10 in the Helgen intro, not handing over");
+            } else if (auto* controls = RE::ControlMap::GetSingleton();
+                       PlayMode::F10Refused(Intro::Running(), controls && controls->IsMovementControlsEnabled())) {
+                SKSE::log::info("player sync: F10 in the Helgen intro's scene, not handing over ({})", Intro::Describe());
                 RE::SendHUDMessage::ShowHUDMessage("Kumpo can't go over to My Summer Car until he's out of Helgen.");
             } else if (state.play.Waiting()) {
                 state.play.Cancel();

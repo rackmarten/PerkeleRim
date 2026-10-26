@@ -20,6 +20,7 @@ namespace PerkeleRim::Intro
             Cues                       cues;
             std::uint32_t              captionCue = 0;  // the last cue sent, while its captions run (Captions)
             float                      captionSince = 0.0f;  // seconds since it went out
+            bool                       captionShown = false;  // our HUD layer shows a caption (cleared once it's over)
             std::atomic<bool>          ralofDone = false;  // set by the topic sink
         } state;
 
@@ -91,6 +92,15 @@ namespace PerkeleRim::Intro
         return state.captionCue ? CaptionAt(state.captionCue, state.captionSince) : std::string_view{};
     }
 
+    std::string Describe()
+    {
+        if (!state.unbound) {
+            return "no Unbound";
+        }
+        return fmt::format("Unbound stage {}, {}, {}", state.unbound->GetCurrentStageID(), state.unbound->IsEnabled() ? "enabled" : "not enabled",
+            state.unbound->IsCompleted() ? "completed" : "not completed");
+    }
+
     bool Running()
     {
         // IsRunning() is only "not stopping", true for a quest that never started (a coc start, a
@@ -117,13 +127,17 @@ namespace PerkeleRim::Intro
         if (a_owned) {
             return;  // the handover's HUD shows Caption() as its subtitle line
         }
-        Hud::View  view;
         const auto caption = Caption();
+        if (caption.empty() && !state.captionShown) {
+            return;  // nothing of ours on the HUD
+        }
+        Hud::View view;
         if (!caption.empty()) {
             view.show = true;
             view.dot = false;
             view.subtitle = caption;
         }
+        state.captionShown = !caption.empty();
         Hud::Set(view, std::floor(before) != std::floor(state.captionSince));  // once a second, in case the HUD movie wasn't up yet
     }
 }
