@@ -40,7 +40,7 @@ Add-Type -Namespace PerkeleRim -Name Win32 -MemberDefinition @'
 $log = Join-Path $msc 'PerkeleRim_spike.log'
 $launched = Get-Date
 Start-Process -WorkingDirectory $msc (Join-Path $msc 'mysummercar.exe') `
-    -ArgumentList '-force-gfx-direct', '-screen-fullscreen', [int]$Fullscreen.IsPresent, '-screen-width', $Width, '-screen-height', $Height, '-screen-quality', $Quality
+    -ArgumentList '-force-gfx-direct', '-screen-fullscreen', ([int] $Fullscreen.IsPresent), '-screen-width', $Width, '-screen-height', $Height, '-screen-quality', $Quality
 Start-MscScreenWatcher (Join-Path $RepoRoot 'launcher/PerkeleRim.ps1')
 
 # Until the spike log says the mod has started (main menu reached):
