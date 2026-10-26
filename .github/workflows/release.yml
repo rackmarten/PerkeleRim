@@ -1,0 +1,117 @@
+name: release
+
+# Finishes a draft release whose zip the maintainer built and uploaded (docs/DEV_SETUP.md, "Cutting
+# a release"). The zip can't be built here: PerkeleRim.esp is generated from Skyrim.esm, and the My
+# Summer Car mod compiles against MSCLoader, Unity and the game's own DLLs, none of which may be
+# put on GitHub (CI's stub build leaves the mod's game code out). So this workflow:
+#   - downloads the zip from the tag's draft release;
+#   - checks it against the tag (scripts/release-check.ps1): its version, the commit the My Summer
+#     Car mod was built from, and the launcher, starter saves and LICENSE byte for byte;
+#   - scans it on VirusTotal (repository secret VT_API_KEY; skipped without it);
+#   - writes SHA256SUMS.txt (the zip and every file in it) and the release notes
+#     (scripts/release-notes.ps1), and puts both on the draft, which the maintainer reviews and
+#     publishes. Nothing is published from here.
+# No build provenance attestation: it would say GitHub built a zip that it only checked.
+# A dry run takes any release's zip, published ones too, and only warns where the checks fail. It
+# keeps the zip, SHA256SUMS.txt and the notes as the run's artifact: no VirusTotal upload (it shares
+# what it's sent) and the release is left alone. A PR that changes the release tooling dry-runs it
+# against the latest release.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - 'scripts/release-*.ps1'
+      - 'scripts/virustotal.ps1'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (vX.Y.Z) whose draft release has the zip; with dry run, any release
+        required: true
+        type: string
+      dry_run:
+        description: Dry run, release left alone (the zip, SHA256SUMS.txt and the notes stay the run's artifact)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref }}
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      DRY_RUN: ${{ github.event_name == 'pull_request' || inputs.dry_run }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Release tag
+        id: tag
+        shell: pwsh
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          $tag = if ($env:INPUT_TAG) { $env:INPUT_TAG } else { gh release view --repo $env:GITHUB_REPOSITORY --json tagName --jq .tagName }
+          if (-not $tag) { throw 'No tag given and no latest release.' }
+          "TAG=$tag" >> $env:GITHUB_ENV
+          "name=$tag" >> $env:GITHUB_OUTPUT
+
+      # The scripts come from the branch this runs on; the files to check against from the tag.
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.name }}
+          path: tag
+
+      - name: Download the zip
+        id: zip
+        shell: pwsh
+        run: |
+          $draft = gh release view $env:TAG --json isDraft --jq .isDraft
+          if ($LASTEXITCODE -ne 0) { throw "No release for $env:TAG: upload the zip to a draft release first (docs/DEV_SETUP.md, ""Cutting a release"")." }
+          if ($env:DRY_RUN -ne 'true' -and $draft -ne 'true') { throw "The release for $env:TAG is published already; this only finishes drafts." }
+          gh release download $env:TAG --pattern 'PerkeleRim-*.zip' --dir tools/out/release
+          if ($LASTEXITCODE -ne 0) { throw "The release for $env:TAG has no PerkeleRim-*.zip." }
+          $zip = @(Get-ChildItem tools/out/release/PerkeleRim-*.zip)
+          if ($zip.Count -ne 1) { throw "The release for $env:TAG has $($zip.Count) PerkeleRim-*.zip files, not one." }
+          "path=$($zip[0].FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Check the zip against the tag
+        shell: pwsh
+        run: ./scripts/release-check.ps1 -Zip '${{ steps.zip.outputs.path }}' -Tag $env:TAG -Source tag -WarnOnly:$($env:DRY_RUN -eq 'true')
+
+      # A dry run's zip is no release: nothing goes to VirusTotal, which shares it.
+      - name: VirusTotal scan
+        if: env.DRY_RUN != 'true'
+        shell: pwsh
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+        run: ./scripts/virustotal.ps1 -Path '${{ steps.zip.outputs.path }}' -Out tools/out/release/virustotal.json
+
+      - name: SHA-256s and release notes
+        shell: pwsh
+        run: ./scripts/release-notes.ps1 -Zip '${{ steps.zip.outputs.path }}' -VirusTotal tools/out/release/virustotal.json -Changelog tag/CHANGELOG.md -Checked:$($env:DRY_RUN -ne 'true')
+
+      - name: Update the draft release
+        if: env.DRY_RUN != 'true'
+        shell: pwsh
+        run: |
+          gh release edit $env:TAG --title "PerkeleRim $($env:TAG -replace '^v', '')" --notes-file tools/out/release/release-notes.md
+          if ($LASTEXITCODE -ne 0) { throw 'gh release edit failed' }
+          gh release upload $env:TAG tools/out/release/SHA256SUMS.txt --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'gh release upload failed' }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: PerkeleRim-release-${{ steps.tag.outputs.name }}
+          path: |
+            tools/out/release/*.zip
+            tools/out/release/SHA256SUMS.txt
+            tools/out/release/release-notes.md
+            tools/out/release/virustotal.json
+          if-no-files-found: warn
+          retention-days: 7
