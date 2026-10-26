@@ -91,10 +91,12 @@ scripts/deploy-local.ps1           # copy both DLLs (and PerkeleRim.esp once bui
 scripts/build-esp.ps1 -Deploy       # generate PerkeleRim.esp (garage, beer drinks, drunk blur) from your Skyrim.esm, copy and enable it (close Skyrim first)
 scripts/logs.ps1                   # tail of the plugin, SKSE and My Summer Car logs
 scripts/package.ps1                # player release zip (launcher/ + built files + launcher/saves/MSC and Skyrim if present) in tools/out/release/ (build and build-esp first)
+scripts/release-check.ps1 -Zip tools/out/release/PerkeleRim-X.Y.Z.zip -Tag vX.Y.Z  # check a release zip against its tag (see "Cutting a release")
+scripts/nexus-package.ps1          # the release zip, screenshots and page text for the Nexus Mods upload, in tools/out/nexus/
 scripts/starter-save.ps1           # copy your current MSC save into launcher/saves/MSC with thirst, hunger, urine, fatigue, stress, drunk and dirtiness at 0
 scripts/starter-save.ps1 -Skyrim   # copy your newest Skyrim save (made before the first F10) into launcher/saves/Skyrim as PerkeleRim-Kumpo
 scripts/launch-msc.ps1             # start MSC windowed at 640x480, lowest quality, single-threaded rendering, with no clicks (clicks Play! on the config dialog, presses past the news screen)
-scripts/restart-games.ps1 -Build    # close both games, build, deploy, start MSC and Skyrim (SKSE), wait for "link up"
+scripts/restart-games.ps1 -Build    # close both games, build, deploy, start MSC and Skyrim (SKSE), wait for "link up"; -NoPlace skips the window layout
 scripts/msc-save.ps1 snapshot NAME  # save MSC save data outside the repo; "restore NAME" puts it back
 scripts/spike.ps1 -Command dump    # hidden-MSC spike tools, see docs/SPIKE_HIDDEN_MSC.md
 scripts/skyrim-key.ps1 -Key F10    # press a key in Skyrim (brings it to the front); -Screenshot FILE saves its window
@@ -102,6 +104,8 @@ scripts/hit-test.ps1               # unattended combat check in game (closes bot
 ```
 
 For a test loop with no clicks at all, create an empty `PerkeleRim_autoload.txt` in both game folders: MSC then continues its save, and Skyrim continues its most recent save from the main menu (the SKSE plugin does it once per start). Delete the files to get the main menus back.
+
+`restart-games.ps1` and `launch-msc.ps1` also lay the two windows out so you can watch both: Skyrim in the top right corner of the primary screen, My Summer Car directly left of it with the top edges aligned. The positions are worked out from the screen's working area (taskbar excluded) and the real window sizes. Pass `-NoPlace` to leave the windows where Windows puts them; `launch-msc.ps1 -Fullscreen` is never moved.
 
 From WSL, call the same scripts through Windows PowerShell, e.g. `powershell.exe -File scripts/build.ps1`.
 
@@ -173,6 +177,101 @@ Anything that fails here is an SE vs AE difference in CommonLib (a vfunc index o
 - **dnSpyEx** (<https://github.com/dnSpyEx/dnSpy/releases>) to read My Summer Car's `Assembly-CSharp.dll` and MSCLoader. Use it for reading only: never commit decompiled game code.
 - **Developer Toolset** (an MSCLoader mod on Nexus Mods) is the in-game object inspector for My Summer Car. It browses the scene hierarchy and components, and views and edits **PlayMaker FSM** states, variables and events, which is where most of My Summer Car's game logic lives. Generic Unity inspectors such as UnityExplorer need BepInEx or MelonLoader rather than MSCLoader, so they're not the default here.
 
+## Branches and releases
+
+From 0.1.1 on there are two long-lived branches:
+
+- **`main`** is the development version. Features and fixes for the next release go there through pull requests.
+- **`production`** is what players get. A release is `main` merged into `production`, and release tags (`v0.1.1`, `v0.2.0`, ...) exist only on `production`, each on the commit its release zip is built from.
+- **Hotfixes** for players branch from `production` (`fix-<slug>`), go through a pull request into `production`, are tagged there, and `production` is then merged back into `main`.
+
+CI builds every push to either branch and every pull request. Merge pull requests into `production` with a merge commit, never squash, so `main` and `production` keep a shared history and the merge back stays small.
+
+Repository rulesets (Settings > Rules > Rulesets) hold both branches to this:
+
+- **main and production:** changes go through a pull request (no approval needed), `build` and `protocol-tests-linux` must pass (the branch needn't be up to date with its base), and the branch can't be force-pushed or deleted. On a pull request that only touches `docs/` and Markdown files both checks skip, which counts as passed.
+- **production:** merge commits only; squash and rebase are refused.
+- **Release tags (`v*`):** only admins create them, and nobody moves or deletes one.
+
+Repository admins can bypass all three, for an emergency.
+
+### Cutting a release
+
+The release zip is built on your PC, not in CI: `PerkeleRim.esp` is generated from your `Skyrim.esm`, and the My Summer Car mod compiles against MSCLoader, Unity and the game's DLLs, none of which can go on GitHub. CI's stub build (`-UseStubs`) leaves the mod's whole game layer out (`src/Game`), so its DLL loads but does nothing. The `release` workflow then checks the zip against the tag and finishes the draft release.
+
+1. On `main`, through an ordinary pull request: set the version (`VERSION` in `skse/CMakeLists.txt`, `version-semver` in `skse/vcpkg.json` and `protocol/vcpkg.json`, `<Version>` in `msc/PerkeleRim.csproj`, `Version` in `msc/src/PerkeleRimMod.cs`, and the version line in `docs/nexus/`), and in `CHANGELOG.md` rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` with a new empty `## [Unreleased]` above it. Merge it.
+2. Open the release pull request from `main` into `production`, wait for CI, and merge it with a merge commit:
+
+   ```bash
+   gh pr create --base production --head main --title "Release X.Y.Z" --body "Release notes: CHANGELOG.md, X.Y.Z"
+   gh pr merge --merge <number>
+   ```
+
+3. Tag the merge on `production` and push the tag:
+
+   ```bash
+   git fetch origin
+   git switch production
+   git merge --ff-only origin/production
+   git tag -a vX.Y.Z -m "PerkeleRim X.Y.Z"
+   git push origin vX.Y.Z
+   ```
+
+4. Build the zip from that clean checkout (no local changes: the MSC mod records the commit it's built from, and the workflow compares it with the tag's), then put it on a draft release:
+
+   ```powershell
+   scripts/build.ps1
+   scripts/build-esp.ps1
+   scripts/package.ps1
+   scripts/release-check.ps1 -Zip tools/out/release/PerkeleRim-X.Y.Z.zip -Tag vX.Y.Z
+   gh release create vX.Y.Z --draft --verify-tag --title "PerkeleRim X.Y.Z" tools/out/release/PerkeleRim-X.Y.Z.zip
+   gh workflow run release.yml -f tag=vX.Y.Z
+   ```
+
+5. The `release` workflow (`.github/workflows/release.yml`, on GitHub's windows-latest, a few minutes):
+   - downloads the zip from the draft and checks it against the tag (`scripts/release-check.ps1`): the zip's name and folder, the My Summer Car mod's version and the commit it was built from, and the launcher, `.bat` files, starter saves and `LICENSE` byte for byte. Any mismatch fails the run, and the draft stays as it is;
+   - uploads the zip to VirusTotal and waits for the scan (`scripts/virustotal.ps1`; skipped with a warning without the `VT_API_KEY` secret);
+   - writes `SHA256SUMS.txt` with the zip and every file in it, and the notes (`scripts/release-notes.ps1`): the version's `CHANGELOG.md` section, then "Check your download" with the SHA-256, what the workflow checked and the VirusTotal result;
+   - puts the notes and `SHA256SUMS.txt` on the draft.
+
+   Read the draft on the Releases page, check the VirusTotal line (a few heuristic hits on game-hooking DLLs and PowerShell launchers happen; the notes say so), and publish it. There is no build provenance attestation: GitHub didn't build the zip, so it can't vouch for it.
+6. Nexus Mods: `scripts/nexus-package.ps1` gathers the zip, the screenshots and the page text into `tools/out/nexus/`; [docs/nexus/README.md](nexus/README.md) lists the fields to fill in.
+
+Once, before the first release: add the repository secret `VT_API_KEY` (Settings > Secrets and variables > Actions) with the API key of a free VirusTotal account (virustotal.com, your profile > API key). The free key allows 4 requests a minute and 500 a day, which a release needs a dozen of.
+
+To try the workflow without releasing anything, run it by hand with **dry run** (Actions > release > Run workflow, or `gh workflow run release.yml -f tag=v0.1.1 -f dry_run=true`): it takes the zip of any release, published ones too, only warns where the checks fail, and keeps the zip, `SHA256SUMS.txt` and the notes as the run's artifact, without VirusTotal upload or touching the release. A pull request that changes the release workflow or its scripts does a dry run against the latest release by itself.
+
+### A hotfix
+
+1. Branch from `production`, fix it, and set the patch version and its `CHANGELOG.md` section (`## [X.Y.Z+1] - YYYY-MM-DD`) on the same branch:
+
+   ```bash
+   git fetch origin
+   git switch -c fix-<slug> origin/production
+   ```
+
+2. Push it and open the pull request into `production`; once CI is green, merge it with a merge commit:
+
+   ```bash
+   git push -u origin fix-<slug>
+   gh pr create --base production --title "Fix: <what>"
+   gh pr merge --merge <number>
+   ```
+
+3. Tag it on `production` and release it, as steps 3 to 6 of a release.
+4. Merge `production` back into `main`, through a pull request so CI checks the result:
+
+   ```bash
+   git switch -c merge-production-vX.Y.Z origin/main
+   git merge --no-ff origin/production -m "Merge production (vX.Y.Z) into main"
+   git push -u origin merge-production-vX.Y.Z
+   gh pr create --base main --title "Merge production (vX.Y.Z) into main"
+   ```
+
+   Keep `main`'s own version and `## [Unreleased]` section in the conflict, with the hotfix's changelog section below it. A hotfix should avoid changing the shared memory's layout; if it has to, it takes a `kProtocolVersion` above `main`'s, and `main` renumbers on the merge back.
+
+Agents open feature pull requests against `main` and hotfix pull requests against `production`, and never create tags or releases: those are the maintainer's.
+
 ## How the builds work
 
 ### SKSE plugin (`skse/`)
@@ -193,7 +292,9 @@ Anything that fails here is an SE vs AE difference in CommonLib (a vfunc index o
 
 ### CI (`.github/workflows/build.yml`)
 
-Runs on GitHub-hosted runners for every push and pull request. A quick `ubuntu-latest` job runs `scripts/test.sh`. The `windows-latest` job uses the same `scripts/build.ps1` as local builds, caches vcpkg binaries, builds the C# mod against the stubs (the game's DLLs can't be redistributed), runs `scripts/test.ps1`, and uploads both DLLs as a build artifact.
+Runs on GitHub-hosted runners for every pull request and every push to `main` or `production`. A quick `ubuntu-latest` job runs `scripts/test.sh`. The `windows-latest` job uses the same `scripts/build.ps1` as local builds, caches vcpkg binaries, builds the C# mod against the stubs (the game's DLLs can't be redistributed), runs `scripts/test.ps1`, and uploads both DLLs as a build artifact, kept 7 days. The stub-built mod DLL is a compile check only: it has no game code, so don't install it.
+
+Both jobs are required checks on `main` and `production`. A `changes` job looks at what a pull request touches first: if that's only `docs/` and Markdown files, both jobs skip, which GitHub counts as passed, so a docs-only PR merges at once. A newer push to the same branch cancels the run before it. The release workflow is under "Cutting a release".
 
 ## Troubleshooting
 

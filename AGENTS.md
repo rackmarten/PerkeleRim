@@ -24,6 +24,8 @@ Without Windows (a Linux sandbox, say), run `scripts/test.sh` first: it builds a
 ## Rules
 
 - Never commit assets from My Summer Car or Skyrim (meshes, textures, archives, audio, game DLLs). Tools may read the user's own install at build time or runtime; their output is never committed or shipped.
+- Branches (`docs/DEV_SETUP.md`, "Branches and releases"): `main` is development, `production` is what players get. Feature PRs go against `main`; hotfix PRs branch from and go against `production` (`fix-<slug>`). Merge into `production` with a merge commit, never squash. Never create tags or GitHub releases, and never run the release workflow for real: the maintainer does.
+- CI's `build` and `protocol-tests-linux` are required checks on `main` and `production`; on a docs-only PR they skip and pass at once. The MSC mod CI builds against stubs has no game code, so it's no use in game or in a release.
 - Commit subjects start with `Add:`, `Edit:`, `Fix:`, `Update:`, `Remove:`, `Docs:` or `DevOps:`.
 - Add an entry under `## [Unreleased]` in `CHANGELOG.md` for anything a player would notice.
 - A protocol layout change updates `docs/PROTOCOL.md` in the same pull request.
