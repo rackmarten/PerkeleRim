@@ -1,6 +1,7 @@
 #include "vehicle/Hitbox.h"
 
-#include "vehicle_hitbox.h"
+#include <unordered_set>
+
 #include "model/ModelView.h"
 
 namespace PerkeleRim::Hitbox
@@ -119,6 +120,7 @@ namespace PerkeleRim::Hitbox
 
         constexpr auto  kLayer = RE::COL_LAYER::kTransparentSmallAnim;
         constexpr float kTeleport = 300.0f;  // units: a jump this long (a respawn, a new anchor) is a teleport, not a motion
+        constexpr int   kHitsLogged = 16;    // the first projectile hits are logged in full
 
         struct Part
         {
@@ -138,7 +140,12 @@ namespace PerkeleRim::Hitbox
             bool                        solid = true;  // by Hitbox::Solid
             RE::NiPoint3                last;          // where it was keyframed last
             std::string                 out;           // why it is out of the world, as last logged
+            Box                         box{};
+            Protocol::VehicleState      state{};       // the pose it follows, this frame
+            std::uint32_t               hits = 0;      // projectiles that hit it
+            std::unordered_set<std::uint32_t> counted;  // projectiles counted, by handle, while they last
         };
+        int hitsLogged = 0;
         // Never destroyed, like ModelView's nodes: at exit the game's destructors would run after its
         // heap and Havok are gone. Parts of a model MSC replaced (MSC restarted) go to retired, out of the world.
         auto& bodies = *new std::array<Body, Protocol::kVehicleCount>();
@@ -221,6 +228,7 @@ namespace PerkeleRim::Hitbox
                 SKSE::log::warn("hitbox: the {} model {:08X} has no vertices, it stays without a hitbox", a_body.name, a_model);
                 return;
             }
+            a_body.box = box;
             const auto capsules = Capsules(box);
             if (capsules.empty()) {
                 SKSE::log::warn("hitbox: the {} model {:08X} is {:.0f} x {:.0f} x {:.0f} units, no hitbox for that", a_body.name, a_model,
@@ -288,6 +296,53 @@ namespace PerkeleRim::Hitbox
                 a_state.position[0], a_state.position[1], a_state.position[2], a_body.parts.size(), a_group);
         }
 
+        // Every projectile Skyrim stopped at one of the capsules (its impact names the capsule's
+        // collision object): counted once and logged, so a test can tell an arrow at the van from one
+        // that fell short.
+        void CountHits(Body& a_body)
+        {
+            auto* manager = RE::Projectile::Manager::GetSingleton();
+            if (!manager) {
+                return;
+            }
+            std::unordered_set<std::uint32_t> seen;
+            RE::BSSpinLockGuard               guard(manager->projectileLock);
+            for (auto* list : { &manager->limited, &manager->unlimited }) {
+                for (auto& handle : *list) {
+                    auto  ptr = handle.get();
+                    auto* projectile = ptr.get();
+                    if (!projectile) {
+                        continue;
+                    }
+                    const std::uint32_t id = handle.native_handle();
+                    seen.insert(id);
+                    if (a_body.counted.contains(id)) {
+                        continue;
+                    }
+                    bool hit = false;
+                    for (auto* impact : projectile->GetProjectileRuntimeData().impacts) {
+                        for (const auto& part : a_body.parts) {
+                            hit = hit || (impact && impact->colObj && impact->colObj.get() == part.collision.get());
+                        }
+                    }
+                    if (!hit) {
+                        continue;
+                    }
+                    a_body.counted.insert(id);
+                    a_body.hits++;
+                    if (hitsLogged < kHitsLogged) {
+                        hitsLogged++;
+                        const auto shooter = projectile->GetProjectileRuntimeData().shooter.get();
+                        auto*      base = projectile->GetProjectileBase();
+                        const auto at = projectile->GetPosition();
+                        SKSE::log::info("hitbox: {}'s {} hit the {} at ({:.0f},{:.0f},{:.0f}), hit {} on it", shooter ? shooter->GetName() : "someone",
+                            base ? base->GetName() : "projectile", a_body.name, at.x, at.y, at.z, a_body.hits);
+                    }
+                }
+            }
+            std::erase_if(a_body.counted, [&](std::uint32_t a_id) { return !seen.contains(a_id); });
+        }
+
         // Each capsule moves to the vehicle's pose over the next frame (teleports after a jump).
         void Follow(Body& a_body, const Protocol::VehicleState& a_state)
         {
@@ -353,11 +408,13 @@ namespace PerkeleRim::Hitbox
         if (body.world && (body.world.get() != world || body.group != group)) {
             Remove(body, body.world.get() != world ? "the player's world changed" : "the player's collision group changed");
         }
+        body.state = a_state;
         if (!body.world) {
             Add(body, world, group, a_state);
-            return;
+        } else {
+            Follow(body, a_state);
         }
-        Follow(body, a_state);
+        CountHits(body);
     }
 
     void Hide(std::uint32_t a_vehicle)
@@ -365,5 +422,23 @@ namespace PerkeleRim::Hitbox
         if (a_vehicle >= 1 && a_vehicle <= Protocol::kVehicleCount && !bodies[a_vehicle - 1].parts.empty()) {
             Remove(bodies[a_vehicle - 1], "not drawn");
         }
+    }
+}
+
+namespace PerkeleRim::Hitbox
+{
+    bool Where(std::uint32_t a_vehicle, Protocol::VehicleState& a_state, Box& a_box)
+    {
+        if (a_vehicle < 1 || a_vehicle > Protocol::kVehicleCount || !bodies[a_vehicle - 1].world) {
+            return false;
+        }
+        a_state = bodies[a_vehicle - 1].state;
+        a_box = bodies[a_vehicle - 1].box;
+        return true;
+    }
+
+    std::uint32_t Hits(std::uint32_t a_vehicle)
+    {
+        return a_vehicle >= 1 && a_vehicle <= Protocol::kVehicleCount ? bodies[a_vehicle - 1].hits : 0;
     }
 }

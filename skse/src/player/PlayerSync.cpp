@@ -22,6 +22,7 @@
 #include "shot/Shot.h"
 #include "stamina.h"
 #include "wading.h"
+#include "vehicle/HitboxTest.h"
 #include "vehicle/VehicleView.h"
 
 namespace PerkeleRim::PlayerSync
@@ -760,6 +761,7 @@ namespace PerkeleRim::PlayerSync
                 const bool hasParts = hasVehicle[i] && link.ReadVehicleParts(i + 1, parts);
                 VehicleView::Update(i + 1, hasVehicle[i] ? &vehicles[i] : nullptr, hasParts ? &parts : nullptr, state.generation);
             }
+            HitboxTest::Update(a_player, a_delta);
             Protocol::ItemState items{};
             if (link.ReadItems(items)) {  // a torn read keeps last frame's items; link down releases
                 ItemView::Update(&items, state.generation);

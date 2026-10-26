@@ -1,6 +1,7 @@
 #pragma once
 
 #include "link.h"
+#include "vehicle_hitbox.h"
 
 // Vehicles are solid in Skyrim's own world (protocol/cpp/vehicle_hitbox.h has the shape and the rules): a few
 // keyframed Havok capsules filling the box around MSC's model of each vehicle follow its VehicleState
@@ -15,4 +16,9 @@ namespace PerkeleRim::Hitbox
     void Show(std::uint32_t a_vehicle, std::string_view a_name, std::uint32_t a_model, const Protocol::VehicleState& a_state);
     // Out of the world: the vehicle isn't drawn.
     void Hide(std::uint32_t a_vehicle);
+
+    // Where vehicle a_vehicle's hitbox is (its pose and box) while it is in Skyrim's world; false while out.
+    bool Where(std::uint32_t a_vehicle, Protocol::VehicleState& a_state, Box& a_box);
+    // Projectiles that have hit vehicle a_vehicle's hitbox since the game started (each logged, the first few in full).
+    std::uint32_t Hits(std::uint32_t a_vehicle);
 }
