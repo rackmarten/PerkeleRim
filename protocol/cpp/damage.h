@@ -56,22 +56,33 @@ namespace PerkeleRim::Damage
 
     // The drunker, the tougher, while MSC has the player: temporary bonuses to armor rating (Skyrim's
     // DamageResist, so it stacks with worn armor under Skyrim's cap), max stamina and stamina regen
-    // (StaminaRateMult, percent), rising with DrunkShare up to these.
+    // (StaminaRateMult, percent), rising with DrunkShare up to these. The shout cooldown shortens the
+    // same way: ShoutRecoveryMult (1 sober, Skyrim's cooldown times it) loses up to
+    // kDrunkShoutRecoveryCut, so a fully drunk Finn shouts three times as often.
     inline constexpr float kDrunkArmorMax = 200.0f;        // about a quarter less physical damage
     inline constexpr float kDrunkStaminaMax = 100.0f;
     inline constexpr float kDrunkStaminaRateMax = 100.0f;  // twice the regen
+    inline constexpr float kDrunkShoutRecoveryCut = 2.0f / 3.0f;
 
     struct DrunkBuffs
     {
         float armor = 0.0f;
         float stamina = 0.0f;
         float staminaRate = 0.0f;
+        float shoutRecovery = 0.0f;  // taken off ShoutRecoveryMult
     };
 
     inline DrunkBuffs Drunk(float a_drunk)
     {
         const float share = DrunkShare(a_drunk);
-        return { kDrunkArmorMax * share, kDrunkStaminaMax * share, kDrunkStaminaRateMax * share };
+        return { kDrunkArmorMax * share, kDrunkStaminaMax * share, kDrunkStaminaRateMax * share, kDrunkShoutRecoveryCut * share };
+    }
+
+    // A shout's cooldown in seconds at a_drunk: Skyrim's own (a_cooldown, the shout's recovery time
+    // times the player's ShoutRecoveryMult before the drunk buff) shortened by it.
+    inline float DrunkShoutCooldown(float a_cooldown, float a_drunk)
+    {
+        return a_cooldown * (1.0f - Drunk(a_drunk).shoutRecovery);
     }
 
     // Recast once the drunk level moves this much from what the bonuses were cast for.

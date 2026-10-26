@@ -8,7 +8,9 @@ namespace PerkeleRim.Game
     // MSC's player speaks for Skyrim's while MSC has it (Skyrim's own shout voice and grunts are
     // muted meanwhile). The player shouted (PlayerShout): MSC yells instead, the clip ShoutLine picks
     // among MSC's voice clips: the player's swear01..swear16 with their subtitle lines
-    // (ShoutLine.SwearLines) and the Human_ soundbank clips, which have none. Something hurt the
+    // (ShoutLine.SwearLines) and the Human_ soundbank clips, which have none. Unrelenting Force's
+    // Perkele is cut after one or two syllables for one or two words (a copy of the clip's samples up
+    // to ShoutLine.Cut, faded out, made once per cut and kept in memory). Something hurt the
     // player (PlayerHurt): a grunt (the player's ouch clips) or a swear, as HurtLine decides. Played
     // straight on the listener in 2D, like DeathGuard's death grunt, so it's heard wherever the
     // player is.
@@ -19,6 +21,7 @@ namespace PerkeleRim.Game
         readonly HurtLine hurt = new HurtLine();
         AudioSource voice;
         Dictionary<string, AudioClip> clips;  // by MasterAudio variation name and by clip name, found on first use
+        readonly Dictionary<string, AudioClip> cuts = new Dictionary<string, AudioClip>();  // by clip name and word count
         List<KeyValuePair<string, string>> lines;  // clip names with their subtitle line
         List<string> grunts;  // clip names
         const float SwearEvery = 3f;
@@ -34,14 +37,56 @@ namespace PerkeleRim.Game
             if (size < sizeof(PlayerShout)) return;
             PlayerShout s;
             fixed (byte* p = payload) s = *(PlayerShout*)p;
-            Shout(s.kind, $"shout {s.shout:X8}, {s.words} words");
+            Shout(s.kind, s.shout, s.words, $"shout {s.shout:X8}, {s.words} words");
         }
 
-        // Also the spike's "shout 0|1".
-        public void Shout(uint kind, string what)
+        // Also the spike's "shout <form id> <words>".
+        public void Shout(uint kind, uint shout, uint words, string what)
         {
             Find();
-            Play(ShoutLine.Pick(kind, lines, random.NextDouble(), random.NextDouble()), "yells", what);
+            var name = ShoutLine.Pick(kind, shout, lines, random.NextDouble());
+            if (name == null || kind != Wire.ShoutUnrelentingForce || !IsThunder(name))
+            {
+                var word = ShoutLine.WordOf(shout);
+                Play(name, "yells", word.HasValue && word.Value.Clip == name ? $"{word.Value.Name}: {what}" : what);
+                return;
+            }
+            var clip = clips[name];
+            float cut = ShoutLine.Cut(words, clip.length);
+            if (words < 3 && cut <= 0f)
+                log($"voice: {name} is {clip.length:0.000} s, not the {ShoutLine.PerkeleLength} s it was measured on: the whole Perkele");
+            Play(name, cut > 0f ? Cut(clip, words, cut) : clip, "yells", $"{ShoutLine.Syllables(words)}, {what}");
+        }
+
+        bool IsThunder(string name)
+        {
+            foreach (var l in lines) if (l.Key == name && ShoutLine.IsThunder(l.Value)) return true;
+            return false;
+        }
+
+        // The first seconds of clip, faded out at the end; the whole clip when its samples can't be
+        // read (a clip MSC keeps compressed).
+        AudioClip Cut(AudioClip clip, uint words, float seconds)
+        {
+            string key = clip.name + "/" + words;
+            AudioClip cut;
+            if (cuts.TryGetValue(key, out cut)) return cut;
+            int frames = Mathf.Min(clip.samples, Mathf.RoundToInt(seconds * clip.frequency));
+            var all = new float[clip.samples * clip.channels];
+            if (frames <= 0 || !clip.GetData(all, 0))
+            {
+                log($"voice: can't read {clip.name}'s samples, the whole Perkele for {words} words");
+                cuts[key] = clip;
+                return clip;
+            }
+            var samples = new float[frames * clip.channels];
+            Array.Copy(all, samples, samples.Length);
+            ShoutLine.FadeOut(samples, clip.channels, clip.frequency);
+            cut = AudioClip.Create($"{clip.name}_{ShoutLine.Syllables(words)}", frames, clip.channels, clip.frequency, false);
+            cut.SetData(samples, 0);
+            cuts[key] = cut;
+            log($"voice: {clip.name} cut at {seconds:0.000} s for {words} words ({frames} of {clip.samples} samples at {clip.frequency} Hz)");
+            return cut;
         }
 
         public void OnHurt(byte[] payload, int size)
@@ -96,17 +141,19 @@ namespace PerkeleRim.Game
             }
         }
 
-        void Play(string name, string verb, string what)
+        void Play(string name, string verb, string what) => Play(name, name != null ? clips[name] : null, verb, what);
+
+        void Play(string name, AudioClip clip, string verb, string what)
         {
             var listener = UnityEngine.Object.FindObjectOfType<AudioListener>();
-            if (name == null || listener == null)
+            if (name == null || clip == null || listener == null)
             {
                 log($"voice: nothing to say for {what} ({lines.Count} lines, {grunts.Count} grunts, listener {(listener != null)})");
                 return;
             }
             if (voice == null || voice.gameObject != listener.gameObject) voice = listener.gameObject.AddComponent<AudioSource>();
             voice.spatialBlend = 0f;
-            voice.PlayOneShot(clips[name], 1f);
+            voice.PlayOneShot(clip, 1f);
             string line = "";
             foreach (var l in lines) if (l.Key == name && !string.IsNullOrEmpty(l.Value)) line = $" \"{l.Value}\"";
             log($"voice: the player {verb} {name}{line} ({what})");

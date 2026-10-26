@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Kumpo's thu'um: Unrelenting Force yells MSC's own Perkele a syllable per word of power, "PER" for one word, "PER-KE" for two and "PER-KE-LE!" for all three. The clip is cut at runtime from your own My Summer Car, nothing from the game is shipped.
+- Other common shouts have a Finnish word of their own: Whirlwind Sprint "Vittu!", Fire Breath "Mitä helvettiä!?", Frost Breath "Voi vittu!", Become Ethereal "Jumalauta.", Dragonrend "Saatana!", Slow Time "Saatana...", Marked for Death "Kyrpä!", Clear Skies "Voi saatana!", Storm Call "Jumalauta jo!". Any other shout is still a random swear.
+- The drunker Kumpo is, the shorter Skyrim's shout cooldown, down to a third of it at full drunk ("Drunk: Loud Mouth" in Active Effects). Gone when Skyrim has the player back.
+- Showing the middle finger (V) to a guard or a Jarl within about 5 m in front of you adds a 5 gold bounty in their hold, once per person per minute.
+
 ## [0.1.1] - 2026-10-22
 
 ### Added

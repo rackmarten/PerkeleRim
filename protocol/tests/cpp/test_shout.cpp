@@ -31,3 +31,17 @@ TEST_CASE("Unrelenting Force yells Perkele, any other shout swears")
     CHECK(Shout::KindOf(0x13E08) == Protocol::kShoutOther);
     CHECK(Shout::KindOf(0) == Protocol::kShoutOther);
 }
+
+TEST_CASE("the words are Skyrim's while charging, else by the cooldown")
+{
+    const float force[3] = { 20.0f, 25.0f, 45.0f };  // Unrelenting Force's recovery times
+    CHECK(Shout::Words(0, force, 1.0f, 20.0f) == 1);
+    CHECK(Shout::Words(2, force, 1.0f, 20.0f) == 3);  // the variation wins
+    CHECK(Shout::Words(-1, force, 1.0f, 20.0f) == 1);
+    CHECK(Shout::Words(-1, force, 1.0f, 26.0f) == 2);
+    CHECK(Shout::Words(-1, force, 1.0f, 44.0f) == 3);
+    CHECK(Shout::Words(-1, force, 1.0f / 3.0f, 15.0f) == 3);  // fully drunk: a third of 45 s
+    CHECK(Shout::Words(-1, force, 0.8f, 16.0f) == 1);         // the Amulet of Talos
+    const float none[3] = { 0.0f, 0.0f, 0.0f };
+    CHECK(Shout::Words(-1, none, 1.0f, 10.0f) == 0);
+}

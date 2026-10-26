@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 39;
+    inline constexpr std::uint32_t kProtocolVersion = 40;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -398,7 +398,7 @@ namespace PerkeleRim::Protocol
         PocketChange = 13,     // MSC -> Skyrim
         PocketCounts = 14,     // Skyrim -> MSC
         ImpactEvent = 15,      // MSC -> Skyrim
-        // 16 was MiddleFinger (until v23): the finger no longer shouts, Z is Skyrim's own shout key.
+        MiddleFinger = 16,     // MSC -> Skyrim (v21 to v23 it shouted Fus; since v40 the law minds it)
         PlayerShout = 17,      // Skyrim -> MSC
         PlayerHurt = 18,       // Skyrim -> MSC
         StockShelves = 19,     // Skyrim -> MSC
@@ -583,16 +583,25 @@ namespace PerkeleRim::Protocol
     };
 
     // PlayerShout: the player shouted in Skyrim while MSC had it (Z, Skyrim's own shout with its
-    // cooldown; Skyrim's shout voice is muted meanwhile). MSC yells instead: "Perkele!" for
-    // Unrelenting Force (kind kShoutUnrelentingForce), a swear for any other shout.
+    // cooldown; Skyrim's shout voice is muted meanwhile). MSC yells instead: Unrelenting Force (kind
+    // kShoutUnrelentingForce) as its Perkele a syllable per word, other shouts by MSC's word table
+    // for the form id (msc/src/Link/ShoutLine.cs).
     inline constexpr std::uint32_t kShoutOther = 0;  // PlayerShout.kind
     inline constexpr std::uint32_t kShoutUnrelentingForce = 1;
 
     struct PlayerShout
     {
         std::uint32_t kind;   // kShout*
-        std::uint32_t shout;  // the shout's form id, for the log
+        std::uint32_t shout;  // the shout's form id (Skyrim.esm's and the DLCs' are the same in every load order)
         std::uint32_t words;  // 1..3, how many words were shouted
+        std::uint32_t reserved;
+    };
+
+    // MiddleFinger (v40): MSC's player started giving the finger (V, PlayerFunctions entering Finger).
+    // Skyrim puts a bounty on the player for each guard or Jarl that sees it (protocol/cpp/finger.h).
+    struct MiddleFinger
+    {
+        float         direction[3];  // MSC's camera forward, unit vector in Skyrim space
         std::uint32_t reserved;
     };
 
@@ -919,6 +928,8 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ImpactEvent, direction) == 12);
     static_assert(sizeof(PlayerShout) == 16);
     static_assert(offsetof(PlayerShout, words) == 8);
+    static_assert(sizeof(MiddleFinger) == 16);
+    static_assert(offsetof(MiddleFinger, reserved) == 12);
     static_assert(sizeof(PlayerHurt) == 16);
     static_assert(offsetof(PlayerHurt, health) == 8);
     static_assert(sizeof(StockSpot) == 16);

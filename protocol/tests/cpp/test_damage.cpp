@@ -51,6 +51,20 @@ TEST_CASE("drunk makes the player tougher, up to MSC's drunk 3")
     CHECK(Damage::Drunk(-1.0f).armor == 0.0f);
 }
 
+TEST_CASE("the drunker, the shorter the shout cooldown, down to a third")
+{
+    CHECK(Damage::Drunk(0.0f).shoutRecovery == 0.0f);
+    CHECK(Damage::Drunk(1.5f).shoutRecovery == doctest::Approx(1.0f / 3.0f));
+    CHECK(Damage::Drunk(8.0f).shoutRecovery == doctest::Approx(2.0f / 3.0f));
+    CHECK(Damage::Drunk(-1.0f).shoutRecovery == 0.0f);
+    // Unrelenting Force's three words: 45 s sober.
+    CHECK(Damage::DrunkShoutCooldown(45.0f, 0.0f) == doctest::Approx(45.0f));
+    CHECK(Damage::DrunkShoutCooldown(45.0f, 0.4f) == doctest::Approx(41.0f));  // five beers: a little
+    CHECK(Damage::DrunkShoutCooldown(45.0f, 1.5f) == doctest::Approx(30.0f));
+    CHECK(Damage::DrunkShoutCooldown(45.0f, 3.0f) == doctest::Approx(15.0f));
+    CHECK(Damage::DrunkShoutCooldown(45.0f, 8.0f) == doctest::Approx(15.0f));
+}
+
 TEST_CASE("a thrown item hits by its speed, up to two sober punches")
 {
     const float punch = Damage::Punch(4.0f);
