@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "Ini.h"
 #include "combat/Combat.h"
 #include "coords.h"
 #include "hit_test.h"
@@ -15,7 +16,6 @@ namespace PerkeleRim::HitTest
 {
     namespace
     {
-        constexpr auto          kIniPath = "Data/SKSE/Plugins/PerkeleRim.ini";
         constexpr RE::FormID    kGiant = 0x0003053F;  // Skyrim.esm's LvlGiant: tall and tough, a capsule the view can't miss
         constexpr std::uint16_t kKeyH = 104;          // Unity KeyCode.H, MSC's Hit
         constexpr std::uint16_t kMouse1 = 324;        // Unity KeyCode.Mouse1, MSC's throw
@@ -75,27 +75,6 @@ namespace PerkeleRim::HitTest
             int                      soberCount = 0, drunkCount = 0;
             bool                     ranSober = false, ranDrunk = false;
         } state;
-
-        std::string Trim(std::string a_text)
-        {
-            const auto first = a_text.find_first_not_of(" \t\r\n\"");
-            const auto last = a_text.find_last_not_of(" \t\r\n\"");
-            return first == std::string::npos ? std::string() : a_text.substr(first, last - first + 1);
-        }
-
-        // a_key=<value> from the ini (any section), empty when there is none.
-        std::string FromIni(std::string_view a_key)
-        {
-            std::ifstream file(kIniPath);
-            std::string   line;
-            while (std::getline(file, line)) {
-                const auto equals = line.find('=');
-                if (equals != std::string::npos && Trim(line.substr(0, equals)) == a_key) {
-                    return Trim(line.substr(equals + 1));
-                }
-            }
-            return {};
-        }
 
         void RunConsole(const std::string& a_command, RE::TESObjectREFR* a_on)
         {
@@ -303,7 +282,7 @@ namespace PerkeleRim::HitTest
 
     void OnDataLoaded()
     {
-        const auto list = FromIni("HitTest");
+        const auto list = Ini::Value("HitTest");
         if (list.empty()) {
             return;
         }
@@ -316,14 +295,14 @@ namespace PerkeleRim::HitTest
             SKSE::log::warn("hit test: HitTest={} names no scenario, off", list);
             return;
         }
-        if (const auto base = FromIni("HitTestTarget"); !base.empty()) {
+        if (const auto base = Ini::Value("HitTestTarget"); !base.empty()) {
             try {
                 state.targetBase = static_cast<RE::FormID>(std::stoul(base, nullptr, 16));
             } catch (...) {
                 SKSE::log::warn("hit test: HitTestTarget={} isn't a hex form id, a giant instead", base);
             }
         }
-        const auto csv = FromIni("HitTestCsv");
+        const auto csv = Ini::Value("HitTestCsv");
         const auto logs = SKSE::log::log_directory();
         state.csvPath = !csv.empty() ? std::filesystem::absolute(std::filesystem::path(std::u8string(csv.begin(), csv.end()))) :
                         logs              ? logs->parent_path().parent_path() / "PerkeleRim" / "hittest.csv" :

@@ -1,7 +1,7 @@
 #pragma once
 
 // Test runs: with PerkeleRim_autoload.txt in Skyrim's folder, the main menu loads the newest save
-// by itself, once per start, and answers the "mods disable achievements" box that load brings up
+// (or the one AutoloadSave=<name> in PerkeleRim.ini names) by itself, once per start, and answers the "mods disable achievements" box that load brings up
 // (scripts/restart-games.ps1 then needs no clicks). Main thread only.
 namespace PerkeleRim::Autoload
 {

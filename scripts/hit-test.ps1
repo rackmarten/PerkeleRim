@@ -9,14 +9,18 @@
     this watches for a crash (a new crash-*.log), either game gone and a hang (PerkeleRim.log still for
     -HangSeconds). At the end it prints the driver's log lines and the CSV (Documents/My Games/
     PerkeleRim/hittest.csv), closes both games and takes [Debug] out of the ini again. Exits 1 when a
-    row failed or the test didn't finish. Nothing is saved, in either game.
+    row failed or the test didn't finish. Nothing is saved, in either game. -Save loads that Skyrim
+    save (its file name in Documents/My Games/Skyrim Special Edition/Saves, .ess or not) instead of
+    the newest: it needs Kumpo on foot outdoors with open ground ahead.
 .EXAMPLE
     scripts/hit-test.ps1
+    scripts/hit-test.ps1 -Save HitTestOutdoors
     scripts/hit-test.ps1 -Scenarios punch,drunk -Build
     scripts/hit-test.ps1 -KeepOpen          # leave both games running at the end, to look around
 #>
 param(
     [string] $Scenarios = 'all',
+    [string] $Save = '',    # AutoloadSave: a Skyrim save's file name instead of the newest save
     [switch] $Build,
     [string] $Target = '',  # HitTestTarget: an actor base's form id in hex instead of Skyrim.esm's LvlGiant
     [int] $TimeoutSeconds = 600,
@@ -35,11 +39,16 @@ $log = Join-Path $skseDir 'PerkeleRim.log'
 $csv = Join-Path $docs 'My Games\PerkeleRim\hittest.csv'
 $ini = Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.ini'
 $utf8 = New-Object System.Text.UTF8Encoding $false
+if ($Save) {
+    $Save = $Save -replace '\.ess$', ''
+    $saveFile = Join-Path $docs "My Games\Skyrim Special Edition\Saves\$Save.ess"
+    if (-not (Test-Path $saveFile)) { throw "No save $saveFile" }
+}
 
 # The ini without the hit test's lines (the rest, such as ScreenshotDir, stays).
 function Remove-HitTestLines {
     if (-not (Test-Path $ini)) { return }
-    $kept = @(Get-Content $ini -Encoding UTF8 | Where-Object { $_ -notmatch '^\s*(\[Debug\]|HitTest)' })
+    $kept = @(Get-Content $ini -Encoding UTF8 | Where-Object { $_ -notmatch '^\s*(\[Debug\]|HitTest|AutoloadSave)' })
     while ($kept.Count -gt 0 -and $kept[-1].Trim() -eq '') { $kept = @($kept | Select-Object -SkipLast 1) }
     [IO.File]::WriteAllLines($ini, [string[]] $kept, $utf8)
 }
@@ -61,6 +70,7 @@ $made | ForEach-Object { New-Item -ItemType File $_ | Out-Null }
 Remove-HitTestLines
 $lines = @('', '[Debug]', "HitTest=$Scenarios")
 if ($Target) { $lines += "HitTestTarget=$Target" }
+if ($Save) { $lines += "AutoloadSave=$Save" }
 New-Item -ItemType Directory -Force (Split-Path $ini) | Out-Null
 [IO.File]::AppendAllLines($ini, [string[]] $lines, $utf8)
 if (Test-Path $csv) { Remove-Item $csv }
