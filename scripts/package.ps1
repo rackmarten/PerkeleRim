@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     Builds the player release zip, tools/out/release/PerkeleRim-<version>.zip: the launcher
-    (launcher/), the built mod files under files/, and the starter saves from
+    (launcher/: the two .bat files, PerkeleRim.ps1, checks.ps1, install.ps1, wizard.ps1), the built mod files under files/, and the starter saves from
     launcher/saves/MSC and launcher/saves/Skyrim (scripts/starter-save.ps1) if they are there. Run scripts/build.ps1 and scripts/build-esp.ps1 first.
 .EXAMPLE
     scripts/package.ps1
@@ -26,9 +26,7 @@ function Add-File($source, $destDir) {
     Copy-Item $source $dir
 }
 
-Add-File (Join-Path $RepoRoot 'launcher/PerkeleRim.ps1') '.'
-Add-File (Join-Path $RepoRoot 'launcher/Start PerkeleRim.bat') '.'
-Add-File (Join-Path $RepoRoot 'launcher/Report a bug.bat') '.'
+foreach ($file in 'Start PerkeleRim.bat', 'Report a bug.bat', 'PerkeleRim.ps1', 'checks.ps1', 'install.ps1', 'wizard.ps1') { Add-File (Join-Path $RepoRoot "launcher/$file") '.' }
 Add-File (Join-Path $RepoRoot 'skse/build/release/PerkeleRim.dll') 'files/Skyrim/Data/SKSE/Plugins'
 Add-File (Join-Path $RepoRoot 'tools/out/esp/PerkeleRim.esp') 'files/Skyrim/Data'
 Add-File (Join-Path $RepoRoot 'msc/bin/Release/net35/PerkeleRim.dll') 'files/MSC/Mods'

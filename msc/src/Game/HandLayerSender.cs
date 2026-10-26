@@ -400,6 +400,6 @@ Category {
             catch (Exception e) { HandLayerSender.Enabled = false; ModConsoleLog("hand layer: copy FAILED, off: " + e); }
         }
 
-        static void ModConsoleLog(string line) => MSCLoader.ModConsole.Print("PerkeleRim: " + line);
+        static void ModConsoleLog(string line) => LinkHost.Log(line);
     }
 }

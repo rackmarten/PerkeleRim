@@ -1,23 +1,39 @@
 <#
 .SYNOPSIS
     PerkeleRim player launcher (ships in the release zip; "Start PerkeleRim.bat" runs it).
-    Finds Skyrim SE and My Summer Car (PerkeleRim.ini next to this script, else the Steam
-    libraries, else asks once), checks SKSE, Address Library and MSCLoader, installs or updates
-    the mod files from files/, adds the starter MSC save from saves/MSC when the player has none
-    and the starter Skyrim save from saves/Skyrim when it isn't there yet,
-    starts My Summer Car in a small window that it minimizes once MSC continues its save,
-    then starts Skyrim through SKSE.
+    The first time (no usable game folders in PerkeleRim.ini next to this script), setup finds
+    My Summer Car and Skyrim SE (Steam libraries, or the player picks them) and waits while the
+    player installs what's missing of MSCLoader, SKSE and Address Library (wizard.ps1). Every
+    time, it checks those (checks.ps1), installs or updates the mod files from files/, enables
+    PerkeleRim.esp, adds the starter MSC save from saves/MSC when the player has none and the
+    starter Skyrim save from saves/Skyrim when it isn't there yet (install.ps1), starts My Summer
+    Car in a small window that it minimizes once MSC continues its save, then starts Skyrim:
+    through Mod Organizer 2 when the player said so (ModManager=MO2), else through SKSE.
+    MSC's own screen settings are put back once it closes, by a hidden copy of this script
+    started with -RestoreMscScreen.
 
+    -NoStart checks and installs, and starts nothing.
     -ReportBug ("Report a bug.bat") installs and starts nothing: it zips the PerkeleRim logs,
     PerkeleRim.ini and a versions.txt to "Bug reports" next to this script (the Windows user name replaced by
     %USERPROFILE%) and opens the GitHub bug form with the versions filled in. Nothing is sent
     anywhere; the player attaches the zip. -NoOpen prints the form's address instead of opening it.
 #>
-param([switch] $NoStart, [switch] $ReportBug, [switch] $NoOpen)
+param([switch] $NoStart, [switch] $ReportBug, [switch] $NoOpen, [switch] $RestoreMscScreen)
 
 $ErrorActionPreference = 'Stop'
 $Root = $PSScriptRoot
 $ConfigPath = Join-Path $Root 'PerkeleRim.ini'
+. (Join-Path $Root 'checks.ps1')
+. (Join-Path $Root 'install.ps1')
+
+# The hidden watcher: waits for My Summer Car to close, then puts its screen settings back.
+if ($RestoreMscScreen) {
+    Wait-MscExit
+    [void] (Restore-MscScreenSettings $MscRegistryKey $MscScreenBackup)
+    exit 0
+}
+
+. (Join-Path $Root 'wizard.ps1')
 
 function Fail($lines) {
     Write-Host ''
@@ -25,7 +41,7 @@ function Fail($lines) {
     exit 1
 }
 
-# --- Game folders ---------------------------------------------------------------------------
+# --- Settings -------------------------------------------------------------------------------
 
 function Read-Config {
     $config = @{}
@@ -37,44 +53,10 @@ function Read-Config {
     return $config
 }
 
-function Get-SteamLibraries {
-    $steam = (Get-ItemProperty 'HKCU:\Software\Valve\Steam' -ErrorAction SilentlyContinue).SteamPath
-    if (-not $steam) { return @() }
-    $libraries = @($steam)
-    $vdf = Join-Path $steam 'steamapps\libraryfolders.vdf'
-    if (Test-Path $vdf) {
-        foreach ($match in [regex]::Matches((Get-Content -Raw $vdf), '"path"\s+"([^"]+)"')) {
-            $libraries += $match.Groups[1].Value -replace '\\\\', '\'
-        }
-    }
-    return $libraries | Select-Object -Unique
-}
-
-function Find-Game($name, $folder, $exe, $configured) {
-    if ($configured -and (Test-Path (Join-Path $configured $exe))) { return $configured }
-    foreach ($library in Get-SteamLibraries) {
-        $path = Join-Path $library "steamapps\common\$folder"
-        if (Test-Path (Join-Path $path $exe)) { return (Resolve-Path $path).Path }
-    }
-    if ($ReportBug) { return $null }  # a bug report works with what it finds, no folder picker
-    Write-Host "$name not found in Steam. Pick its install folder (the one with $exe)."
-    Add-Type -AssemblyName System.Windows.Forms
-    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    $dialog.Description = "$name install folder (the one with $exe)"
-    if ($dialog.ShowDialog() -ne 'OK') { Fail "No $name folder picked." }
-    if (-not (Test-Path (Join-Path $dialog.SelectedPath $exe))) { Fail "$exe is not in $($dialog.SelectedPath)." }
-    return $dialog.SelectedPath
-}
-
-# MSCLoader's installer picks where mods go: GF game folder, MD Documents, AD AppData.
-function Get-ModsDir($msc) {
-    $doorstop = Join-Path $msc 'doorstop_config.ini'
-    $setting = if (Test-Path $doorstop) { (Select-String -Path $doorstop -Pattern '^\s*mods\s*=\s*(\w+)' | Select-Object -First 1).Matches.Groups[1].Value }
-    switch ($setting) {
-        'MD' { Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'MySummerCar\Mods' }
-        'AD' { Join-Path $env:USERPROFILE 'AppData\LocalLow\MSCLoader\Mods' }
-        default { Join-Path $msc 'Mods' }
-    }
+function Save-Config {
+    $lines = @('; Settings for the PerkeleRim launcher. Delete this file to run setup again.')
+    foreach ($key in 'SkyrimPath', 'MscPath', 'ModManager', 'Mo2Path', 'Mo2Exe') { if ($config[$key]) { $lines += "$key=$($config[$key])" } }
+    Set-Content -Path $ConfigPath -Encoding utf8 -Value $lines
 }
 
 # --- Bug report (-ReportBug) -------------------------------------------------------------------
@@ -98,8 +80,10 @@ function Version-Of($path, $field) {
 }
 
 function Send-BugReport($config) {
-    $skyrim = Find-Game 'Skyrim Special Edition' 'Skyrim Special Edition' 'SkyrimSE.exe' $config['SkyrimPath']
-    $msc = Find-Game 'My Summer Car' 'My Summer Car' 'mysummercar.exe' $config['MscPath']
+    # Works with what it finds, no setup and no folder picker.
+    $libraries = Get-SteamLibraries
+    $skyrim = Find-GameFolder $Games.Skyrim $config['SkyrimPath'] $libraries
+    $msc = Find-GameFolder $Games.Msc $config['MscPath'] $libraries
     $skseDir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\Skyrim Special Edition\SKSE'
     $modDll = if ($msc) { Join-Path (Get-ModsDir $msc) 'PerkeleRim.dll' }
     $skyrimDll = if ($skyrim) { Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.dll' }
@@ -185,56 +169,69 @@ function Send-BugReport($config) {
 
 $config = Read-Config
 if ($ReportBug) { Send-BugReport $config; exit 0 }
-$skyrim = Find-Game 'Skyrim Special Edition' 'Skyrim Special Edition' 'SkyrimSE.exe' $config['SkyrimPath']
-$msc = Find-Game 'My Summer Car' 'My Summer Car' 'mysummercar.exe' $config['MscPath']
-if ($skyrim -ne $config['SkyrimPath'] -or $msc -ne $config['MscPath']) {
-    Set-Content -Path $ConfigPath -Encoding utf8 -Value @(
-        '; Game folders for the PerkeleRim launcher. Delete this file to look them up again.',
-        "SkyrimPath=$skyrim",
-        "MscPath=$msc")
+
+$mscRunning = Get-Process mysummercar -ErrorAction SilentlyContinue
+# A restore that never ran (the PC was shut down while MSC ran) happens now.
+if (-not $mscRunning -and (Restore-MscScreenSettings $MscRegistryKey $MscScreenBackup)) { Write-Host "Put My Summer Car's own screen settings back." }
+
+# --- Game folders ---------------------------------------------------------------------------
+
+# Setup runs while PerkeleRim.ini doesn't name both games' folders (the first time, or a game
+# that moved). A folder still there is kept, and the folders are saved as soon as both are known.
+$known = @{}
+foreach ($key in 'Skyrim', 'Msc') {
+    $folder = $config["$($key)Path"]
+    $exe = Join-Guess $folder $Games[$key].Exe
+    if ($exe -and (Test-Path -LiteralPath $exe)) { $known[$key] = $folder }
 }
+if ($known.Count -lt 2) {
+    $found = Invoke-PerkeleRimSetup (Get-SteamLibraries) $known
+    if (-not $found) { Fail "Setup stopped before both games were found. Run Start PerkeleRim.bat again to carry on. Help: $($Links.Install)" }
+    $config['SkyrimPath'] = $found.Skyrim
+    $config['MscPath'] = $found.Msc
+    Save-Config
+}
+$skyrim = $config['SkyrimPath']
+$msc = $config['MscPath']
 Write-Host "Skyrim:        $skyrim"
 Write-Host "My Summer Car: $msc"
 
+# --- Mod Organizer 2 ------------------------------------------------------------------------
+
+# Asked once when an MO2 instance manages this Skyrim; ModManager in PerkeleRim.ini keeps it.
+$instances = @(Get-Mo2Instances $skyrim (Get-Mo2InstanceDirs $config['Mo2Path']))
+if (-not $config['ModManager'] -and $instances) {
+    $config['ModManager'] = Select-Mo2Use $instances[0].Name
+    Save-Config
+}
+$mo2 = $null
+if ($config['ModManager'] -eq 'MO2') {
+    $mo2 = $instances | Select-Object -First 1
+    if (-not $mo2) { Write-Host 'PerkeleRim.ini says ModManager=MO2, but no Mod Organizer 2 instance manages this Skyrim (a portable one: set Mo2Path to its folder). Starting Skyrim through SKSE.' -ForegroundColor Yellow }
+}
+
 # --- Requirements ---------------------------------------------------------------------------
 
-$missing = @()
-if (-not (Test-Path (Join-Path $skyrim 'skse64_loader.exe'))) {
-    $missing += 'SKSE64 is not installed in Skyrim. Get the build for your Skyrim version from https://skse.silverlock.org and copy skse64_loader.exe and its DLLs into the Skyrim folder.'
+$skyrimExe = Join-Path $skyrim 'SkyrimSE.exe'
+$getProblems = {
+    # Read again on every Retry: Address Library may have just gone in as an MO2 mod.
+    if ($mo2) { $script:mo2 = @(Get-Mo2Instances $skyrim (Get-Mo2InstanceDirs $config['Mo2Path']) | Where-Object { Test-SamePath $_.Dir $mo2.Dir }) + $mo2 | Select-Object -First 1 }
+    $pluginFiles = @(Get-FileNames (Join-Path $skyrim 'Data\SKSE\Plugins')) + @(if ($mo2) { $mo2.PluginFiles })
+    @(Get-MscProblems (Get-FileNames $msc) (Get-FileNames (Join-Path $msc 'mysummercar_Data\Managed'))) +
+        @(Get-SkyrimProblems (Get-Item -LiteralPath $skyrimExe).VersionInfo.FileVersion (Get-FileNames $skyrim) $pluginFiles)
 }
-$version = (Get-Item (Join-Path $skyrim 'SkyrimSE.exe')).VersionInfo.FileVersion
-$se = $false
-if ($version -match '^(\d+)\.(\d+)\.(\d+)') {
-    # Special Edition (1.5.x) uses Address Library's version-*.bin, Anniversary Edition (1.6+) its versionlib-*.bin.
-    $se = [int]$Matches[1] -eq 1 -and [int]$Matches[2] -le 5
-    $prefix, $file = if ($se) { 'version', 'Special Edition' } else { 'versionlib', 'All in one (Anniversary Edition)' }
-    $library = "$prefix-$($Matches[1])-$($Matches[2])-$($Matches[3])-0.bin"
-    if (-not (Test-Path (Join-Path $skyrim "Data\SKSE\Plugins\$library"))) {
-        $missing += "Address Library for SKSE Plugins is not installed for Skyrim $version ($library). Get the $file file from https://www.nexusmods.com/skyrimspecialedition/mods/32444 and put it in Data\SKSE\Plugins."
-    }
+if (-not (Wait-Requirements $getProblems)) {
+    Fail (@('Not ready yet:') + (@(& $getProblems) | ForEach-Object { " - $_" }) + '', "Install them and run the launcher again. Help: $($Links.Install)")
 }
-$doorstop = Join-Path $msc 'doorstop_config.ini'
-if (-not (Test-Path $doorstop) -or -not (Test-Path (Join-Path $msc 'mysummercar_Data\Managed\MSCLoader.dll'))) {
-    $missing += 'MSCLoader is not installed in My Summer Car. Get it from https://www.nexusmods.com/mysummercar/mods/147 and run its installer.'
-}
-if ($missing) { Fail (@('Missing:') + ($missing | ForEach-Object { " - $_" }) + '', 'Install them and run the launcher again.') }
+$runtime = Get-SkyrimRuntime (Get-Item -LiteralPath $skyrimExe).VersionInfo.FileVersion
+$se = -not $runtime.IsAnniversary
+Write-Host "Checks passed: Skyrim $($runtime.Version) with SKSE and Address Library, My Summer Car with MSCLoader."
+if ($mo2) { foreach ($warning in Get-Mo2Warnings $mo2.Name $mo2.PerkeleRimMods $mo2.SkseTitle) { Write-Host $warning -ForegroundColor Yellow } }
 
 $mods = Get-ModsDir $msc
-
-$skyrimRunning = Get-Process SkyrimSE, skse64_loader -ErrorAction SilentlyContinue
-$mscRunning = Get-Process mysummercar -ErrorAction SilentlyContinue
-if ($skyrimRunning) { Fail 'Skyrim is already running. Close it and run the launcher again.' }
+if (Get-Process SkyrimSE, skse64_loader -ErrorAction SilentlyContinue) { Fail 'Skyrim is already running. Close it and run the launcher again.' }
 
 # --- Install --------------------------------------------------------------------------------
-
-function Install-File($source, $destDir) {
-    $dest = Join-Path $destDir (Split-Path -Leaf $source)
-    if ((Test-Path $dest) -and (Get-FileHash $dest).Hash -eq (Get-FileHash $source).Hash) { return }
-    New-Item -ItemType Directory -Force $destDir | Out-Null
-    try { Copy-Item -Force $source $dest }
-    catch { Fail "Can't write $dest ($($_.Exception.Message)). Close both games and run the launcher again." }
-    Write-Host "Installed $dest"
-}
 
 # The release zip carries the mod files under files/; a repo checkout takes them from the build output.
 $files = Join-Path $Root 'files'
@@ -250,50 +247,44 @@ if (Test-Path $files) {
 }
 $missing = @($sources | Where-Object { -not (Test-Path $_) })
 if ($missing) { Fail (@('Mod files not found (run scripts/build.ps1 and scripts/build-esp.ps1 first):') + $missing) }
-Install-File $sources[0] (Join-Path $skyrim 'Data\SKSE\Plugins')
-Install-File $sources[1] (Join-Path $skyrim 'Data')
-Install-File $sources[2] $mods
-
-# F11 screenshots go to Screenshots next to this script (ScreenshotDir in the SKSE plugin's ini).
-$shotIni = Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.ini'
-$shotLine = "ScreenshotDir=$(Join-Path $Root 'Screenshots')"
-$iniLines = if (Test-Path $shotIni) { @(Get-Content $shotIni | Where-Object { $_ -notmatch '^\s*ScreenshotDir\s*=' }) } else { @() }
-if (-not (Test-Path $shotIni) -or (Get-Content $shotIni) -notcontains $shotLine) {
-    [IO.File]::WriteAllLines($shotIni, [string[]](@($iniLines) + $shotLine), (New-Object Text.UTF8Encoding $false))  # no BOM, the plugin reads plain UTF-8
-    Write-Host "Screenshots (F11) go to $(Join-Path $Root 'Screenshots')"
+$targets = @((Join-Path $skyrim 'Data\SKSE\Plugins'), (Join-Path $skyrim 'Data'), $mods)
+for ($i = 0; $i -lt $sources.Count; $i++) {
+    try { if (Install-ModFile $sources[$i] $targets[$i]) { Write-Host "Installed $(Join-Path $targets[$i] (Split-Path -Leaf $sources[$i]))" } }
+    catch { Fail "Can't write $(Join-Path $targets[$i] (Split-Path -Leaf $sources[$i])) ($($_.Exception.Message)). Close both games and run the launcher again." }
 }
 
-# Skyrim SE lists active plugins as "*Name.esp", in load order, after the official masters.
-$plugins = Join-Path $env:LOCALAPPDATA 'Skyrim Special Edition\plugins.txt'
-$lines = if (Test-Path $plugins) { @(Get-Content $plugins) } else { @() }
-if ($lines -notcontains '*PerkeleRim.esp') {
-    New-Item -ItemType Directory -Force (Split-Path $plugins) | Out-Null
-    Set-Content -Path $plugins -Encoding ascii -Value (@($lines | Where-Object { $_ -ne 'PerkeleRim.esp' }) + '*PerkeleRim.esp')
-    Write-Host "Enabled PerkeleRim.esp in $plugins"
+# F11 screenshots go to Screenshots next to this script (ScreenshotDir in the SKSE plugin's ini).
+$shots = Join-Path $Root 'Screenshots'
+if (Set-ScreenshotDir (Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.ini') $shots) { Write-Host "Screenshots (F11) go to $shots" }
+
+# Skyrim lists active plugins in plugins.txt: its own in %LOCALAPPDATA%, or with MO2 the selected
+# profile's, which MO2 rewrites while it's open.
+if ($mo2) {
+    $plugins = Join-Path $mo2.ProfileDir 'plugins.txt'
+    $enabled = (Test-Path -LiteralPath $plugins) -and @(Get-Content -LiteralPath $plugins) -contains '*PerkeleRim.esp'
+    if (-not $enabled -and (Get-Process ModOrganizer -ErrorAction SilentlyContinue)) {
+        Write-Host "Mod Organizer 2 is open, so tick PerkeleRim.esp in its right pane (Plugins) yourself." -ForegroundColor Yellow
+    } elseif (Enable-SkyrimPlugin $plugins 'PerkeleRim.esp') { Write-Host "Enabled PerkeleRim.esp in $plugins" }
+} else {
+    $plugins = Join-Path $env:LOCALAPPDATA 'Skyrim Special Edition\plugins.txt'
+    if (Enable-SkyrimPlugin $plugins 'PerkeleRim.esp') { Write-Host "Enabled PerkeleRim.esp in $plugins" }
 }
 
 # The starter MSC save, never over the player's own: MSC has one save slot, so only when it has none.
 $mscSaves = Join-Path $env:USERPROFILE 'AppData\LocalLow\Amistech\My Summer Car'
-$starterMsc = Join-Path $Root 'saves\MSC'
-if ((Test-Path $starterMsc) -and -not (Test-Path (Join-Path $mscSaves 'defaultES2File.txt'))) {
-    New-Item -ItemType Directory -Force $mscSaves | Out-Null
-    Copy-Item -Force (Join-Path $starterMsc '*') $mscSaves
-    Write-Host 'Added the starter My Summer Car save.'
-}
+if (Add-StarterSave (Join-Path $Root 'saves\MSC') $mscSaves 'defaultES2File.txt') { Write-Host 'Added the starter My Summer Car save.' }
 if (-not (Test-Path (Join-Path $mscSaves 'defaultES2File.txt'))) {
     Write-Host 'My Summer Car has no save yet: start a new game in it once (restore its window), then press F10 in Skyrim.' -ForegroundColor Yellow
 }
 
 # The starter Skyrim save (Kumpo, before his first F10) next to the player's own, never over one.
-# Copy-Item keeps its old date, so Skyrim's Continue still loads the player's newest save.
 # It was made on Anniversary Edition and Special Edition 1.5.x calls it corrupt, so SE gets none.
-$skyrimSaves = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games/Skyrim Special Edition/Saves'
-$starterSkyrim = Join-Path $Root 'saves/Skyrim'
-if ($se) {
-    Write-Host "No starter Skyrim save on Skyrim $version (it only loads on Anniversary Edition): start a new game or load your own."
-} elseif ((Test-Path $starterSkyrim) -and -not (Test-Path (Join-Path $skyrimSaves 'PerkeleRim-Kumpo.ess'))) {
-    New-Item -ItemType Directory -Force $skyrimSaves | Out-Null
-    Copy-Item -Force (Join-Path $starterSkyrim '*') $skyrimSaves
+$skyrimSaves = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\Skyrim Special Edition\Saves'
+if ($mo2 -and $mo2.LocalSaves) {
+    Write-Host "No starter Skyrim save: MO2's profile keeps its own saves. Start a new game or load your own."
+} elseif ($se) {
+    Write-Host "No starter Skyrim save on Skyrim $($runtime.Version) (it only loads on Anniversary Edition): start a new game or load your own."
+} elseif (Add-StarterSave (Join-Path $Root 'saves\Skyrim') $skyrimSaves 'PerkeleRim-Kumpo.ess') {
     Write-Host 'Added the starter Skyrim save (Kumpo): pick it under Load.'
 }
 
@@ -315,15 +306,23 @@ Add-Type -Namespace PerkeleRimLauncher -Name Win32 -MemberDefinition @'
 '@
 $win32 = [PerkeleRimLauncher.Win32]
 
+# Setup may have taken a while, and the player may have started MSC from Steam meanwhile.
+$mscRunning = Get-Process mysummercar -ErrorAction SilentlyContinue
 if ($mscRunning) {
     Write-Host 'My Summer Car is already running, leaving it as it is.'
+    # Its screen settings from before still wait to go back: make sure something waits for it.
+    if (Test-Path -LiteralPath $MscScreenBackup) { Start-MscScreenWatcher $PSCommandPath }
 } else {
     Write-Host 'Starting My Summer Car (it minimizes itself once its menu is up)'
+    # MSC runs in a small window at its lowest quality, and Unity keeps that as MSC's own screen
+    # settings when it quits: the player's are saved now and put back once MSC has closed.
+    [void] (Save-MscScreenSettings $MscRegistryKey $MscScreenBackup)
     # The mod's log is rewritten when MSCLoader loads it on the main menu.
     $log = Join-Path $msc 'PerkeleRim_spike.log'
     $launched = Get-Date
     Start-Process -WorkingDirectory $msc (Join-Path $msc 'mysummercar.exe') `
         -ArgumentList '-force-gfx-direct', '-screen-fullscreen', '0', '-screen-width', '640', '-screen-height', '480', '-screen-quality', 'Fastest'
+    Start-MscScreenWatcher $PSCommandPath
 
     # Until the mod has started: click "Play!" on Unity's configuration dialog, and press Space on
     # the game window for the "press any key" news screen (a real key press: with
@@ -366,7 +365,41 @@ if ($mscRunning) {
 
 # --- Start Skyrim ---------------------------------------------------------------------------
 
-Write-Host 'Starting Skyrim (SKSE)'
-Start-Process -WorkingDirectory $skyrim (Join-Path $skyrim 'skse64_loader.exe')
+# ModOrganizer.exe: Mo2Exe in PerkeleRim.ini, a portable instance's own folder, a running MO2, the
+# nxm:// link handler MO2 registers, or else asked for once (and kept as Mo2Exe).
+function Find-Mo2Exe($instance) {
+    $candidates = @($config['Mo2Exe'])
+    if ($instance.ShortcutName -eq '') { $candidates += Join-Path $instance.Dir 'ModOrganizer.exe' }
+    $candidates += @(Get-Process ModOrganizer -ErrorAction SilentlyContinue | ForEach-Object Path)
+    $nxm = (Get-ItemProperty 'HKCU:\Software\Classes\nxm\shell\open\command' -ErrorAction SilentlyContinue).'(default)'
+    if ($nxm) { $candidates += Get-Mo2ExeFromCommand $nxm }
+    foreach ($candidate in $candidates) { if ($candidate -and (Test-Path $candidate)) { return $candidate } }
+    Write-Host 'Pick ModOrganizer.exe, to start Skyrim through Mod Organizer 2.'
+    $dialog = New-Object System.Windows.Forms.OpenFileDialog
+    $dialog.Title = 'ModOrganizer.exe'
+    $dialog.Filter = 'ModOrganizer.exe|ModOrganizer.exe'
+    if ($dialog.ShowDialog() -ne 'OK') { return $null }
+    $config['Mo2Exe'] = $dialog.FileName
+    Save-Config
+    return $dialog.FileName
+}
+
+if ($mo2) {
+    # MO2 runs the shortcut's executable itself, or hands it to the MO2 already open (which
+    # refuses, with a message, when that one is open for another instance).
+    $mo2Exe = if ($mo2.SkseTitle) { Find-Mo2Exe $mo2 }
+    if (-not $mo2Exe) {
+        Write-Host ''
+        Write-Host 'Start Skyrim from Mod Organizer 2 now: pick SKSE in its executables list and press Run.' -ForegroundColor Green
+        Write-Host 'Then load a save and press F10 to hand over to My Summer Car.' -ForegroundColor Green
+        Read-Host 'Press Enter to close this window' | Out-Null
+        return
+    }
+    Write-Host "Starting Skyrim through Mod Organizer 2 ('$($mo2.SkseTitle)' in '$($mo2.Name)')"
+    Start-Process -FilePath $mo2Exe -WorkingDirectory (Split-Path $mo2Exe) -ArgumentList "`"$(Get-Mo2ShortcutUri $mo2.ShortcutName $mo2.SkseTitle)`""
+} else {
+    Write-Host 'Starting Skyrim (SKSE)'
+    Start-Process -WorkingDirectory $skyrim (Join-Path $skyrim 'skse64_loader.exe')
+}
 Write-Host ''
 Write-Host 'Load a save in Skyrim (or start a new game) and press F10 to hand over to My Summer Car.' -ForegroundColor Green
