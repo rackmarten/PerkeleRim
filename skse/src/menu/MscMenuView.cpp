@@ -186,6 +186,7 @@ namespace PerkeleRim::MscMenuView
         const MscMenu::Frame frame{ PlayerSync::Owned(), LinkService::Get().IsUp(), mscOpen, 0.0f };
         if (machine.Press(frame)) {
             Show(true);
+            cursorLogged = false;  // log the cursor's mapping once per opening
             SKSE::log::info("msc menu: F1, opening My Summer Car's menu");
         }
         return true;
@@ -241,14 +242,14 @@ namespace PerkeleRim::MscMenuView
         }
         const auto& data = cursor->GetRuntimeData();
         const auto  screen = RE::BSGraphics::Renderer::GetScreenSize();
-        const float width = data.screenWidthX > 0.0f ? data.screenWidthX : static_cast<float>(screen.width);
-        const float height = data.screenWidthY > 0.0f ? data.screenWidthY : static_cast<float>(screen.height);
+        const float width = MscMenu::CursorSpan(static_cast<float>(screen.width), data.screenWidthX);
+        const float height = MscMenu::CursorSpan(static_cast<float>(screen.height), data.screenWidthY);
         a_x = MscMenu::Normalize(data.cursorPosX, width);
         a_y = MscMenu::Normalize(data.cursorPosY, height);
         if (!cursorLogged) {
             cursorLogged = true;
-            SKSE::log::info("msc menu: cursor at {:.0f}, {:.0f} of {:.0f} x {:.0f} (back buffer {} x {})", data.cursorPosX, data.cursorPosY, width,
-                height, screen.width, screen.height);
+            SKSE::log::info("msc menu: cursor at {:.0f}, {:.0f} of {:.0f} x {:.0f} (MenuCursor screen {:.0f} x {:.0f}, safe zone {:.0f}, {:.0f})",
+                data.cursorPosX, data.cursorPosY, width, height, data.screenWidthX, data.screenWidthY, data.safeZoneX, data.safeZoneY);
         }
     }
 }
