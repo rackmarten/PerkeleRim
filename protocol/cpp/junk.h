@@ -1,17 +1,16 @@
 // Junk to throw from Skyrim's inventory (docs/PROTOCOL.md "Throwing junk"). Key 3 (the Throw Junk
-// power) takes MSC's own empty beer bottles out first (the pocket's kPocketBottle); once those are
-// gone it takes junk: Skyrim's clutter (misc items with the VendorItemClutter keyword: tankards,
-// plates, baskets, but not pelts, gems, ingots, lockpicks or keys) and fruit and vegetables
-// (kProduce), never quest items or PerkeleRim's own pocket items. Bottles among the clutter go
-// first, then the rest of the clutter, then the produce; each cheapest first, then lightest. MSC
-// throws it like an empty bottle; only the damage goes by its weight (Damage::ThrownMass).
-// Header-only and free of Skyrim types, so the protocol tests cover it.
+// power) takes out a random piece of what Kumpo carries: MSC's own empty beer bottles (the pocket's
+// kPocketBottle, mixed in on MSC's side, Pocket.ThrowKind) and junk: Skyrim's clutter (misc items
+// with the VendorItemClutter keyword: tankards, plates, bottles, baskets, but not pelts, gems, ingots,
+// lockpicks or keys) and fruit and vegetables (kProduce), never quest items or PerkeleRim's own
+// pocket items. Every piece is as likely as any other, so a stack of ten comes up ten times as often
+// as a single one. MSC throws it like an empty bottle; only the damage goes by its weight
+// (Damage::ThrownMass). Header-only and free of Skyrim types, so the protocol tests cover it.
 
 #pragma once
 
 #include <cstdint>
 #include <span>
-#include <string_view>
 
 #include "food.h"
 
@@ -30,10 +29,10 @@ namespace PerkeleRim::Junk
     {
         Kind          kind = Kind::kOther;
         bool          quest = false;     // a quest item, or one of PerkeleRim's own pocket items
-        bool          bottle = false;    // its name says bottle (IsBottleName)
+        std::int32_t  count = 1;         // how many Kumpo carries, less what is out
         float         weight = 0.0f;     // Skyrim's
         std::int32_t  value = 0;         // gold
-        std::uint32_t form = 0;          // form id, the last tie-break so the pick is stable
+        std::uint32_t form = 0;          // form id
     };
 
     // Heavier than this, it isn't thrown (Skyrim's weight units; a full charge still flies like a bottle).
@@ -70,59 +69,46 @@ namespace PerkeleRim::Junk
         { Food::Plugin::Dragonborn, 0x0206E7, "Ash Yam" },
     };
 
-    // "bottle" anywhere in the name, any case: Skyrim's empty wine bottles, and the per-drink empty
-    // bottles to come, go before the rest of the junk.
-    constexpr bool IsBottleName(std::string_view a_name)
-    {
-        constexpr std::string_view word = "bottle";
-        for (std::size_t i = 0; i + word.size() <= a_name.size(); i++) {
-            bool same = true;
-            for (std::size_t j = 0; j < word.size() && same; j++) {
-                const char c = a_name[i + j];
-                same = (c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c) == word[j];
-            }
-            if (same) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     constexpr bool Throwable(const Item& a_item)
     {
         return a_item.kind != Kind::kOther && !a_item.quest && a_item.weight <= kWeightMax;
     }
 
-    // 0 bottles, 1 the rest of the clutter, 2 produce.
-    constexpr int Tier(const Item& a_item)
+    // How many pieces there are to throw.
+    constexpr std::int64_t Total(std::span<const Item> a_items)
     {
-        return a_item.kind == Kind::kProduce ? 2 : a_item.bottle ? 0 : 1;
-    }
-
-    // Whether a_a is thrown before a_b (both throwable).
-    constexpr bool Before(const Item& a_a, const Item& a_b)
-    {
-        if (Tier(a_a) != Tier(a_b)) {
-            return Tier(a_a) < Tier(a_b);
-        }
-        if (a_a.value != a_b.value) {
-            return a_a.value < a_b.value;
-        }
-        if (a_a.weight != a_b.weight) {
-            return a_a.weight < a_b.weight;
-        }
-        return a_a.form < a_b.form;
-    }
-
-    // The entry thrown next, -1 for none.
-    constexpr int Pick(std::span<const Item> a_items)
-    {
-        int best = -1;
-        for (std::size_t i = 0; i < a_items.size(); i++) {
-            if (Throwable(a_items[i]) && (best < 0 || Before(a_items[i], a_items[static_cast<std::size_t>(best)]))) {
-                best = static_cast<int>(i);
+        std::int64_t total = 0;
+        for (const auto& item : a_items) {
+            if (Throwable(item) && item.count > 0) {
+                total += item.count;
             }
         }
-        return best;
+        return total;
+    }
+
+    // The entry thrown next, -1 for none: a random piece, each one as likely. a_random(n) returns a
+    // number in 0..n-1 (n >= 1); out-of-range numbers are clamped.
+    template <class Random>
+    constexpr int Pick(std::span<const Item> a_items, Random&& a_random)
+    {
+        const std::int64_t total = Total(a_items);
+        if (total <= 0) {
+            return -1;
+        }
+        std::int64_t roll = static_cast<std::int64_t>(a_random(total));
+        roll = roll < 0 ? 0 : roll >= total ? total - 1 : roll;
+        int last = -1;
+        for (std::size_t i = 0; i < a_items.size(); i++) {
+            const auto& item = a_items[i];
+            if (!Throwable(item) || item.count <= 0) {
+                continue;
+            }
+            last = static_cast<int>(i);
+            if (roll < item.count) {
+                return last;
+            }
+            roll -= item.count;
+        }
+        return last;
     }
 }

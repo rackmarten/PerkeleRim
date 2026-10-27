@@ -41,6 +41,7 @@ namespace PerkeleRim.Game
         readonly CountMirror gold = new CountMirror(true);
         readonly Queue<int> presses = new Queue<int>();
         readonly HashSet<int> keysDown = new HashSet<int>();
+        readonly System.Random random = new System.Random();  // key 3: a bottle or junk
         bool wasUp;
         static PlayMakerFSM pickUp;
         PlayMakerFSM functions;  // off while a beer from the pocket is drunk
@@ -347,10 +348,10 @@ namespace PerkeleRim.Game
             int aimedKind = KindOfItem(aimed);
             int kind = Pocket.KindOfSlot(Pocket.SlotOfKey(key));
             long available = kind != Pocket.None ? ledger.Available(kind) : 0;
-            if (kind == (int)Wire.PocketBottle)  // 3: empty bottles, then junk
+            if (kind == (int)Wire.PocketBottle)  // 3: an empty bottle or junk, at random
             {
                 long junkLeft = ledger.Available((int)Wire.PocketJunk);
-                kind = Pocket.ThrowKind(available, junkLeft);
+                kind = Pocket.ThrowKind(available, junkLeft, random.NextDouble());
                 available += junkLeft;
             }
             var action = Pocket.Decide(key, heldKind, holding, aimedKind, available);
@@ -433,7 +434,7 @@ namespace PerkeleRim.Game
             long bottles = ledger.Available((int)Wire.PocketBottle), junkLeft = ledger.Available((int)Wire.PocketJunk);
             if (flying && bottles + junkLeft > 0)
             {
-                int next = Pocket.ThrowKind(bottles, junkLeft);
+                int next = Pocket.ThrowKind(bottles, junkLeft, random.NextDouble());
                 log(next == (int)Wire.PocketBottle ? "pocket: thrown, the next empty bottle" : "pocket: thrown, the next piece of junk");
                 StartTake(link, next, false);
                 return;
