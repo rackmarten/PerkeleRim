@@ -67,6 +67,8 @@ namespace PerkeleRim.Game
         const string ToolsPath = "PLAYER/Pivot/AnimPivot/Camera/FPSCamera/2Spanner";
         const float HandWait = 1f;
         int drinkQueued;
+        int handFor;  // a key waiting for the hand to come out (3, Y), 0 for none
+        float handForAt;
         float drinkQueuedAt;
         bool toolsBack;
         float toolsBackAt;
@@ -147,6 +149,15 @@ namespace PerkeleRim.Game
             if (showPending && !Paused && playing) { showPending = false; QueueDrink(link, true); }
             if (taking != null || takingKind != Pocket.None) { AdvanceTake(); presses.Clear(); return; }
             if (!playing) { presses.Clear(); return; }
+            if (handFor != 0)
+            {
+                // A key that needs the hand, pressed with the tools out: once MSC's 1 has it out.
+                if (ToolsOut() && Time.realtimeSinceStartup - handForAt < HandWait) return;
+                int key = handFor;
+                handFor = 0;
+                Press(link, key);
+                return;
+            }
             if (presses.Count > 0) Press(link, presses.Dequeue());
         }
 
@@ -290,6 +301,15 @@ namespace PerkeleRim.Game
             // with tools out too; seated, only they work.
             bool inVehicle = InVehicle();
             bool consume = Pocket.WorksInVehicle(key);
+            if (!inVehicle && !consume && ToolsOut())
+            {
+                // 3 (an empty bottle) and Y need the hand: put the tools away first, as MSC's 1 does.
+                InputShim.Pulse(KeyCode.Alpha1);
+                handFor = key;
+                handForAt = Time.realtimeSinceStartup;
+                log($"pocket: tools out, the hand first for {(KeyCode)key}");
+                return;
+            }
             if (inVehicle ? !consume : !consume && !holding && state != "Look for object")
             {
                 log($"pocket: {(inVehicle ? "in a vehicle" : "hands busy (" + state + ")")}, key {(KeyCode)key} ignored");
