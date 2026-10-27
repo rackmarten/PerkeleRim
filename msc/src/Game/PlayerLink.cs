@@ -226,7 +226,7 @@ namespace PerkeleRim.Game
             // doesn't start with a jump.
             input.Update(ref s);
             // Not in the main menu: MSC loads its game there with its own time, which a Skyrim menu would stop for good.
-            Freeze(input.Paused && Application.loadedLevelName == "GAME");
+            Freeze(OptionsMenu.Freezes(input.Paused, input.MscMenu) && Application.loadedLevelName == "GAME");
             InputShim.Active = input.OwnsPlayer;
             InputShim.HasCursor = input.MscMenu;
             if (!input.OwnsPlayer) { punch.Reset(); block.Reset(); charge.Reset(); return; }

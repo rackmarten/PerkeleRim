@@ -31,6 +31,11 @@ namespace PerkeleRim
             return true;
         }
 
+        // Whether Skyrim's pause freezes MSC's clock (kInputPaused). Not while Skyrim shows MSC's menu:
+        // its toggles sit out a 0.2 s scaled Wait after each flip and its sliders move by Mouse X per
+        // second, so with time frozen neither worked. MSC never pauses for its own menu either.
+        public static bool Freezes(bool skyrimPaused, bool menuShown) => skyrimPaused && !menuShown;
+
         // A button below Systems/OptionsMenu/Menu that is off while Skyrim shows the menu.
         public static bool IsIgnored(string buttonName)
         {
