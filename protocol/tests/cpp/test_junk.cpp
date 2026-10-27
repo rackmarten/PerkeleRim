@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include <string_view>
 #include <vector>
 
 #include "../../cpp/junk.h"
@@ -10,14 +11,20 @@ using Junk::Kind;
 
 namespace
 {
-    Item Clutter(std::uint32_t a_form, std::int32_t a_value, float a_weight = 1.0f, bool a_bottle = false)
+    Item Clutter(std::uint32_t a_form, std::int32_t a_count = 1, float a_weight = 1.0f)
     {
-        return { Kind::kClutter, false, a_bottle, a_weight, a_value, a_form };
+        return { Kind::kClutter, false, a_count, a_weight, 1, a_form };
     }
 
-    Item Produce(std::uint32_t a_form, std::int32_t a_value, float a_weight = 0.1f)
+    Item Produce(std::uint32_t a_form, std::int32_t a_count = 1, float a_weight = 0.1f)
     {
-        return { Kind::kProduce, false, false, a_weight, a_value, a_form };
+        return { Kind::kProduce, false, a_count, a_weight, 0, a_form };
+    }
+
+    // A random source that always rolls a_roll.
+    auto Roll(std::int64_t a_roll)
+    {
+        return [a_roll](std::int64_t) { return a_roll; };
     }
 }
 
@@ -25,7 +32,7 @@ TEST_CASE("only clutter and produce are junk, never quest items or heavy ones")
 {
     CHECK(Junk::Throwable(Clutter(1, 1)));
     CHECK(Junk::Throwable(Produce(2, 1)));
-    CHECK_FALSE(Junk::Throwable(Item{ Kind::kOther, false, false, 1.0f, 1, 3 }));  // a pelt, a garnet, a lockpick
+    CHECK_FALSE(Junk::Throwable(Item{ Kind::kOther, false, 1, 1.0f, 1, 3 }));  // a pelt, a garnet, a lockpick
     auto quest = Clutter(4, 1);
     quest.quest = true;
     CHECK_FALSE(Junk::Throwable(quest));
@@ -35,43 +42,39 @@ TEST_CASE("only clutter and produce are junk, never quest items or heavy ones")
 
 TEST_CASE("nothing to throw picks nothing")
 {
-    CHECK(Junk::Pick({}) == -1);
-    const std::vector<Item> none = { Item{ Kind::kOther, false, false, 1.0f, 1, 1 } };
-    CHECK(Junk::Pick(none) == -1);
+    CHECK(Junk::Pick({}, Roll(0)) == -1);
+    const std::vector<Item> none = { Item{ Kind::kOther, false, 1, 1.0f, 1, 1 }, Clutter(2, 0) };
+    CHECK(Junk::Pick(none, Roll(0)) == -1);
+    CHECK(Junk::Total(none) == 0);
 }
 
-TEST_CASE("bottles first, then the cheapest clutter, produce last")
+TEST_CASE("every piece is as likely: a stack comes up as often as its count")
 {
     const std::vector<Item> items = {
-        Produce(0x10, 0),                 // a cabbage: free, but produce goes last
-        Clutter(0x20, 5),                 // a tankard
-        Clutter(0x30, 2),                 // a plate: cheaper
-        Clutter(0x40, 9, 0.5f, true),     // an empty wine bottle: dearer, but a bottle
+        Clutter(0x10, 10),                          // ten tankards
+        Item{ Kind::kOther, false, 5, 1.0f, 1, 0x20 },  // a pelt: never
+        Produce(0x30, 1),                           // one cabbage
+        Clutter(0x40, 3),                           // three wine bottles
     };
-    CHECK(Junk::Pick(items) == 3);
-    std::vector<Item> left = items;
-    left.erase(left.begin() + 3);
-    CHECK(Junk::Pick(left) == 2);  // the plate
-    left.erase(left.begin() + 2);
-    CHECK(Junk::Pick(left) == 1);  // the tankard
-    left.erase(left.begin() + 1);
-    CHECK(Junk::Pick(left) == 0);  // the cabbage, once the clutter is gone
+    CHECK(Junk::Total(items) == 14);
+    std::int64_t asked = 0;
+    CHECK(Junk::Pick(items, [&](std::int64_t a_n) { asked = a_n; return 0; }) == 0);
+    CHECK(asked == 14);
+    int counts[4] = {};
+    for (std::int64_t roll = 0; roll < 14; roll++) {
+        counts[Junk::Pick(items, Roll(roll))]++;
+    }
+    CHECK(counts[0] == 10);
+    CHECK(counts[1] == 0);
+    CHECK(counts[2] == 1);
+    CHECK(counts[3] == 3);
 }
 
-TEST_CASE("equal value: the lighter one, then the lower form id")
+TEST_CASE("a roll out of range is clamped")
 {
-    const std::vector<Item> items = { Clutter(0x50, 3, 2.0f), Clutter(0x60, 3, 1.0f), Clutter(0x40, 3, 1.0f) };
-    CHECK(Junk::Pick(items) == 2);
-}
-
-TEST_CASE("a bottle is a bottle in any case, anywhere in the name")
-{
-    CHECK(Junk::IsBottleName("Empty Wine Bottle"));
-    CHECK(Junk::IsBottleName("BOTTLE"));
-    CHECK(Junk::IsBottleName("bottled"));
-    CHECK_FALSE(Junk::IsBottleName("Tankard"));
-    CHECK_FALSE(Junk::IsBottleName("bott"));
-    CHECK_FALSE(Junk::IsBottleName(""));
+    const std::vector<Item> items = { Clutter(0x10, 2), Produce(0x20, 1) };
+    CHECK(Junk::Pick(items, Roll(-5)) == 0);
+    CHECK(Junk::Pick(items, Roll(99)) == 1);
 }
 
 TEST_CASE("a unit of weight is a kilogram, weightless junk still weighs a little")

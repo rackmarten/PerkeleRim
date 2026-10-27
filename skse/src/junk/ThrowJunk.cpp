@@ -1,5 +1,6 @@
 #include "junk/ThrowJunk.h"
 
+#include <random>
 #include <unordered_set>
 
 #include "coords.h"
@@ -30,13 +31,13 @@ namespace PerkeleRim::ThrowJunk
             std::unordered_set<RE::FormID>          produce;
             std::unordered_set<RE::FormID>          skip;  // PerkeleRim's pocket items, gold, lockpicks
             std::vector<Out>                        out;   // in MSC's hand or in the air
+            std::mt19937                            random{ std::random_device{}() };  // which piece comes out
         } state;
 
         struct Entry
         {
             RE::TESBoundObject* item;
-            std::int32_t        count;  // in the inventory, less what is out
-            Junk::Item          rules;
+            Junk::Item          rules;  // its count: in the inventory, less what is out
         };
 
         std::int32_t OutCount(const RE::TESBoundObject* a_item)
@@ -67,10 +68,10 @@ namespace PerkeleRim::ThrowJunk
                     continue;
                 }
                 const auto* entry = data.second.get();
-                Junk::Item  rules{ KindOf(*item), entry && entry->IsQuestObject(), Junk::IsBottleName(item->GetName()), item->GetWeight(),
-                    item->GetGoldValue(), item->GetFormID() };
+                Junk::Item  rules{ KindOf(*item), entry && entry->IsQuestObject(), count, item->GetWeight(), item->GetGoldValue(),
+                    item->GetFormID() };
                 if (Junk::Throwable(rules)) {
-                    entries.push_back({ item, count, rules });
+                    entries.push_back({ item, rules });
                 }
             }
             return entries;
@@ -129,7 +130,7 @@ namespace PerkeleRim::ThrowJunk
         }
         std::uint32_t count = 0;
         for (const auto& entry : Entries(a_player)) {
-            count += static_cast<std::uint32_t>(entry.count);
+            count += static_cast<std::uint32_t>(entry.rules.count);
         }
         return count;
     }
@@ -145,7 +146,7 @@ namespace PerkeleRim::ThrowJunk
         for (const auto& entry : entries) {
             rules.push_back(entry.rules);
         }
-        const int pick = Junk::Pick(rules);
+        const int pick = Junk::Pick(rules, [](std::int64_t a_n) { return std::uniform_int_distribution<std::int64_t>(0, a_n - 1)(state.random); });
         if (pick < 0) {
             SKSE::log::info("junk: MSC wants junk, Kumpo has none");
             Send(a_seq, nullptr);
@@ -157,7 +158,7 @@ namespace PerkeleRim::ThrowJunk
         }
         state.out.push_back({ a_session, a_seq, item });
         SKSE::log::info("junk: {} ({:08X}, value {}, weight {:.2f}) out to MSC's hand, {} more of it", item->GetName(), item->GetFormID(), item->GetGoldValue(),
-            item->GetWeight(), entries[static_cast<std::size_t>(pick)].count - 1);
+            item->GetWeight(), entries[static_cast<std::size_t>(pick)].rules.count - 1);
     }
 
     void OnBack(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)

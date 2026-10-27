@@ -54,9 +54,14 @@ namespace PerkeleRim
         // Taken out to be thrown (key 3): an empty bottle or junk.
         public static bool Thrown(int kind) => kind == (int)Wire.PocketBottle || kind == (int)Wire.PocketJunk;
 
-        // What key 3 takes out: empty bottles while there are any, then junk.
-        public static int ThrowKind(long bottles, long junk) =>
-            bottles <= 0 && junk > 0 ? (int)Wire.PocketJunk : (int)Wire.PocketBottle;
+        // What key 3 takes out: an empty bottle or junk at random, every piece as likely (junk.h picks
+        // which piece of junk). roll: a random number in [0, 1). Nothing left: the bottle slot, which then has none.
+        public static int ThrowKind(long bottles, long junk, double roll)
+        {
+            if (junk <= 0) return (int)Wire.PocketBottle;
+            if (bottles <= 0) return (int)Wire.PocketJunk;
+            return roll * (bottles + junk) < bottles ? (int)Wire.PocketBottle : (int)Wire.PocketJunk;
+        }
 
         // Seated in a vehicle only beer and food are used (4, 5 to 8); nothing goes in or out of the hand.
         public static bool WorksInVehicle(int keyCode) => Consumable(KindOfSlot(SlotOfKey(keyCode)));

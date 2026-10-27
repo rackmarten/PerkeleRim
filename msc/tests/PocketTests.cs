@@ -81,11 +81,16 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
-        public void ThreeThrowsBottlesFirstThenJunk()
+        public void ThreeThrowsABottleOrJunkByCount()
         {
-            Assert.That(Pocket.ThrowKind(2, 5), Is.EqualTo(Bottle));
-            Assert.That(Pocket.ThrowKind(0, 5), Is.EqualTo(Junk));
-            Assert.That(Pocket.ThrowKind(0, 0), Is.EqualTo(Bottle));  // nothing: the bottle slot, which then has none
+            // 2 bottles and 6 pieces of junk: a quarter of the rolls are bottles.
+            Assert.That(Pocket.ThrowKind(2, 6, 0.0), Is.EqualTo(Bottle));
+            Assert.That(Pocket.ThrowKind(2, 6, 0.24), Is.EqualTo(Bottle));
+            Assert.That(Pocket.ThrowKind(2, 6, 0.25), Is.EqualTo(Junk));
+            Assert.That(Pocket.ThrowKind(2, 6, 0.99), Is.EqualTo(Junk));
+            Assert.That(Pocket.ThrowKind(2, 0, 0.99), Is.EqualTo(Bottle));
+            Assert.That(Pocket.ThrowKind(0, 5, 0.0), Is.EqualTo(Junk));
+            Assert.That(Pocket.ThrowKind(0, 0, 0.5), Is.EqualTo(Bottle));  // nothing: the bottle slot, which then has none
             Assert.That(Pocket.Thrown(Bottle) && Pocket.Thrown(Junk), Is.True);
             Assert.That(Pocket.Thrown(Beer), Is.False);
         }
