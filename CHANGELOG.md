@@ -37,6 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Kumpo's hangover goes with the Skyrim save: loading a save brings back that save's hangover, or none, instead of keeping the camera shaking from the hangover he had before the load.
 - Sleeping in a Skyrim bed while Kumpo is in My Summer Car counts as sleep again, not waiting: 8 hours in a bed take his fatigue to 0 (it was read as waiting, which takes only part of it).
 - The needs bars show up to 200, where a need kills Kumpo, with a mark at 100 where they turn red, so a beer or a sleep that takes 30 off a need above 100 shows.
 - My Summer Car started from Steam after a PerkeleRim session keeps your own resolution and graphics quality: the launcher puts them back once MSC closes (PerkeleRim runs MSC in a small window at its lowest quality, and Unity kept that). If an earlier PerkeleRim already left MSC at 640x480, set your resolution and quality in MSC once more and they stay.
