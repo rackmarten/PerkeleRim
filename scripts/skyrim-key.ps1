@@ -5,6 +5,7 @@
     of the Skyrim window afterwards.
 .EXAMPLE
     scripts/skyrim-key.ps1 -Key F10
+    scripts/skyrim-key.ps1 -Key F1 -Screenshot menu.png -Delay 1  # MSC's options menu over Skyrim (while MSC has the player)
     scripts/skyrim-key.ps1 -Key F5                        # quicksave (F9 quickloads)
     scripts/skyrim-key.ps1 -Key RightBracket              # ] calls the van while MSC has the player
     scripts/skyrim-key.ps1 -Screenshot shot.png -Delay 2   # no key, just a screenshot after 2 s
@@ -13,13 +14,13 @@
     scripts/skyrim-key.ps1 -Key 4                          # number keys 1 to 8 (the hotbar)
 #>
 param(
-    [ValidateSet('', 'F10', 'F11', 'F5', 'F9', 'Escape', 'E', 'Space', 'M', 'P', 'J', 'I', 'T', 'Enter', 'Up', 'Down', '1', '2', '3', '4', '5', '6', '7', '8', 'RightBracket')] [string] $Key = '',
+    [ValidateSet('', 'F1', 'F10', 'F11', 'F5', 'F9', 'Escape', 'E', 'Space', 'M', 'P', 'J', 'I', 'T', 'Enter', 'Up', 'Down', '1', '2', '3', '4', '5', '6', '7', '8', 'RightBracket')] [string] $Key = '',
     [string] $Console,  # letters, digits, space, - _ . only (Skyrim's console ignores case)
     [string] $Screenshot,
     [double] $Delay = 0
 )
 
-$scanCodes = @{ F10 = 0x44; F11 = 0x57; F5 = 0x3F; F9 = 0x43; Escape = 0x01; E = 0x12; Space = 0x39; M = 0x32; P = 0x19; J = 0x24; I = 0x17; T = 0x14; Enter = 0x1C; Up = 0x48; Down = 0x50; RightBracket = 0x1B }  # the arrows are extended keys
+$scanCodes = @{ F1 = 0x3B; F10 = 0x44; F11 = 0x57; F5 = 0x3F; F9 = 0x43; Escape = 0x01; E = 0x12; Space = 0x39; M = 0x32; P = 0x19; J = 0x24; I = 0x17; T = 0x14; Enter = 0x1C; Up = 0x48; Down = 0x50; RightBracket = 0x1B }  # the arrows are extended keys
 foreach ($n in 1..8) { $scanCodes["$n"] = 0x01 + $n }  # number keys (the hotbar): DIK_1 = 0x02
 
 Add-Type -AssemblyName System.Drawing

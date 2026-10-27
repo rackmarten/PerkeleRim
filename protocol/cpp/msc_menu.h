@@ -33,6 +33,12 @@ namespace PerkeleRim::MscMenu
         return std::clamp(a_pixels / a_size, 0.0f, 1.0f);
     }
 
+    // What Skyrim's cursor position (MenuCursor cursorPosX/Y, back buffer pixels) is a share of:
+    // the back buffer, which MSC's menu is drawn over edge to edge. MenuCursor's screenWidthX can be
+    // smaller (about 1800 of 1920, windowed), which put MSC's picks up to 6% right of the cursor;
+    // it only stands in before the renderer knows its size.
+    constexpr float CursorSpan(float a_backBuffer, float a_cursorScreen) { return a_backBuffer > 0.0f ? a_backBuffer : a_cursorScreen; }
+
     struct Frame
     {
         bool  owned = false;    // MSC has the player
