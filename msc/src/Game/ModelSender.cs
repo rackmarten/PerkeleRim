@@ -171,8 +171,7 @@ namespace PerkeleRim.Game
 
         // t in the root's frame without the root's position and rotation (the model carries the scale, a
         // pose only moves and turns it). Built from local transforms: going through world matrices out
-        // on the island (10 km from Unity's origin) left millimeters of noise, so equal items got
-        // different keys.
+        // on the island (kilometers from Unity's origin) left noise, so equal items got different keys.
         public static Matrix4x4 RelativeTo(Transform root, Transform t)
         {
             var m = Matrix4x4.identity;

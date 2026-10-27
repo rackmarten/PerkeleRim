@@ -7,12 +7,14 @@ namespace PerkeleRim
     // Unity-free; convert Vec3 to Vector3 at the call site.
     public sealed class Island
     {
-        // Island origin in Unity meters: well outside MSC's map, and high enough that nothing in
+        // Island origin in Unity meters: outside MSC's map (its things lie within about x -2400 to
+        // 1400, z -1250 to 1250, y under 10, read from MSC's save), and high enough that nothing in
         // Skyrim lands below the y < -5.85 the game treats as being under water (vehicles' AirIntake
         // drowns the engine below -4.5). Skyrim spans about 900 m from the sea to the Throat of the
         // World, so even an anchor on the peak keeps the coast above it; at 100 the van died on a
-        // road 120 m below its anchor.
-        public static readonly Vec3 Base = new Vec3(10000f, 1000f, 10000f);
+        // road 120 m below its anchor. As near Unity's origin as that allows: a float steps 0.24 mm
+        // at 3000 m, where at 10000 it stepped 1 mm and the hand layer visibly jittered.
+        public static readonly Vec3 Base = new Vec3(3000f, 1000f, 0f);
 
         public bool HasAnchor { get; private set; }
         public uint Generation { get; private set; }
