@@ -72,8 +72,8 @@ Loading a save hands the player to My Summer Car by itself; if MSC isn't running
 | Key | Action |
 |---|---|
 | Left / right click (free hands) | punch / guard (Skyrim blocks) |
-| V | middle finger |
-| Z | Skyrim's shout or power, as usual, but Kumpo yells it (Unrelenting Force: "Perkele!") |
+| V | middle finger (a guard or Jarl close by in front adds a 5 gold bounty) |
+| Z | Skyrim's shout or power, as usual, but Kumpo yells it (Unrelenting Force: "PER", "PER-KE", "PER-KE-LE!" by words; other shouts a Finnish word) |
 | Alt (tap) | piss: a quick tap starts it and Kumpo goes until he is empty (Alt+Tab doesn't start it) |
 | Middle click | swear |
 | C / B | smoke / zoom |

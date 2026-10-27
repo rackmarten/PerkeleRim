@@ -30,6 +30,7 @@ add_executable(protocol_tests
     tests/cpp/test_collision.cpp
     tests/cpp/test_coords.cpp
     tests/cpp/test_damage.cpp
+    tests/cpp/test_finger.cpp
     tests/cpp/test_input.cpp
     tests/cpp/test_model.cpp
     tests/cpp/test_msc_save.cpp
