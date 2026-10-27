@@ -9,7 +9,17 @@ namespace PerkeleRim::MetalHit
     {
         constexpr RE::FormID kUnarmed = 0x1F4;  // Skyrim.esm's Unarmed weapon: its impacts stand in for a fist's or a bite's
         constexpr int        kLogged = 16;      // the first metal hits are logged
-        int                  logged = 0;
+        std::atomic<int>     logged = 0;        // projectiles and spells land on Skyrim's job threads too
+
+        // The last spell effect that sparked, so a spell's other effects in the same cast don't spark again.
+        struct LastSpell
+        {
+            std::mutex                            lock;
+            const RE::TESObjectREFR*              caster = nullptr;
+            const RE::MagicItem*                  item = nullptr;
+            std::chrono::steady_clock::time_point at;
+        } lastSpell;
+        constexpr auto kSameCast = std::chrono::milliseconds(100);
 
         // What the impact data set a_set plays on metal (the hitbox capsules' material), null for none.
         RE::BGSImpactData* OnMetal(RE::BGSImpactDataSet* a_set)
@@ -82,16 +92,16 @@ namespace PerkeleRim::MetalHit
             }
         }
 
-        void Hit(std::uint32_t a_vehicle, RE::TESObjectREFR* a_from, std::string_view a_what, RE::BGSImpactData* a_impact, const RE::NiPoint3& a_at, const RE::NiPoint3& a_normal)
+        // a_via names the hook that caught it (melee, projectile, spell effect), for the log.
+        void Hit(std::uint32_t a_vehicle, RE::TESObjectREFR* a_from, std::string_view a_what, std::string_view a_via, RE::BGSImpactData* a_impact, const RE::NiPoint3& a_at, const RE::NiPoint3& a_normal)
         {
             if (a_impact) {
                 Play(a_impact, a_at, a_normal);
             }
             Hitbox::Struck(a_vehicle);
-            if (logged < kLogged) {
-                logged++;
-                SKSE::log::info("metal hit: {}'s {} hit vehicle {} instead of the player at ({:.0f},{:.0f},{:.0f}), impact {:08X}, hit {} on it",
-                    a_from ? a_from->GetName() : "someone", a_what, a_vehicle, a_at.x, a_at.y, a_at.z, a_impact ? a_impact->GetFormID() : 0, Hitbox::Hits(a_vehicle));
+            if (logged.fetch_add(1) < kLogged) {
+                SKSE::log::info("metal hit: {}'s {} ({}) hit vehicle {} instead of the player at ({:.0f},{:.0f},{:.0f}), impact {:08X}, hit {} on it",
+                    a_from ? a_from->GetName() : "someone", a_what, a_via, a_vehicle, a_at.x, a_at.y, a_at.z, a_impact ? a_impact->GetFormID() : 0, Hitbox::Hits(a_vehicle));
             }
         }
 
@@ -123,13 +133,15 @@ namespace PerkeleRim::MetalHit
                 RE::NiPoint3 at;
                 RE::NiPoint3 normal;
                 Land(vehicle, from, a_attacker->GetPosition() - a_victim->GetPosition(), at, normal);
-                Hit(vehicle, a_attacker, form ? form->GetName() : "blow", OnMetalOr(set), at, normal);
+                Hit(vehicle, a_attacker, form ? form->GetName() : "blow", "melee", OnMetalOr(set), at, normal);
             }
             static inline REL::Relocation<decltype(thunk)> original;
         };
 
-        // Projectile::AddImpact (vfunc 0xBD): an arrow or a spell bolt hitting a_ref. One reaching the
-        // player in a safe seat is killed instead (it would stick in it, bleed it and make it grunt).
+        // Projectile::AddImpact (vfunc 0xBD): an arrow, a spell bolt, flames, a beam or a cone hitting
+        // a_ref. One reaching the player in a safe seat is killed instead (it would stick in it, burn
+        // or bleed it and make it grunt). A flames spell streams short-lived projectiles, so killing
+        // each just stops that one.
         template <int Kind>
         struct ImpactHook
         {
@@ -157,8 +169,44 @@ namespace PerkeleRim::MetalHit
                 RE::NiPoint3 at;
                 RE::NiPoint3 normal;
                 Land(vehicle, a_at, RE::NiPoint3() - a_velocity, at, normal);
-                Hit(vehicle, shooter.get(), base ? base->GetName() : "projectile", OnMetalOr(set), at, normal);
+                Hit(vehicle, shooter.get(), base ? base->GetName() : "projectile", "projectile", OnMetalOr(set), at, normal);
                 a_this->Kill();
+            }
+            static inline REL::Relocation<decltype(thunk)> original;
+        };
+
+        // MagicTarget::AddTarget (vfunc 1 of the player's MagicTarget vtable): a spell effect landing
+        // on the player, whatever brought it (a projectile the hook above missed, an explosion, a
+        // touch spell). A hostile one from someone else in a safe seat is dropped (no burn, no grunt,
+        // no damage) and sparks on the vehicle once per cast. The plugin's own spells on the player
+        // (drunk, punch) are cast by the player and pass.
+        struct SpellHook
+        {
+            static bool thunk(RE::MagicTarget* a_this, RE::MagicTarget::AddTargetData& a_data)
+            {
+                auto*      caster = a_data.caster;
+                const auto vehicle = caster && !caster->IsPlayerRef() && a_data.effect && a_data.effect->IsHostile() ? Safe::Seat() : 0;
+                if (vehicle == 0) {
+                    return original(a_this, a_data);
+                }
+                {
+                    const auto            now = std::chrono::steady_clock::now();
+                    const std::lock_guard guard(lastSpell.lock);
+                    if (lastSpell.caster == caster && lastSpell.item == a_data.magicItem && now - lastSpell.at < kSameCast) {
+                        return false;
+                    }
+                    lastSpell.caster = caster;
+                    lastSpell.item = a_data.magicItem;
+                    lastSpell.at = now;
+                }
+                auto*              player = RE::PlayerCharacter::GetSingleton();
+                auto*              base = a_data.effect->baseEffect;
+                const RE::NiPoint3 from = a_data.areaTarget ? a_data.explosionPoint : caster->GetPosition() + RE::NiPoint3(0.0f, 0.0f, caster->GetHeight() * 0.6f);
+                RE::NiPoint3       at;
+                RE::NiPoint3       normal;
+                Land(vehicle, from, player ? caster->GetPosition() - player->GetPosition() : RE::NiPoint3(), at, normal);
+                Hit(vehicle, caster, a_data.magicItem ? a_data.magicItem->GetName() : "spell", "spell effect", OnMetalOr(base ? base->data.impactDataSet : nullptr), at, normal);
+                return false;
             }
             static inline REL::Relocation<decltype(thunk)> original;
         };
@@ -178,5 +226,13 @@ namespace PerkeleRim::MetalHit
         ImpactHook<0>::original = arrow.write_vfunc(0xBD, ImpactHook<0>::thunk);
         REL::Relocation<std::uintptr_t> missile{ RE::VTABLE_MissileProjectile[0] };
         ImpactHook<1>::original = missile.write_vfunc(0xBD, ImpactHook<1>::thunk);
+        REL::Relocation<std::uintptr_t> flame{ RE::VTABLE_FlameProjectile[0] };
+        ImpactHook<2>::original = flame.write_vfunc(0xBD, ImpactHook<2>::thunk);
+        REL::Relocation<std::uintptr_t> beam{ RE::VTABLE_BeamProjectile[0] };
+        ImpactHook<3>::original = beam.write_vfunc(0xBD, ImpactHook<3>::thunk);
+        REL::Relocation<std::uintptr_t> cone{ RE::VTABLE_ConeProjectile[0] };
+        ImpactHook<4>::original = cone.write_vfunc(0xBD, ImpactHook<4>::thunk);
+        REL::Relocation<std::uintptr_t> target{ RE::VTABLE_PlayerCharacter[4] };  // its MagicTarget
+        SpellHook::original = target.write_vfunc(0x1, SpellHook::thunk);
     }
 }
