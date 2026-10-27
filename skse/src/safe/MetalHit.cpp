@@ -107,14 +107,14 @@ namespace PerkeleRim::MetalHit
 
         // The melee hit's entry, which builds the HitData (the grunt, the blood, the shake, the hit
         // reaction and the damage all come from there): the call to it in the melee collision handler,
-        // as the Elden Parry mod hooks it.
+        // as the Elden Parry mod hooks it. The caller passes four arguments and ignores the result.
         struct MeleeHook
         {
-            static void thunk(RE::Actor* a_attacker, RE::Actor* a_victim, std::int64_t a_arg3, bool a_arg4, void* a_arg5)
+            static void thunk(RE::Actor* a_attacker, RE::Actor* a_victim, std::int64_t a_arg3, bool a_arg4)
             {
                 const auto vehicle = a_attacker && a_victim && a_victim->IsPlayerRef() && a_attacker != a_victim ? Safe::Seat() : 0;
                 if (vehicle == 0) {
-                    original(a_attacker, a_victim, a_arg3, a_arg4, a_arg5);
+                    original(a_attacker, a_victim, a_arg3, a_arg4);
                     return;
                 }
                 auto* form = a_attacker->GetEquippedObject(false);
@@ -142,20 +142,25 @@ namespace PerkeleRim::MetalHit
         // a_ref. One reaching the player in a safe seat is killed instead (it would stick in it, burn
         // or bleed it and make it grunt). A flames spell streams short-lived projectiles, so killing
         // each just stops that one.
+        //
+        // It returns the impact it added (CommonLib declares it void): its callers mark it handled,
+        // and returning garbage there crashed. All seven call sites in Skyrim 1.7.104 take null as "no
+        // impact". The arrow collision handler (44204) then still hands the hit to the actor when
+        // the projectile's weaponDamage is above 0, so a killed one gets 0.
         template <int Kind>
         struct ImpactHook
         {
-            static void thunk(RE::Projectile* a_this, RE::TESObjectREFR* a_ref, const RE::NiPoint3& a_at, const RE::NiPoint3& a_velocity, RE::hkpCollidable* a_collidable, std::int32_t a_arg6, std::uint32_t a_arg7)
+            static RE::Projectile::ImpactData* thunk(RE::Projectile* a_this, RE::TESObjectREFR* a_ref, const RE::NiPoint3& a_at, const RE::NiPoint3& a_velocity, RE::hkpCollidable* a_collidable, std::int32_t a_arg6, std::uint32_t a_arg7)
             {
                 const auto vehicle = a_this && a_ref && a_ref->IsPlayerRef() ? Safe::Seat() : 0;
-                auto*      data = a_this ? &a_this->GetProjectileRuntimeData() : nullptr;
+                auto*      data = vehicle != 0 ? &a_this->GetProjectileRuntimeData() : nullptr;
                 const auto shooter = data ? data->shooter.get() : RE::NiPointer<RE::TESObjectREFR>();
                 if (vehicle == 0 || shooter.get() == a_ref) {
-                    original(a_this, a_ref, a_at, a_velocity, a_collidable, a_arg6, a_arg7);
-                    return;
+                    return original(a_this, a_ref, a_at, a_velocity, a_collidable, a_arg6, a_arg7);
                 }
+                data->weaponDamage = 0.0f;
                 if (data->flags.any(RE::Projectile::Flags::kDestroyed)) {
-                    return;  // killed at an earlier contact point this frame
+                    return nullptr;  // killed at an earlier contact point this frame
                 }
                 RE::BGSImpactDataSet* set = nullptr;
                 if (auto* spell = data->spell) {
@@ -171,6 +176,7 @@ namespace PerkeleRim::MetalHit
                 Land(vehicle, a_at, RE::NiPoint3() - a_velocity, at, normal);
                 Hit(vehicle, shooter.get(), base ? base->GetName() : "projectile", "projectile", OnMetalOr(set), at, normal);
                 a_this->Kill();
+                return nullptr;
             }
             static inline REL::Relocation<decltype(thunk)> original;
         };
