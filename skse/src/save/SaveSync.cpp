@@ -136,9 +136,6 @@ namespace PerkeleRim::SaveSync
         } else {
             SKSE::log::info("save sync: MSC goes back to {} (key {:016X})", state.name, state.key);
         }
-        // After MscLoad, so MSC has the snapshot when the anchor comes.
-        if (state.owned && LinkService::Get().IsUp()) {
-            PlayerSync::ResumeHandover();
-        }
+        // Play mode hands over after this (PlayerSync::OnGameLoaded), so MSC has the snapshot when the anchor comes.
     }
 }

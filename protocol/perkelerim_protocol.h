@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 40;
+    inline constexpr std::uint32_t kProtocolVersion = 41;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -112,6 +112,7 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPlayerGrounded = 0x8;  // PlayerState.flags: MSC's player stands on something
     inline constexpr std::uint32_t kPlayerBlocking = 0x10;  // PlayerState.flags: MSC's player guards (right click), Skyrim blocks
     inline constexpr std::uint32_t kPlayerChaseCamera = 0x20;  // PlayerState.flags: MSC's chase camera (its F9, in a vehicle) is on: eye, roll and fov are that camera's, view* its direction
+    inline constexpr std::uint32_t kPlayerInGame = 0x40;  // PlayerState.flags (v41): MSC's player exists (its game is loaded), set whoever has the player; play mode hands over only then
 
     // PlayerState.needs order, MSC's globals: PlayerThirst, PlayerHunger, PlayerStress, PlayerUrine,
     // PlayerFatigue, PlayerDirtiness (0..100, stress can go past it) and PlayerDrunk (0..8).
@@ -410,6 +411,7 @@ namespace PerkeleRim::Protocol
         GearText = 25,         // MSC -> Skyrim
         PlayerWashed = 26,     // Skyrim -> MSC
         DebugCommand = 27,     // Skyrim -> MSC
+        IntroCue = 28,         // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -585,6 +587,18 @@ namespace PerkeleRim::Protocol
     {
         float         hours;  // game hours that passed, > 0
         std::uint32_t flags;  // kTime*
+    };
+
+    // IntroCue (v41): Kumpo's Helgen intro on a new game (protocol/cpp/intro_cues.h), whoever has the
+    // player. MSC plays the cue's sounds (msc/src/Link/IntroLine.cs); Skyrim captions them.
+    inline constexpr std::uint32_t kIntroBlackout = 1;  // IntroCue.cue: Kumpo, passed out drunk, snores and wakes up hungover (the new game opens)
+    inline constexpr std::uint32_t kIntroWake = 2;      // IntroCue.cue: he says Perkele after Ralof's "You're finally awake" in the cart
+    inline constexpr std::uint32_t kIntroHangover = 3;  // IntroCue.cue: he wakes up hungover in the shack (a save's first handover)
+
+    struct IntroCue
+    {
+        std::uint32_t cue;  // kIntro*
+        std::uint32_t reserved;
     };
 
     // PlayerShout: the player shouted in Skyrim while MSC had it (Z, Skyrim's own shout with its
@@ -922,6 +936,8 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(ImpactEvent) == 24);
     static_assert(offsetof(ImpactEvent, speed) == 8);
     static_assert(offsetof(ImpactEvent, direction) == 12);
+    static_assert(sizeof(IntroCue) == 8);
+    static_assert(offsetof(IntroCue, reserved) == 4);
     static_assert(sizeof(PlayerShout) == 16);
     static_assert(offsetof(PlayerShout, words) == 8);
     static_assert(sizeof(PlayerHurt) == 16);

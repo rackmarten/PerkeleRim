@@ -69,7 +69,7 @@ function Test-LinkUp($path) {
 $deadline = $started.AddSeconds($LinkTimeoutSeconds)
 while ((Get-Date) -lt $deadline) {
     if ((Test-LinkUp $skseLog) -and (Test-LinkUp $mscLog)) {
-        Write-Host 'Link up on both sides. Load a save in Skyrim and press F10.' -ForegroundColor Green
+        Write-Host 'Link up on both sides. Load a save in Skyrim: Kumpo goes over to MSC by himself (F10 toggles it for debugging).' -ForegroundColor Green
         return
     }
     Start-Sleep -Seconds 2
