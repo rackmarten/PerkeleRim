@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 44;
+    inline constexpr std::uint32_t kProtocolVersion = 47;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -82,7 +82,7 @@ namespace PerkeleRim::Protocol
 
     inline constexpr std::uint32_t kInputOwnsPlayer = 0x1;  // InputState.flags: MSC should apply this input
     inline constexpr std::uint32_t kInputPaused = 0x2;      // InputState.flags: a Skyrim menu pauses the game, MSC freezes its time
-    inline constexpr std::uint32_t kInputMscMenu = 0x4;     // InputState.flags (v44): Skyrim shows MSC's options menu (F1): MSC keeps it open, cursorX/Y are set
+    inline constexpr std::uint32_t kInputMscMenu = 0x4;     // InputState.flags (v47): Skyrim shows MSC's options menu (F1): MSC keeps it open, cursorX/Y are set
 
     // Skyrim -> MSC. Keys are Unity KeyCode values (mouse buttons are KeyCode.Mouse0..Mouse6).
     struct InputState
@@ -97,7 +97,7 @@ namespace PerkeleRim::Protocol
         double        mouseWheel;  // accumulated "Mouse ScrollWheel" axis; MSC applies the delta
         std::uint32_t screenWidth;   // Skyrim's back buffer in pixels; MSC renders its hand layer this size
         std::uint32_t screenHeight;
-        float         cursorX;  // v44, with kInputMscMenu: Skyrim's cursor, 0..1 from the screen's left edge
+        float         cursorX;  // v47, with kInputMscMenu: Skyrim's cursor, 0..1 from the screen's left edge
         float         cursorY;  // 0..1 from the top edge
     };
 
@@ -115,7 +115,7 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPlayerBlocking = 0x10;  // PlayerState.flags: MSC's player guards (right click), Skyrim blocks
     inline constexpr std::uint32_t kPlayerChaseCamera = 0x20;  // PlayerState.flags: MSC's chase camera (its F9, in a vehicle) is on: eye, roll and fov are that camera's, view* its direction
     inline constexpr std::uint32_t kPlayerTools = 0x80;  // PlayerState.flags (v43): MSC's tools are out instead of the hand (its 2); Skyrim shows MSC's tools icon
-    inline constexpr std::uint32_t kPlayerMscMenu = 0x100;  // PlayerState.flags (v44): MSC's options menu is open (PlayerInMenu)
+    inline constexpr std::uint32_t kPlayerMscMenu = 0x100;  // PlayerState.flags (v47): MSC's options menu is open (PlayerInMenu)
     inline constexpr std::uint32_t kPlayerInGame = 0x40;  // PlayerState.flags (v41): MSC's player exists (its game is loaded), set whoever has the player; play mode hands over only then
 
     // PlayerState.needs order, MSC's globals: PlayerThirst, PlayerHunger, PlayerStress, PlayerUrine,
@@ -274,7 +274,7 @@ namespace PerkeleRim::Protocol
     };
 
     inline constexpr std::uint32_t kHandLayerValid = 0x1;  // HandLayer.flags: MSC draws into the texture every frame
-    inline constexpr std::uint32_t kHandLayerMenu = 0x2;   // HandLayer.flags (v44): the texture holds MSC's options menu, not its hands
+    inline constexpr std::uint32_t kHandLayerMenu = 0x2;   // HandLayer.flags (v47): the texture holds MSC's options menu, not its hands
 
     // MSC -> Skyrim. MSC's first-person layer (what its HandCamera draws: hands, drinks, tools in
     // hand) in a D3D11 texture both games share on the GPU: transparent where nothing is drawn,
@@ -418,6 +418,8 @@ namespace PerkeleRim::Protocol
         DebugCommand = 27,     // Skyrim -> MSC
         IntroCue = 28,         // Skyrim -> MSC
         ConsumeEvent = 29,     // Skyrim -> MSC
+        FuelStations = 30,     // Skyrim -> MSC
+        FuelText = 31,         // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -666,6 +668,28 @@ namespace PerkeleRim::Protocol
         std::uint32_t count;       // <= kStockSpotsMax
         StockSpot     spots[16];   // kStockSpotsMax
     };
+
+    // FuelStations: the dwemer oil pumps along Skyrim's main roads (PerkeleRim.esp), sent each time
+    // the link comes up. Each pump's spot is on the ground in front of it, where Kumpo stands to use
+    // it, facing the pump. MSC brings its own diesel pump trigger to the pump the player is near,
+    // and tows a dry vehicle to one (msc/src/Link/Fuel.cs).
+    inline constexpr std::uint32_t kFuelPumpsMax = 8;
+
+    struct FuelPump
+    {
+        float position[3];  // Skyrim world space, on the ground in front of the pump
+        float heading;      // radians, clockwise from north: from the spot toward the pump
+    };
+
+    struct FuelStations
+    {
+        std::uint32_t count;  // <= kFuelPumpsMax
+        std::uint32_t reserved;
+        FuelPump      pumps[8];  // kFuelPumpsMax
+    };
+
+    // FuelText: the fuel line MSC wants on the HUD (the litres poured and the gold they cost, a low
+    // tank, a dry one), empty for none. Same payload as LookAtText, sent when it changes.
 
     // Consumed: MSC's player finished an alcoholic drink, lit a cigarette or ate something. Skyrim
     // heals by kind (protocol/cpp/damage.h). Drinks without alcohol aren't sent.
@@ -951,6 +975,10 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(WorldspaceChange, vehicleSpot) == 32);
     static_assert(offsetof(WorldspaceChange, vehicleHeading) == 44);
     static_assert(sizeof(LookAtText) == 8);
+    static_assert(sizeof(FuelPump) == 16);
+    static_assert(offsetof(FuelPump, heading) == 12);
+    static_assert(sizeof(FuelStations) == 136);
+    static_assert(offsetof(FuelStations, pumps) == 8);
     static_assert(sizeof(PlayerDamage) == 8);
     static_assert(offsetof(PlayerDamage, severity) == 4);
     static_assert(sizeof(PlayerDeath) == 8);
