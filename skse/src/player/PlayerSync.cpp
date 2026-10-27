@@ -900,6 +900,7 @@ namespace PerkeleRim::PlayerSync
             hud.subtitle = state.subtitle.empty() ? std::string(Intro::Caption()) : state.subtitle;  // the shack's wake-up caption carries over the handover
             hud.gear = state.gear;
             hud.tools = valid && (pose.flags & Protocol::kPlayerTools) != 0;
+            hud.money = Pocket::Money(a_player);
             hud.hasNeeds = state.hasNeeds;
             hud.needs = state.needs;
             hud.handsImage = HandView::Image();

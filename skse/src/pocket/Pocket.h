@@ -21,6 +21,9 @@ namespace PerkeleRim::Pocket
 
     void OnChange(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);  // PocketChange
 
+    // Kumpo's money for the HUD: Skyrim's gold, -1 without the ESP.
+    std::int64_t Money(RE::PlayerCharacter* a_player);
+
     // Number key a_slot (0 for 1 .. 7 for 8) went down while MSC has the player: the Unity KeyCode
     // MSC gets held for it (0 for none). Food or drink on the hotkey is used here and now.
     std::uint16_t Hotkey(RE::PlayerCharacter* a_player, int a_slot);

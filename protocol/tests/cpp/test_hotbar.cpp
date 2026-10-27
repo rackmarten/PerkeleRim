@@ -5,17 +5,25 @@
 using namespace PerkeleRim;
 using Hotbar::Bound;
 
-TEST_CASE("unbound numbers keep their defaults: 1 and 2 MSC's, 3 to 8 the pocket's")
+TEST_CASE("unbound numbers do nothing: no hidden keys")
 {
     for (int slot = 0; slot < Hotbar::kSlots; slot++) {
         CAPTURE(slot);
-        const auto none = Hotbar::Resolve(slot, Bound::None);
-        CHECK(none.mscKey == 49 + slot);
-        CHECK_FALSE(none.use);
-        const auto other = Hotbar::Resolve(slot, Bound::Other);  // a sword someone bound
-        CHECK(other.mscKey == 49 + slot);
-        CHECK_FALSE(other.use);
+        CHECK(Hotbar::Resolve(slot, Bound::None).mscKey == 0);
+        CHECK_FALSE(Hotbar::Resolve(slot, Bound::None).use);
+        CHECK(Hotbar::Resolve(slot, Bound::Other).mscKey == 0);  // a sword someone bound
     }
+}
+
+TEST_CASE("the defaults bound on a save's first meeting are MSC's old keys")
+{
+    for (int slot = 0; slot < Hotbar::kSlots; slot++) {
+        CAPTURE(slot);
+        CHECK(Hotbar::Resolve(slot, Hotbar::DefaultOf(slot)).mscKey == 49 + slot);  // 1 hands .. 8 macaron box
+    }
+    CHECK(Hotbar::DefaultOf(7) == Bound::Macaron);
+    CHECK(Hotbar::DefaultOf(8) == Bound::None);
+    CHECK(Hotbar::DefaultOf(-1) == Bound::None);
 }
 
 TEST_CASE("the powers and MSC's items work on any number")
@@ -36,20 +44,6 @@ TEST_CASE("other food and drink are used in Skyrim, nothing reaches MSC")
     const auto sweetroll = Hotbar::Resolve(4, Bound::Consumable);
     CHECK(sweetroll.use);
     CHECK(sweetroll.mscKey == 0);
-}
-
-TEST_CASE("a default gives way when what it stands for is bound to another number")
-{
-    const auto tools = Hotbar::Bit(Bound::Tools);
-    CHECK(Hotbar::Resolve(2, Bound::Tools, tools).mscKey == 50);  // Tools moved to 3
-    CHECK(Hotbar::Resolve(1, Bound::None, tools).mscKey == 0);    // 2 doesn't take the tools out any more
-    CHECK(Hotbar::Resolve(1, Bound::Other, tools).mscKey == 0);
-    CHECK(Hotbar::Resolve(0, Bound::None, tools).mscKey == 49);   // 1 is still the hand
-    const auto beer = Hotbar::Bit(Bound::Beer) | Hotbar::Bit(Bound::Consumable);
-    CHECK(Hotbar::Resolve(3, Bound::None, beer).mscKey == 0);     // MSC Beer on 7: 4 is free
-    CHECK(Hotbar::Resolve(4, Bound::None, beer).mscKey == 53);    // food defaults stay
-    CHECK(Hotbar::DefaultOf(7) == Bound::Macaron);
-    CHECK(Hotbar::DefaultOf(8) == Bound::None);
 }
 
 TEST_CASE("numbers outside 1 to 8 do nothing")

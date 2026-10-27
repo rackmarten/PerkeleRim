@@ -106,14 +106,18 @@ namespace PerkeleRim::Pocket
         }
 
         // The hotbar powers, so the Favorites menu can bind them. Skyrim says "Power added" once.
-        void GivePowers(RE::PlayerCharacter* a_player)
+        // True when any was new: the first time PerkeleRim meets this save.
+        bool GivePowers(RE::PlayerCharacter* a_player)
         {
+            bool gave = false;
             for (auto* power : state.powers) {
                 if (!a_player->HasSpell(power)) {
                     a_player->AddSpell(power);
+                    gave = true;
                     SKSE::log::info("hotbar: gave the player {}", power->GetName());
                 }
             }
+            return gave;
         }
 
         // What Skyrim's hotkey a_slot holds: a spell (MagicFavorites) or an item in the inventory
@@ -152,6 +156,58 @@ namespace PerkeleRim::Pocket
                 }
             }
             return Hotbar::Bound::None;
+        }
+    }
+
+    namespace
+    {
+        // The hotbar's defaults (Hotbar::DefaultOf) as Skyrim's own favorites, on the numbers still
+        // free: the powers, and MSC's beer and food Kumpo has.
+        void BindDefaults(RE::PlayerCharacter* a_player)
+        {
+            auto* magic = RE::MagicFavorites::GetSingleton();
+            auto* changes = a_player->GetInventoryChanges();
+            for (int slot = 0; slot < Hotbar::kSlots; slot++) {
+                RE::TESBoundObject* bound = nullptr;
+                if (BoundTo(a_player, slot, bound) != Hotbar::Bound::None) {
+                    continue;  // the player's own
+                }
+                const auto want = Hotbar::DefaultOf(slot);
+                if (want == Hotbar::Bound::Hands || want == Hotbar::Bound::Tools || want == Hotbar::Bound::Bottle) {
+                    auto* power = state.powers[static_cast<std::size_t>(want) - static_cast<std::size_t>(Hotbar::Bound::Hands)];
+                    if (!magic) {
+                        continue;
+                    }
+                    magic->SetFavorite(power);
+                    if (magic->hotkeys.size() < Hotbar::kSlots) {
+                        magic->hotkeys.resize(Hotbar::kSlots, nullptr);
+                    }
+                    magic->hotkeys[slot] = power;
+                    SKSE::log::info("hotbar: {} bound to {}", slot + 1, power->GetName());
+                    continue;
+                }
+                const auto kind = want == Hotbar::Bound::Beer ? Protocol::kPocketBeer
+                                                              : static_cast<std::uint32_t>(want) - static_cast<std::uint32_t>(Hotbar::Bound::Sausages) + Protocol::kPocketSausages;
+                auto* item = kind < Protocol::kPocketKinds ? state.items[kind] : nullptr;
+                if (!item || !changes || !changes->entryList || a_player->GetItemCount(item) <= 0) {
+                    continue;
+                }
+                for (auto* entry : *changes->entryList) {
+                    if (!entry || entry->object != item) {
+                        continue;
+                    }
+                    if (!entry->IsFavorited()) {
+                        changes->SetFavorite(entry, entry->extraLists && !entry->extraLists->empty() ? entry->extraLists->front() : nullptr);
+                    }
+                    auto* list = entry->GetFavoriteExtraList();
+                    auto* hotkey = list ? list->GetByType<RE::ExtraHotkey>() : nullptr;
+                    if (hotkey) {
+                        hotkey->hotkey = static_cast<RE::ExtraHotkey::Hotkey>(slot);
+                        SKSE::log::info("hotbar: {} bound to {}", slot + 1, item->GetName());
+                    }
+                    break;
+                }
+            }
         }
     }
 
@@ -205,7 +261,9 @@ namespace PerkeleRim::Pocket
             return;
         }
         state.sinceCount = 0.0f;
-        GivePowers(a_player);
+        if (GivePowers(a_player)) {
+            BindDefaults(a_player);  // a save PerkeleRim hasn't met: its favorites get the defaults
+        }
         state.counts = Count(a_player);
         if (state.sentValid && !state.dirty && state.counts == state.sent) {
             return;
@@ -260,12 +318,15 @@ namespace PerkeleRim::Pocket
         }
     }
 
+    std::int64_t Money(RE::PlayerCharacter* a_player)
+    {
+        auto* gold = state.items[Protocol::kPocketGold];
+        return gold && a_player ? (std::max)(0, a_player->GetItemCount(gold)) : -1;
+    }
+
     std::uint16_t Hotkey(RE::PlayerCharacter* a_player, int a_slot)
     {
         RE::TESBoundObject* item = nullptr;
-        // The last thing bound to each number this session: Skyrim drops an item's hotkey with its
-        // last one, and the default key then would eat something else (beer on 7 gone: 7 eats chips).
-        static std::array<Hotbar::Bound, Hotbar::kSlots> last{};
         if (a_slot < 0 || a_slot >= Hotbar::kSlots) {
             return 0;
         }
@@ -273,18 +334,7 @@ namespace PerkeleRim::Pocket
             return Hotbar::Resolve(a_slot, Hotbar::Bound::None).mscKey;
         }
         const auto bound = BoundTo(a_player, a_slot, item);
-        if (bound != Hotbar::Bound::None) {
-            last[a_slot] = bound;
-        } else if (last[a_slot] >= Hotbar::Bound::Beer) {
-            SKSE::log::info("hotbar: {} had an item bound, none left", a_slot + 1);
-            return 0;
-        }
-        std::uint32_t anywhere = 0;  // what all eight numbers hold, so a default gives way to its own binding
-        for (int slot = 0; slot < Hotbar::kSlots; slot++) {
-            RE::TESBoundObject* other = nullptr;
-            anywhere |= Hotbar::Bit(slot == a_slot ? bound : BoundTo(a_player, slot, other));
-        }
-        const auto action = Hotbar::Resolve(a_slot, bound, anywhere);
+        const auto action = Hotbar::Resolve(a_slot, bound);
         if (action.use && item) {
             SKSE::log::info("hotbar: {} uses {}", a_slot + 1, item->GetName());
             RE::ActorEquipManager::GetSingleton()->EquipObject(a_player, item);  // eaten or drunk, EquipSink follows

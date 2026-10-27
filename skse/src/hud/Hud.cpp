@@ -224,6 +224,14 @@ namespace PerkeleRim::Hud
                     }
                     needs.CreateEmptyMovieClip(&bar, barName.c_str(), 30 + static_cast<std::int32_t>(i));
                 }
+                // Money, as MSC shows it under its bars: the label, then the number on a dark box.
+                const double y = static_cast<double>(kRows) * kNeedRow;
+                RE::GFxValue name, value, box;
+                if (MakeText(a_movie, needs, "moneyName", 50.0, 0.0, y - 3.0, kNeedLabelWidth, kNeedSize, "left", kNeedColor, name)) {
+                    name.SetText("Money");
+                }
+                needs.CreateEmptyMovieClip(&box, "moneyBox", 51);
+                MakeText(a_movie, needs, "money", 52.0, kNeedLabelWidth + 3.0, y - 3.0, kNeedBarWidth, kNeedSize, "left", kNeedColor, value);
             }
             SKSE::log::info("hud: layer created in the HUD movie");
             return true;
@@ -436,11 +444,26 @@ namespace PerkeleRim::Hud
 
             RE::GFxValue needs;
             if (clip.GetMember("needs", &needs) && needs.IsDisplayObject()) {
-                needs.SetMember("_visible", RE::GFxValue(a_view.hasNeeds));
+                needs.SetMember("_visible", RE::GFxValue(a_view.hasNeeds || a_view.money >= 0));
                 needs.SetMember("_x", RE::GFxValue(static_cast<double>(rect.left) + kNeedsLeft - cx));
                 needs.SetMember("_y", RE::GFxValue(static_cast<double>(rect.top) + kNeedsTop - cy));
                 if (a_view.hasNeeds) {
                     DrawNeeds(needs, a_view);
+                }
+                RE::GFxValue moneyName, money, moneyBox;
+                needs.GetMember("moneyName", &moneyName);
+                needs.GetMember("money", &money);
+                needs.GetMember("moneyBox", &moneyBox);
+                const bool hasMoney = a_view.money >= 0;
+                if (moneyName.IsDisplayObject() && money.IsDisplayObject() && moneyBox.IsDisplayObject()) {
+                    moneyName.SetMember("_visible", RE::GFxValue(hasMoney));
+                    money.SetMember("_visible", RE::GFxValue(hasMoney));
+                    money.SetText(std::to_string(hasMoney ? a_view.money : 0).c_str());
+                    Call(moneyBox, "clear", {});
+                    if (hasMoney) {
+                        const double x0 = kNeedLabelWidth, y0 = static_cast<double>(kRows) * kNeedRow + 1.0;
+                        Fill(moneyBox, 0x000000, 55.0, x0 - 1.0, y0 - 1.0, x0 + kNeedBarWidth + 1.0, y0 + kNeedSize + 1.0);
+                    }
                 }
             }
         }
@@ -470,7 +493,8 @@ namespace PerkeleRim::Hud
         }
         const auto needs = Quantize(view);
         const bool textChanged = view.show != current.show || view.dot != current.dot || view.label != current.label || view.hand != current.hand ||
-                                 view.subtitle != current.subtitle || view.gear != current.gear || view.tools != current.tools;
+                                 view.subtitle != current.subtitle || view.gear != current.gear || view.tools != current.tools ||
+                                 view.money != current.money;
         const bool handsChanged = view.handsImage != current.handsImage || view.handsWidth != current.handsWidth ||
                                   view.handsHeight != current.handsHeight;
         const bool handsLoading = !view.handsImage.empty() && !handsSized;
