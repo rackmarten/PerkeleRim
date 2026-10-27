@@ -42,6 +42,21 @@ namespace PerkeleRim::Hitbox
         float radius;
     };
 
+    // How far inside a_box a world point is (Skyrim units), the box in the frame of a vehicle at
+    // a_position turned by a_rotation (x, y, z, w); 0 when outside.
+    inline float Depth(const float (&a_position)[3], const float (&a_rotation)[4], const Box& a_box, const float (&a_point)[3])
+    {
+        float m[3][3];
+        Coords::ToMatrix({ a_rotation[0], a_rotation[1], a_rotation[2], a_rotation[3] }, m);
+        const float d[3] = { a_point[0] - a_position[0], a_point[1] - a_position[1], a_point[2] - a_position[2] };
+        float       depth = 1e9f;
+        for (int k = 0; k < 3; k++) {
+            const float local = m[0][k] * d[0] + m[1][k] * d[1] + m[2][k] * d[2];  // transpose: world to vehicle
+            depth = (std::min)(depth, (std::min)(local - a_box.lo[k], a_box.hi[k] - local));
+        }
+        return (std::max)(depth, 0.0f);
+    }
+
     // The box around every mesh of a model at its rest pose, in the model root's frame (Skyrim axes
     // and units). False for a model without vertices.
     inline bool BoundsOf(const Model::Model& a_model, Box& a_out)

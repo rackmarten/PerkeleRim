@@ -140,3 +140,21 @@ TEST_CASE("the hitbox leaves the world at the run-over speed and comes back once
     CHECK_FALSE(Hitbox::Solid(1.9f, false));  // still too fast to come back
     CHECK(Hitbox::Solid(1.4f, false));
 }
+
+TEST_CASE("a point's depth inside a turned vehicle's box")
+{
+    const Hitbox::Box box{ { -80.0f, -200.0f, 0.0f }, { 80.0f, 200.0f, 150.0f } };
+    const float       at[3] = { 1000.0f, 2000.0f, 50.0f };
+    const float       level[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    const float       s = std::sqrt(0.5f);
+    const float       quarter[4] = { 0.0f, 0.0f, s, s };  // a quarter turn about Z: its +Y lies along world -X
+    const float       center[3] = { 1000.0f, 2000.0f, 125.0f };
+    CHECK(Hitbox::Depth(at, level, box, center) == doctest::Approx(75.0f));
+    const float ahead[3] = { 1000.0f, 2150.0f, 125.0f };  // 150 along its length: inside level, outside turned
+    CHECK(Hitbox::Depth(at, level, box, ahead) == doctest::Approx(50.0f));
+    CHECK(Hitbox::Depth(at, quarter, box, ahead) == 0.0f);
+    const float aside[3] = { 850.0f, 2000.0f, 125.0f };  // 150 along world -X: along the turned one's length
+    CHECK(Hitbox::Depth(at, quarter, box, aside) == doctest::Approx(50.0f));
+    const float below[3] = { 1000.0f, 2000.0f, 40.0f };
+    CHECK(Hitbox::Depth(at, level, box, below) == 0.0f);
+}

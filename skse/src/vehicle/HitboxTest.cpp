@@ -74,15 +74,8 @@ namespace PerkeleRim::HitboxTest
         // How far inside a_box (in the van's frame) a world point is, 0 when outside.
         float Depth(const Protocol::VehicleState& a_van, const Hitbox::Box& a_box, const RE::NiPoint3& a_at)
         {
-            float m[3][3];
-            Coords::ToMatrix({ a_van.rotation[0], a_van.rotation[1], a_van.rotation[2], a_van.rotation[3] }, m);
-            const float d[3] = { a_at.x - a_van.position[0], a_at.y - a_van.position[1], a_at.z - a_van.position[2] };
-            float       depth = 1e9f;
-            for (int k = 0; k < 3; k++) {
-                const float local = m[0][k] * d[0] + m[1][k] * d[1] + m[2][k] * d[2];  // transpose: world to van
-                depth = (std::min)(depth, (std::min)(local - a_box.lo[k], a_box.hi[k] - local));
-            }
-            return (std::max)(depth, 0.0f);
+            const float at[3] = { a_at.x, a_at.y, a_at.z };
+            return Hitbox::Depth(a_van.position, a_van.rotation, a_box, at);
         }
 
         // Navmesh obstacles (cuts) in the loaded cells: Skyrim's own way of walking around things.
