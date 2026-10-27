@@ -97,13 +97,15 @@ scripts/package.ps1                # player release zip (launcher/ + built files
 scripts/release-check.ps1 -Zip tools/out/release/PerkeleRim-X.Y.Z.zip -Tag vX.Y.Z  # check a release zip against its tag (see "Cutting a release")
 scripts/nexus-package.ps1          # the release zip, screenshots and page text for the Nexus Mods upload, in tools/out/nexus/
 scripts/starter-save.ps1           # copy your current MSC save into launcher/saves/MSC with thirst, hunger, urine, fatigue, stress, drunk and dirtiness at 0
-scripts/starter-save.ps1 -Skyrim   # copy your newest Skyrim save (made before the first F10) into launcher/saves/Skyrim as PerkeleRim-Kumpo
+scripts/starter-save.ps1 -Skyrim   # copy your newest Skyrim save (made before the first handover) into launcher/saves/Skyrim as PerkeleRim-Kumpo
 scripts/launch-msc.ps1             # start MSC windowed at 640x480, lowest quality, single-threaded rendering, with no clicks (clicks Play! on the config dialog, presses past the news screen); MSC's own screen settings go back once it closes
 scripts/restart-games.ps1 -Build    # close both games, build, deploy, start MSC and Skyrim (SKSE), wait for "link up"; -NoPlace skips the window layout
 scripts/msc-save.ps1 snapshot NAME  # save MSC save data outside the repo; "restore NAME" puts it back
 scripts/spike.ps1 -Command dump    # hidden-MSC spike tools, see docs/SPIKE_HIDDEN_MSC.md
 scripts/skyrim-key.ps1 -Key F10    # press a key in Skyrim (brings it to the front); -Screenshot FILE saves its window
+scripts/skyrim-key.ps1 -Console 'load PerkeleRim-Kumpo'   # type a console command (letters, digits, space, - _ .)
 scripts/hit-test.ps1               # unattended combat check in game (closes both games), results in a CSV; see below
+scripts/voice-picker.ps1           # page for listening to MSC's voice lines by group and copying which one you mean (offline); see section 5
 ```
 
 For a test loop with no clicks at all, create an empty `PerkeleRim_autoload.txt` in both game folders: MSC then continues its save, and Skyrim continues its most recent save from the main menu (the SKSE plugin does it once per start). Delete the files to get the main menus back.
@@ -163,7 +165,7 @@ Then check, in this order:
 - [ ] `PerkeleRim.log` says `Skyrim runtime 1.5.97.0`, and `skse64.log` says `PerkeleRim.dll` loaded correctly.
 - [ ] Main menu reached without a crash, and `PerkeleRim.log` doesn't say `PerkeleRim.esp isn't loaded` (its header must stay 1.70: 1.5.97 skips 1.71 plugins).
 - [ ] A save made on SE (or a new game: `coc WhiterunStables` from the main menu console) loads. The AE-made **PerkeleRim-Kumpo** starter save is reported corrupt on 1.5.97, so the launcher doesn't add it on SE. AE saves made later in a playthrough may load, with a warning about missing Creation Club content.
-- [ ] F10 hands over to MSC and back; walking, looking and the camera follow MSC (PlayerCharacter update hook, vfunc `0xAD`).
+- [ ] Loading a save hands over to MSC by itself, and F10 takes the player back and hands over again; walking, looking and the camera follow MSC (PlayerCharacter update hook, vfunc `0xAD`).
 - [ ] Favorites, menus and activating things still behave while MSC has the player (handler hooks, vfunc `0x1`).
 - [ ] Damage protection while driving: take a hit in the van (Actor `HandleHealthDamage` hook, vfunc `0x104`).
 - [ ] Drive the van, drink, punch, piss; HUD bars and subtitles show; the van's lights work.
@@ -175,10 +177,32 @@ Anything that fails here is an SE vs AE difference in CommonLib (a vfunc index o
 
 - **Van NIF conversion** (`tools/convert-vehicle.ps1`, Blender, PyNifly, AssetStudioModCLI, texconv; see [tools/README.md](../tools/README.md)) writes the van as a NIF for NifSkope or Blender. Playing doesn't need it: the van comes from MSC's own model at runtime.
 
+- **Voice picker** (`scripts/voice-picker.ps1`, see below) for choosing which of MSC's voice lines a feature plays.
+
 - **VS Code** (`winget install --id Microsoft.VisualStudioCode -e`) with the **C/C++** extension (`ms-vscode.cpptools`). Debug the SKSE plugin by attaching to `SkyrimSE.exe` with the `cppvsdbg` debugger type and a Debug build (`scripts/build.ps1 -Target skse -Configuration Debug`, then deploy it). The `.pdb` is deployed next to the DLL.
 - **Visual Studio Community 2022** is a reasonable upgrade later if you want a full IDE debugger. It isn't needed for anything here.
 - **dnSpyEx** (<https://github.com/dnSpyEx/dnSpy/releases>) to read My Summer Car's `Assembly-CSharp.dll` and MSCLoader. Use it for reading only: never commit decompiled game code.
 - **Developer Toolset** (an MSCLoader mod on Nexus Mods) is the in-game object inspector for My Summer Car. It browses the scene hierarchy and components, and views and edits **PlayMaker FSM** states, variables and events, which is where most of My Summer Car's game logic lives. Generic Unity inspectors such as UnityExplorer need BepInEx or MelonLoader rather than MSCLoader, so they're not the default here.
+
+### Voice picker
+
+PerkeleRim plays MSC's own voice clips from the player's install, so a feature that needs a line asks which one by name. `scripts/voice-picker.ps1` builds a local page for picking them by ear:
+
+```powershell
+pwsh -NoProfile -File scripts/voice-picker.ps1                      # export the clips and open the page
+pwsh -NoProfile -File scripts/voice-picker.ps1 -Transcribe          # also run Whisper (Finnish text + English translation), searchable
+pwsh -NoProfile -File scripts/voice-picker.ps1 -Transcribe -Groups Hangover,Drunk   # only some groups
+```
+
+It reads `<MscPath>\mysummercar_Data` offline (MSC doesn't run) with `tools/voice-picker/` (VoiceExport, on the AssetStudioMod libraries `tools/setup.ps1` downloads) and writes everything to `tools/out/voices/` (gitignored, never commit it): the clips as Ogg Opus (about 80 MB; WAV without ffmpeg, `winget install Gyan.FFmpeg`), `index.json` and `index.html`. The first run takes a few minutes, a rerun seconds. Clips over 60 s (music, radio, the drunk monologues) are listed without audio; `-MaxSeconds 0` exports them too.
+
+The page groups the clips the way MSC does: MSC plays its voices through **MasterAudio**, a scene object whose children are sound groups (`Hangover` with 7 lines, `Swearing` 16, `Drunk`, `Fuck`, `Shit`, `Yes`, `PlayerMisc`, the NPCs' `Teimo`, `Fleetari`, `Suski`...) and whose children are the group's variations. A line's number is its variation's place in the group, so `Hangover #3 (hangover03)` is unambiguous; in code, the clip name (`hangover03`) is what `Resources.FindObjectsOfTypeAll<AudioClip>()` finds and the variation name is the MasterAudio child's (`msc/src/Game/PlayerVoice.cs` looks up both). Clips no MasterAudio group plays follow, under the scene object playing them (`scene: YARD`) or `(no AudioSource)` (PlayMaker and soundbanks play those, e.g. `Human_Perkele`).
+
+Search matches group, clip and variation names, the scene paths and the transcripts. **copy** puts a line's reference on the clipboard, **pick** collects lines for **Copy picked** at the bottom. Keys: `/` search, `↓`/`↑` or `j`/`k` move, `Space` play, `c` copy, `p` pick, `Esc` stop. Picks are kept in that browser.
+
+`-Transcribe` needs `uv` and an NVIDIA GPU: `tools/voice-picker/transcribe.py` runs faster-whisper large-v3 (about 3 GB, downloaded once into the Hugging Face cache, int8 so it fits next to a running game) for the Finnish text and again for an English translation: all 1,666 clips take about 45 minutes on an RTX 4070 (`-Groups` does a few in seconds). It skips clips it has, so reruns are cheap. The text is a guess; listen before you pick.
+
+Agents: when a feature needs particular MSC lines, ask the user to pick them with this page and paste the references back, rather than guessing from clip names.
 
 ## Branches and releases
 

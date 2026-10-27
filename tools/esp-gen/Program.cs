@@ -294,7 +294,7 @@ foreach (var p in markers.Concat(pieces))
 // ---- Drinks ----
 //
 // Fixed ids the SKSE plugin looks up (skse/src/drink/Drink.cpp), clear of the garage's. 0x900 was
-// PerkeleRimBeerDrinks (until protocol v41), the mead and ale that became MSC beer when picked up:
+// PerkeleRimBeerDrinks (until protocol v42), the mead and ale that became MSC beer when picked up:
 // mead stays mead now and Kumpo drinks it in Skyrim (protocol/cpp/food.h).
 
 // MSC's drunk level as a blur with wobbling double vision. A 4 s loop the plugin retriggers, its

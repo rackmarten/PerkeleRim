@@ -9,9 +9,10 @@ namespace PerkeleRim.Game
     // muted meanwhile). The player shouted (PlayerShout): MSC yells instead, the clip ShoutLine picks
     // among MSC's voice clips: the player's swear01..swear16 with their subtitle lines
     // (ShoutLine.SwearLines) and the Human_ soundbank clips, which have none. Something hurt the
-    // player (PlayerHurt): a grunt (the player's ouch clips) or a swear, as HurtLine decides. Played
-    // straight on the listener in 2D, like DeathGuard's death grunt, so it's heard wherever the
-    // player is.
+    // player (PlayerHurt): a grunt (the player's ouch clips) or a swear, as HurtLine decides. Kumpo's
+    // Helgen intro (IntroCue, whoever has the player): the steps IntroLine lists, one clip at a time.
+    // Played straight on the listener in 2D, like DeathGuard's death grunt, so it's heard wherever
+    // the player is.
     public unsafe class PlayerVoice
     {
         readonly Action<string> log;
@@ -23,6 +24,13 @@ namespace PerkeleRim.Game
         List<string> grunts;  // clip names
         const float SwearEvery = 3f;
         float nextSwear;
+        // Intro clips, one at a time on a source of their own, each cut at its step's Max (MSC's drinking
+        // and snore clips are 20 s loops).
+        struct Queued { public float At; public string Clip; public float Max; }
+        readonly List<Queued> queued = new List<Queued>();
+        AudioSource introVoice;
+        float introStop;  // when the playing intro clip is cut
+        float introEnd;   // when the last queued intro clip is over: a cue never talks over the one before
 
         public PlayerVoice(Action<string> log)
         {
@@ -60,6 +68,32 @@ namespace PerkeleRim.Game
             else Say(sound, what);
         }
 
+        public void OnIntro(byte[] payload, int size)
+        {
+            if (size < sizeof(IntroCue)) return;
+            IntroCue c;
+            fixed (byte* p = payload) c = *(IntroCue*)p;
+            Intro(c.cue, "Skyrim's intro cue");
+        }
+
+        // Also the spike's "intro 1|2|3".
+        public void Intro(uint cue, string what)
+        {
+            Find();
+            float start = Mathf.Max(Time.realtimeSinceStartup, introEnd);
+            var picked = new List<string>();
+            foreach (var step in IntroLine.For(cue))
+            {
+                var name = IntroLine.Pick(step.Clips, clips.Keys);
+                if (name == null) { log($"intro: no clip for {string.Join("/", step.Clips)}"); continue; }
+                float seconds = IntroLine.Seconds(step, clips[name].length);
+                queued.Add(new Queued { At = start + step.At, Clip = name, Max = seconds });
+                introEnd = Mathf.Max(introEnd, start + step.At + seconds);
+                picked.Add(name);
+            }
+            log($"intro: cue {cue} ({what}): {string.Join(", ", picked.ToArray())}");
+        }
+
         // The vehicle the player drives hit someone: a swear, at most one every SwearEvery seconds
         // (plowing through a crowd is one outburst).
         public void Swear(string what)
@@ -74,6 +108,27 @@ namespace PerkeleRim.Game
         {
             var sound = hurt.Due(Time.realtimeSinceStartup);
             if (sound != HurtSound.None) Say(sound, "low health, after the cooldown");
+            float now = Time.realtimeSinceStartup;
+            if (introVoice != null && introVoice.isPlaying && now >= introStop) introVoice.Stop();
+            for (int i = 0; i < queued.Count; i++)
+            {
+                if (queued[i].At > now) continue;
+                PlayIntro(queued[i]);
+                queued.RemoveAt(i--);
+            }
+        }
+
+        void PlayIntro(Queued q)
+        {
+            var listener = UnityEngine.Object.FindObjectOfType<AudioListener>();
+            if (listener == null) { log($"intro: no listener for {q.Clip}"); return; }
+            if (introVoice == null || introVoice.gameObject != listener.gameObject) introVoice = listener.gameObject.AddComponent<AudioSource>();
+            introVoice.spatialBlend = 0f;
+            introVoice.loop = false;
+            introVoice.clip = clips[q.Clip];
+            introVoice.Play();  // stops the clip before it, if it still runs
+            introStop = Time.realtimeSinceStartup + q.Max;
+            log($"voice: the player plays {q.Clip} for {q.Max:0.0} s (the intro)");
         }
 
         void Say(HurtSound sound, string what)

@@ -115,13 +115,22 @@ namespace PerkeleRim::Garage
         state.visited = true;
     }
 
-    void WakeUp(RE::TESObjectREFR* a_marker)
+    void CartStart()
+    {
+        if (!state.visited) {
+            state.visited = true;
+            SKSE::log::info("garage: this save started in the Helgen cart, its first handover starts where Kumpo stands");
+        }
+    }
+
+    bool WakeUp(RE::TESObjectREFR* a_marker)
     {
         if (!a_marker || a_marker != state.wake || !state.fade) {
-            return;
+            return false;
         }
         RE::ImageSpaceModifierInstanceForm::Trigger(state.fade, 1.0f, nullptr);
         SKSE::log::info("garage: waking up in the shack");
+        return true;
     }
 
     std::optional<Spot> Van()

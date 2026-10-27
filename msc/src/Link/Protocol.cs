@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 41;
+        public const uint ProtocolVersion = 42;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -36,6 +36,7 @@ namespace PerkeleRim.Protocol
         public const uint PlayerGrounded = 0x8;
         public const uint PlayerBlocking = 0x10;
         public const uint PlayerChaseCamera = 0x20;
+        public const uint PlayerInGame = 0x40;
         public const uint NeedThirst = 0;
         public const uint NeedHunger = 1;
         public const uint NeedStress = 2;
@@ -89,6 +90,9 @@ namespace PerkeleRim.Protocol
         public const uint ImpactPiss = 2;
         public const uint ImpactVehicle = 3;
         public const uint ImpactPush = 4;
+        public const uint IntroBlackout = 1;
+        public const uint IntroWake = 2;
+        public const uint IntroHangover = 3;
         public const uint ShoutOther = 0;
         public const uint ShoutUnrelentingForce = 1;
         public const uint HurtHit = 0;
@@ -147,7 +151,8 @@ namespace PerkeleRim.Protocol
         GearText = 25,
         PlayerWashed = 26,
         DebugCommand = 27,
-        ConsumeEvent = 28,
+        IntroCue = 28,
+        ConsumeEvent = 29,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -578,6 +583,13 @@ namespace PerkeleRim.Protocol
     {
         public float hours;
         public uint flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct IntroCue
+    {
+        public uint cue;
+        public uint reserved;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

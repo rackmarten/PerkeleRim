@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MSC Voice Picker</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6a66; --line: #e3e1db;
+    --accent: #2f6f3e; --accent-soft: #e2efe4; --play: #1d1d1b; --focus: #3a62b8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161614; --panel: #1f1f1c; --text: #ecebe6; --muted: #9a9890; --line: #33322e;
+      --accent: #7fc78f; --accent-soft: #233a28; --play: #ecebe6; --focus: #8fb0f0;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, sans-serif; }
+  header, main { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+  header { padding-top: 24px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  p { margin: 0 0 10px; color: var(--muted); }
+  kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; background: var(--panel); }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0; }
+  .controls input[type=search], .controls select { padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; }
+  .controls input[type=search] { flex: 1 1 260px; }
+  .controls label { display: inline-flex; gap: 4px; align-items: center; font-size: 14px; color: var(--muted); }
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin: 0 0 8px; }
+  summary { padding: 10px 14px; cursor: pointer; display: flex; gap: 10px; align-items: baseline; }
+  summary .n { color: var(--muted); font-size: 13px; }
+  summary .picked { margin-left: auto; font-size: 13px; color: var(--accent); }
+  .lines { padding: 0 14px 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 6px; }
+  .row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 6px; border: 1px solid transparent; }
+  .row.playing { border-color: var(--play); }
+  .row.cursor { outline: 2px solid var(--focus); outline-offset: -1px; }
+  .row.long { opacity: .6; }
+  .row button { border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; flex: none; font: 600 12px system-ui; }
+  .row button.play { width: 28px; height: 28px; border-radius: 50%; font-size: 13px; }
+  .row button.chip { border-radius: 5px; padding: 2px 7px; color: var(--muted); }
+  .row button.chip.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .row .label { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; font-size: 13px; overflow-wrap: anywhere; }
+  .row .label small { color: var(--muted); }
+  .row .label .text { display: block; font-variant-numeric: normal; font-size: 14px; }
+  .row .label .en { display: block; font-size: 13px; color: var(--muted); }
+  .row .label .unsure { font-style: italic; color: var(--muted); }
+  .row .label mark { background: var(--accent-soft); color: inherit; border-radius: 2px; }
+  footer { position: sticky; bottom: 0; background: var(--panel); border-top: 1px solid var(--line); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; }
+  footer .count { font-variant-numeric: tabular-nums; }
+  footer button { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; cursor: pointer; }
+  footer button.primary { background: var(--accent); color: var(--panel); border-color: var(--accent); }
+  #toast { position: fixed; left: 50%; bottom: 70px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 6px 12px; border-radius: 6px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
+  #toast.show { opacity: 1; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MSC voice picker</h1>
+  <p>My Summer Car's sound clips from your own install, grouped the way MSC's MasterAudio groups them (Hangover, Swearing, Drunk, Teimo…), then clips other scene objects play, then clips nothing plays directly. Press ▶ to listen, <b>copy</b> to copy a line's reference (like <i>Hangover #3 (hangover03)</i>) for telling a session which line you mean, and <b>pick</b> to collect several and copy them all at once from the bar at the bottom.</p>
+  <p>Keys: <kbd>/</kbd> search, <kbd>↓</kbd><kbd>↑</kbd> or <kbd>j</kbd><kbd>k</kbd> move, <kbd>Space</kbd> or <kbd>Enter</kbd> play/stop, <kbd>c</kbd> copy, <kbd>p</kbd> pick, <kbd>Esc</kbd> stop and leave the search.</p>
+  <p id="transcripts"></p>
+  <div class="controls">
+    <input type="search" id="search" placeholder="Search names, groups and what's said (hangover, perkele, Teimo…)">
+    <select id="group"><option value="">All groups</option></select>
+    <label><input type="checkbox" id="voiced"> voice groups only</label>
+  </div>
+</header>
+<main id="list"></main>
+<footer>
+  <span class="count" id="count"></span>
+  <button id="only">Show picked only</button>
+  <button id="clear">Clear picks</button>
+  <button class="primary" id="copyPicked">Copy picked</button>
+</footer>
+<div id="toast"></div>
+<script src="index.js"></script>
+<script src="transcripts.js"></script>
+<script>
+const data = window.voiceIndex;
+// What each clip says, from transcribe.py (Whisper on your own machine; never committed). Optional.
+const transcripts = (window.transcripts && window.transcripts.clips) || {};
+const transcribed = Object.keys(transcripts).length;
+document.getElementById('transcripts').textContent = transcribed
+  ? `${transcribed} clips transcribed by Whisper (${window.transcripts.model}): Finnish as heard, then an English translation. Both are guesses (greyed when it wasn't sure), so listen before you pick. Search finds words in them.`
+  : 'No transcripts yet: run scripts/voice-picker.ps1 -Transcribe to search what is said.';
+const escape = t => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+// MasterAudio groups are MSC's voices and sound effects alike; these hold foley, not speech.
+const foley = /foley|^(car|motor|van|truck|muscle|valmet|crashes|starting|carbuilding|woodchop|bottles|bottlesempty|gui|386|slotmachine|walking|pig|store)$/i;
+const isVoice = g => !g.startsWith('scene: ') && !g.startsWith('(') && !foley.test(g);
+
+const ref = r => `${r.group} #${r.index} (${r.clip})`;
+const keyOf = r => `${r.group}#${r.index}`;
+const store = (() => { try { return JSON.parse(localStorage.getItem('msc-voice-picks')) || {}; } catch { return {}; } })();
+const picks = new Set(store.picks || []);
+const save = () => { try { localStorage.setItem('msc-voice-picks', JSON.stringify({ picks: [...picks] })); } catch {} };
+let onlyPicked = false;
+
+const toastEl = document.getElementById('toast');
+let toastTimer;
+function toast(text) {
+  toastEl.textContent = text;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1600);
+}
+async function copy(text, what) {
+  let ok = true;
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    // file:// pages without clipboard permission: the old way.
+    const t = document.createElement('textarea');
+    t.value = text; document.body.append(t); t.select(); ok = document.execCommand('copy'); t.remove();
+  }
+  toast(ok ? `Copied ${what}` : `Couldn't copy: ${text}`);
+}
+
+const player = new Audio();
+let playing = null;
+function play(r) {
+  if (playing) playing.row.classList.remove('playing');
+  if (playing === r && !player.paused) { player.pause(); playing = null; return; }
+  if (!r.file) { toast(`${r.clip} is longer than ${data.maxSeconds} s: rerun with -MaxSeconds 0 to hear it`); playing = null; return; }
+  player.src = r.file;
+  player.play().catch(e => toast(`Can't play ${r.file}: ${e.message}`));
+  playing = r;
+  r.row.classList.add('playing');
+}
+player.onended = () => { if (playing) playing.row.classList.remove('playing'); playing = null; };
+function stop() { player.pause(); if (playing) playing.row.classList.remove('playing'); playing = null; }
+
+const groupSel = document.getElementById('group');
+const list = document.getElementById('list');
+const sections = [];
+const rows = [];
+for (const [name, members] of Map.groupBy(data.rows, r => r.group)) {
+  const det = document.createElement('details');
+  det.innerHTML = `<summary><b>${escape(name)}</b><span class="n">${members.length} clip${members.length > 1 ? 's' : ''}</span><span class="picked"></span></summary><div class="lines"></div>`;
+  const grid = det.querySelector('.lines');
+  const section = { name, det, rows: [], voice: isVoice(name) };
+  for (const line of members) {
+    const r = { ...line, section };
+    const said = transcripts[r.id];
+    const row = document.createElement('div');
+    row.className = 'row' + (r.file ? '' : ' long');
+    row.innerHTML = `<button class="play" title="Play / stop">▶</button><span class="label">#${r.index} ${escape(r.clip)} <small>${r.seconds} s${r.variation !== r.clip ? ` · ${escape(r.variation)}` : ''}</small><span class="text"></span><span class="en"></span></span><button class="chip copy" title="Copy ${escape(ref(r))}">copy</button><button class="chip pick" title="Pick it for Copy picked">pick</button>`;
+    row.title = r.uses.join('\n');
+    row.querySelector('.play').onclick = () => { setCursor(r); play(r); };
+    row.querySelector('.copy').onclick = () => { setCursor(r); copy(ref(r), ref(r)); };
+    row.querySelector('.pick').onclick = () => { setCursor(r); toggle(r); };
+    r.row = row;
+    r.text = row.querySelector('.text');
+    r.en = row.querySelector('.en');
+    r.said = said?.text || '';
+    r.english = said?.english || '';
+    if (said) {
+      const unsure = said.confidence < 0.5 || said.noSpeech > 0.6;
+      r.text.classList.toggle('unsure', unsure);
+      r.en.classList.toggle('unsure', unsure);
+      r.text.title = `confidence ${said.confidence}`;
+    }
+    r.words = [r.group, r.clip, r.variation, `#${r.index}`, r.said, r.english, ...r.uses].join(' ').toLowerCase();
+    grid.append(row);
+    section.rows.push(r);
+    rows.push(r);
+  }
+  list.append(det);
+  sections.push(section);
+  const o = document.createElement('option');
+  o.value = name;
+  o.textContent = `${name} (${members.length})`;
+  groupSel.append(o);
+}
+
+function toggle(r) {
+  picks.has(keyOf(r)) ? picks.delete(keyOf(r)) : picks.add(keyOf(r));
+  save();
+  counts();
+}
+function counts() {
+  for (const r of rows) r.row.querySelector('.pick').classList.toggle('on', picks.has(keyOf(r)));
+  for (const s of sections) {
+    const n = s.rows.filter(r => picks.has(keyOf(r))).length;
+    s.det.querySelector('.picked').textContent = n ? `${n} picked` : '';
+  }
+  document.getElementById('count').textContent = `${picks.size} picked`;
+}
+
+// Every word of the search has to be in the clip's group, name, scene paths or transcript.
+function filter() {
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const terms = q.split(/\s+/).filter(Boolean);
+  const mark = terms.length ? new RegExp(terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi') : null;
+  const group = groupSel.value;
+  const voiced = document.getElementById('voiced').checked;
+  for (const s of sections) {
+    let shown = 0;
+    const inGroup = (!group || s.name === group) && (!voiced || s.voice);
+    for (const r of s.rows) {
+      const ok = inGroup && (!onlyPicked || picks.has(keyOf(r))) && terms.every(t => r.words.includes(t));
+      r.row.classList.toggle('hidden', !ok);
+      shown += ok;
+      const show = t => mark ? escape(t).replace(mark, m => `<mark>${m}</mark>`) : escape(t);
+      r.text.innerHTML = show(r.said);
+      r.en.innerHTML = show(r.english);
+    }
+    s.det.classList.toggle('hidden', !shown);
+    if (terms.length || group || onlyPicked) s.det.open = shown > 0;
+  }
+  if (cursor && cursor.row.classList.contains('hidden')) setCursor(null);
+}
+document.getElementById('search').oninput = filter;
+groupSel.onchange = filter;
+document.getElementById('voiced').onchange = filter;
+document.getElementById('only').onclick = e => {
+  onlyPicked = !onlyPicked;
+  e.target.textContent = onlyPicked ? 'Show all' : 'Show picked only';
+  filter();
+};
+document.getElementById('clear').onclick = () => {
+  if (!picks.size || !confirm('Clear every pick?')) return;
+  picks.clear();
+  save(); counts(); filter();
+};
+document.getElementById('copyPicked').onclick = () => {
+  const chosen = rows.filter(r => picks.has(keyOf(r)));
+  if (!chosen.length) { toast('Nothing picked yet'); return; }
+  copy(chosen.map(r => `- ${ref(r)}${r.english ? `: "${r.english}"` : ''}`).join('\n'), `${chosen.length} line${chosen.length > 1 ? 's' : ''}`);
+};
+
+// Keyboard: a cursor over the visible rows.
+let cursor = null;
+function setCursor(r) {
+  if (cursor) cursor.row.classList.remove('cursor');
+  cursor = r;
+  if (r) { r.section.det.open = true; r.row.classList.add('cursor'); r.row.scrollIntoView({ block: 'nearest' }); }
+}
+const visible = () => rows.filter(r => !r.row.classList.contains('hidden') && r.section.det.open);
+function move(step) {
+  const v = visible();
+  if (!v.length) return;
+  const i = cursor ? v.indexOf(cursor) : -1;
+  setCursor(v[Math.max(0, Math.min(v.length - 1, i < 0 ? 0 : i + step))]);
+}
+document.addEventListener('keydown', e => {
+  const inSearch = e.target.id === 'search';
+  if (e.key === 'Escape') { stop(); if (inSearch) e.target.blur(); return; }
+  if (inSearch) {
+    if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); e.target.blur(); move(cursor ? 0 : 1); }
+    return;
+  }
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT' || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key;
+  if (k === '/') { e.preventDefault(); document.getElementById('search').focus(); }
+  else if (k === 'ArrowDown' || k === 'j') { e.preventDefault(); move(1); }
+  else if (k === 'ArrowUp' || k === 'k') { e.preventDefault(); move(-1); }
+  else if ((k === ' ' || k === 'Enter') && cursor) { e.preventDefault(); play(cursor); }
+  else if (k === 'c' && cursor) copy(ref(cursor), ref(cursor));
+  else if (k === 'p' && cursor) toggle(cursor);
+});
+
+counts();
+filter();
+</script>
+</body>
+</html>

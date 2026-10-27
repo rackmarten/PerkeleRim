@@ -189,6 +189,9 @@ namespace PerkeleRim.Game
         // Spike "hurt <cause> [damage]": what PlayerHurt plays (Wire.Hurt*: 0 hit, 1 blocked, 2 fall, 3 crash, 4 low).
         public void Hurt(uint cause, float damage) => voice.Hurt(cause, damage, "spike");
 
+        // Spike "intro <cue>": what IntroCue plays (Wire.Intro*: 1 blackout, 2 wake).
+        public void Intro(uint cue) => voice.Intro(cue, "spike");
+
         // Spike commands "textures" (read an object's model and log it) and "items" (what Skyrim gets).
         public void InspectModel(string name) => models.Inspect(name);
         public void DumpItems() => items.Dump();
@@ -315,6 +318,7 @@ namespace PerkeleRim.Game
             // Skyrim has the blood ready before it is needed (shown when the player dies there).
             if (playing) models.IdForBuilt(BloodModel, () => ModelSender.Overlay(BloodModel, BloodTexture, log));
             if (playing) FillPose(ref state);
+            if (player != null) state.flags |= Wire.PlayerInGame;  // Skyrim's play mode hands over only then
             state.generation = island.Generation;
             link.WritePlayer(ref state);
             SendLookAt(link, playing);
@@ -438,6 +442,8 @@ namespace PerkeleRim.Game
                 voice.OnShout(payload, size);
             else if (type == MessageType.PlayerHurt)
                 voice.OnHurt(payload, size);
+            else if (type == MessageType.IntroCue)
+                voice.OnIntro(payload, size);
             else if (type == MessageType.StockShelves)
                 shelves.OnMessage(payload, size);
             else if (type == MessageType.LoadReset)

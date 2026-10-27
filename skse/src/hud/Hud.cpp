@@ -346,7 +346,10 @@ namespace PerkeleRim::Hud
             clip.SetMember("_x", RE::GFxValue(cx));
             clip.SetMember("_y", RE::GFxValue(cy));
 
-            RE::GFxValue text, box, handClip;
+            RE::GFxValue dot, text, box, handClip;
+            if (clip.GetMember("dot", &dot) && dot.IsDisplayObject()) {
+                dot.SetMember("_visible", RE::GFxValue(a_view.dot));
+            }
             clip.GetMember("text", &text);
             clip.GetMember("box", &box);
             if (clip.GetMember("hand", &handClip) && handClip.IsDisplayObject()) {
@@ -436,7 +439,7 @@ namespace PerkeleRim::Hud
             view = View{};
         }
         const auto needs = Quantize(view);
-        const bool textChanged = view.show != current.show || view.label != current.label || view.hand != current.hand ||
+        const bool textChanged = view.show != current.show || view.dot != current.dot || view.label != current.label || view.hand != current.hand ||
                                  view.subtitle != current.subtitle || view.gear != current.gear;
         const bool handsChanged = view.handsImage != current.handsImage || view.handsWidth != current.handsWidth ||
                                   view.handsHeight != current.handsHeight;
