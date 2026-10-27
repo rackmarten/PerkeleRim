@@ -243,6 +243,21 @@ Dumped 2026-10-16 with the spike's `voices` (lists every group under `MasterAudi
 
 PerkeleRim uses `swear01`..`16` and the `Human_` swears for shouts and for being hurt, `ouch1`..`10` as the hurt grunts and `Death` for Skyrim's death. Other people's voices are their own groups (`Teimo`, `Fleetari`, `Suski`, `Fighter` with `fighter_hit01`.., `Drunks`, ...).
 
+## 8. Drunk pass-out and knockout
+
+Not in the detail dump; read from the scene file (`level2`) by the strings around the FSM's states, so the action order is known but not every parameter.
+
+| Item | Value |
+|---|---|
+| GameObjects | `Systems/PassOut`, `Systems/KnockOut` |
+| FSM | `Activate` on both. PassOut idles in `Test alc`, KnockOut in `State 1` |
+| Variables | `SavePlayer` (PLAYER), `SavePlayerCam`, `WakePivot`, `PlayerPos`, `Distance` |
+| Threshold | `Test alc`: `PlayerDrunk` above 3.8 (FloatCompare, every frame) |
+
+PassOut's flow: `Test alc` -> `Check hunger` (the Finnish wedding achievement, `PassingOutTime` from hunger, a wait) -> `Still drunk check` (back to `Test alc` if sober enough) -> `Pass out` (activates the blackout screen, `Data.DrunkPassingOut` +1, `sleep_on`, `GameVolume` eased down) -> `Move` (PLAYER out of any vehicle, MouseLook off, `PlayerStop`, `PlayerCurrentVehicle = ""`) -> `State 2` (`PlayerSleeps`, global `PASSOUT`) -> `Calc rates` (needs rates for the time asleep) -> `Check time of day` / `Advance day` / `Check day` / `Monday` -> `Jail?` -> `Where?` (distance to `WakePivot`, PLAYER parented to `WakePivot`, a random pick) -> `Random pos` (a random child of `Spawn`), `Cottage` or `Pena` (Fittan's `DRUNKSPAWN`) -> `Set position` (`WakePivot` to `PlayerPos`) -> `Wake up` (`sleep_off`, `WAKEUP`, volume back) -> `AnimateWake` (turns `WakePivot` to stand up) -> `State 5` (a groan, PLAYER let go, MouseLook on, `PlayerSleeps`/`PlayerSeated`/`PlayerComputer`/`PlayerStop` false, the hangover) -> `Test alc`. KnockOut has the same states from `State 1` without the alcohol and spawn checks.
+
+PerkeleRim switches both FSMs off while the link is up and ends one that runs anyway (`msc/src/Game/PassOutGuard.cs`).
+
 ## Global variables of interest
 
 | Name | Type | Meaning (seen in dump) |
