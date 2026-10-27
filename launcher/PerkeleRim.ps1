@@ -257,10 +257,11 @@ for ($i = 0; $i -lt $sources.Count; $i++) {
 $shots = Join-Path $Root 'Screenshots'
 if (Set-ScreenshotDir (Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.ini') $shots) { Write-Host "Screenshots (F11) go to $shots" }
 
-# Who a new game's skipped Helgen sends Kumpo to (HelgenSide=Stormcloak for Ralof; Hadvar without
-# it). Only written to the plugin's ini when set here.
+# Who a new game's skipped Helgen sends Kumpo to (HelgenSide=Stormcloak for Ralof, Imperial or
+# nothing for Hadvar). Copied to the plugin's ini only when set here: without it the plugin's ini
+# keeps whatever it has.
 if (Set-PluginSetting (Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.ini') 'HelgenSide' $config['HelgenSide']) {
-    Write-Host "New games skip Helgen on the $(if ($config['HelgenSide']) { $config['HelgenSide'] } else { 'Imperial' }) side"
+    Write-Host "New games skip Helgen on the $($config['HelgenSide']) side"
 }
 
 # Skyrim lists active plugins in plugins.txt: its own in %LOCALAPPDATA%, or with MO2 the selected

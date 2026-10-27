@@ -111,12 +111,14 @@ TEST_CASE("after MSC came back from a restart it still waits for a calm moment")
     CHECK(Run(m, Ready(), 1.5f) == Say::HandOver);
 }
 
-TEST_CASE("F10 in Helgen is refused only while a scene has the player")
+TEST_CASE("F10 in Helgen is refused only while a scene has the player or Helgen is being skipped")
 {
     CHECK(PlayMode::F10Refused(true, false));   // the cart, the execution
     CHECK_FALSE(PlayMode::F10Refused(true, true));  // he can move: F10 is the way out of a stuck Unbound
     CHECK_FALSE(PlayMode::F10Refused(false, false));
     CHECK_FALSE(PlayMode::F10Refused(false, true));
+    CHECK(PlayMode::F10Refused(false, true, true));  // the skip's black and move to the garage
+    CHECK(PlayMode::F10Refused(true, true, true));
 }
 
 TEST_CASE("a scene that took the controls keeps the player until it lets go")

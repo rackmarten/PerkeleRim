@@ -1055,7 +1055,7 @@ namespace PerkeleRim::PlayerSync
             if (state.owned) {
                 Release("F10");
             } else if (auto* controls = RE::ControlMap::GetSingleton();
-                       PlayMode::F10Refused(Intro::Running(), controls && controls->IsMovementControlsEnabled())) {
+                       PlayMode::F10Refused(Intro::Running(), controls && controls->IsMovementControlsEnabled(), HelgenSkip::Skipping())) {
                 SKSE::log::info("player sync: F10 in the Helgen intro's scene, not handing over ({})", Intro::Describe());
                 RE::SendHUDMessage::ShowHUDMessage("Kumpo can't go over to My Summer Car until he's out of Helgen.");
             } else if (state.play.Waiting()) {

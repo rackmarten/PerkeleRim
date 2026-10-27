@@ -108,14 +108,14 @@ function Install-ModFile([string] $Source, [string] $DestDir) {
     return $true
 }
 
-# Sets $Key=$Value in the SKSE plugin's ini, keeping its other lines; an empty $Value takes the
-# key out. Written without a BOM: the plugin reads plain UTF-8. $true when it wrote.
+# Sets $Key=$Value in the SKSE plugin's ini, keeping its other lines; an empty $Value leaves the
+# ini alone, so a line set there by hand stays. Written without a BOM: the plugin reads plain
+# UTF-8. $true when it wrote.
 function Set-PluginSetting([string] $IniPath, [string] $Key, [string] $Value) {
+    if (-not $Value) { return $false }
     $old = if (Test-Path -LiteralPath $IniPath) { @(Get-Content -LiteralPath $IniPath -Encoding UTF8) } else { @() }
-    $others = @($old | Where-Object { $_ -notmatch "^\s*$([regex]::Escape($Key))\s*=" })
-    $lines = if ($Value) { $others + "$Key=$Value" } else { $others }
-    if ($Value -and $old -contains "$Key=$Value") { return $false }
-    if (-not $Value -and $others.Count -eq $old.Count) { return $false }
+    if ($old -contains "$Key=$Value") { return $false }
+    $lines = @($old | Where-Object { $_ -notmatch "^\s*$([regex]::Escape($Key))\s*=" }) + "$Key=$Value"
     New-Item -ItemType Directory -Force (Split-Path $IniPath) | Out-Null
     [IO.File]::WriteAllLines($IniPath, [string[]] $lines, (New-Object Text.UTF8Encoding $false))
     return $true

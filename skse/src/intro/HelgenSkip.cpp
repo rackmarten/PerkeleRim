@@ -137,9 +137,13 @@ namespace PerkeleRim::HelgenSkip
             const auto side = ParseSide(Ini::Value("HelgenSide"));
             if (state.dragonAttack) {
                 Method(state.dragonAttack, "Quest", "SetStage", static_cast<std::int32_t>(kRuinsStage));
+            } else {
+                SKSE::log::warn("helgen skip: no MQ101DragonAttack ({:08X}), Helgen isn't left in ruins", kDragonAttack);
             }
             if (state.beforeTheStorm) {
                 Method(state.beforeTheStorm, "Quest", "SetStage", static_cast<std::int32_t>(BeforeTheStormStage(side)));
+            } else {
+                SKSE::log::warn("helgen skip: no Before the Storm ({:08X}), Unbound stays unfinished and the main quest doesn't go on", kBeforeTheStorm);
             }
             SKSE::log::info("helgen skip: Unbound done, Before the Storm with {} (stage {}), Helgen in ruins", Friend(side), BeforeTheStormStage(side));
         }
@@ -148,7 +152,7 @@ namespace PerkeleRim::HelgenSkip
         {
             auto* spawn = Garage::Spawn();
             if (!spawn) {
-                SKSE::log::warn("helgen skip: no garage spawn marker, Kumpo wakes up off the cart where he is");
+                SKSE::log::error("helgen skip: PerkeleRim.esp has no garage spawn marker (not loaded, or built before it), Kumpo wakes up off the cart where he is");
                 return;
             }
             a_player->MoveTo(spawn);

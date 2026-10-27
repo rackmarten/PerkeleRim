@@ -8,8 +8,10 @@
 //    attack and POV controls are off;
 //  - every frame, the PlayerCharacter::Update hook places the player at the pose MSC reports.
 // A save's first handover wakes the player up in the shack next to the garage (Garage) and parks
-// the van on the garage's pit, unless the save started in the Helgen cart; the first handover near
-// the garage has MSC stock its shelves.
+// the van on the garage's pit. A new game skips Helgen (HelgenSkip) and fades Kumpo in at the
+// garage's spawn marker, so its first handover starts there, with the van on the pit too; a save
+// still running Unbound (Helgen skipped by hand or by another mod) hands over where Kumpo stands.
+// The first handover near the garage has MSC stock its shelves.
 // Taking over sends a WorldspaceChange with the player's spot, which MSC uses as the anchor of its
 // collision island, and starts CollisionSampler. A load door, fast travel or other jump sends a
 // new anchor; poses for older anchors are ignored. Ownership ends on F10 again, when the link
