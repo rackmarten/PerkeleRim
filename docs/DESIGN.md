@@ -71,6 +71,7 @@ Alternatives considered: Motor Town (best trucks/drift, but early access and har
 | Player movement, crouch, vehicle physics, physics items | MSC |
 | Player health | Skyrim (MSC's player never dies while handed over; its deaths cost Skyrim health) |
 | Drunkenness, hunger, thirst, urine, fatigue | MSC |
+| Money | Skyrim (its gold; MSC's `PlayerMoney` follows both ways) |
 | Crime / bounty | Skyrim (native crime system) |
 | Rendering | Skyrim |
 
@@ -133,7 +134,7 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 
 - Vehicles can't go through load doors: park at city gates; the player walks in on foot.
 - The island has the land as a heightfield (0.9 m apart) and statics as their real collision; spheres and transform wrappers that don't read as a rotation are left out (counted in the log as skipped), and tree trunks are 8-sided prisms. Doors, gates and trapdoors are read again only once they have stopped moving (about 0.5 s after), so you can't slip through a double door while it is still opening as you can in Skyrim.
-- Skyrim inventory, barter and magic menus are unavailable while MSC controls the player.
+- While MSC controls the player, Skyrim's inventory (Tab) works for armor, food and drink, but weapons and spells can't be equipped, and the Favorites menu opens with R on foot (Q is MSC's lean).
 - MSC is first-person only; third-person would need a body model and animation.
 - MSC vehicles are fragile and can kill the player in crashes; may need patching for Skyrim terrain.
 - Two games running at once: expect high CPU/GPU load.
@@ -189,7 +190,6 @@ PerkeleRim/
 - Best way to draw MSC arms and items in Skyrim's first-person view.
 - How to trigger MSC emotes from a cleaner input layer instead of raw keys.
 - Garage spot: (15170, -14516), flat tundra south-west of the Whiterun stables, open toward 31.7 degrees east of north; picked in game (the first pick at the carriage stop sat on the road). See tools/README.md to move it.
-- Whether to sync MSC money with Skyrim gold.
 
 ## 15. References
 

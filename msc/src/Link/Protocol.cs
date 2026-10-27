@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 42;
+        public const uint ProtocolVersion = 43;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -37,6 +37,8 @@ namespace PerkeleRim.Protocol
         public const uint PlayerBlocking = 0x10;
         public const uint PlayerChaseCamera = 0x20;
         public const uint PlayerInGame = 0x40;
+        public const uint PlayerTools = 0x80;
+        public const uint ConsumeDrink = 0x1;
         public const uint NeedThirst = 0;
         public const uint NeedHunger = 1;
         public const uint NeedStress = 2;
@@ -107,7 +109,8 @@ namespace PerkeleRim.Protocol
         public const uint PocketChips = 4;
         public const uint PocketMacaron = 5;
         public const uint PocketCigarettes = 6;
-        public const uint PocketKinds = 7;
+        public const uint PocketGold = 7;
+        public const uint PocketKinds = 8;
         public const uint MscSnapshotPathMax = 1024;
         public const uint ScreenshotPathMax = 1024;
         public const uint TimeBed = 0x1;
@@ -152,6 +155,7 @@ namespace PerkeleRim.Protocol
         PlayerWashed = 26,
         DebugCommand = 27,
         IntroCue = 28,
+        ConsumeEvent = 29,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -652,7 +656,17 @@ namespace PerkeleRim.Protocol
     {
         public uint session;
         public uint appliedSeq;
-        public fixed uint counts[7];
+        public fixed uint counts[8];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct ConsumeEvent
+    {
+        public float hunger;
+        public float thirst;
+        public float urine;
+        public float drunk;
+        public uint flags;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

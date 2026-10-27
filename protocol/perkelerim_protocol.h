@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 42;
+    inline constexpr std::uint32_t kProtocolVersion = 43;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -112,6 +112,7 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPlayerGrounded = 0x8;  // PlayerState.flags: MSC's player stands on something
     inline constexpr std::uint32_t kPlayerBlocking = 0x10;  // PlayerState.flags: MSC's player guards (right click), Skyrim blocks
     inline constexpr std::uint32_t kPlayerChaseCamera = 0x20;  // PlayerState.flags: MSC's chase camera (its F9, in a vehicle) is on: eye, roll and fov are that camera's, view* its direction
+    inline constexpr std::uint32_t kPlayerTools = 0x80;  // PlayerState.flags (v43): MSC's tools are out instead of the hand (its 2); Skyrim shows MSC's tools icon
     inline constexpr std::uint32_t kPlayerInGame = 0x40;  // PlayerState.flags (v41): MSC's player exists (its game is loaded), set whoever has the player; play mode hands over only then
 
     // PlayerState.needs order, MSC's globals: PlayerThirst, PlayerHunger, PlayerStress, PlayerUrine,
@@ -412,6 +413,7 @@ namespace PerkeleRim::Protocol
         PlayerWashed = 26,     // Skyrim -> MSC
         DebugCommand = 27,     // Skyrim -> MSC
         IntroCue = 28,         // Skyrim -> MSC
+        ConsumeEvent = 29,     // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -677,8 +679,25 @@ namespace PerkeleRim::Protocol
         std::uint32_t reserved;
     };
 
+    // ConsumeEvent: the player ate or drank something in Skyrim (its inventory, a hotkey). What it
+    // does to MSC's needs, from protocol/cpp/food.h; MSC adds each to its global (PlayerHunger,
+    // PlayerThirst, PlayerUrine, PlayerDrunkAdjusted), needs not below 0, drunk 0..8. With
+    // kConsumeDrink MSC also shows its drinking and burp once the menu is closed (once for any
+    // number of drinks), its needs put back after.
+    inline constexpr std::uint32_t kConsumeDrink = 0x1;  // ConsumeEvent.flags: a drink from a bottle
+
+    struct ConsumeEvent
+    {
+        float         hunger;  // < 0: less hungry
+        float         thirst;  // < 0: less thirsty
+        float         urine;
+        float         drunk;   // added to PlayerDrunkAdjusted
+        std::uint32_t flags;   // kConsume*
+    };
+
     // The pocket: Skyrim's inventory holds MSC's beer, empty bottles, food and cigarettes as
-    // PerkeleRim.esp items, one kind each (kPocket*). Skyrim's counts are the truth.
+    // PerkeleRim.esp items, one kind each (kPocket*), and MSC's money as Skyrim's gold. Skyrim's
+    // counts are the truth.
     inline constexpr std::uint32_t kPocketBeer = 0;        // PocketChange.kind, PocketCounts.counts index
     inline constexpr std::uint32_t kPocketBottle = 1;      // an empty beer bottle
     inline constexpr std::uint32_t kPocketSausages = 2;
@@ -686,7 +705,8 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPocketChips = 4;       // potato chips
     inline constexpr std::uint32_t kPocketMacaron = 5;     // a macaron box
     inline constexpr std::uint32_t kPocketCigarettes = 6;  // MSC's PlayerCigarettes, one item per cigarette
-    inline constexpr std::uint32_t kPocketKinds = 7;
+    inline constexpr std::uint32_t kPocketGold = 7;        // MSC's PlayerMoney, one gold per mark (Skyrim.esm Gold001)
+    inline constexpr std::uint32_t kPocketKinds = 8;
 
     // PocketChange: MSC put delta of a kind into the pocket (> 0) or took it out (< 0). seq counts
     // up from 1 per session (MSC picks a new nonzero session each time its link comes up).
@@ -704,7 +724,7 @@ namespace PerkeleRim::Protocol
     {
         std::uint32_t session;
         std::uint32_t appliedSeq;
-        std::uint32_t counts[7];  // by kPocket*
+        std::uint32_t counts[8];  // by kPocket*
     };
 
     // ---- Models (MSC -> Skyrim) ----
@@ -961,7 +981,9 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(Consumed) == 8);
     static_assert(sizeof(PocketChange) == 16);
     static_assert(offsetof(PocketChange, delta) == 12);
-    static_assert(sizeof(PocketCounts) == 36);
+    static_assert(sizeof(PocketCounts) == 40);
+    static_assert(sizeof(ConsumeEvent) == 20);
+    static_assert(offsetof(ConsumeEvent, flags) == 16);
     static_assert(offsetof(PocketCounts, counts) == 8);
     static_assert(sizeof(ModelChunk) == 16);
     static_assert(offsetof(ModelChunk, offset) == 8);

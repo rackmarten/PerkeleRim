@@ -9,15 +9,17 @@
     scripts/skyrim-key.ps1 -Screenshot shot.png -Delay 2   # no key, just a screenshot after 2 s
     scripts/skyrim-key.ps1 -Console 'load PerkeleRim-Kumpo' # types a console command (~, the text, Enter, ~)
     scripts/skyrim-key.ps1 -Console 'completequest MQ101'
+    scripts/skyrim-key.ps1 -Key 4                          # number keys 1 to 8 (the hotbar)
 #>
 param(
-    [ValidateSet('', 'F10', 'F11', 'F5', 'F9', 'Escape', 'E', 'Space', 'M', 'P', 'J', 'I', 'T', 'Enter', 'Up', 'Down')] [string] $Key = '',
+    [ValidateSet('', 'F10', 'F11', 'F5', 'F9', 'Escape', 'E', 'Space', 'M', 'P', 'J', 'I', 'T', 'Enter', 'Up', 'Down', '1', '2', '3', '4', '5', '6', '7', '8')] [string] $Key = '',
     [string] $Console,  # letters, digits, space, - _ . only (Skyrim's console ignores case)
     [string] $Screenshot,
     [double] $Delay = 0
 )
 
 $scanCodes = @{ F10 = 0x44; F11 = 0x57; F5 = 0x3F; F9 = 0x43; Escape = 0x01; E = 0x12; Space = 0x39; M = 0x32; P = 0x19; J = 0x24; I = 0x17; T = 0x14; Enter = 0x1C; Up = 0x48; Down = 0x50 }  # the arrows are extended keys
+foreach ($n in 1..8) { $scanCodes["$n"] = 0x01 + $n }  # number keys (the hotbar): DIK_1 = 0x02
 
 Add-Type -AssemblyName System.Drawing
 Add-Type -Namespace PerkeleRim -Name SkyrimKey -MemberDefinition @'
@@ -26,6 +28,8 @@ Add-Type -Namespace PerkeleRim -Name SkyrimKey -MemberDefinition @'
 [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
 [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
 [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+[DllImport("user32.dll")] public static extern short VkKeyScan(char ch);
+[DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint mapType);
 public struct RECT { public int Left, Top, Right, Bottom; }
 '@
 

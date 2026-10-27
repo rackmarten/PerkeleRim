@@ -27,6 +27,11 @@ namespace PerkeleRim.Game
 
         static int fedFrame = -1;
 
+        // Keys pressed by PerkeleRim itself (MSC's 1 and 2 around a drink): held until that frame.
+        static readonly Dictionary<KeyCode, int> pulses = new Dictionary<KeyCode, int>();
+
+        public static void Pulse(KeyCode key, int frames = 3) { pulses[key] = Time.frameCount + frames; }
+
         static bool On
         {
             get
@@ -61,6 +66,7 @@ namespace PerkeleRim.Game
             var k = prevKeys; prevKeys = curKeys; curKeys = k;
             curKeys.Clear();
             foreach (var key in Keys) curKeys.Add(key);
+            foreach (var pulse in pulses) if (pulse.Value >= f) curKeys.Add(pulse.Key);
             var b = prevButtons; prevButtons = curButtons; curButtons = b;
             curButtons.Clear();
             foreach (var btn in Buttons) curButtons.Add(btn);

@@ -14,14 +14,18 @@ namespace PerkeleRim::Hud
         // Needs bars, top left under Skyrim's own HUD messages (about 3 lines), clear of the inventory and map.
         constexpr double kNeedsLeft = 40.0;     // from the visible frame's left edge
         constexpr double kNeedsTop = 110.0;     // first row's top, down from the visible frame's top edge
+        constexpr double kToolsRight = 60.0;    // MSC's tools icon center, from the visible frame's right edge
+        constexpr double kToolsTop = 70.0;      // and down from its top edge, where MSC shows it
         constexpr double kNeedSize = 14.0;      // label font size
         constexpr double kNeedRow = 18.0;
         constexpr double kNeedLabelWidth = 80.0;
         constexpr double kNeedBarWidth = 120.0, kNeedBarHeight = 8.0;
-        constexpr double kNeedHigh = 0.8;       // a bar this full turns red
         constexpr const char* kNeedNames[] = { "Thirst", "Hunger", "Stress", "Urine", "Fatigue", "Dirtiness", "Drunk" };
-        // A full bar: needs run 0..100; MSC's drunk level 0..8, but 2.5 is already deadly in water.
-        constexpr float kNeedFull[] = { 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 4.0f };
+        // A full bar: needs run up to 200, where MSC's player dies of them (its own HUD stops at 100, so
+        // 100 and 180 looked the same); MSC's drunk level 0..8, but 2.5 is already deadly in water.
+        constexpr float kNeedFull[] = { 200.0f, 200.0f, 200.0f, 200.0f, 200.0f, 200.0f, 4.0f };
+        // From here a bar is red (MSC's own HUD turns red above 100), marked on the bar.
+        constexpr float kNeedWarn[] = { 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 2.5f };
         constexpr std::size_t   kRows = 7;
         constexpr std::size_t kUrine = 3;
         constexpr std::uint32_t kUrineColor = 0xF2D21B, kUrineHighColor = 0xFF7A00;
@@ -131,6 +135,21 @@ namespace PerkeleRim::Hud
             Rect(a_clip, -10.0, -3.0, -7.4, 0.5);
         }
 
+        // MSC's tools icon: a wrench and a screwdriver side by side, white, as MSC shows them top right.
+        void DrawTools(RE::GFxValue& a_clip)
+        {
+            Circle(a_clip, 0x000000, 40.0, 17.0);
+            // Wrench: open jaw on top (two prongs), then the shaft.
+            Rect(a_clip, -10.0, -11.0, -7.5, -5.0);
+            Rect(a_clip, -4.5, -11.0, -2.0, -5.0);
+            Rect(a_clip, -10.0, -6.0, -2.0, -3.0);
+            Rect(a_clip, -7.5, -3.0, -4.5, 11.0);
+            // Screwdriver: handle, then the thin blade.
+            Rect(a_clip, 2.0, -11.0, 10.0, -8.0);
+            Rect(a_clip, 4.0, -8.0, 8.0, 1.0);
+            Rect(a_clip, 5.0, 1.0, 7.0, 11.0);
+        }
+
         // A single-line text field in Skyrim's HUD font, false if Scaleform refused it.
         bool MakeText(RE::GFxMovieView* a_movie, RE::GFxValue& a_parent, const char* a_name, double a_depth, double a_x, double a_y,
             double a_width, double a_size, const char* a_align, std::uint32_t a_color, RE::GFxValue& a_text)
@@ -189,6 +208,12 @@ namespace PerkeleRim::Hud
             a_clip.CreateEmptyMovieClip(&gearBox, "gearBox", 8);
             MakeText(a_movie, a_clip, "gear", 9.0, -kGearWidth * 0.5, 0.0, kGearWidth, kGearSize, "center", 0xFFFFFF, gear);
 
+            RE::GFxValue toolsClip;
+            if (a_clip.CreateEmptyMovieClip(&toolsClip, "tools", 10)) {
+                DrawTools(toolsClip);
+                toolsClip.SetMember("_visible", RE::GFxValue(false));
+            }
+
             RE::GFxValue needs;
             if (a_clip.CreateEmptyMovieClip(&needs, "needs", 7)) {
                 for (std::size_t i = 0; i < std::size(kNeedNames); i++) {
@@ -201,6 +226,14 @@ namespace PerkeleRim::Hud
                     }
                     needs.CreateEmptyMovieClip(&bar, barName.c_str(), 30 + static_cast<std::int32_t>(i));
                 }
+                // Money, as MSC shows it under its bars: the label, then the number on a dark box.
+                const double y = static_cast<double>(kRows) * kNeedRow;
+                RE::GFxValue name, value, box;
+                if (MakeText(a_movie, needs, "moneyName", 50.0, 0.0, y - 3.0, kNeedLabelWidth, kNeedSize, "left", kNeedColor, name)) {
+                    name.SetText("Money");
+                }
+                needs.CreateEmptyMovieClip(&box, "moneyBox", 51);
+                MakeText(a_movie, needs, "money", 52.0, kNeedLabelWidth + 3.0, y - 3.0, kNeedBarWidth, kNeedSize, "left", kNeedColor, value);
             }
             SKSE::log::info("hud: layer created in the HUD movie");
             return true;
@@ -225,7 +258,7 @@ namespace PerkeleRim::Hud
                     continue;
                 }
                 const double fraction = Fraction(a_view, i);
-                const bool   high = fraction >= kNeedHigh;
+                const bool   high = a_view.needs[i] >= kNeedWarn[i];
                 const auto   color = i == kUrine ? (high ? kUrineHighColor : kUrineColor) : (high ? kNeedHighColor : kNeedColor);
                 const double x0 = kNeedLabelWidth, y0 = static_cast<double>(i) * kNeedRow + 4.0;
                 Call(bar, "clear", {});
@@ -233,6 +266,8 @@ namespace PerkeleRim::Hud
                 if (fraction > 0.0) {
                     Fill(bar, color, 90.0, x0, y0, x0 + kNeedBarWidth * fraction, y0 + kNeedBarHeight);
                 }
+                const double warn = x0 + kNeedBarWidth * (kNeedWarn[i] / kNeedFull[i]);
+                Fill(bar, 0x808080, 80.0, warn - 0.5, y0 - 1.0, warn + 0.5, y0 + kNeedBarHeight + 1.0);
             }
         }
 
@@ -404,13 +439,35 @@ namespace PerkeleRim::Hud
                 }
             }
 
+            RE::GFxValue toolsClip;
+            if (clip.GetMember("tools", &toolsClip) && toolsClip.IsDisplayObject()) {
+                toolsClip.SetMember("_visible", RE::GFxValue(a_view.tools));
+                toolsClip.SetMember("_x", RE::GFxValue(static_cast<double>(rect.right) - kToolsRight - cx));
+                toolsClip.SetMember("_y", RE::GFxValue(static_cast<double>(rect.top) + kToolsTop - cy));
+            }
+
             RE::GFxValue needs;
             if (clip.GetMember("needs", &needs) && needs.IsDisplayObject()) {
-                needs.SetMember("_visible", RE::GFxValue(a_view.hasNeeds));
+                needs.SetMember("_visible", RE::GFxValue(a_view.hasNeeds || a_view.money >= 0));
                 needs.SetMember("_x", RE::GFxValue(static_cast<double>(rect.left) + kNeedsLeft - cx));
                 needs.SetMember("_y", RE::GFxValue(static_cast<double>(rect.top) + kNeedsTop - cy));
                 if (a_view.hasNeeds) {
                     DrawNeeds(needs, a_view);
+                }
+                RE::GFxValue moneyName, money, moneyBox;
+                needs.GetMember("moneyName", &moneyName);
+                needs.GetMember("money", &money);
+                needs.GetMember("moneyBox", &moneyBox);
+                const bool hasMoney = a_view.money >= 0;
+                if (moneyName.IsDisplayObject() && money.IsDisplayObject() && moneyBox.IsDisplayObject()) {
+                    moneyName.SetMember("_visible", RE::GFxValue(hasMoney));
+                    money.SetMember("_visible", RE::GFxValue(hasMoney));
+                    money.SetText(std::to_string(hasMoney ? a_view.money : 0).c_str());
+                    Call(moneyBox, "clear", {});
+                    if (hasMoney) {
+                        const double x0 = kNeedLabelWidth, y0 = static_cast<double>(kRows) * kNeedRow + 1.0;
+                        Fill(moneyBox, 0x000000, 55.0, x0 - 1.0, y0 - 1.0, x0 + kNeedBarWidth + 1.0, y0 + kNeedSize + 1.0);
+                    }
                 }
             }
         }
@@ -440,7 +497,8 @@ namespace PerkeleRim::Hud
         }
         const auto needs = Quantize(view);
         const bool textChanged = view.show != current.show || view.dot != current.dot || view.label != current.label || view.hand != current.hand ||
-                                 view.subtitle != current.subtitle || view.gear != current.gear;
+                                 view.subtitle != current.subtitle || view.gear != current.gear || view.tools != current.tools ||
+                                 view.money != current.money;
         const bool handsChanged = view.handsImage != current.handsImage || view.handsWidth != current.handsWidth ||
                                   view.handsHeight != current.handsHeight;
         const bool handsLoading = !view.handsImage.empty() && !handsSized;

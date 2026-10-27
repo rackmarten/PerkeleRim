@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Skyrim's food and drink feed Kumpo: eating lowers My Summer Car's hunger, drinks lower thirst, and ale, mead, wine, brandy and Skooma raise his drunk level by strength. A bottle of alcohol leaves an Empty Bottle in the inventory, ready to throw, and once the inventory is closed Kumpo drinks and burps in My Summer Car (once, however many he had). MSC Beer and MSC's food can be eaten and drunk from Skyrim's inventory too.
+- Gold is Kumpo's money: My Summer Car's money follows Skyrim's gold both ways (one mark per gold), and shows as Money under the needs bars. The Skyrim save is the truth, so loading a save brings its money back.
+- Skyrim's favorites hotkeys are Kumpo's hotbar: three new powers (Empty Hands, Tools, Throw Empty Bottle), MSC Beer, MSC's food and any Skyrim food or drink can be bound to 1 to 8 in Skyrim's Favorites menu, which R opens on foot. The first time a save meets PerkeleRim its favorites get 1 Empty Hands, 2 Tools, 3 Throw Empty Bottle, 4 MSC Beer and 5 to 8 MSC's food; unbound numbers do nothing. Beer and food work with the tools out (Kumpo puts them away for a drink and takes them back out), and the tools icon shows top right while they're out. 3 is a throwing stance: after a throw the next empty bottle comes out by itself, and switching to another number puts the bottle in hand away first.
 - Play mode: no more F10. Loading a save (the PerkeleRim-Kumpo starter, your own, a quickload, the reload after a death) hands Kumpo to My Summer Car by itself a couple of seconds after it has loaded, and again after quitting to the main menu and loading another one. If My Summer Car isn't running, Skyrim says so and Kumpo goes over once it is (also when MSC is still loading, or drops out mid-game). F10 stays as a debug toggle (protocol v41).
 - Kumpo's Helgen intro, from the most liked comment on the PerkeleRim video: Kumpo drank one beer too many in My Summer Car and wakes up in Skyrim's Helgen cart. A new game opens on black with him snoring, then groaning MSC's own hangover line ("Damn, that was definitely the last time I drink anything. Oh satan, what a feeling."), and after Ralof's "Hey, you. You're finally awake." he says Perkele. Captions show each line. Helgen plays with Skyrim's own controls; Kumpo goes over to My Summer Car once he's out of the keep's cave, where he stands (the van parks next to him). Saves that never had the handover still wake him in the shack bed by the garage, with the same hangover line, so both start the same way: a night out, then Skyrim.
 - Kumpo's thu'um: Unrelenting Force yells MSC's own Perkele a syllable per word of power, "PER" for one word, "PER-KE" for two and "PER-KE-LE!" for all three. The clip is cut at runtime from your own My Summer Car, nothing from the game is shipped.
@@ -17,8 +20,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Setup in the launcher: the first time, Start PerkeleRim.bat finds My Summer Car and Skyrim (Steam libraries, Steam's own install records, or folders you pick), lists what's missing of MSCLoader, SKSE and Address Library, opens their download pages and waits while you install them, then installs PerkeleRim into both games. Skyrim's SKSE build is checked against the Skyrim version too.
 - Mod Organizer 2: when MO2 manages your Skyrim, the launcher asks once whether to start Skyrim through it; then Address Library may be an MO2 mod, `PerkeleRim.esp` is ticked in MO2's selected profile, and an older PerkeleRim installed as an MO2 mod gets a warning.
 
+### Changed
+
+- Saves from 0.1.x keep their MSC Beer, Sausages, Pizza, Potato Chips and Macaron Box: they become food items under the same IDs (tested in game on a 0.1.1 save, which loaded them and ate and drank them from the inventory).
+
+### Removed
+
+- The endless pocket (beer, bottles and food topped back up) and mead and ale turning into MSC Beer when picked up: mead stays mead and is drunk in Skyrim.
+
 ### Fixed
 
+- Sleeping in a Skyrim bed while Kumpo is in My Summer Car counts as sleep again, not waiting: 8 hours in a bed take his fatigue to 0 (it was read as waiting, which takes only part of it).
+- The needs bars show up to 200, where a need kills Kumpo, with a mark at 100 where they turn red, so a beer or a sleep that takes 30 off a need above 100 shows.
 - My Summer Car started from Steam after a PerkeleRim session keeps your own resolution and graphics quality: the launcher puts them back once MSC closes (PerkeleRim runs MSC in a small window at its lowest quality, and Unity kept that). If an earlier PerkeleRim already left MSC at 640x480, set your resolution and quality in MSC once more and they stay.
 - MSCLoader's console (~) stays quiet during play: it shows only the link coming up or going down and anything that failed. Every PerkeleRim line still goes to `output_log.txt`.
 - The launcher no longer stops at a Steam library on a drive that isn't there any more.
