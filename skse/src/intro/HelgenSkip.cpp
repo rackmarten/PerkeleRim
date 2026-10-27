@@ -12,17 +12,23 @@ namespace PerkeleRim::HelgenSkip
     {
         constexpr RE::FormID kPrisonerCuffsPlayer = 0x10E039;  // Skyrim.esm, equipped in the cart
         constexpr RE::FormID kSittingAngleLimit = 0x07F8F0;    // Skyrim.esm global, 2.618 in the cart, 0 once out of it
+        // Skyrim.esm's carriage travel black: FadeOutGame's fader lets go before the move's load
+        // screen, so the hold keeps it black through the move and the back fades it up (2 s).
+        constexpr RE::FormID kFadeToBlackHoldImod = 0x0F756E;
+        constexpr RE::FormID kFadeToBlackBackImod = 0x0F756F;
         constexpr float      kArrivedUnits = 256.0f;           // this close to the spawn marker is there
         constexpr auto       kName = "Kumpo";
 
         struct State
         {
-            RE::TESQuest*  unbound = nullptr;
-            RE::TESQuest*  beforeTheStorm = nullptr;
-            RE::TESQuest*  dragonAttack = nullptr;
-            RE::TESForm*   cuffs = nullptr;
-            RE::TESGlobal* sittingAngle = nullptr;
-            Machine        machine;
+            RE::TESQuest*              unbound = nullptr;
+            RE::TESQuest*              beforeTheStorm = nullptr;
+            RE::TESQuest*              dragonAttack = nullptr;
+            RE::TESForm*               cuffs = nullptr;
+            RE::TESGlobal*             sittingAngle = nullptr;
+            RE::TESImageSpaceModifier* hold = nullptr;
+            RE::TESImageSpaceModifier* back = nullptr;
+            Machine                    machine;
         } state;
 
         RE::BSScript::Internal::VirtualMachine* Vm()
@@ -150,6 +156,21 @@ namespace PerkeleRim::HelgenSkip
             SKSE::log::info("helgen skip: moving Kumpo to the garage");
         }
 
+        // After the move from the cart's forced clear weather the garage sat in fog for about half a
+        // minute; forcing the sky's current weather again while it's black clears it at once.
+        void SettleWeather()
+        {
+            auto* sky = RE::Sky::GetSingleton();
+            if (!sky || !sky->currentWeather) {
+                return;
+            }
+            const auto* from = sky->lastWeather;
+            const float pct = sky->currentWeatherPct;
+            sky->ForceWeather(sky->currentWeather, false);
+            SKSE::log::info("helgen skip: weather {:08X} settled (was {:.0f}% over from {:08X})", sky->currentWeather->GetFormID(), pct * 100.0f,
+                from ? from->GetFormID() : 0);
+        }
+
         bool Arrived(RE::PlayerCharacter* a_player)
         {
             auto* spawn = Garage::Spawn();
@@ -166,8 +187,10 @@ namespace PerkeleRim::HelgenSkip
         state.dragonAttack = RE::TESForm::LookupByID<RE::TESQuest>(kDragonAttack);
         state.cuffs = RE::TESForm::LookupByID(kPrisonerCuffsPlayer);
         state.sittingAngle = RE::TESForm::LookupByID<RE::TESGlobal>(kSittingAngleLimit);
-        SKSE::log::info("helgen skip: Before the Storm {}, dragon attack {}, side {}", state.beforeTheStorm ? "found" : "missing",
-            state.dragonAttack ? "found" : "missing", Friend(ParseSide(Ini::Value("HelgenSide"))));
+        state.hold = RE::TESForm::LookupByID<RE::TESImageSpaceModifier>(kFadeToBlackHoldImod);
+        state.back = RE::TESForm::LookupByID<RE::TESImageSpaceModifier>(kFadeToBlackBackImod);
+        SKSE::log::info("helgen skip: Before the Storm {}, dragon attack {}, side {}, hold black {}", state.beforeTheStorm ? "found" : "missing",
+            state.dragonAttack ? "found" : "missing", Friend(ParseSide(Ini::Value("HelgenSide"))), state.hold && state.back ? "found" : "missing");
     }
 
     void OnNewGame()
@@ -220,6 +243,9 @@ namespace PerkeleRim::HelgenSkip
             Static("Game", "FadeOutGame", true, true, 0.0f, float{ kFadeOutSeconds });
             break;
         case Step::Release:
+            if (state.hold) {
+                RE::ImageSpaceModifierInstanceForm::Trigger(state.hold, 1.0f, nullptr);
+            }
             OffTheCart(player);
             MakeKumpo(player);
             Garage::SkippedHelgen();
@@ -231,7 +257,14 @@ namespace PerkeleRim::HelgenSkip
         case Step::FadeIn:
             SKSE::log::info("helgen skip: {}, fading in ({}, {})", state.machine.GaveUp() ? "Kumpo never got to the garage" : "Kumpo is at the garage",
                 Intro::Describe(), Describe());
+            SettleWeather();
             Static("Game", "FadeOutGame", false, true, 0.0f, float{ kFadeInSeconds });
+            if (state.hold) {
+                RE::ImageSpaceModifierInstanceForm::Stop(state.hold);
+                if (state.back) {
+                    RE::ImageSpaceModifierInstanceForm::Trigger(state.back, 1.0f, nullptr);
+                }
+            }
             break;
         default:
             break;
