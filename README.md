@@ -31,7 +31,7 @@ Then:
 
 1. Download `PerkeleRim-<version>.zip` from [Releases](https://github.com/rackmarten/PerkeleRim/releases/latest) and extract it anywhere (not inside a game folder).
 2. Double-click **Start PerkeleRim.bat**. The first time, a short setup finds both games (or lets you pick their folders), checks for MSCLoader, SKSE and Address Library and opens the download pages of anything missing, and waits while you install it. Then, and every time after, it installs or updates the mod and starts both games (My Summer Car minimizes itself). No mod manager needed.
-3. Play in Skyrim only. Load the **PerkeleRim-Kumpo** save (Anniversary Edition only; on Special Edition start a new game or load your own) and press **F10** to hand over to My Summer Car. Leave MSC minimized.
+3. Play in Skyrim only. Load the **PerkeleRim-Kumpo** save (Anniversary Edition only) or one of your own, and Kumpo goes over to My Summer Car by himself once it has loaded. Or start a new game: Kumpo drinks one beer too many in My Summer Car and wakes up in the Helgen cart, and goes over once he's out of Helgen. Leave MSC minimized.
 
 <details>
 <summary>What Start PerkeleRim.bat does, in detail</summary>
@@ -42,7 +42,7 @@ Every time you run it, it:
 - tells you if SKSE, Address Library or MSCLoader is missing (or is for another Skyrim version) and offers to open their download pages,
 - installs or updates the mod (the SKSE plugin and `PerkeleRim.esp` in Skyrim, enabled in `plugins.txt`; the MSCLoader mod where MSCLoader keeps mods),
 - gives My Summer Car a starter save (needs reset to fresh) when you have none, never over yours,
-- adds a starter Skyrim save, **PerkeleRim-Kumpo** (a male Nord just out of Helgen, before his first F10), next to your own saves, never over one (Anniversary Edition only: Special Edition 1.5.97 can't load it),
+- adds a starter Skyrim save, **PerkeleRim-Kumpo** (a male Nord just out of Helgen, never handed over yet), next to your own saves, never over one (Anniversary Edition only: Special Edition 1.5.97 can't load it),
 - starts My Summer Car in a small window that minimizes itself and continues your MSC save, then starts Skyrim through SKSE,
 - puts My Summer Car's own resolution and quality back once MSC closes, so MSC started from Steam afterwards looks as you set it up.
 
@@ -67,13 +67,13 @@ Tip: playing your own character? Make him a male Nord, like the starter save's K
 
 ## Keys
 
-F10 hands the player to My Summer Car and back. While MSC has the player you never need its window: WASD and the mouse are MSC's, Skyrim keeps Escape (pauses both games), Tab, M (map), F5/F9 and the console, and MSC's hand actions sit next to WASD:
+Loading a save hands the player to My Summer Car by itself; if MSC isn't running, Skyrim says so and Kumpo goes over once it is. F10 takes him back to Skyrim and hands him over again (handy for debugging). While MSC has the player you never need its window: WASD and the mouse are MSC's, Skyrim keeps Escape (pauses both games), Tab, M (map), F5/F9 and the console, and MSC's hand actions sit next to WASD:
 
 | Key | Action |
 |---|---|
 | Left / right click (free hands) | punch / guard (Skyrim blocks) |
-| V | middle finger |
-| Z | Skyrim's shout or power, as usual, but Kumpo yells it (Unrelenting Force: "Perkele!") |
+| V | middle finger (a guard or Jarl close by in front adds a 5 gold bounty) |
+| Z | Skyrim's shout or power, as usual, but Kumpo yells it (Unrelenting Force: "PER", "PER-KE", "PER-KE-LE!" by words; other shouts a Finnish word) |
 | Alt (tap) | piss: a quick tap starts it and Kumpo goes until he is empty (Alt+Tab doesn't start it) |
 | Middle click | swear |
 | C / B | smoke / zoom |
@@ -85,9 +85,12 @@ F10 hands the player to My Summer Car and back. While MSC has the player you nev
 | F8 (driving) | chase camera for filming, on / off (hides the HUD) |
 | F11 | screenshot of both games, to Screenshots next to Start PerkeleRim.bat |
 | [ / ] / ; (on foot) | call the Jonnez moped / the Hayosiko van / the Kekmet tractor: it's parked in front of you, wherever it was |
-| Y, 3 to 8 | pocket (Skyrim's inventory, never runs out of beer, bottles, food or cigarettes); driving, 4 to 8 drink and eat |
+| Y | puts what Kumpo carries (or looks at) into Skyrim's inventory |
+| 1 to 8 | Skyrim's favorites hotkeys: at first 1 hands, 2 tools, 3 an empty bottle to throw, 4 MSC Beer, 5 to 8 MSC's food; rebind them, or any Skyrim food and drink, in Skyrim's Favorites menu (R on foot) |
 
 Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, P, O, J, I, ...) still work. Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).
+
+Kumpo eats and drinks Skyrim's food: it feeds his MSC hunger and thirst, and Skyrim's ale, mead, wine and Skooma get him drunk (a bottle leaves an empty one to throw). Skyrim's gold is his MSC money, both ways.
 
 Kumpo fights with his fists: weapons and spells can't be equipped while MSC has the player, armor works as usual, and the drunker he is, the harder he hits and the more he can take. A punch also cuts spider webs and breaks destructibles in front of him (oil pots, barricades), and so does a thrown bottle that hits one. A throw from sneak at someone who hasn't noticed Kumpo is a sneak attack for double damage. Sitting in the Hayosiko van or the Kekmet is safe: nothing in Skyrim can hurt Kumpo there (the moped is no shelter, and a crash still hurts).
 
@@ -111,7 +114,6 @@ No dates, just intentions. What comes next depends a lot on what people enjoy, s
 
 - The Gifu truck, delivery jobs and traffic.
 - More Finnish summer: clear weather, long bright evenings, a sauna by the garage.
-- MSC money and Skyrim gold as one wallet.
 
 **Not planned**
 

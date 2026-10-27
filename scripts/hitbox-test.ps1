@@ -3,9 +3,9 @@
     The hitbox test with nobody at the keys: adds [Debug] HitboxTest=1 (and AutoloadSave=<-Save>) to
     PerkeleRim.ini, puts PerkeleRim_autoload.txt in both games' folders where missing and restarts them
     with restart-games.ps1 (closing them discards anything unsaved; it deploys this checkout's build,
-    -Build builds first), so they load their newest saves (Skyrim the -Save one). Once Skyrim is in,
-    F10 hands Kumpo to MSC unless the save resumes that itself, and ] calls the van in front of him
-    (again after 30 s if the test hasn't started). The plugin's driver (skse/src/vehicle/HitboxTest.cpp)
+    -Build builds first), so they load their newest saves (Skyrim the -Save one). Loading the save
+    hands Kumpo to MSC by itself (play mode); then ] calls the van in front of him (again after 30 s
+    if the test hasn't started). The plugin's driver (skse/src/vehicle/HitboxTest.cpp)
     then places two bandit archers (behind the Hayosiko van and beside Kumpo) and a melee bandit behind
     the van and logs for a minute. This prints the hitbox lines of PerkeleRim.log, closes both games
     (-KeepOpen leaves them) and takes its ini lines and flag files away again. Any save with Kumpo
@@ -67,21 +67,12 @@ try {
     if ($Build) { $restart.Build = $true }
     & "$PSScriptRoot/restart-games.ps1" @restart
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    $stage = 'loading'
-    $loadedAt = $null
+    $stage = 'waiting'
     $calledAt = $null
     $recalled = $false
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Seconds 2
         if (-not (Test-Skyrim)) { Write-Host 'Skyrim went away (a crash?)'; break }
-        if ($stage -eq 'loading' -and (Test-Log 'autoload: loading')) { $stage = 'settling'; $loadedAt = Get-Date }
-        if ($stage -eq 'settling' -and ((Get-Date) - $loadedAt).TotalSeconds -gt 20) {
-            if (-not (Test-Log 'hitbox test: ')) {
-                Write-Host 'Handing Kumpo to MSC (F10)'
-                & "$PSScriptRoot/skyrim-key.ps1" -Key F10
-            }
-            $stage = 'waiting'
-        }
         if ($stage -eq 'waiting' -and (Test-Log 'hitbox test: .*waiting for the van')) {
             Write-Host 'Calling the van (])'
             & "$PSScriptRoot/skyrim-key.ps1" -Key RightBracket

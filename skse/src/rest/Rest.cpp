@@ -16,9 +16,15 @@ namespace PerkeleRim::Rest
             return calendar ? static_cast<double>(calendar->GetHoursPassed()) : 0.0;
         }
 
-        // Lying in a bed, or on the way into one: the Sleep menu comes up from there.
+        // Lying in a bed, or on the way into one: the Sleep menu comes up from there. While MSC places
+        // the player he never lies down, so the menu itself says it too (Sleep, not Wait).
         bool InBed(RE::PlayerCharacter* a_player)
         {
+            if (auto* ui = RE::UI::GetSingleton()) {
+                if (auto menu = ui->GetMenu<RE::SleepWaitMenu>(); menu && menu->GetRuntimeData().isSleeping) {
+                    return true;
+                }
+            }
             if (!a_player) {
                 return false;
             }

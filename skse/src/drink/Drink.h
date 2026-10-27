@@ -1,7 +1,7 @@
 #pragma once
 
 // MSC's drunk level drives a blur with double vision (PerkeleRimDrunkIMAD in PerkeleRim.esp,
-// tools/esp-gen); off without the ESP. Mead and ale picked up in Skyrim become MSC beer (Pocket).
+// tools/esp-gen); off without the ESP.
 // Main thread only.
 namespace PerkeleRim::Drink
 {

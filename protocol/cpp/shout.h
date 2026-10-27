@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 
 #include "../perkelerim_protocol.h"
@@ -17,6 +18,27 @@ namespace PerkeleRim::Shout
     inline std::uint32_t KindOf(std::uint32_t a_shout)
     {
         return a_shout == kUnrelentingForce ? Protocol::kShoutUnrelentingForce : Protocol::kShoutOther;
+    }
+
+    // How many words a released shout had (1..3). Skyrim says which while it charges (the high
+    // process's variation, 0..2), but a quick tap can be released before a frame sees it: then the
+    // word count whose cooldown (a_cooldowns, the shout's three recovery times, times a_mult, the
+    // player's ShoutRecoveryMult) is nearest the cooldown that started (a_recovery). 0 without either.
+    inline std::uint32_t Words(int a_variation, const float (&a_cooldowns)[3], float a_mult, float a_recovery)
+    {
+        if (a_variation >= 0 && a_variation < 3) {
+            return static_cast<std::uint32_t>(a_variation) + 1;
+        }
+        std::uint32_t words = 0;
+        float         nearest = 0.0f;
+        for (std::uint32_t i = 0; i < 3; i++) {
+            const float off = std::fabs(a_cooldowns[i] * a_mult - a_recovery);
+            if (a_cooldowns[i] > 0.0f && (words == 0 || off < nearest)) {
+                words = i + 1;
+                nearest = off;
+            }
+        }
+        return words;
     }
 
     class Watch

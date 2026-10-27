@@ -13,11 +13,14 @@ namespace PerkeleRim::Hud
     struct View
     {
         bool                 show = false;      // false hides everything else too
+        bool                 dot = true;        // the dot at the screen center (off for the intro's captions)
         bool                 hideStealth = false;  // Skyrim's sneak eye hidden (every frame while true; shown again once it is false): it stayed up after standing
         std::string          label;             // look-at text, empty = none
         bool                 hand = false;      // look-at hand icon
         std::string          subtitle;          // empty = none
         std::string          gear;              // MSC's gear indicator while driving ("N", "3 HIGH"), empty = none
+        std::int64_t         money = -1;        // Kumpo's money (Skyrim's gold, MSC's PlayerMoney) under the needs, -1 = none
+        bool                 tools = false;     // MSC's tools are out: its wrench and screwdriver icon, top right
         bool                 hasNeeds = false;  // needs below are MSC's
         std::array<float, 7> needs{};           // PlayerState.needs, kNeed* order
         std::string          handsImage;        // MSC's first-person layer (HandView), full screen under the rest; empty = none

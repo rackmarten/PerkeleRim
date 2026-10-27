@@ -42,6 +42,7 @@ namespace PerkeleRim::Input
     inline constexpr std::uint32_t kDikF11 = 0x57;
     inline constexpr std::uint32_t kDikM = 0x32;
     inline constexpr std::uint32_t kDikT = 0x14;  // Skyrim's Wait menu on foot (MSC has nothing on it there)
+    inline constexpr std::uint32_t kDikR = 0x13;  // Skyrim's Favorites menu on foot (MSC's gearbox range, only for driving)
     inline constexpr std::uint32_t kDikH = 0x23;  // MSC's hit
     inline constexpr std::uint32_t kDikLeftShift = 0x2A;  // MSC's run
     inline constexpr std::uint32_t kDikLeftAlt = 0x38;    // piss, on a clean tap (piss_tap.h)

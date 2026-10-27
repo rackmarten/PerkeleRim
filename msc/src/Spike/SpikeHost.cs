@@ -529,10 +529,16 @@ namespace PerkeleRim.Spike
                     case "grunt":  // what Skyrim's PlayerDeath plays
                         PerkeleRim.Game.DeathGuard.PlayDeathSound();
                         break;
-                    case "shout":  // "shout 1": what Skyrim's PlayerShout plays for Unrelenting Force, "shout 0" for any other
+                    case "shout":  // "shout 13E07 2": what Skyrim's PlayerShout plays for that shout (form id, hex) and word count
                         var shoutLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
                         if (shoutLink == null) SpikeLog.Write("cmd: no PlayerLink");
-                        else shoutLink.Yell(words.Length > 1 ? uint.Parse(words[1]) : 1u);
+                        else shoutLink.Yell(words.Length > 1 ? uint.Parse(words[1], System.Globalization.NumberStyles.HexNumber) : 0x13E07u,
+                            words.Length > 2 ? uint.Parse(words[2]) : 3u);
+                        break;
+                    case "intro":  // "intro 1": what Skyrim's IntroCue plays as a new game opens, "intro 2" after Ralof's line, "intro 3" the shack
+                        var introLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (introLink == null) SpikeLog.Write("cmd: no PlayerLink");
+                        else introLink.Intro(words.Length > 1 ? uint.Parse(words[1]) : 1u);
                         break;
                     case "hurt":  // "hurt 0": what Skyrim's PlayerHurt plays for a hit (1 blocked, 2 fall, 3 crash, 4 low health), "hurt 2 0.3" a bad fall
                         var hurtLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();

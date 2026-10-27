@@ -1,3 +1,4 @@
+using System;
 using PerkeleRim.Protocol;
 
 namespace PerkeleRim
@@ -38,5 +39,14 @@ namespace PerkeleRim
                     return 0;
             }
         }
+
+        // Skyrim's food and drink (ConsumeEvent, protocol/cpp/food.h) on MSC's needs: hunger and
+        // thirst don't go below 0 from it (a full Kumpo stays full, he isn't stocked up for later),
+        // but one already below stays there; urine just adds up.
+        public static float AddNeed(float now, float delta) =>
+            delta < 0f ? Math.Max(Math.Min(now, 0f), now + delta) : now + delta;
+
+        // PlayerDrunkAdjusted, kept in MSC's own 0..8.
+        public static float AddDrunk(float now, float delta) => Math.Min(8f, Math.Max(0f, now + delta));
     }
 }

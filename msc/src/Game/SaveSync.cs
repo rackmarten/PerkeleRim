@@ -28,10 +28,10 @@ namespace PerkeleRim.Game
         {
             "PlayerThirst", "PlayerHunger", "PlayerStress", "PlayerUrine", "PlayerFatigue", "PlayerDirtiness",
             "PlayerDrunk", "PlayerDrunkAdjusted", "PlayerStressRate", "PlayerFatigueRate", "PlayerWeight", "PlayerBurns",
-            "PlayerMoney", "PlayerFines", "PlayerNetIncome", "GlobalTime",
+            "PlayerFines", "PlayerNetIncome", "GlobalTime",
         };
-        // Not PlayerCigarettes: Skyrim's inventory (the pocket) holds them in the same save, and
-        // PocketLink copies its count to MSC; restoring the snapshot's would fight it.
+        // Not PlayerCigarettes or PlayerMoney: Skyrim's inventory (the pocket, its gold) holds them in
+        // the same save, and PocketLink copies them to MSC; restoring the snapshot's would fight it.
         static readonly string[] Ints = { "GlobalDay", "GlobalHour" };
 
         // FSM states and variables, put back in this order (entering a state resets its variables).

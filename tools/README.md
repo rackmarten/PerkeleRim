@@ -60,6 +60,14 @@ loads it any more.
 
 `tools/out/hayosiko/raw/` keeps the intermediate `model.json` and PNGs for debugging.
 
+## Voice picker
+
+`voice-picker/` holds VoiceExport (C#, on the same AssetStudioMod libraries as `unity-export`; it
+exports MSC's AudioClips with the MasterAudio group each belongs to), the page `picker.html` and
+`transcribe.py` (Whisper, a uv script). Run them through `scripts/voice-picker.ps1`; output goes to
+`tools/out/voices/`. See docs/DEV_SETUP.md, "Voice picker". `setup.ps1` stops at the end without
+Blender, after downloading AssetStudioModCLI, which is all the voice picker needs.
+
 ## Garage ESP
 
 `esp-gen/` (C#, .NET 8, [Mutagen](https://github.com/Mutagen-Modding/Mutagen) 0.53) writes

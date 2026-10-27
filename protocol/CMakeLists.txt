@@ -30,6 +30,7 @@ add_executable(protocol_tests
     tests/cpp/test_collision.cpp
     tests/cpp/test_coords.cpp
     tests/cpp/test_damage.cpp
+    tests/cpp/test_finger.cpp
     tests/cpp/test_input.cpp
     tests/cpp/test_model.cpp
     tests/cpp/test_msc_save.cpp
@@ -37,11 +38,15 @@ add_executable(protocol_tests
     tests/cpp/test_time_skip.cpp
     tests/cpp/test_wading.cpp
     tests/cpp/test_hitbox.cpp
+    tests/cpp/test_food.cpp
+    tests/cpp/test_hotbar.cpp
     tests/cpp/test_hurt.cpp
     tests/cpp/test_shout.cpp
     tests/cpp/test_stamina.cpp
     tests/cpp/test_screenshot.cpp
     tests/cpp/test_hit_test.cpp
+    tests/cpp/test_play_mode.cpp
+    tests/cpp/test_intro.cpp
 )
 if(WIN32)
     target_sources(protocol_tests PRIVATE cpp/link.cpp tests/cpp/test_link.cpp)

@@ -84,6 +84,7 @@ namespace PerkeleRim.Game
         ItemLink items;
         ParticleLink particles;
         ActorLink actors;
+        FingerLink finger;
         PlayerVoice voice;
         VehicleHorn horn;
         bool hornHeld;  // H held while driving, read by FeedInput before it is kept from MSC
@@ -164,6 +165,7 @@ namespace PerkeleRim.Game
             items = new ItemLink(island, models, ground, log);
             particles = new ParticleLink(island, models, () => Array.ConvertAll(vehicles, v => v.Car), log);
             actors = new ActorLink(island, charge, log, what => voice.Swear(what));
+            finger = new FingerLink(log);
             voice = new PlayerVoice(log);
             horn = new VehicleHorn(log);
             chase = new ChaseCamera(log);
@@ -184,10 +186,14 @@ namespace PerkeleRim.Game
         public void HoldPocketKind(int kind) => pocket.Hold(kind);
 
         // Spike "shout 0|1": what PlayerShout plays (1 = Unrelenting Force).
-        public void Yell(uint kind) => voice.Shout(kind, "spike");
+        public void Yell(uint shout, uint words) =>
+            voice.Shout(shout == 0x13E07 ? Wire.ShoutUnrelentingForce : Wire.ShoutOther, shout, words, "spike");
 
         // Spike "hurt <cause> [damage]": what PlayerHurt plays (Wire.Hurt*: 0 hit, 1 blocked, 2 fall, 3 crash, 4 low).
         public void Hurt(uint cause, float damage) => voice.Hurt(cause, damage, "spike");
+
+        // Spike "intro <cue>": what IntroCue plays (Wire.Intro*: 1 blackout, 2 wake).
+        public void Intro(uint cue) => voice.Intro(cue, "spike");
 
         // Spike commands "textures" (read an object's model and log it) and "items" (what Skyrim gets).
         public void InspectModel(string name) => models.Inspect(name);
@@ -315,6 +321,7 @@ namespace PerkeleRim.Game
             // Skyrim has the blood ready before it is needed (shown when the player dies there).
             if (playing) models.IdForBuilt(BloodModel, () => ModelSender.Overlay(BloodModel, BloodTexture, log));
             if (playing) FillPose(ref state);
+            if (player != null) state.flags |= Wire.PlayerInGame;  // Skyrim's play mode hands over only then
             state.generation = island.Generation;
             link.WritePlayer(ref state);
             SendLookAt(link, playing);
@@ -332,6 +339,7 @@ namespace PerkeleRim.Game
             }
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             shelves.Update(playing);
+            pocket.Paused = input.Paused;
             pocket.Update(link, playing, player != null);
             windUp.Update(charge, Time.realtimeSinceStartup);
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
@@ -341,6 +349,7 @@ namespace PerkeleRim.Game
             bool pushing = functions != null && functions.ActiveStateName == "On";
             actors.Update(link, playing, player, driven != null, driven != null ? driven.Body : null, viewCamera != null ? viewCamera.transform : null,
                 pushing, player != null ? Feet() : Vector3.zero);
+            finger.Update(link, playing, functions, viewCamera != null ? viewCamera.transform : null);
             horn.Update(link, driven, hornHeld);
             models.Update(link);
             hands.Update(link, playing, input.ScreenWidth, input.ScreenHeight);
@@ -430,12 +439,16 @@ namespace PerkeleRim.Game
                 OnChunk(payload, size);
             else if (type == MessageType.PocketCounts)
                 pocket.OnCounts(payload, size);
+            else if (type == MessageType.ConsumeEvent)
+                pocket.OnConsume(payload, size);
             else if (type == MessageType.PlayerDeath)
                 DeathGuard.PlayDeathSound();
             else if (type == MessageType.PlayerShout)
                 voice.OnShout(payload, size);
             else if (type == MessageType.PlayerHurt)
                 voice.OnHurt(payload, size);
+            else if (type == MessageType.IntroCue)
+                voice.OnIntro(payload, size);
             else if (type == MessageType.StockShelves)
                 shelves.OnMessage(payload, size);
             else if (type == MessageType.LoadReset)
@@ -1085,6 +1098,7 @@ namespace PerkeleRim.Game
             s.flags = Wire.PlayerValid;
             if (controller != null && controller.enabled && controller.isGrounded) s.flags |= Wire.PlayerGrounded;  // Skyrim's fall damage
             if (block.Blocking) s.flags |= Wire.PlayerBlocking;  // Skyrim's block
+            if (PocketLink.ToolsOut()) s.flags |= Wire.PlayerTools;  // Skyrim shows MSC's tools icon
             var pos = island.IslandToSkyrim(ToVec3(Feet()));
             s.position[0] = pos.x;
             s.position[1] = pos.y;
