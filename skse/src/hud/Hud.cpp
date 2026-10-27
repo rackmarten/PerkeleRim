@@ -40,6 +40,9 @@ namespace PerkeleRim::Hud
         constexpr double kGearWidth = 200.0;
         constexpr double kGearRight = 30.0;   // from the visible frame's right edge to the box's right edge
         constexpr double kGearAbove = 70.0;   // text top, up from the frame's bottom edge
+        // MSC's fuel line (litres poured and their gold, a low or dry tank), above the gear.
+        constexpr double kFuelAbove = 104.0;
+        constexpr double kFuelWidth = 900.0;  // its text field; the box fits the text
 
         // A throw's charge: a bar just above the dot, gold once full.
         constexpr double        kChargeHalfWidth = 24.0;
@@ -215,6 +218,10 @@ namespace PerkeleRim::Hud
             a_clip.CreateEmptyMovieClip(&gearBox, "gearBox", 8);
             MakeText(a_movie, a_clip, "gear", 9.0, -kGearWidth * 0.5, 0.0, kGearWidth, kGearSize, "center", 0xFFFFFF, gear);
 
+            RE::GFxValue fuelBox, fuel;
+            a_clip.CreateEmptyMovieClip(&fuelBox, "fuelBox", 11);
+            MakeText(a_movie, a_clip, "fuel", 12.0, -kFuelWidth * 0.5, 0.0, kFuelWidth, kGearSize, "center", 0xFFFFFF, fuel);
+
             RE::GFxValue toolsClip;
             if (a_clip.CreateEmptyMovieClip(&toolsClip, "tools", 10)) {
                 DrawTools(toolsClip);
@@ -222,7 +229,7 @@ namespace PerkeleRim::Hud
             }
 
             RE::GFxValue chargeClip;
-            a_clip.CreateEmptyMovieClip(&chargeClip, "charge", 11);
+            a_clip.CreateEmptyMovieClip(&chargeClip, "charge", 13);
 
             RE::GFxValue needs;
             if (a_clip.CreateEmptyMovieClip(&needs, "needs", 7)) {
@@ -427,27 +434,32 @@ namespace PerkeleRim::Hud
                 }
             }
 
-            RE::GFxValue gearText, gearBox;
-            clip.GetMember("gear", &gearText);
-            clip.GetMember("gearBox", &gearBox);
-            if (gearText.IsDisplayObject() && gearBox.IsDisplayObject()) {
-                const double top = static_cast<double>(rect.bottom) - kGearAbove - cy;
-                const bool   has = !a_view.gear.empty();
-                gearText.SetText(a_view.gear.c_str());
-                RE::GFxValue width;
-                gearText.GetMember("textWidth", &width);
-                const double boxWidth = (width.IsNumber() ? width.GetNumber() : 0.0) + 2.0 * kBoxPadX;
-                // The text is centered on the box, the box's right edge kGearRight from the frame's.
-                const double middle = static_cast<double>(rect.right) - kGearRight - boxWidth * 0.5 - cx;
-                gearText.SetMember("_visible", RE::GFxValue(has));
-                gearText.SetMember("_x", RE::GFxValue(middle - kGearWidth * 0.5));
-                gearText.SetMember("_y", RE::GFxValue(top));
-                gearBox.SetMember("_x", RE::GFxValue(middle));
-                Call(gearBox, "clear", {});
-                if (has) {
-                    DrawBox(gearBox, gearText, top, kGearSize);
+            // Bottom right on a dark box, its right edge kGearRight from the frame's.
+            const auto rightBox = [&](const char* a_text, const char* a_box, const std::string& a_value, double a_above, double a_field) {
+                RE::GFxValue text, box;
+                clip.GetMember(a_text, &text);
+                clip.GetMember(a_box, &box);
+                if (!text.IsDisplayObject() || !box.IsDisplayObject()) {
+                    return;
                 }
-            }
+                const double top = static_cast<double>(rect.bottom) - a_above - cy;
+                const bool   has = !a_value.empty();
+                text.SetText(a_value.c_str());
+                RE::GFxValue width;
+                text.GetMember("textWidth", &width);
+                const double boxWidth = (width.IsNumber() ? width.GetNumber() : 0.0) + 2.0 * kBoxPadX;
+                const double middle = static_cast<double>(rect.right) - kGearRight - boxWidth * 0.5 - cx;
+                text.SetMember("_visible", RE::GFxValue(has));
+                text.SetMember("_x", RE::GFxValue(middle - a_field * 0.5));
+                text.SetMember("_y", RE::GFxValue(top));
+                box.SetMember("_x", RE::GFxValue(middle));
+                Call(box, "clear", {});
+                if (has) {
+                    DrawBox(box, text, top, kGearSize);
+                }
+            };
+            rightBox("gear", "gearBox", a_view.gear, kGearAbove, kGearWidth);
+            rightBox("fuel", "fuelBox", a_view.fuel, kFuelAbove, kFuelWidth);
 
             RE::GFxValue chargeClip;
             if (clip.GetMember("charge", &chargeClip) && chargeClip.IsDisplayObject()) {
@@ -521,7 +533,7 @@ namespace PerkeleRim::Hud
         const auto needs = Quantize(view);
         const int  charge = view.charge < 0.0f ? -1 : static_cast<int>(std::lround(std::clamp(view.charge, 0.0f, 1.0f) * kChargeSteps));
         const bool textChanged = view.show != current.show || view.dot != current.dot || view.label != current.label || view.hand != current.hand ||
-                                 view.subtitle != current.subtitle || view.gear != current.gear || view.tools != current.tools ||
+                                 view.subtitle != current.subtitle || view.gear != current.gear || view.fuel != current.fuel || view.tools != current.tools ||
                                  view.money != current.money;
         const bool handsChanged = view.handsImage != current.handsImage || view.handsWidth != current.handsWidth ||
                                   view.handsHeight != current.handsHeight;

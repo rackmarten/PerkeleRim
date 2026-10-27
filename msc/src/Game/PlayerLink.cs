@@ -19,7 +19,9 @@ namespace PerkeleRim.Game
     //  - runs the vehicles (VehicleLink) on the same island, all drawn in Skyrim: the van on the
     //    player's right, or at the spot the anchor names (the garage); the Jonnez moped ([) and the
     //    Kekmet tractor (;) only once called, parked in front of the player, then left where they are
-    //    (] calls the van the same way, to wherever the player stands);
+    //    (] calls the van the same way, to wherever the player stands); the van and the Kekmet burn
+    //    diesel, fill up at Skyrim's dwemer oil pumps for gold and, called dry, are towed onto one
+    //    (FuelLink);
     //  - puts what the player carries into Skyrim's inventory and uses it from there (Y, keys 3 to 8),
     //    and keeps MSC's cigarettes and Skyrim's the same (PocketLink);
     //  - reports the physics items around the player (ItemLink), whose models ModelSender sends;
@@ -79,6 +81,7 @@ namespace PerkeleRim.Game
         VehicleLink[] vehicles;
         BeerGift beer;  // spike "beer" only
         ShelfStocker shelves;
+        FuelLink fuel;
         PocketLink pocket;
         JunkLink junk;
         ModelSender models;
@@ -161,6 +164,8 @@ namespace PerkeleRim.Game
             vehicles = new[] { van, moped, kekmet };
             beer = new BeerGift(log);
             shelves = new ShelfStocker(island, ground, log);
+            moped.EndlessFuel = true;
+            fuel = new FuelLink(island, log);
             junk = new JunkLink(island, log);
             pocket = new PocketLink(junk, log);
             models = new ModelSender(this, log);
@@ -335,10 +340,11 @@ namespace PerkeleRim.Game
                 foreach (var v in vehicles) if (v.RightIfRolled(player)) break;
             if (playing && Driven() == null)
             {
-                if (InputShim.GetKeyDown(KeyCode.LeftBracket)) moped.Summon(player, Feet());
-                if (InputShim.GetKeyDown(KeyCode.RightBracket)) van.Summon(player, Feet());
-                if (InputShim.GetKeyDown(KeyCode.Semicolon)) kekmet.Summon(player, Feet());
+                if (InputShim.GetKeyDown(KeyCode.LeftBracket)) fuel.Call(moped, player, Feet());
+                if (InputShim.GetKeyDown(KeyCode.RightBracket)) fuel.Call(van, player, Feet());
+                if (InputShim.GetKeyDown(KeyCode.Semicolon)) fuel.Call(kekmet, player, Feet());
             }
+            fuel.Update(link, playing, player != null ? Feet() : Vector3.zero, playing ? Driven() : null, vehicles);
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             shelves.Update(playing);
             pocket.Paused = input.Paused;
@@ -456,6 +462,8 @@ namespace PerkeleRim.Game
                 voice.OnIntro(payload, size);
             else if (type == MessageType.StockShelves)
                 shelves.OnMessage(payload, size);
+            else if (type == MessageType.FuelStations)
+                fuel.OnStations(payload, size);
             else if (type == MessageType.LoadReset)
                 rest.OnLoadReset();
             else if (type == MessageType.PlayerWashed)

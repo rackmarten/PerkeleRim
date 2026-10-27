@@ -7,6 +7,7 @@
 #include "death/Death.h"
 #include "debug/HitTest.h"
 #include "drink/Drink.h"
+#include "fuel/Fuel.h"
 #include "garage/Garage.h"
 #include "hud/Hud.h"
 #include "input.h"
@@ -26,6 +27,8 @@
 #include "shot/Shot.h"
 #include "stamina.h"
 #include "wading.h"
+#include "vehicle/Hitbox.h"
+#include "vehicle/HitboxTest.h"
 #include "vehicle/VehicleView.h"
 
 namespace PerkeleRim::PlayerSync
@@ -87,6 +90,7 @@ namespace PerkeleRim::PlayerSync
             bool           lookAtUse = false; // MSC shows its hand icon
             std::string    subtitle;          // MSC's subtitle line
             std::string    gear;              // MSC's gear indicator while driving
+            std::string    fuel;              // MSC's fuel line (FuelText)
             bool           hasNeeds = false;  // needs below came from MSC since the handover
             std::array<float, 7> needs{};     // PlayerState.needs
             bool           cameraParentLogged = false;
@@ -247,6 +251,7 @@ namespace PerkeleRim::PlayerSync
             state.lookAtUse = false;
             state.subtitle.clear();
             state.gear.clear();
+            state.fuel.clear();
             state.hasNeeds = false;
             Hud::Set({});
             Drink::SetDrunk(0.0f, 0.0f);
@@ -688,6 +693,23 @@ namespace PerkeleRim::PlayerSync
             }
         }
 
+        // The safe vehicle the player has climbed into without driving it: MSC lowers the camera and
+        // lets him move between the seats, while Skyrim's body still stands, its head out of the
+        // roof. Its feet in the vehicle's cabin (Hitbox::InCabin); 0 for none.
+        std::uint32_t ClimbedInto(RE::PlayerCharacter* a_player)
+        {
+            const auto  at = a_player->GetPosition();
+            const float feet[3] = { at.x, at.y, at.z };
+            for (std::uint32_t id = 1; id <= Protocol::kVehicleCount; id++) {
+                Protocol::VehicleState pose{};
+                Hitbox::Box            box{};
+                if (Damage::SafeSeat(id) && Hitbox::Where(id, pose, box) && Hitbox::InCabin(id, pose.position, pose.rotation, box, feet)) {
+                    return id;
+                }
+            }
+            return 0;
+        }
+
         // MSC's run (LeftShift) costs Skyrim stamina; with the bar empty the key is held back from MSC
         // (from the next Publish on) until a fifth of the stamina is back.
         void Sprint(RE::PlayerCharacter* a_player, const Protocol::PlayerState* a_pose, bool a_seated, bool a_menu, float a_delta)
@@ -769,7 +791,7 @@ namespace PerkeleRim::PlayerSync
                 }
             }
             const bool seated = valid && driven != nullptr;
-            Safe::Set(a_player, seated ? driven->vehicle : 0);
+            Safe::Set(a_player, seated ? driven->vehicle : valid ? ClimbedInto(a_player) : 0);
             if (seated != state.seated) {
                 state.seated = seated;
                 SetSimulated(a_player, !seated);
@@ -818,7 +840,7 @@ namespace PerkeleRim::PlayerSync
                     return;
                 }
                 if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle &&
-                    a_type != Protocol::MessageType::GearText) {
+                    a_type != Protocol::MessageType::GearText && a_type != Protocol::MessageType::FuelText) {
                     return;
                 }
                 const auto text = LookAt::Decode(a_data, a_size);  // a Subtitle has the same payload
@@ -828,6 +850,8 @@ namespace PerkeleRim::PlayerSync
                     state.subtitle.assign(text->text);
                 } else if (a_type == Protocol::MessageType::GearText) {
                     state.gear.assign(text->text);
+                } else if (a_type == Protocol::MessageType::FuelText) {
+                    state.fuel.assign(text->text);
                 } else {
                     state.lookAt.assign(text->text);
                     state.lookAtUse = (text->flags & Protocol::kLookAtUse) != 0;
@@ -873,6 +897,7 @@ namespace PerkeleRim::PlayerSync
                 const bool hasParts = hasVehicle[i] && link.ReadVehicleParts(i + 1, parts);
                 VehicleView::Update(i + 1, hasVehicle[i] ? &vehicles[i] : nullptr, hasParts ? &parts : nullptr, state.generation);
             }
+            HitboxTest::Update(a_player, a_delta);
             Protocol::ItemState items{};
             if (link.ReadItems(items)) {  // a torn read keeps last frame's items; link down releases
                 ItemView::Update(&items, state.generation);
@@ -904,6 +929,7 @@ namespace PerkeleRim::PlayerSync
             hud.hand = state.lookAtUse;
             hud.subtitle = state.subtitle.empty() ? std::string(Intro::Caption()) : state.subtitle;  // the shack's wake-up caption carries over the handover
             hud.gear = state.gear;
+            hud.fuel = state.fuel;
             hud.tools = valid && (pose.flags & Protocol::kPlayerTools) != 0;
             hud.charge = valid && pose.throwCharge > 0 ? (pose.throwCharge - 1) / 254.0f : -1.0f;
             hud.money = Pocket::Money(a_player);
@@ -935,6 +961,7 @@ namespace PerkeleRim::PlayerSync
                 original(a_player, a_delta);
                 Death::Tick();
                 Pocket::Update(a_player, a_delta);
+                Fuel::Update();
                 if (!state.owned) {
                     Safe::Set(a_player, 0);  // keeps clearing god mode if it was slow to go off
                 }

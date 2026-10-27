@@ -6,7 +6,7 @@
 // Our own layer in Skyrim's HUD movie while MSC owns the player: MSC's first-person hands under
 // everything else in the movie, a small dot at the screen center
 // (Skyrim hides its crosshair then) with a throw's charge as a bar above it, MSC's look-at prompt just below it (its hand icon for things
-// to use, and its text on a dark box so it reads in daylight), MSC's needs bars top left (with room above for Skyrim's own HUD messages), its subtitle line above Skyrim's own subtitles, and the gear bottom right while driving. Main thread; the Scaleform work runs as an SKSE UI
+// to use, and its text on a dark box so it reads in daylight), MSC's needs bars top left (with room above for Skyrim's own HUD messages), its subtitle line above Skyrim's own subtitles, the gear bottom right while driving and the fuel line above it. Main thread; the Scaleform work runs as an SKSE UI
 // task.
 namespace PerkeleRim::Hud
 {
@@ -19,6 +19,7 @@ namespace PerkeleRim::Hud
         bool                 hand = false;      // look-at hand icon
         std::string          subtitle;          // empty = none
         std::string          gear;              // MSC's gear indicator while driving ("N", "3 HIGH"), empty = none
+        std::string          fuel;              // MSC's fuel line above the gear (FuelText), empty = none
         std::int64_t         money = -1;        // Kumpo's money (Skyrim's gold, MSC's PlayerMoney) under the needs, -1 = none
         bool                 tools = false;     // MSC's tools are out: its wrench and screwdriver icon, top right
         float                charge = -1.0f;    // a throw being charged, 0..1 of a full charge; < 0 none

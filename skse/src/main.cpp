@@ -7,6 +7,7 @@
 #include "death/Death.h"
 #include "debug/HitTest.h"
 #include "drink/Drink.h"
+#include "fuel/Fuel.h"
 #include "garage/Garage.h"
 #include "intro/Intro.h"
 #include "junk/ThrowJunk.h"
@@ -33,6 +34,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
         if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
             PerkeleRim::PlayerSync::OnDataLoaded();
             PerkeleRim::Garage::OnDataLoaded();
+            PerkeleRim::Fuel::OnDataLoaded();
             PerkeleRim::Intro::OnDataLoaded();
             PerkeleRim::Drink::OnDataLoaded();
             PerkeleRim::Pocket::OnDataLoaded();
