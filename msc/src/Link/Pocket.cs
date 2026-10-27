@@ -4,7 +4,7 @@ using PerkeleRim.Protocol;
 
 namespace PerkeleRim
 {
-    // The pocket's rules (docs/PROTOCOL.md "The pocket"): Skyrim's inventory holds MSC's beer, empty
+    // The pocket's rules (docs/PROTOCOL.md "The pocket"): Skyrim's inventory holds MSC's beer, juice, empty
     // bottles, food and cigarettes, and its gold is MSC's money. Y puts what MSC's player carries
     // (or, hands empty, what the crosshair is on) in it; keys 3 to 8 drink a beer or eat food from
     // it, or take an empty bottle out into MSC's hand. 1 and 2 stay MSC's (hands, tools). Skyrim's
@@ -36,6 +36,7 @@ namespace PerkeleRim
                 case "pizza(itemx)": return (int)Wire.PocketPizza;
                 case "potato chips(itemx)": return (int)Wire.PocketChips;
                 case "macaron box(itemx)": return (int)Wire.PocketMacaron;
+                case "juice(itemx)": return (int)Wire.PocketJuice;  // no key: drunk from Skyrim's inventory
                 default: return None;
             }
         }

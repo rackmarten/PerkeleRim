@@ -1,14 +1,14 @@
 #pragma once
 
 // The pocket on Skyrim's side (docs/PROTOCOL.md "The pocket", "Food and drink", "The hotbar"):
-// Skyrim's inventory holds MSC's beer, empty bottles, food and cigarettes as PerkeleRim.esp items
+// Skyrim's inventory holds MSC's beer, juice, empty bottles, food and cigarettes as PerkeleRim.esp items
 // (tools/esp-gen), so they travel through load doors and live in Skyrim's saves, and its gold is
 // MSC's money.
 //  - MSC's PocketChange adds or removes them (Y pockets, keys 3 to 8 drink, eat or take out, money
 //    spent or earned in MSC);
 //  - the counts go back to MSC as PocketCounts when they change, whoever changed them;
 //  - food and drink Kumpo uses in Skyrim go to MSC's needs as a ConsumeEvent (protocol/cpp/food.h),
-//    and a bottle of alcohol leaves an Empty Bottle;
+//    and a bottle of alcohol leaves its own empty bottle; crouched in water, E is a sip;
 //  - number keys 1 to 8 while MSC has the player do what Skyrim's favorites hotkeys hold
 //    (protocol/cpp/hotbar.h); the player gets the ESP's three hotbar powers to bind.
 // Without the ESP loaded all of it stays off. Main thread only.
@@ -20,6 +20,10 @@ namespace PerkeleRim::Pocket
     void Update(RE::PlayerCharacter* a_player, float a_delta);
 
     void OnChange(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);  // PocketChange
+
+    // E while MSC has the player and nothing is under either crosshair: a sip of water when Kumpo is
+    // crouched in water (food.h's Water). True when he drank, and E is used up.
+    bool SipWater(float a_level, bool a_crouched, bool a_onFoot);
 
     // Kumpo's money for the HUD: Skyrim's gold, -1 without the ESP.
     std::int64_t Money(RE::PlayerCharacter* a_player);

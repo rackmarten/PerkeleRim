@@ -395,7 +395,9 @@ foreach (var (effect, spell) in new[] {
 // ---- Pocket ----
 //
 // Fixed ids the SKSE plugin looks up (skse/src/pocket/Pocket.cpp): 0x906 + the protocol's kPocket*
-// kind. MSC's beer, empty bottles, food and cigarettes in Skyrim's inventory. Beer and food are food
+// kind up to cigarettes, then MSC's juice (0x940) and the empty bottles other drinks leave (0x941 to
+// 0x943, protocol/cpp/food.h kEmptyIds). MSC's beer, juice, empty bottles, food and cigarettes in
+// Skyrim's inventory. Beer and food are food
 // items Kumpo eats and drinks in Skyrim like any other (protocol/cpp/food.h lists what they do to
 // MSC's needs; a hotkey on them plays MSC's own drinking and eating instead), with the vanilla
 // look-alike's effects, keywords and use sound. The empty bottle and cigarettes are misc items: the
@@ -409,24 +411,33 @@ foreach (var (effect, spell) in new[] {
         ?? throw new InvalidOperationException($"{editorId} not in Skyrim.esm as food or misc item");
     return (misc.Model, misc.ObjectBounds, misc.PickUpSound.FormKeyNullable, misc.PutDownSound.FormKeyNullable);
 }
-var pocket = new (string EditorId, string Name, string LooksLike, float Weight, uint Value, bool Food)[]
+// Juice is a drink in a small jug: its effects and keywords from an apple, the use sound a bottle's.
+var pocket = new (uint Id, string EditorId, string Name, string LooksLike, float Weight, uint Value, bool Food, string? FoodLike)[]
 {
-    ("PerkeleRimBeer", "MSC Beer", "Ale", 0.5f, 3, true),
-    ("PerkeleRimEmptyBottle", "Empty Bottle", "WineBottle01AEmpty", 0.3f, 0, false),
-    ("PerkeleRimSausages", "Sausages", "FoodBeefCooked", 0.8f, 4, true),
-    ("PerkeleRimPizza", "Pizza", "FoodPie", 0.5f, 5, true),
-    ("PerkeleRimPotatoChips", "Potato Chips", "FoodPotatoesBaked", 0.3f, 2, true),
-    ("PerkeleRimMacaronBox", "Macaron Box", "FoodSweetroll", 0.5f, 3, true),
-    ("PerkeleRimCigarette", "Cigarette", "Quill01", 0f, 1, false),
+    (0x906, "PerkeleRimBeer", "MSC Beer", "Ale", 0.5f, 3, true, null),
+    (0x907, "PerkeleRimEmptyBottle", "Empty Bottle", "WineBottle01AEmpty", 0.3f, 0, false, null),
+    (0x908, "PerkeleRimSausages", "Sausages", "FoodBeefCooked", 0.8f, 4, true, null),
+    (0x909, "PerkeleRimPizza", "Pizza", "FoodPie", 0.5f, 5, true, null),
+    (0x90A, "PerkeleRimPotatoChips", "Potato Chips", "FoodPotatoesBaked", 0.3f, 2, true, null),
+    (0x90B, "PerkeleRimMacaronBox", "Macaron Box", "FoodSweetroll", 0.5f, 3, true, null),
+    (0x90C, "PerkeleRimCigarette", "Cigarette", "Quill01", 0f, 1, false, null),
+    (0x940, "PerkeleRimJuice", "Juice", "GlazedJugSmall01", 0.5f, 2, true, "FoodApple02"),
+    (0x941, "PerkeleRimEmptyWineBottle", "Empty Wine Bottle", "WineBottle02AEmpty", 0.3f, 0, false, null),
+    (0x942, "PerkeleRimEmptyLiquorBottle", "Empty Liquor Bottle", "WineBottle01BEmpty", 0.3f, 0, false, null),
+    (0x943, "PerkeleRimEmptySkoomaBottle", "Empty Skooma Bottle", "dunAlftandEmptySkoomaBottle", 0.2f, 0, false, null),
 };
-for (uint i = 0; i < pocket.Length; i++)
+var drinkSound = skyrim.Ingestibles.First(r => r.EditorID == "Ale").ConsumeSound.FormKeyNullable;
+// The other drinks' empties are clutter, so throwing junk (#774) takes them like any bottle; the
+// beer's Empty Bottle has its own way into MSC's hand (key 3).
+var clutterBottles = new HashSet<uint> { 0x941, 0x942, 0x943 };
+var clutter = skyrim.Keywords.First(k => k.EditorID == "VendorItemClutter").ToLink();
+foreach (var p in pocket)
 {
-    var p = pocket[i];
     var look = Look(p.LooksLike);
-    var key = new FormKey(mod.ModKey, 0x906 + i);
+    var key = new FormKey(mod.ModKey, p.Id);
     if (p.Food)
     {
-        var vanilla = skyrim.Ingestibles.First(r => r.EditorID == p.LooksLike);
+        var vanilla = skyrim.Ingestibles.First(r => r.EditorID == (p.FoodLike ?? p.LooksLike));
         var food = new Ingestible(key, SkyrimRelease.SkyrimSE)
         {
             EditorID = p.EditorId,
@@ -439,7 +450,7 @@ for (uint i = 0; i < pocket.Length; i++)
             Effects = new ExtendedList<Effect>(vanilla.Effects.Select(e => e.DeepCopy())),
         };
         if (vanilla.Keywords != null) food.Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>>(vanilla.Keywords);
-        if (vanilla.ConsumeSound.FormKeyNullable is { } sound) food.ConsumeSound.SetTo(sound);
+        if ((p.FoodLike != null ? drinkSound : vanilla.ConsumeSound.FormKeyNullable) is { } sound) food.ConsumeSound.SetTo(sound);
         if (look.Up != null) food.PickUpSound.SetTo(look.Up.Value);
         if (look.Down != null) food.PutDownSound.SetTo(look.Down.Value);
         mod.Ingestibles.Add(food);
@@ -457,6 +468,7 @@ for (uint i = 0; i < pocket.Length; i++)
     };
     if (look.Up != null) item.PickUpSound.SetTo(look.Up.Value);
     if (look.Down != null) item.PutDownSound.SetTo(look.Down.Value);
+    if (clutterBottles.Contains(p.Id)) item.Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>> { clutter };
     mod.MiscItems.Add(item);
     Console.WriteLine($"  {item.FormKey.ID:X3} {item.EditorID} (looks like {p.LooksLike})");
 }
@@ -573,7 +585,7 @@ foreach (var spot in stockSpots)
 mod.FormLists.Add(spotList);
 Console.WriteLine($"  910 {spotList.EditorID} ({spotList.Items.Count} spots)");
 
-mod.ModHeader.Stats.NextFormID = 0x91D;  // after PerkeleRimHotbarBottle (0x91C)
+mod.ModHeader.Stats.NextFormID = 0x944;  // after PerkeleRimEmptySkoomaBottle (0x943)
 // Header 1.70, not Mutagen's 1.71: Skyrim SE 1.5.97 skips 1.71 plugins, AE loads both.
 mod.ModHeader.Stats.Version = 1.7f;
 

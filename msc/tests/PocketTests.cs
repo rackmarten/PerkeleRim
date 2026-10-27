@@ -18,6 +18,8 @@ namespace PerkeleRim.Tests
             Assert.That(Pocket.KindOf("pizza(itemx)"), Is.EqualTo((int)Wire.PocketPizza));
             Assert.That(Pocket.KindOf("potato chips(itemx)"), Is.EqualTo((int)Wire.PocketChips));
             Assert.That(Pocket.KindOf("macaron box(itemx)"), Is.EqualTo((int)Wire.PocketMacaron));
+            Assert.That(Pocket.KindOf("juice(itemx)"), Is.EqualTo((int)Wire.PocketJuice));
+            Assert.That(Pocket.SlotOfKind((int)Wire.PocketJuice), Is.EqualTo(Pocket.None));  // drunk from Skyrim's inventory
             Assert.That(Pocket.KindOf("spoiled sausages(itemx)"), Is.EqualTo(Pocket.None));
             Assert.That(Pocket.KindOf("empty(itemx)"), Is.EqualTo(Pocket.None));  // a drunk-out beer case
             Assert.That(Pocket.KindOf("ax(itemx)"), Is.EqualTo(Pocket.None));
