@@ -42,6 +42,8 @@ add_executable(protocol_tests
     tests/cpp/test_stamina.cpp
     tests/cpp/test_screenshot.cpp
     tests/cpp/test_hit_test.cpp
+    tests/cpp/test_play_mode.cpp
+    tests/cpp/test_intro.cpp
 )
 if(WIN32)
     target_sources(protocol_tests PRIVATE cpp/link.cpp tests/cpp/test_link.cpp)

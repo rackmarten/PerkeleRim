@@ -10,6 +10,7 @@
 #include "garage/Garage.h"
 #include "hud/Hud.h"
 #include "input.h"
+#include "intro/Intro.h"
 #include "hands/HandView.h"
 #include "item/ItemView.h"
 #include "link/LinkService.h"
@@ -17,6 +18,7 @@
 #include "model/ModelView.h"
 #include "particle/ParticleView.h"
 #include "piss_tap.h"
+#include "play_mode.h"
 #include "pocket/Pocket.h"
 #include "rest/Rest.h"
 #include "safe/Safe.h"
@@ -51,9 +53,6 @@ namespace PerkeleRim::PlayerSync
         constexpr float kGarageArrivedUnits = 256.0f;
         constexpr int   kGarageSettleFrames = 30;
         constexpr float kGarageTimeout = 60.0f;
-        // Resuming the handover after loading a save taken while MSC had the player: once the
-        // player's cell is attached, the same settle frames, given up after the timeout (seconds).
-        constexpr float kResumeTimeout = 30.0f;
 
         // Main thread only: the input and menu sinks and the Update hook all run there.
         struct State
@@ -62,9 +61,9 @@ namespace PerkeleRim::PlayerSync
             RE::TESObjectREFR* garage = nullptr;  // spawn marker while the player travels there for the first handover
             float              garageTime = 0.0f;
             int                garageFrames = 0;
-            bool               resume = false;  // hand over again once the loaded save's player is in its cell
-            float              resumeTime = 0.0f;
-            int                resumeFrames = 0;
+            PlayMode::Machine  play;  // hands over by itself after a load (protocol/cpp/play_mode.h)
+            bool               mscInGame = false;  // MSC's player exists (PlayerState kPlayerInGame)
+            const char*        notReady = nullptr;  // why play mode last waited, for the log
             std::uint32_t  generation = 0;
             std::uint32_t  anchorWorldspace = 0;
             std::uint32_t  anchorCell = 0;
@@ -325,13 +324,22 @@ namespace PerkeleRim::PlayerSync
             SKSE::log::info("player sync: {} shelf spots to MSC for gen {}", stock.count, stock.generation);
         }
 
+        void SayNoMsc()
+        {
+            RE::SendHUDMessage::ShowHUDMessage("My Summer Car isn't running: Kumpo stays in Skyrim until it is.");
+        }
+
         void TakeOver(RE::PlayerCharacter* a_player, const Garage::Spot* a_van = nullptr)
         {
             if (!LinkService::Get().IsUp()) {
                 SKSE::log::info("player sync: link is down, can't hand the player to MSC");
+                SayNoMsc();
+                state.play.Lost();  // hands over once MSC is there
                 return;
             }
             if (!SendAnchor(a_player, a_van ? "garage" : "handover", a_van)) {
+                SKSE::log::warn("player sync: the handover's anchor didn't go out, trying again once the game has settled");
+                state.play.Load();
                 return;
             }
 
@@ -362,6 +370,8 @@ namespace PerkeleRim::PlayerSync
             }
             if (!LinkService::Get().IsUp()) {
                 SKSE::log::info("player sync: link is down, can't hand the player to MSC");
+                SayNoMsc();
+                state.play.Lost();
                 return;
             }
             state.garage = marker;
@@ -377,13 +387,19 @@ namespace PerkeleRim::PlayerSync
             if (!LinkService::Get().IsUp() || state.garageTime > kGarageTimeout) {
                 SKSE::log::warn("player sync: gave up on the garage ({})", LinkService::Get().IsUp() ? "timed out" : "link down");
                 state.garage = nullptr;
+                if (!LinkService::Get().IsUp()) {
+                    state.play.Lost();  // hands over where the player stands once MSC is back
+                } else {
+                    Garage::Visited();  // the shack didn't work out: the next handover starts where he stands
+                    state.play.Load();
+                }
                 return;
             }
             auto*      cell = a_player->GetParentCell();
             const bool there = cell && cell->IsAttached() && a_player->Is3DLoaded() &&
                                a_player->GetPosition().GetDistance(state.garage->GetPosition()) < kGarageArrivedUnits;
-            if (there && state.garageFrames == 0) {
-                Garage::WakeUp(state.garage);  // fades up from black while the handover settles
+            if (there && state.garageFrames == 0 && Garage::WakeUp(state.garage)) {  // fades up from black while the handover settles
+                Intro::WakeUp();  // with Kumpo's hangover line, as in the Helgen cart
             }
             if (!there || ++state.garageFrames < kGarageSettleFrames) {
                 return;
@@ -398,21 +414,88 @@ namespace PerkeleRim::PlayerSync
             }
         }
 
-        void Resume(RE::PlayerCharacter* a_player, float a_delta)
+        const char* PhaseName(PlayMode::Phase a_phase)
         {
-            state.resumeTime += a_delta;
-            if (!LinkService::Get().IsUp() || state.resumeTime > kResumeTimeout) {
-                SKSE::log::warn("player sync: gave up handing the loaded save's player back to MSC ({})", LinkService::Get().IsUp() ? "timed out" : "link down");
-                state.resume = false;
+            switch (a_phase) {
+            case PlayMode::Phase::Settling:
+                return "waits for the game to settle and let the player move";
+            case PlayMode::Phase::Intro:
+                return "waits for Kumpo to get out of Helgen";
+            case PlayMode::Phase::Msc:
+                return "waits for MSC";
+            default:
+                return "is off";
+            }
+        }
+
+        // Play mode (protocol/cpp/play_mode.h): after a load Skyrim hands the player to MSC by
+        // itself, once the game has settled, Helgen is behind it and MSC is in its game.
+        void Play(RE::PlayerCharacter* a_player, float a_delta)
+        {
+            const bool intro = Intro::Running();
+            if (intro) {
+                Garage::CartStart();  // no trip to the shack for a save that started in the cart
+            }
+            if (!state.play.Waiting()) {
                 return;
             }
-            auto*      cell = a_player->GetParentCell();
-            const bool there = cell && cell->IsAttached() && a_player->Is3DLoaded();
-            if (!there || ++state.resumeFrames < kGarageSettleFrames) {
-                return;
+            auto*           ui = RE::UI::GetSingleton();
+            auto*           cell = a_player->GetParentCell();
+            auto*           controls = RE::ControlMap::GetSingleton();
+            PlayMode::Frame frame;
+            frame.linkUp = LinkService::Get().IsUp();
+            frame.mscInGame = state.mscInGame;
+            frame.loading = ui && ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME);
+            frame.paused = GamePaused();
+            frame.player3D = a_player->Is3DLoaded();
+            frame.cellAttached = cell && cell->IsAttached();
+            frame.controls = controls && controls->IsMovementControlsEnabled();
+            auto* actorState = a_player->AsActorState();
+            frame.combat = a_player->IsInCombat();
+            frame.mounted = a_player->IsOnMount();
+            frame.swimming = actorState && actorState->IsSwimming();
+            frame.knocked = a_player->IsInRagdollState() ||
+                            (actorState && actorState->GetKnockState() != RE::KNOCK_STATE_ENUM::kNormal);
+            frame.sitting = actorState && actorState->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal;
+            frame.talking = ui && ui->IsMenuOpen(RE::DialogueMenu::MENU_NAME);
+            frame.intro = intro;
+            frame.delta = a_delta;
+            const auto  before = state.play.Current();
+            const auto  say = state.play.Tick(frame);
+            const char* reason = state.play.Current() == PlayMode::Phase::Settling ? PlayMode::NotReady(frame) : nullptr;
+            if ((state.play.Current() != before || reason != state.notReady) && state.play.Waiting()) {
+                SKSE::log::info("player sync: play mode {}{}{} ({})", PhaseName(state.play.Current()), reason ? ": " : "", reason ? reason : "",
+                    Intro::Describe());
             }
-            state.resume = false;
-            TakeOver(a_player);
+            state.notReady = reason;
+            switch (say) {
+            case PlayMode::Say::HandOver:
+                SKSE::log::info("player sync: play mode hands the player to MSC");
+                HandOver(a_player);
+                break;
+            case PlayMode::Say::NoMsc:
+                SKSE::log::info("player sync: play mode: MSC isn't linked, waiting for it");
+                SayNoMsc();
+                break;
+            case PlayMode::Say::MscLoading:
+                SKSE::log::info("player sync: play mode: MSC is linked but not in its game yet, waiting for it");
+                RE::SendHUDMessage::ShowHUDMessage("My Summer Car is still loading: Kumpo goes over once it's in.");
+                break;
+            default:
+                break;
+            }
+        }
+
+        // MSC's player exists (its game is loaded). A torn read keeps the last answer.
+        void ReadMscInGame()
+        {
+            auto&                link = LinkService::Get();
+            Protocol::PlayerState pose{};
+            if (!link.IsUp()) {
+                state.mscInGame = false;
+            } else if (link.ReadPlayer(pose)) {
+                state.mscInGame = (pose.flags & Protocol::kPlayerInGame) != 0;
+            }
         }
 
         // A load door, fast travel or a script moved the player somewhere MSC's island doesn't cover.
@@ -638,6 +721,8 @@ namespace PerkeleRim::PlayerSync
             auto& link = LinkService::Get();
             if (!link.IsUp()) {
                 Release("link down");
+                state.play.Lost();  // hands over again once MSC is back
+                RE::SendHUDMessage::ShowHUDMessage("My Summer Car is gone: Kumpo is back in Skyrim until it returns.");
                 return;
             }
             if (a_player->IsDead()) {
@@ -799,7 +884,7 @@ namespace PerkeleRim::PlayerSync
             hud.hideStealth = !state.sneak;  // Skyrim's sneak eye stayed up after standing
             hud.label = state.lookAt;
             hud.hand = state.lookAtUse;
-            hud.subtitle = state.subtitle;
+            hud.subtitle = state.subtitle.empty() ? std::string(Intro::Caption()) : state.subtitle;  // the shack's wake-up caption carries over the handover
             hud.gear = state.gear;
             hud.hasNeeds = state.hasNeeds;
             hud.needs = state.needs;
@@ -832,13 +917,17 @@ namespace PerkeleRim::PlayerSync
                 if (!state.owned) {
                     Safe::Set(a_player, 0);  // keeps clearing god mode if it was slow to go off
                 }
+                if (a_delta > 0.0f) {
+                    ReadMscInGame();
+                    Intro::Tick(a_delta, LinkService::Get().IsUp() && state.mscInGame, state.owned);
+                }
                 if (state.garage && a_delta > 0.0f) {
                     TravelToGarage(a_player, a_delta);
-                } else if (state.resume && !state.owned && a_delta > 0.0f) {
-                    Resume(a_player, a_delta);
                 } else if (state.owned && a_delta > 0.0f) {
                     Drive(a_player, a_delta);
                     Rest::OnFrame(a_player, a_delta);
+                } else if (!state.owned && a_delta > 0.0f) {
+                    Play(a_player, a_delta);
                 }
                 HitTest::Update(a_player, a_delta);
             }
@@ -916,14 +1005,20 @@ namespace PerkeleRim::PlayerSync
             static inline REL::Relocation<decltype(thunk)> original;
         };
 
-        // F10: hands the player to MSC, or takes it back.
+        // F10, a debug toggle since play mode: takes the player back, cancels a handover play mode
+        // waits for, or hands the player to MSC. Never in Helgen.
         void Toggle()
         {
             if (state.owned) {
                 Release("F10");
-            } else if (state.resume) {
-                state.resume = false;
-                SKSE::log::info("player sync: F10 before the loaded save's handover resumed, not handing over");
+            } else if (auto* controls = RE::ControlMap::GetSingleton();
+                       PlayMode::F10Refused(Intro::Running(), controls && controls->IsMovementControlsEnabled())) {
+                SKSE::log::info("player sync: F10 in the Helgen intro's scene, not handing over ({})", Intro::Describe());
+                RE::SendHUDMessage::ShowHUDMessage("Kumpo can't go over to My Summer Car until he's out of Helgen.");
+            } else if (state.play.Waiting()) {
+                state.play.Cancel();
+                SKSE::log::info("player sync: F10 while play mode waited to hand over, the player stays in Skyrim");
+                RE::SendHUDMessage::ShowHUDMessage("Kumpo stays in Skyrim (F10 hands him over).");
             } else if (state.garage) {
                 state.garage = nullptr;
                 SKSE::log::info("player sync: F10 again on the way to the garage, not handing over");
@@ -1060,7 +1155,7 @@ namespace PerkeleRim::PlayerSync
         BlockHook<RE::PlayerInputHandler, 10>::Install(RE::VTABLE_ReadyWeaponHandler[0]);
         BlockHook<RE::PlayerInputHandler, 11>::Install(RE::VTABLE_FirstPersonState[1]);  // its zoom and POV keys
         BlockHook<RE::PlayerInputHandler, 12>::Install(RE::VTABLE_ThirdPersonState[1]);
-        SKSE::log::info("player sync: PlayerCharacter::Update and the CanProcess of the activate, favorites, menu, movement, look, jump, sneak, POV, attack and camera input handlers hooked (shouting stays Skyrim's, Z), F10 hands the player to MSC");
+        SKSE::log::info("player sync: PlayerCharacter::Update and the CanProcess of the activate, favorites, menu, movement, look, jump, sneak, POV, attack and camera input handlers hooked (shouting stays Skyrim's, Z), play mode hands the player to MSC after a load, F10 toggles it");
     }
 
     void OnDataLoaded()
@@ -1080,7 +1175,13 @@ namespace PerkeleRim::PlayerSync
         state.wasThirdPerson = false;  // the loaded save has its own camera
         Release("game loading");
         state.garage = nullptr;
-        state.resume = false;
+        state.play.Cancel();
+    }
+
+    void OnGameLoaded()
+    {
+        state.play.Load();
+        SKSE::log::info("player sync: play mode hands the player to MSC once the game has settled");
     }
 
     bool Owned()
@@ -1095,7 +1196,7 @@ namespace PerkeleRim::PlayerSync
 
     void DebugHandOver()
     {
-        if (!state.owned && !state.resume && !state.garage) {
+        if (!state.owned && !state.play.Waiting() && !state.garage) {  // play mode hands over by itself after a load
             Toggle();
         }
     }
@@ -1127,16 +1228,5 @@ namespace PerkeleRim::PlayerSync
             SetControls(true);
             SKSE::log::info("player sync: the save was taken while MSC had the player, Skyrim's controls are back");
         }
-    }
-
-    void ResumeHandover()
-    {
-        if (state.owned) {
-            return;
-        }
-        state.resume = true;
-        state.resumeTime = 0.0f;
-        state.resumeFrames = 0;
-        SKSE::log::info("player sync: the save was taken while MSC had the player, handing it back once it's in");
     }
 }

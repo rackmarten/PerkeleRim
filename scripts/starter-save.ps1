@@ -6,7 +6,7 @@
     Mods.txt and Steam's file are left out. Save in MSC first; run scripts/package.ps1 after.
 
     -Skyrim instead copies your newest Skyrim save (.ess and its SKSE co-save) into
-    launcher/saves/Skyrim as PerkeleRim-Kumpo.ess / .skse. Make it before the first F10, with only
+    launcher/saves/Skyrim as PerkeleRim-Kumpo.ess / .skse. Make it before the first handover, with only
     the base game, the free Creation Club content and PerkeleRim.esp loaded, so it loads anywhere.
 .EXAMPLE
     scripts/starter-save.ps1

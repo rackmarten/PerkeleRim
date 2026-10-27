@@ -3,8 +3,8 @@
 // The garage near Whiterun from PerkeleRim.esp (tools/esp-gen): a spawn marker in front of it, a
 // marker where the van parks inside (on the pit), the shack next to it with a wake-up marker by the
 // bed, and the shelf spots MSC stocks. The first handover of every save wakes the player up in the
-// shack (or, with an older ESP, starts in front of the garage); the SKSE cosave remembers that it
-// happened, and that the shelves got their stock. Without the ESP loaded everything here reports
+// shack (or, with an older ESP, starts in front of the garage), except a save that started in the
+// Helgen cart; the SKSE cosave remembers that it happened, and that the shelves got their stock. Without the ESP loaded everything here reports
 // "no garage". Main thread only.
 namespace PerkeleRim::Garage
 {
@@ -23,7 +23,8 @@ namespace PerkeleRim::Garage
 
     RE::TESObjectREFR* FirstVisit();  // the wake-up (else spawn) marker if this save hasn't been to the garage yet, else null
     void               Visited();     // the player arrived; later handovers start where it stands
-    void               WakeUp(RE::TESObjectREFR* a_marker);  // the player is at a_marker: fades up from black if it's the shack's
+    void               CartStart();   // the save started in the Helgen cart: its first handover starts where the player stands too
+    bool               WakeUp(RE::TESObjectREFR* a_marker);  // the player is at a_marker: fades up from black if it's the shack's (true then)
     std::optional<Spot> Van();         // where the van parks
 
     // The shelves are stocked once per save, at a handover near the garage (the items need the

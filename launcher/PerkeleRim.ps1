@@ -274,10 +274,10 @@ if ($mo2) {
 $mscSaves = Join-Path $env:USERPROFILE 'AppData\LocalLow\Amistech\My Summer Car'
 if (Add-StarterSave (Join-Path $Root 'saves\MSC') $mscSaves 'defaultES2File.txt') { Write-Host 'Added the starter My Summer Car save.' }
 if (-not (Test-Path (Join-Path $mscSaves 'defaultES2File.txt'))) {
-    Write-Host 'My Summer Car has no save yet: start a new game in it once (restore its window), then press F10 in Skyrim.' -ForegroundColor Yellow
+    Write-Host 'My Summer Car has no save yet: start a new game in it once (restore its window), then load a save in Skyrim.' -ForegroundColor Yellow
 }
 
-# The starter Skyrim save (Kumpo, before his first F10) next to the player's own, never over one.
+# The starter Skyrim save (Kumpo, never handed over yet) next to the player's own, never over one.
 # It was made on Anniversary Edition and Special Edition 1.5.x calls it corrupt, so SE gets none.
 $skyrimSaves = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\Skyrim Special Edition\Saves'
 if ($mo2 -and $mo2.LocalSaves) {
@@ -391,7 +391,7 @@ if ($mo2) {
     if (-not $mo2Exe) {
         Write-Host ''
         Write-Host 'Start Skyrim from Mod Organizer 2 now: pick SKSE in its executables list and press Run.' -ForegroundColor Green
-        Write-Host 'Then load a save and press F10 to hand over to My Summer Car.' -ForegroundColor Green
+        Write-Host 'Then load a save: Kumpo goes over to My Summer Car by himself.' -ForegroundColor Green
         Read-Host 'Press Enter to close this window' | Out-Null
         return
     }
@@ -402,4 +402,4 @@ if ($mo2) {
     Start-Process -WorkingDirectory $skyrim (Join-Path $skyrim 'skse64_loader.exe')
 }
 Write-Host ''
-Write-Host 'Load a save in Skyrim (or start a new game) and press F10 to hand over to My Summer Car.' -ForegroundColor Green
+Write-Host 'Load a save in Skyrim (or start a new game): Kumpo goes over to My Summer Car by himself.' -ForegroundColor Green
