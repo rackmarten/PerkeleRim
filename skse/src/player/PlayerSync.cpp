@@ -1101,6 +1101,14 @@ namespace PerkeleRim::PlayerSync
                             changed = true;
                             break;
                         }
+                        if (code == Input::kDikR && button->IsDown() && state.owned && !state.seated && !MenuHasInput()) {
+                            // On foot R opens Skyrim's Favorites, where the hotbar is bound (Q is MSC's lean);
+                            // MSC's R is its gearbox range, which only matters driving.
+                            if (auto* queue = RE::UIMessageQueue::GetSingleton()) {
+                                queue->AddMessage(RE::FavoritesMenu::MENU_NAME, RE::UI_MESSAGE_TYPE::kShow, nullptr);
+                                SKSE::log::info("player sync: R on foot, Skyrim's Favorites menu");
+                            }
+                        }
                         if (code == Input::kDikH && button->IsDown() && state.owned) {
                             Combat::OnSwing(RE::PlayerCharacter::GetSingleton());  // MSC's hit key: webs too
                         }

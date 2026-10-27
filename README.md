@@ -86,7 +86,7 @@ Loading a save hands the player to My Summer Car by itself; if MSC isn't running
 | F11 | screenshot of both games, to Screenshots next to Start PerkeleRim.bat |
 | [ / ] / ; (on foot) | call the Jonnez moped / the Hayosiko van / the Kekmet tractor: it's parked in front of you, wherever it was |
 | Y, 3 to 8 | pocket (Skyrim's inventory): Y puts away, 3 an empty bottle into the hand, 4 to 8 drink a beer and eat (driving too) |
-| 1 to 8 | Skyrim's favorites hotkeys, if bound: food and drink, MSC Beer, or the Empty Hands / Tools / Throw Empty Bottle powers (bind them in the Favorites menu after F10) |
+| 1 to 8 | Skyrim's favorites hotkeys, if bound: food and drink, MSC Beer, or the Empty Hands / Tools / Throw Empty Bottle powers (R on foot opens Skyrim's Favorites menu to bind them) |
 
 Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, P, O, J, I, ...) still work. Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).
 
