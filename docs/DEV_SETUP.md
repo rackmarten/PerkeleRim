@@ -90,7 +90,7 @@ scripts/build.ps1 -Target skse     # SKSE plugin only (-Configuration Debug for 
 scripts/build.ps1 -Target msc      # MSCLoader mod only
 scripts/test.ps1                   # unit tests: C++ protocol (doctest), C# link (NUnit), launcher (Pester 5, on pwsh and Windows PowerShell 5.1), no games needed
 scripts/test.sh                    # the same on Linux, minus the shared memory link tests (see below)
-scripts/deploy-local.ps1           # copy both DLLs (and PerkeleRim.esp once built) into the games (close the games first)
+scripts/deploy-local.ps1           # copy both DLLs, MscMenu.swf (and PerkeleRim.esp once built) into the games (close the games first)
 scripts/build-esp.ps1 -Deploy       # generate PerkeleRim.esp (garage, beer drinks, drunk blur) from your Skyrim.esm, copy and enable it (close Skyrim first)
 scripts/logs.ps1                   # tail of the plugin, SKSE and My Summer Car logs
 scripts/package.ps1                # player release zip (launcher/ + built files + launcher/saves/MSC and Skyrim if present) in tools/out/release/ (build and build-esp first)

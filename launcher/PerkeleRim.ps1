@@ -237,17 +237,19 @@ if (Get-Process SkyrimSE, skse64_loader -ErrorAction SilentlyContinue) { Fail 'S
 $files = Join-Path $Root 'files'
 if (Test-Path $files) {
     $sources = @((Join-Path $files 'Skyrim\Data\SKSE\Plugins\PerkeleRim.dll'),
+                 (Join-Path $files 'Skyrim\Data\Interface\PerkeleRim\MscMenu.swf'),
                  (Join-Path $files 'Skyrim\Data\PerkeleRim.esp'),
                  (Join-Path $files 'MSC\Mods\PerkeleRim.dll'))
 } else {
     $repo = Split-Path $Root
     $sources = @((Join-Path $repo 'skse\build\release\PerkeleRim.dll'),
+                 (Join-Path $repo 'skse\build\release\MscMenu.swf'),
                  (Join-Path $repo 'tools\out\esp\PerkeleRim.esp'),
                  (Join-Path $repo 'msc\bin\Release\net35\PerkeleRim.dll'))
 }
 $missing = @($sources | Where-Object { -not (Test-Path $_) })
 if ($missing) { Fail (@('Mod files not found (run scripts/build.ps1 and scripts/build-esp.ps1 first):') + $missing) }
-$targets = @((Join-Path $skyrim 'Data\SKSE\Plugins'), (Join-Path $skyrim 'Data'), $mods)
+$targets = @((Join-Path $skyrim 'Data\SKSE\Plugins'), (Join-Path $skyrim 'Data\Interface\PerkeleRim'), (Join-Path $skyrim 'Data'), $mods)
 for ($i = 0; $i -lt $sources.Count; $i++) {
     try { if (Install-ModFile $sources[$i] $targets[$i]) { Write-Host "Installed $(Join-Path $targets[$i] (Split-Path -Leaf $sources[$i]))" } }
     catch { Fail "Can't write $(Join-Path $targets[$i] (Split-Path -Leaf $sources[$i])) ($($_.Exception.Message)). Close both games and run the launcher again." }

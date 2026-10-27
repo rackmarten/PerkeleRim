@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 46;
+        public const uint ProtocolVersion = 47;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -30,6 +30,7 @@ namespace PerkeleRim.Protocol
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint InputPaused = 0x2;
+        public const uint InputMscMenu = 0x4;
         public const uint PlayerValid = 0x1;
         public const uint PlayerCamera = 0x2;
         public const uint PlayerNeeds = 0x4;
@@ -44,6 +45,7 @@ namespace PerkeleRim.Protocol
         public const uint DrinkSpirit = 3;
         public const uint DrinkMilk = 4;
         public const uint DrinkJuice = 5;
+        public const uint PlayerMscMenu = 0x100;
         public const uint NeedThirst = 0;
         public const uint NeedHunger = 1;
         public const uint NeedStress = 2;
@@ -67,6 +69,7 @@ namespace PerkeleRim.Protocol
         public const uint ItemHeld = 0x2;
         public const uint ItemForm = 0x4;
         public const uint HandLayerValid = 0x1;
+        public const uint HandLayerMenu = 0x2;
         public const uint ActorCapacity = 32;
         public const uint ParticleCapacity = 512;
         public const uint LookAtTextMax = 255;
@@ -207,6 +210,8 @@ namespace PerkeleRim.Protocol
         public double mouseWheel;
         public uint screenWidth;
         public uint screenHeight;
+        public float cursorX;
+        public float cursorY;
 
         public bool IsKeyDown(int keyCode)
         {
@@ -231,7 +236,6 @@ namespace PerkeleRim.Protocol
         public uint seq;
         public uint reserved;
         public InputState value;
-        public fixed byte pad[8];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

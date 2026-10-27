@@ -93,6 +93,7 @@ namespace PerkeleRim.Game
         VehicleHorn horn;
         bool hornHeld;  // H held while driving, read by FeedInput before it is kept from MSC
         HandLayerSender hands;
+        MscMenuLink menu;  // MSC's options menu shown in Skyrim (F1)
         SaveSync saves;
         RestLink rest;
         Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
@@ -178,6 +179,7 @@ namespace PerkeleRim.Game
             chase = new ChaseCamera(log);
             debugView = new DebugView(SetIslandVisible, log);
             hands =new HandLayerSender(log);
+            menu = new MscMenuLink(log);
             crash = new CrashSensor(log);
             DeathGuard.Install(log);
             ConsumeWatch.Install(log);
@@ -228,7 +230,24 @@ namespace PerkeleRim.Game
             // Not in the main menu: MSC loads its game there with its own time, which a Skyrim menu would stop for good.
             Freeze(input.Paused && Application.loadedLevelName == "GAME");
             InputShim.Active = input.OwnsPlayer;
+            InputShim.HasCursor = input.MscMenu;
             if (!input.OwnsPlayer) { punch.Reset(); block.Reset(); charge.Reset(); return; }
+            if (input.MscMenu)
+            {
+                // MSC's menu shown in Skyrim (F1): Skyrim's cursor, and every key and button as they are
+                // (clicks, key rebinding), none of the combat, remap or pocket keys.
+                float x, y;
+                InputFrame.CursorPixels(input.CursorX, input.CursorY, Screen.width, Screen.height, out x, out y);
+                InputShim.CursorX = x;
+                InputShim.CursorY = y;
+                punch.Reset(); block.Reset(); charge.Reset();
+                InputShim.Keys.Clear();
+                foreach (var k in input.Keys) InputShim.Keys.Add((KeyCode)k);
+                InputShim.Axes.Clear();
+                InputShim.Axes["Mouse X"] = input.MouseX;  // the sliders drag with it
+                InputShim.Axes["Mouse Y"] = input.MouseY;
+                return;
+            }
             var state = functions != null ? functions.ActiveStateName : null;
             bool free = HandsFree(BlockButton.Watching(state));
             block.Apply(input.Keys, free, watchKey, hitKey, state, Time.realtimeSinceStartup);
@@ -311,7 +330,8 @@ namespace PerkeleRim.Game
             PruneChunks();
 
             var state = new PlayerState { frame = fixedFrame };
-            if (owned) CloseMenu();
+            menu.Update(owned && input.MscMenu);
+            if (owned && !menu.Holding) CloseMenu();  // Skyrim shows it (F1): left open
             chase.Update(owned);
             debugView.Update(owned);
 
@@ -329,6 +349,7 @@ namespace PerkeleRim.Game
             if (playing) models.IdForBuilt(BloodModel, () => ModelSender.Overlay(BloodModel, BloodTexture, log));
             if (playing) FillPose(ref state);
             if (player != null) state.flags |= Wire.PlayerInGame;  // Skyrim's play mode hands over only then
+            if (menu.Open) state.flags |= Wire.PlayerMscMenu;  // Skyrim closes its side when Resume closes it
             state.generation = island.Generation;
             link.WritePlayer(ref state);
             SendLookAt(link, playing);
@@ -361,7 +382,7 @@ namespace PerkeleRim.Game
             finger.Update(link, playing, functions, viewCamera != null ? viewCamera.transform : null);
             horn.Update(link, driven, hornHeld);
             models.Update(link);
-            hands.Update(link, playing, input.ScreenWidth, input.ScreenHeight);
+            hands.Update(link, playing, input.ScreenWidth, input.ScreenHeight, owned ? menu.Camera : null);
             saves.Update();
             if (shotPath != null)
             {

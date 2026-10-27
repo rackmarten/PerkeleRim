@@ -28,6 +28,7 @@ function Add-File($source, $destDir) {
 
 foreach ($file in 'Start PerkeleRim.bat', 'Report a bug.bat', 'PerkeleRim.ps1', 'checks.ps1', 'install.ps1', 'wizard.ps1') { Add-File (Join-Path $RepoRoot "launcher/$file") '.' }
 Add-File (Join-Path $RepoRoot 'skse/build/release/PerkeleRim.dll') 'files/Skyrim/Data/SKSE/Plugins'
+Add-File (Join-Path $RepoRoot 'skse/build/release/MscMenu.swf') 'files/Skyrim/Data/Interface/PerkeleRim'
 Add-File (Join-Path $RepoRoot 'tools/out/esp/PerkeleRim.esp') 'files/Skyrim/Data'
 Add-File (Join-Path $RepoRoot 'msc/bin/Release/net35/PerkeleRim.dll') 'files/MSC/Mods'
 Add-File (Join-Path $RepoRoot 'LICENSE') '.'

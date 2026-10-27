@@ -12,6 +12,7 @@
 #include "intro/Intro.h"
 #include "junk/ThrowJunk.h"
 #include "link/LinkService.h"
+#include "menu/MscMenuView.h"
 #include "player/PlayerSync.h"
 #include "pocket/Pocket.h"
 #include "rest/Rest.h"
@@ -44,6 +45,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::Autoload::OnDataLoaded();
             PerkeleRim::Rest::OnDataLoaded();
             PerkeleRim::HitTest::OnDataLoaded();
+            PerkeleRim::MscMenuView::OnDataLoaded();
         } else if (a_msg->type == SKSE::MessagingInterface::kPreLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
             PerkeleRim::Death::Hide();  // the reload after a death
             PerkeleRim::Rest::OnGameLoad();  // before the release: MSC stops pissing and the like at once
