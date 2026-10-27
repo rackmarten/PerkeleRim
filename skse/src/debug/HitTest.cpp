@@ -8,6 +8,7 @@
 #include "combat/Combat.h"
 #include "coords.h"
 #include "hit_test.h"
+#include "junk/ThrowJunk.h"
 #include "link/LinkService.h"
 #include "look_at.h"
 #include "player/PlayerSync.h"
@@ -163,6 +164,7 @@ namespace PerkeleRim::HitTest
             }
             Command("drunk 0");
             SendCommands();
+            ThrowJunk::OnlyOne(0);
             if (state.bottlesTaken > 0) {
                 auto* data = RE::TESDataHandler::GetSingleton();
                 auto* form = data ? data->LookupForm(kEmptyBottle, "PerkeleRim.esp") : nullptr;
@@ -258,7 +260,9 @@ namespace PerkeleRim::HitTest
         }
 
         // Something to throw into MSC's hand: an empty bottle (MSC's "hold", the pocket untouched), or
-        // for junk a cabbage, with the Empty Bottles gone so key 3 takes junk (sent in Holding).
+        // for junk a cabbage, with the Empty Bottles gone so key 3 takes junk (sent in Holding), and
+        // ThrowJunk counting one cabbage and nothing else, so key 3's random pick has no choice and
+        // nothing comes out after the throw by itself.
         void Arm(RE::PlayerCharacter* a_player)
         {
             state.junkAsked = false;
@@ -281,6 +285,7 @@ namespace PerkeleRim::HitTest
             if (cabbage && a_player->GetItemCount(cabbage) < 1) {
                 a_player->AddObjectToContainer(cabbage, nullptr, 1, nullptr);
             }
+            ThrowJunk::OnlyOne(cabbage ? cabbage->GetFormID() : 0);
             SKSE::log::info("hit test: the Empty Bottles gone, a cabbage to throw");
         }
 

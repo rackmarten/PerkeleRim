@@ -21,4 +21,8 @@ namespace PerkeleRim::ThrowJunk
 
     // Everything out is the inventory's again: the link went down, MSC let go of the player, a load.
     void Release();
+
+    // The hit test (debug/HitTest.cpp): only one piece of a_form counts as junk, so every throw is
+    // that item and none comes out after it by itself; 0 is all junk again.
+    void OnlyOne(RE::FormID a_form);
 }

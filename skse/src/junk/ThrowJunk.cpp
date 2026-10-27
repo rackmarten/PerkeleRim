@@ -32,6 +32,7 @@ namespace PerkeleRim::ThrowJunk
             std::unordered_set<RE::FormID>          skip;  // PerkeleRim's pocket items, gold, lockpicks
             std::vector<Out>                        out;   // in MSC's hand or in the air
             std::mt19937                            random{ std::random_device{}() };  // which piece comes out
+            RE::FormID                              onlyOne = 0;  // the hit test's, OnlyOne
         } state;
 
         struct Entry
@@ -63,7 +64,10 @@ namespace PerkeleRim::ThrowJunk
             std::vector<Entry> entries;
             auto inventory = a_player->GetInventory([](RE::TESBoundObject& a_item) { return KindOf(a_item) != Junk::Kind::kOther; });
             for (auto& [item, data] : inventory) {
-                const auto count = data.first - OutCount(item);
+                if (state.onlyOne && item->GetFormID() != state.onlyOne) {
+                    continue;
+                }
+                const auto count = (state.onlyOne ? (std::min)(data.first, 1) : data.first) - OutCount(item);
                 if (count <= 0) {
                     continue;
                 }
@@ -159,6 +163,11 @@ namespace PerkeleRim::ThrowJunk
         state.out.push_back({ a_session, a_seq, item });
         SKSE::log::info("junk: {} ({:08X}, value {}, weight {:.2f}) out to MSC's hand, {} more of it", item->GetName(), item->GetFormID(), item->GetGoldValue(),
             item->GetWeight(), entries[static_cast<std::size_t>(pick)].rules.count - 1);
+    }
+
+    void OnlyOne(RE::FormID a_form)
+    {
+        state.onlyOne = a_form;
     }
 
     void OnBack(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
