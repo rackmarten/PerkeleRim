@@ -175,6 +175,36 @@ namespace PerkeleRim::HelgenSkip
                 from ? from->GetFormID() : 0);
         }
 
+        // The move starts no fall: the controller forgets where a fall began (the cart's hill, or
+        // in the air while the garage's cell loads), so landing there costs no health.
+        void NoFall(RE::PlayerCharacter* a_player)
+        {
+            if (auto* controller = a_player->GetCharController()) {
+                controller->fallStartHeight = a_player->GetPositionZ();
+                controller->fallTime = 0.0f;
+            }
+        }
+
+        // Health Skyrim took off him (its damage modifier, negative), 0 when he's at full health.
+        float Lost(RE::PlayerCharacter* a_player)
+        {
+            return -a_player->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth);
+        }
+
+        // Kumpo wakes up at the garage at full health: whatever the cart or the move took goes back.
+        void Heal(RE::PlayerCharacter* a_player, const char* a_when)
+        {
+            const float lost = Lost(a_player);
+            if (lost < 0.5f) {
+                return;
+            }
+            auto* values = a_player->AsActorValueOwner();
+            const float health = values->GetActorValue(RE::ActorValue::kHealth);
+            values->RestoreActorValue(RE::ActorValue::kHealth, lost);
+            SKSE::log::info("helgen skip: Kumpo had {:.0f} of {:.0f} health {}, {:.0f} back", health,
+                values->GetPermanentActorValue(RE::ActorValue::kHealth), a_when, lost);
+        }
+
         bool Arrived(RE::PlayerCharacter* a_player)
         {
             auto* spawn = Garage::Spawn();
@@ -235,6 +265,12 @@ namespace PerkeleRim::HelgenSkip
         if (!player) {
             return;
         }
+        if (state.machine.Current() == Phase::Moving || state.machine.Healing()) {
+            NoFall(player);
+        }
+        if (state.machine.Healing()) {
+            Heal(player, "after waking up at the garage");  // the first handover's move, MSC putting him down
+        }
         Frame frame;
         frame.intro = Intro::Running();
         frame.unboundStage = state.unbound ? state.unbound->GetCurrentStageID() : 0;
@@ -250,6 +286,7 @@ namespace PerkeleRim::HelgenSkip
             if (state.hold) {
                 RE::ImageSpaceModifierInstanceForm::Trigger(state.hold, 1.0f, nullptr);
             }
+            Heal(player, "off the cart");
             OffTheCart(player);
             MakeKumpo(player);
             Garage::SkippedHelgen();
@@ -257,11 +294,13 @@ namespace PerkeleRim::HelgenSkip
             break;
         case Step::Move:
             Move(player);
+            NoFall(player);
             break;
         case Step::FadeIn:
             SKSE::log::info("helgen skip: {}, fading in ({}, {})", state.machine.GaveUp() ? "Kumpo never got to the garage" : "Kumpo is at the garage",
                 Intro::Describe(), Describe());
             SettleWeather();
+            Heal(player, "at the garage");
             Static("Game", "FadeOutGame", false, true, 0.0f, float{ kFadeInSeconds });
             if (state.hold) {
                 RE::ImageSpaceModifierInstanceForm::Stop(state.hold);

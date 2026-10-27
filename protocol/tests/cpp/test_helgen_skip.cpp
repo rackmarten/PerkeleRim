@@ -55,7 +55,7 @@ TEST_CASE("the fade starts a few seconds after the Perkele is over, then the rel
     CHECK(Run(machine, Cart(0.1f), 0.5f) == Step::Move);
 }
 
-TEST_CASE("it fades in once he has been at the garage for a moment, and is done")
+TEST_CASE("it fades in once he has been at the garage for a moment, keeps him healthy a while, and is done")
 {
     Machine machine;
     machine.NewGame();
@@ -67,10 +67,29 @@ TEST_CASE("it fades in once he has been at the garage for a moment, and is done"
     CHECK(Run(machine, Garage(0.1f, true, true), 3.0f) == Step::None);   // still loading
     CHECK(Run(machine, Garage(0.1f, true), kArrivedSeconds - 0.25f) == Step::None);
     CHECK(Run(machine, Garage(0.1f, true), 0.5f) == Step::FadeIn);
-    CHECK_FALSE(machine.Skipping());
+    CHECK_FALSE(machine.Skipping());  // play mode may hand over while he's kept healthy
     CHECK_FALSE(machine.GaveUp());
+    CHECK(machine.Healing());
+    CHECK(Run(machine, Garage(0.1f, true), kHealSeconds - 0.25f) == Step::None);
+    CHECK(machine.Healing());
+    CHECK(Run(machine, Garage(0.1f, true), 0.5f) == Step::None);
+    CHECK_FALSE(machine.Healing());
     CHECK(machine.Current() == Phase::Off);
     CHECK(Run(machine, Garage(0.1f, true), 10.0f) == Step::None);
+}
+
+TEST_CASE("a load while he's kept healthy ends it")
+{
+    Machine machine;
+    machine.NewGame();
+    machine.Woke();
+    REQUIRE(Run(machine, Cart(0.1f), 60.0f) == Step::FadeOut);
+    REQUIRE(Run(machine, Cart(0.1f), 60.0f) == Step::Release);
+    REQUIRE(Run(machine, Cart(0.1f), 60.0f) == Step::Move);
+    REQUIRE(Run(machine, Garage(0.1f, true), 5.0f) == Step::FadeIn);
+    REQUIRE(machine.Healing());
+    machine.Loaded();
+    CHECK_FALSE(machine.Healing());
 }
 
 TEST_CASE("he's moved again while he isn't there, and it fades in anyway after the timeout")
@@ -92,6 +111,7 @@ TEST_CASE("he's moved again while he isn't there, and it fades in anyway after t
     CHECK(step == Step::FadeIn);
     CHECK(moves > 5);
     CHECK(machine.GaveUp());
+    CHECK(machine.Healing());
 }
 
 TEST_CASE("arriving resets when he's pulled away before the moment is over")

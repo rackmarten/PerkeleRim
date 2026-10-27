@@ -2,8 +2,9 @@
 // with a slow fade to black; Skyrim then lets him off the cart, Unbound (MQ101) completes the way
 // it does after the keep, Helgen is left in ruins, Before the Storm (MQ102) starts on the side the
 // player picked (HelgenSide in the launcher's PerkeleRim.ini, Imperial by default), and Kumpo, a
-// Nord, wakes up at the garage's spawn marker with a fade back in. Play mode hands him over from
-// there as usual (play_mode.h). Without MSC the Perkele isn't heard, but the skip comes at the same
+// Nord, wakes up at the garage's spawn marker with a fade back in, and is kept at full health for
+// kHealSeconds (the move could count as a fall). Play mode hands him over from there as usual
+// (play_mode.h). Without MSC the Perkele isn't heard, but the skip comes at the same
 // moment; if Ralof's line never ends (no cue at all), the cart reaching Helgen's gate skips it.
 // Header-only and free of Skyrim types, so the protocol tests cover it; skse/src/intro/HelgenSkip.cpp
 // feeds it a Frame a frame and does each Step.
@@ -31,6 +32,10 @@ namespace PerkeleRim::HelgenSkip
     inline constexpr float kMoveRetrySeconds = 5.0f; // not there yet (the cart pulled him back): move again
     inline constexpr float kArriveTimeout = 60.0f;   // fades in anyway, so the screen never stays black
     inline constexpr float kFadeInSeconds = 3.0f;
+    // After the fade in Kumpo is kept at full health this long: the move (or the first handover's)
+    // can count as a fall and took a quarter to a half of it. Covers play mode's settle, the handover
+    // and MSC putting him down on its island.
+    inline constexpr float kHealSeconds = 20.0f;
 
     // Who Before the Storm sends Kumpo to. Vanilla's own skip stages of MQ102 set up its friend
     // quest (MQ102A Hadvar, MQ102B Ralof), point the journal at his relative in Riverwood and
@@ -91,6 +96,7 @@ namespace PerkeleRim::HelgenSkip
         FadingOut,  // kFadeOutSeconds
         Releasing,  // kReleaseSeconds
         Moving,     // until he's at the garage for kArrivedSeconds
+        Healing,    // faded in: kHealSeconds of full health
     };
 
     class Machine
@@ -152,20 +158,23 @@ namespace PerkeleRim::HelgenSkip
                 if (a_frame.arrived && !a_frame.loading) {
                     _arrived += delta;
                     if (_arrived >= kArrivedSeconds) {
-                        _phase = Phase::Off;
-                        return Step::FadeIn;
+                        return FadeIn();
                     }
                     return Step::None;
                 }
                 _arrived = 0.0f;
                 if (_timer <= 0.0f) {
-                    _phase = Phase::Off;
                     _gaveUp = true;
-                    return Step::FadeIn;
+                    return FadeIn();
                 }
                 if (!a_frame.loading && (_retry -= delta) <= 0.0f) {
                     _retry = kMoveRetrySeconds;
                     return Step::Move;
+                }
+                return Step::None;
+            case Phase::Healing:
+                if ((_timer -= delta) <= 0.0f) {
+                    _phase = Phase::Off;
                 }
                 return Step::None;
             default:
@@ -177,6 +186,8 @@ namespace PerkeleRim::HelgenSkip
         // The fade has started and he isn't at the garage yet: play mode waits.
         bool Skipping() const { return _phase == Phase::FadingOut || _phase == Phase::Releasing || _phase == Phase::Moving; }
         bool GaveUp() const { return _gaveUp; }  // faded in without him at the garage
+        // Faded in at the garage a moment ago: health lost now is the move's, put back.
+        bool Healing() const { return _phase == Phase::Healing; }
 
     private:
         Step FadeOut()
@@ -184,6 +195,13 @@ namespace PerkeleRim::HelgenSkip
             _phase = Phase::FadingOut;
             _timer = kFadeOutSeconds;
             return Step::FadeOut;
+        }
+
+        Step FadeIn()
+        {
+            _phase = Phase::Healing;
+            _timer = kHealSeconds;
+            return Step::FadeIn;
         }
 
         Phase _phase = Phase::Off;
