@@ -2,6 +2,7 @@
 
 #include "coords.h"
 #include "model/ModelView.h"
+#include "vehicle/Hitbox.h"
 
 namespace PerkeleRim::VehicleView
 {
@@ -321,10 +322,12 @@ namespace PerkeleRim::VehicleView
         const bool valid = a_state && a_state->vehicle == a_vehicle && (a_state->flags & Protocol::kVehicleValid) != 0 &&
                            a_state->generation == a_generation;
         if (!valid) {
+            Hitbox::Hide(a_vehicle);
             Hide(view, name);
             return;
         }
         if (!Load(view, name)) {
+            Hitbox::Hide(a_vehicle);
             return;
         }
         Attach(view, name);
@@ -341,6 +344,7 @@ namespace PerkeleRim::VehicleView
         node.SetAppCulled(false);
         RE::NiUpdateData update{};
         node.Update(update);
+        Hitbox::Show(a_vehicle, name, view.model, *a_state);
 
         if (!view.shown) {
             view.shown = true;
@@ -352,6 +356,7 @@ namespace PerkeleRim::VehicleView
     void Hide()
     {
         for (std::uint32_t i = 0; i < Protocol::kVehicleCount; i++) {
+            Hitbox::Hide(i + 1);
             Hide(views[i], kModelNames[i]);
         }
     }

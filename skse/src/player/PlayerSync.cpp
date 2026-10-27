@@ -25,6 +25,8 @@
 #include "shot/Shot.h"
 #include "stamina.h"
 #include "wading.h"
+#include "vehicle/Hitbox.h"
+#include "vehicle/HitboxTest.h"
 #include "vehicle/VehicleView.h"
 
 namespace PerkeleRim::PlayerSync
@@ -687,6 +689,23 @@ namespace PerkeleRim::PlayerSync
             }
         }
 
+        // The safe vehicle the player has climbed into without driving it: MSC lowers the camera and
+        // lets him move between the seats, while Skyrim's body still stands, its head out of the
+        // roof. Its feet in the vehicle's cabin (Hitbox::InCabin); 0 for none.
+        std::uint32_t ClimbedInto(RE::PlayerCharacter* a_player)
+        {
+            const auto  at = a_player->GetPosition();
+            const float feet[3] = { at.x, at.y, at.z };
+            for (std::uint32_t id = 1; id <= Protocol::kVehicleCount; id++) {
+                Protocol::VehicleState pose{};
+                Hitbox::Box            box{};
+                if (Damage::SafeSeat(id) && Hitbox::Where(id, pose, box) && Hitbox::InCabin(id, pose.position, pose.rotation, box, feet)) {
+                    return id;
+                }
+            }
+            return 0;
+        }
+
         // MSC's run (LeftShift) costs Skyrim stamina; with the bar empty the key is held back from MSC
         // (from the next Publish on) until a fifth of the stamina is back.
         void Sprint(RE::PlayerCharacter* a_player, const Protocol::PlayerState* a_pose, bool a_seated, bool a_menu, float a_delta)
@@ -768,7 +787,7 @@ namespace PerkeleRim::PlayerSync
                 }
             }
             const bool seated = valid && driven != nullptr;
-            Safe::Set(a_player, seated ? driven->vehicle : 0);
+            Safe::Set(a_player, seated ? driven->vehicle : valid ? ClimbedInto(a_player) : 0);
             if (seated != state.seated) {
                 state.seated = seated;
                 SetSimulated(a_player, !seated);
@@ -868,6 +887,7 @@ namespace PerkeleRim::PlayerSync
                 const bool hasParts = hasVehicle[i] && link.ReadVehicleParts(i + 1, parts);
                 VehicleView::Update(i + 1, hasVehicle[i] ? &vehicles[i] : nullptr, hasParts ? &parts : nullptr, state.generation);
             }
+            HitboxTest::Update(a_player, a_delta);
             Protocol::ItemState items{};
             if (link.ReadItems(items)) {  // a torn read keeps last frame's items; link down releases
                 ItemView::Update(&items, state.generation);
