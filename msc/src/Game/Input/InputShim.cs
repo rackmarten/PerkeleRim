@@ -103,7 +103,13 @@ namespace PerkeleRim.Game
 
         // MSC aims its look-at raycasts (doors, handbrake, ignition) through the cursor. Its window
         // has no focus, so the cursor isn't locked to the center; answer with the center instead.
-        public static Vector3 get_mousePosition() => On ? new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f) : Input.mousePosition;
+        // MSC's options menu drawn in Skyrim (F1) uses Skyrim's cursor instead (CursorX/Y, pixels from
+        // the bottom left), so its buttons and sliders pick what Skyrim's cursor is on.
+        public static Vector3 get_mousePosition() =>
+            On ? (HasCursor ? new Vector3(CursorX, CursorY, 0f) : new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f)) : Input.mousePosition;
+
+        public static bool HasCursor;
+        public static float CursorX, CursorY;
 
         public static bool get_anyKey() { if (!On) return Input.anyKey; Sync(); return curKeys.Count > 0 || curButtons.Count > 0; }
         public static bool get_anyKeyDown()

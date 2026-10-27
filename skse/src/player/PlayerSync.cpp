@@ -15,6 +15,7 @@
 #include "item/ItemView.h"
 #include "link/LinkService.h"
 #include "look_at.h"
+#include "menu/MscMenuView.h"
 #include "model/ModelView.h"
 #include "particle/ParticleView.h"
 #include "piss_tap.h"
@@ -134,7 +135,14 @@ namespace PerkeleRim::PlayerSync
             if (!link.IsUp()) {
                 return;
             }
-            auto       input = state.input.Build(++state.inputFrame, state.owned, !a_menu, a_paused);
+            Protocol::InputState input{};
+            if (state.owned && MscMenuView::Requested()) {  // MSC's menu, F1: every key and the cursor
+                float x, y;
+                MscMenuView::Cursor(x, y);
+                input = state.input.BuildMenu(++state.inputFrame, x, y, a_paused);  // frozen like Skyrim's own menus
+            } else {
+                input = state.input.Build(++state.inputFrame, state.owned, !a_menu, a_paused);
+            }
             for (int i = 0; i < 8 && !a_menu; i++) {
                 input.keys[i] |= state.debugKeys[i];
             }
@@ -953,6 +961,7 @@ namespace PerkeleRim::PlayerSync
                     Safe::Set(a_player, 0);  // keeps clearing god mode if it was slow to go off
                 }
                 if (a_delta > 0.0f) {
+                    MscMenuView::Tick(a_delta);  // while paused the menu ticks itself
                     ReadMscInGame();
                     Intro::Tick(a_delta, LinkService::Get().IsUp() && state.mscInGame, state.owned);
                 }
@@ -1026,6 +1035,9 @@ namespace PerkeleRim::PlayerSync
                 if (state.owned && a_event && a_event->GetDevice() == RE::INPUT_DEVICE::kKeyboard) {
                     if (auto* button = a_event->AsButtonEvent()) {
                         const auto key = button->GetIDCode();
+                        if (MscMenuView::HoldsKey(key)) {
+                            return false;  // MSC's menu (F1) is up or just closed
+                        }
                         // T is Skyrim's Wait menu on foot; driving it is MSC's boost.
                         if (key == Input::kDikT && !state.seated) {
                             return original(a_handler, a_event);
@@ -1070,6 +1082,11 @@ namespace PerkeleRim::PlayerSync
                 bool changed = false;
                 for (auto* e = a_event ? *a_event : nullptr; e; e = e->next) {
                     if (auto* move = e->AsMouseMoveEvent()) {
+                        if (MscMenuView::Shown()) {
+                            state.input.AddMouse(move->mouseInputX, move->mouseInputY);  // MSC's sliders drag with Mouse X
+                            changed = true;  // and its menu follows the cursor
+                            continue;
+                        }
                         if (MenuHasInput()) {
                             continue;  // moves the menu's cursor, not MSC's camera
                         }
@@ -1084,6 +1101,10 @@ namespace PerkeleRim::PlayerSync
                     const auto code = button->GetIDCode();
                     switch (button->GetDevice()) {
                     case RE::INPUT_DEVICE::kKeyboard:
+                        if (MscMenuView::Key(code, button->IsDown(), button->IsUp())) {
+                            changed = true;  // F1 or Escape for MSC's menu
+                            continue;
+                        }
                         if (code == Input::kDikF10) {
                             if (button->IsDown()) {
                                 Toggle();

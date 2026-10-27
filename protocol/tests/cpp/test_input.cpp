@@ -128,3 +128,26 @@ TEST_CASE("a game paused by a menu tells MSC to freeze, only while MSC owns the 
     CHECK(b.Build(0, true, false, false).flags == Protocol::kInputOwnsPlayer);  // dialogue: no keys, time runs
     CHECK(b.Build(0, false, false, true).flags == 0);
 }
+
+TEST_CASE("MSC's menu gets every key and the cursor, no axes")
+{
+    Builder b;
+    b.SetKey(KeyCode::W, true);
+    b.SetKey(KeyCode::Mouse0, true);
+    b.Block(KeyCode::W, true);  // a held-back key still reaches the menu (rebinding it)
+    auto s = b.BuildMenu(3, 0.25f, 0.75f, false);
+    CHECK(s.flags == (Protocol::kInputOwnsPlayer | Protocol::kInputMscMenu));
+    CHECK((s.keys[KeyCode::W >> 6] & (1ull << (KeyCode::W & 63))) != 0);
+    CHECK((s.keys[KeyCode::Mouse0 >> 6] & (1ull << (KeyCode::Mouse0 & 63))) != 0);
+    CHECK(s.vertical == 0.0f);
+    CHECK(s.horizontal == 0.0f);
+    CHECK(s.cursorX == 0.25f);
+    CHECK(s.cursorY == 0.75f);
+
+    s = b.BuildMenu(4, 0.5f, 0.5f, true);
+    CHECK((s.flags & Protocol::kInputPaused) != 0);
+
+    s = b.Build(5, true, true);  // the ordinary state carries no menu or cursor
+    CHECK((s.flags & Protocol::kInputMscMenu) == 0);
+    CHECK(s.cursorX == 0.0f);
+}

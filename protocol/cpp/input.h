@@ -215,6 +215,22 @@ namespace PerkeleRim::Input
             return s;
         }
 
+        // MSC's options menu drawn in Skyrim (msc_menu.h): every key and button goes to MSC (key
+        // rebinding, clicks), with the cursor and the mouse totals (its sliders drag with Mouse X);
+        // no Horizontal/Vertical, so nothing walks behind the menu.
+        // a_paused freezes MSC's time as for Skyrim's own menus.
+        Protocol::InputState BuildMenu(std::uint32_t a_frame, float a_cursorX, float a_cursorY, bool a_paused) const
+        {
+            Protocol::InputState s = Build(a_frame, true, false, a_paused);
+            s.flags |= Protocol::kInputMscMenu;
+            for (int i = 0; i < 8; ++i) {
+                s.keys[i] = _keys[i];
+            }
+            s.cursorX = a_cursorX;
+            s.cursorY = a_cursorY;
+            return s;
+        }
+
     private:
         float Axis(std::uint16_t a_pos, std::uint16_t a_pos2, std::uint16_t a_neg, std::uint16_t a_neg2) const
         {

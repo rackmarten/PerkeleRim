@@ -136,6 +136,7 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 - Vehicles can't go through load doors: park at city gates; the player walks in on foot.
 - The island has the land as a heightfield (0.9 m apart) and statics as their real collision; spheres and transform wrappers that don't read as a rotation are left out (counted in the log as skipped), and tree trunks are 8-sided prisms. Doors, gates and trapdoors are read again only once they have stopped moving (about 0.5 s after), so you can't slip through a double door while it is still opening as you can in Skyrim.
 - While MSC controls the player, Skyrim's inventory (Tab) works for armor, food and drink, but weapons and spells can't be equipped, and the Favorites menu opens with R on foot (Q is MSC's lean).
+- MSC's own options menu opens in Skyrim with F1 (both games pause); its quit buttons do nothing there, quit MSC from its window after Skyrim.
 - MSC is first-person only; third-person would need a body model and animation.
 - MSC vehicles are fragile and can kill the player in crashes; may need patching for Skyrim terrain.
 - Two games running at once: expect high CPU/GPU load.

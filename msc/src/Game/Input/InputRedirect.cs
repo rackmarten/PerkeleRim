@@ -63,6 +63,18 @@ namespace PerkeleRim.Game
                 }
             }
 
+            // Unity's own OnMouseEnter/Over/Down messages (PlayMaker's MOUSE system events) come from
+            // SendMouseEvents in UnityEngine, which reads the real mouse; through the shim they follow
+            // Skyrim's cursor in MSC's menu (F1) and the screen center otherwise, where MSC locks it.
+            var mouseEvents = typeof(Input).Assembly.GetType("UnityEngine.SendMouseEvents");
+            var send = mouseEvents != null ? mouseEvents.GetMethod("DoSendMouseEvents", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic) : null;
+            if (send == null) Log("redirect: UnityEngine.SendMouseEvents.DoSendMouseEvents not found, Unity's mouse messages read the real mouse");
+            else
+            {
+                try { harmony.Patch(send, null, null, transpiler); patched++; }
+                catch (Exception e) { failed++; Log("redirect: failed UnityEngine.SendMouseEvents.DoSendMouseEvents: " + e.Message); }
+            }
+
             Log($"redirect: scanned {scanned} methods, patched {patched}, failed {failed}, call sites {callSitesReplaced}, {(DateTime.Now - start).TotalMilliseconds:0} ms");
             foreach (var kv in unshimmed) Log($"redirect: left unshimmed Input.{kv.Key} x{kv.Value}");
         }

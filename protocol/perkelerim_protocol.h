@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 43;
+    inline constexpr std::uint32_t kProtocolVersion = 44;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -82,6 +82,7 @@ namespace PerkeleRim::Protocol
 
     inline constexpr std::uint32_t kInputOwnsPlayer = 0x1;  // InputState.flags: MSC should apply this input
     inline constexpr std::uint32_t kInputPaused = 0x2;      // InputState.flags: a Skyrim menu pauses the game, MSC freezes its time
+    inline constexpr std::uint32_t kInputMscMenu = 0x4;     // InputState.flags (v44): Skyrim shows MSC's options menu (F1): MSC keeps it open, cursorX/Y are set
 
     // Skyrim -> MSC. Keys are Unity KeyCode values (mouse buttons are KeyCode.Mouse0..Mouse6).
     struct InputState
@@ -96,6 +97,8 @@ namespace PerkeleRim::Protocol
         double        mouseWheel;  // accumulated "Mouse ScrollWheel" axis; MSC applies the delta
         std::uint32_t screenWidth;   // Skyrim's back buffer in pixels; MSC renders its hand layer this size
         std::uint32_t screenHeight;
+        float         cursorX;  // v44, with kInputMscMenu: Skyrim's cursor, 0..1 from the screen's left edge
+        float         cursorY;  // 0..1 from the top edge
     };
 
     struct InputSlot
@@ -103,7 +106,6 @@ namespace PerkeleRim::Protocol
         std::uint32_t seq;
         std::uint32_t reserved;
         InputState    value;
-        std::uint8_t  pad[8];
     };
 
     inline constexpr std::uint32_t kPlayerValid = 0x1;   // PlayerState.flags: MSC is simulating the player
@@ -113,6 +115,7 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPlayerBlocking = 0x10;  // PlayerState.flags: MSC's player guards (right click), Skyrim blocks
     inline constexpr std::uint32_t kPlayerChaseCamera = 0x20;  // PlayerState.flags: MSC's chase camera (its F9, in a vehicle) is on: eye, roll and fov are that camera's, view* its direction
     inline constexpr std::uint32_t kPlayerTools = 0x80;  // PlayerState.flags (v43): MSC's tools are out instead of the hand (its 2); Skyrim shows MSC's tools icon
+    inline constexpr std::uint32_t kPlayerMscMenu = 0x100;  // PlayerState.flags (v44): MSC's options menu is open (PlayerInMenu)
     inline constexpr std::uint32_t kPlayerInGame = 0x40;  // PlayerState.flags (v41): MSC's player exists (its game is loaded), set whoever has the player; play mode hands over only then
 
     // PlayerState.needs order, MSC's globals: PlayerThirst, PlayerHunger, PlayerStress, PlayerUrine,
@@ -271,6 +274,7 @@ namespace PerkeleRim::Protocol
     };
 
     inline constexpr std::uint32_t kHandLayerValid = 0x1;  // HandLayer.flags: MSC draws into the texture every frame
+    inline constexpr std::uint32_t kHandLayerMenu = 0x2;   // HandLayer.flags (v44): the texture holds MSC's options menu, not its hands
 
     // MSC -> Skyrim. MSC's first-person layer (what its HandCamera draws: hands, drinks, tools in
     // hand) in a D3D11 texture both games share on the GPU: transparent where nothing is drawn,
@@ -844,7 +848,6 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(LinkHeader) == 128);
     static_assert(offsetof(LinkHeader, creatorVersion) == 12);
     static_assert(offsetof(LinkHeader, peers) == 16);
-    static_assert(sizeof(InputState) == 112);
     static_assert(offsetof(InputState, mouseX) == 8);
     static_assert(offsetof(InputState, mouseY) == 16);
     static_assert(offsetof(InputState, horizontal) == 24);
@@ -852,6 +855,9 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(InputState, keys) == 32);
     static_assert(offsetof(InputState, mouseWheel) == 96);
     static_assert(offsetof(InputState, screenWidth) == 104);
+    static_assert(offsetof(InputState, cursorX) == 112);
+    static_assert(offsetof(InputState, cursorY) == 116);
+    static_assert(sizeof(InputState) == 120);
     static_assert(sizeof(InputSlot) == 128);
     static_assert(offsetof(InputSlot, value) == 8);
     static_assert(sizeof(PlayerState) == 104);
