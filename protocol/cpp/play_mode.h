@@ -8,12 +8,14 @@
 //    player's 3D in, its cell attached). AhShitRim took the player while Skyrim was still finishing
 //    a load and crashed in a vanilla actor's AI the same second;
 //  - Skyrim to let the player move: a scene with the movement controls taken away keeps the player
-//    (the Helgen cart, the execution);
+//    (the Helgen cart);
 //  - a calm moment: not fighting, riding, swimming, knocked down or ragdolled, sitting or lying in
 //    furniture, or talking (the dialogue menu), so MSC doesn't take over mid-action;
-//  - the Helgen intro (Unbound) to be over: nothing hands over by itself while it runs, the escape
-//    through the keep included, so Helgen plays with Skyrim's own controls. F10 is refused only while
-//    a scene has the player in it (F10Refused), so a quest that never completes can't keep him;
+//  - the Helgen intro to be over: nothing hands over by itself while Unbound runs or Helgen is being
+//    skipped (helgen_skip.h: the cart's fade to black and the move to the garage, which completes
+//    Unbound), so the first handover of a new game starts at the garage. F10 is refused while a scene
+//    has the player in it or Helgen is being skipped (F10Refused), so a quest that never completes
+//    can't keep him;
 //  - MSC: linked and in its game. If it isn't, it says so once (NoMsc, or MscLoading while MSC is
 //    linked but on its menu or loading its save) and hands over once MSC has been in its game for
 //    kMscSeconds (MSC applies a snapshot that waited for it 3 s after its player shows up).
@@ -80,10 +82,14 @@ namespace PerkeleRim::PlayMode
 
     constexpr bool SkyrimReady(const Frame& a_frame) { return NotReady(a_frame) == nullptr; }
 
-    // F10 in the Helgen intro: refused while its scene has the player (the cart, the execution), so
-    // nobody leaves the cart by accident; once he can move it hands over, the way out if Unbound never
-    // completes (another start, a mod, a stuck stage).
-    constexpr bool F10Refused(bool a_intro, bool a_controls) { return a_intro && !a_controls; }
+    // F10 in the Helgen intro: refused while its scene has the player (the cart), so nobody leaves
+    // the cart by accident; once he can move it hands over, the way out if Unbound never completes
+    // (another start, a mod, a stuck stage). Always refused while Helgen is being skipped (a_skipping,
+    // helgen_skip.h): the black and the move to the garage have the player even with the controls back.
+    constexpr bool F10Refused(bool a_intro, bool a_controls, bool a_skipping = false)
+    {
+        return a_skipping || (a_intro && !a_controls);
+    }
 
     class Machine
     {

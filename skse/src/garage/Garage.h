@@ -3,9 +3,10 @@
 // The garage near Whiterun from PerkeleRim.esp (tools/esp-gen): a spawn marker in front of it, a
 // marker where the van parks inside (on the pit), the shack next to it with a wake-up marker by the
 // bed, and the shelf spots MSC stocks. The first handover of every save wakes the player up in the
-// shack (or, with an older ESP, starts in front of the garage), except a save that started in the
-// Helgen cart; the SKSE cosave remembers that it happened, and that the shelves got their stock. Without the ESP loaded everything here reports
-// "no garage". Main thread only.
+// shack (or, with an older ESP, starts in front of the garage), except a new game, whose Helgen skip
+// already woke him at the spawn marker (the handover starts there), and a save still in the Helgen
+// cart; the SKSE cosave remembers that it happened, and that the shelves got their stock. Without
+// the ESP loaded everything here reports "no garage". Main thread only.
 namespace PerkeleRim::Garage
 {
     struct Spot
@@ -21,9 +22,11 @@ namespace PerkeleRim::Garage
 
     void OnDataLoaded();  // finds the ESP's markers; call on kDataLoaded
 
+    RE::TESObjectREFR* Spawn();       // the spawn marker in front of the garage, or null
     RE::TESObjectREFR* FirstVisit();  // the wake-up (else spawn) marker if this save hasn't been to the garage yet, else null
     void               Visited();     // the player arrived; later handovers start where it stands
-    void               CartStart();   // the save started in the Helgen cart: its first handover starts where the player stands too
+    void               CartStart();   // the save is in the Helgen cart: its first handover starts where the player stands too
+    void               SkippedHelgen();  // the Helgen skip moves him to the spawn marker: the first handover starts there, with the van
     bool               WakeUp(RE::TESObjectREFR* a_marker);  // the player is at a_marker: fades up from black if it's the shack's (true then)
     std::optional<Spot> Van();         // where the van parks
 

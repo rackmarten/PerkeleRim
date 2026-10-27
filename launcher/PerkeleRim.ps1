@@ -55,7 +55,7 @@ function Read-Config {
 
 function Save-Config {
     $lines = @('; Settings for the PerkeleRim launcher. Delete this file to run setup again.')
-    foreach ($key in 'SkyrimPath', 'MscPath', 'ModManager', 'Mo2Path', 'Mo2Exe') { if ($config[$key]) { $lines += "$key=$($config[$key])" } }
+    foreach ($key in 'SkyrimPath', 'MscPath', 'ModManager', 'Mo2Path', 'Mo2Exe', 'HelgenSide') { if ($config[$key]) { $lines += "$key=$($config[$key])" } }
     Set-Content -Path $ConfigPath -Encoding utf8 -Value $lines
 }
 
@@ -256,6 +256,13 @@ for ($i = 0; $i -lt $sources.Count; $i++) {
 # F11 screenshots go to Screenshots next to this script (ScreenshotDir in the SKSE plugin's ini).
 $shots = Join-Path $Root 'Screenshots'
 if (Set-ScreenshotDir (Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.ini') $shots) { Write-Host "Screenshots (F11) go to $shots" }
+
+# Who a new game's skipped Helgen sends Kumpo to (HelgenSide=Stormcloak for Ralof, Imperial or
+# nothing for Hadvar). Copied to the plugin's ini only when set here: without it the plugin's ini
+# keeps whatever it has.
+if (Set-PluginSetting (Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.ini') 'HelgenSide' $config['HelgenSide']) {
+    Write-Host "New games skip Helgen on the $($config['HelgenSide']) side"
+}
 
 # Skyrim lists active plugins in plugins.txt: its own in %LOCALAPPDATA%, or with MO2 the selected
 # profile's, which MO2 rewrites while it's open.

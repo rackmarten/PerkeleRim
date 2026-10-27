@@ -138,6 +138,9 @@ namespace PerkeleRim::Intro
             return 0;
         }
 
+        // Kumpo answered Ralof, or would have if MSC had been there (helgen_skip.h starts from it).
+        bool Woke() const { return _woke; }
+
     private:
         float _blackout = -1.0f;       // seconds since the new game started, -1 while it isn't waiting
         float _sinceBlackout = -1.0f;  // seconds since the blackout went out, -1 if it didn't

@@ -11,6 +11,7 @@
 #include "garage/Garage.h"
 #include "hud/Hud.h"
 #include "input.h"
+#include "intro/HelgenSkip.h"
 #include "intro/Intro.h"
 #include "hands/HandView.h"
 #include "item/ItemView.h"
@@ -476,14 +477,14 @@ namespace PerkeleRim::PlayerSync
                             (actorState && actorState->GetKnockState() != RE::KNOCK_STATE_ENUM::kNormal);
             frame.sitting = actorState && actorState->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal;
             frame.talking = ui && ui->IsMenuOpen(RE::DialogueMenu::MENU_NAME);
-            frame.intro = intro;
+            frame.intro = intro || HelgenSkip::Skipping();  // the fade to the garage counts as Helgen too
             frame.delta = a_delta;
             const auto  before = state.play.Current();
             const auto  say = state.play.Tick(frame);
             const char* reason = state.play.Current() == PlayMode::Phase::Settling ? PlayMode::NotReady(frame) : nullptr;
             if ((state.play.Current() != before || reason != state.notReady) && state.play.Waiting()) {
-                SKSE::log::info("player sync: play mode {}{}{} ({})", PhaseName(state.play.Current()), reason ? ": " : "", reason ? reason : "",
-                    Intro::Describe());
+                SKSE::log::info("player sync: play mode {}{}{} ({}, {})", PhaseName(state.play.Current()), reason ? ": " : "", reason ? reason : "",
+                    Intro::Describe(), HelgenSkip::Describe());
             }
             state.notReady = reason;
             switch (say) {
@@ -1054,7 +1055,7 @@ namespace PerkeleRim::PlayerSync
             if (state.owned) {
                 Release("F10");
             } else if (auto* controls = RE::ControlMap::GetSingleton();
-                       PlayMode::F10Refused(Intro::Running(), controls && controls->IsMovementControlsEnabled())) {
+                       PlayMode::F10Refused(Intro::Running(), controls && controls->IsMovementControlsEnabled(), HelgenSkip::Skipping())) {
                 SKSE::log::info("player sync: F10 in the Helgen intro's scene, not handing over ({})", Intro::Describe());
                 RE::SendHUDMessage::ShowHUDMessage("Kumpo can't go over to My Summer Car until he's out of Helgen.");
             } else if (state.play.Waiting()) {

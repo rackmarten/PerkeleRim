@@ -2,8 +2,8 @@
 
 // Kumpo's Helgen intro (rules in protocol/cpp/intro_cues.h): a new game opens with MSC playing Kumpo
 // passing out drunk, snoring and waking up hungover while Skyrim fades up from black again and
-// captions it, and Kumpo says Perkele after Ralof's "Hey, you. You're finally awake." in the cart.
-// Waking up in the shack plays the same hangover line (WakeUp). While Unbound (MQ101) runs nothing hands
+// captions it, and Kumpo says Perkele after Ralof's "Hey, you. You're finally awake." in the cart;
+// a few seconds later Helgen is skipped (HelgenSkip). Waking up in the shack plays the same hangover line (WakeUp). While Unbound (MQ101) runs nothing hands
 // the player over (PlayerSync). Main thread only, except the topic sink, which only sets a flag.
 namespace PerkeleRim::Intro
 {

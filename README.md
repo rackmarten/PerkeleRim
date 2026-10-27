@@ -31,7 +31,7 @@ Then:
 
 1. Download `PerkeleRim-<version>.zip` from [Releases](https://github.com/rackmarten/PerkeleRim/releases/latest) and extract it anywhere (not inside a game folder).
 2. Double-click **Start PerkeleRim.bat**. The first time, a short setup finds both games (or lets you pick their folders), checks for MSCLoader, SKSE and Address Library and opens the download pages of anything missing, and waits while you install it. Then, and every time after, it installs or updates the mod and starts both games (My Summer Car minimizes itself). No mod manager needed.
-3. Play in Skyrim only. Load the **PerkeleRim-Kumpo** save (Anniversary Edition only) or one of your own, and Kumpo goes over to My Summer Car by himself once it has loaded. Or start a new game: Kumpo drinks one beer too many in My Summer Car and wakes up in the Helgen cart, and goes over once he's out of Helgen. Leave MSC minimized.
+3. Play in Skyrim only. Load the **PerkeleRim-Kumpo** save (Anniversary Edition only) or one of your own, and Kumpo goes over to My Summer Car by himself once it has loaded. Or start a new game: Kumpo drinks one beer too many in My Summer Car, wakes up in the Helgen cart, swears, and then wakes up at the garage instead of going through Helgen (Before the Storm sends him to Hadvar's side; `HelgenSide=Stormcloak` in the launcher's `PerkeleRim.ini`, next to `Start PerkeleRim.bat`, picks Ralof's). Leave MSC minimized.
 
 <details>
 <summary>What Start PerkeleRim.bat does, in detail</summary>
