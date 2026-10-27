@@ -108,8 +108,19 @@ namespace PerkeleRim.Tests
         [Test]
         public void TowingNeedsTheFee()
         {
-            Assert.That(Fuel.CanTow(49.99f), Is.False);
-            Assert.That(Fuel.CanTow(50f), Is.True);
+            Assert.That(Fuel.CanTow(49.99f, Fuel.TowFee), Is.False);
+            Assert.That(Fuel.CanTow(50f, Fuel.TowFee), Is.True);
+            Assert.That(Fuel.CanTow(0f, 0f), Is.True);
+        }
+
+        [Test]
+        public void TowingIsFreeWithin100mOfThePump()
+        {
+            var pump = new Fuel.Pump { Position = new Vec3(1000f, 2000f, 0f), Heading = 0f };
+            Assert.That(Fuel.TowFeeFrom(new Vec3(1000f + 6999f, 2000f, 500f), pump), Is.EqualTo(0f));
+            Assert.That(Fuel.TowFeeFrom(new Vec3(1000f + 5000f, 2000f + 5000f, 0f), pump), Is.EqualTo(Fuel.TowFee));
+            Assert.That(Fuel.TowedLine(0f), Is.EqualTo("Towed back to the pump"));
+            Assert.That(Fuel.TowedLine(50f), Is.EqualTo("Towed to the pump for 50 gold"));
         }
 
         [Test]

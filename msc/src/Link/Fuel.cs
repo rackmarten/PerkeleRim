@@ -12,6 +12,7 @@ namespace PerkeleRim
     public static class Fuel
     {
         public const float TowFee = 50f;          // marks (gold) to tow a dry vehicle onto a pump
+        public const float FreeTowReach = 7000f;  // units (100 m): a dry vehicle this close to the pump is towed for nothing
         public const float TowReach = 2100f;      // units (30 m): a call this close to a pump tows
         public const float LaneOffset = 134f;     // units from the pump's spot to the lane's middle
         public const float DryLevel = 0.25f;      // litres: at or below, the tank counts as dry (the van stalls at 0.2)
@@ -88,7 +89,15 @@ namespace PerkeleRim
         // Too little money left to pour any more.
         public static bool Broke(float money, float price) => price > 0f && money < price * MinLitres;
 
-        public static bool CanTow(float money) => money >= TowFee;
+        // What towing a dry vehicle standing at `at` onto the pump costs: nothing when it is already
+        // close (it rolled off after the last tow), else TowFee.
+        public static float TowFeeFrom(Vec3 at, Pump pump)
+        {
+            float dx = at.x - pump.Position.x, dy = at.y - pump.Position.y;
+            return dx * dx + dy * dy <= FreeTowReach * FreeTowReach ? 0f : TowFee;
+        }
+
+        public static bool CanTow(float money, float fee) => money >= fee;
 
         // Where a towed vehicle stands at pump: in the lane beside it, side on, with its filler
         // (fillerSide +1 on its right, -1 on its left; fillerForward units ahead of its middle,
@@ -121,6 +130,6 @@ namespace PerkeleRim
         public const string BrokeLine = "Out of gold";
         public static string DryLine => $"The tank is dry. Call it at a {Name} pump: {TowFee:0} gold";
         public static string NoTowMoneyLine => $"Towing costs {TowFee:0} gold";
-        public static string TowedLine => $"Towed to the pump for {TowFee:0} gold";
+        public static string TowedLine(float fee) => fee > 0f ? $"Towed to the pump for {fee:0} gold" : "Towed back to the pump";
     }
 }

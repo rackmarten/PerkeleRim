@@ -13,8 +13,8 @@ namespace PerkeleRim.Game
     //    nozzle and pouring are MSC's own;
     //  - takes gold (MSC's PlayerMoney, which Skyrim's gold follows) for every litre a tank gains
     //    while Kumpo stands at a pump, as it pours, and takes back what the money doesn't cover;
-    //  - tows a dry vehicle called near a pump onto it for Fuel.TowFee, and refuses the call
-    //    anywhere else;
+    //  - tows a dry vehicle called near a pump onto it for Fuel.TowFee (free when it stands within
+    //    100 m of the pump), with its parking brake on, and refuses the call anywhere else;
     //  - sends the HUD's fuel line (FuelText).
     public class FuelLink
     {
@@ -162,10 +162,12 @@ namespace PerkeleRim.Game
                 Flash(Fuel.DryLine);
                 return;
             }
+            var vehicleAt = v.Position;
+            float fee = Fuel.TowFeeFrom(island.IslandToSkyrim(new Vec3(vehicleAt.x, vehicleAt.y, vehicleAt.z)), pumps[near]);
             if (money == null) money = FsmVariables.GlobalVariables.FindFsmFloat("PlayerMoney");
-            if (money == null || !Fuel.CanTow(money.Value))
+            if (money == null || !Fuel.CanTow(money.Value, fee))
             {
-                log($"fuel: the {v.Name} is dry and towing costs {Fuel.TowFee:0}, the player has {(money != null ? money.Value : 0f):0.00}");
+                log($"fuel: the {v.Name} is dry and towing costs {fee:0}, the player has {(money != null ? money.Value : 0f):0.00}");
                 Flash(Fuel.NoTowMoneyLine);
                 return;
             }
@@ -175,10 +177,10 @@ namespace PerkeleRim.Game
             Vec3 spot;
             float heading;
             Fuel.TowSpot(pumps[near], side, forward, out spot, out heading);
-            money.Value -= Fuel.TowFee;
+            money.Value -= fee;
             v.TowTo(player, spot, heading);
             last.Remove(v);
-            Flash(Fuel.TowedLine);
+            Flash(Fuel.TowedLine(fee));
         }
 
         void Flash(string line)

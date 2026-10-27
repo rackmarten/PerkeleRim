@@ -342,7 +342,33 @@ namespace PerkeleRim.Game
             spotHeading = heading;
             Park(player, Vector3.zero);
             nextGroundCheck = 0f;
-            log($"vehicle: towed the {driverName} to ({spot.x:0},{spot.y:0},{spot.z:0}) heading {heading:0.00}");
+            log($"vehicle: towed the {driverName} to ({spot.x:0},{spot.y:0},{spot.z:0}) heading {heading:0.00}, parking brake {ParkingBrake()}");
+        }
+
+        // Pulls the parking brake the way its lever does (Dashboard/ParkingBrake :: Use, docs/FSM_MAP.md):
+        // the van's knob all the way out (KnobPos 0.1, which its Brake FSM reads every frame), the
+        // Kekmet's lever flipped by MSC's own Flip state when it is off. Says what it did, for the log.
+        string ParkingBrake()
+        {
+            var lever = car != null ? (car.Find("LOD/Dashboard/ParkingBrake") ?? car.Find("Dashboard/ParkingBrake")) : null;
+            PlayMakerFSM use = null;
+            if (lever != null)
+                foreach (var f in lever.GetComponents<PlayMakerFSM>())
+                    if (f.FsmName == "Use") use = f;
+            if (use == null) return "missing";
+            var knob = use.FsmVariables.FindFsmFloat("KnobPos");
+            if (knob != null)
+            {
+                knob.Value = 0.1f;
+                return "pulled";
+            }
+            var on = use.FsmVariables.FindFsmBool("Brake");
+            if (on == null) return "unknown";
+            if (on.Value) return "already on";
+            var flip = use.Fsm.GetState("Flip");
+            if (flip == null || SaveSync.SwitchState == null) return "no Flip state";
+            SaveSync.SwitchState.Invoke(use.Fsm, new object[] { flip });
+            return "flipped on";
         }
 
         // Where the vehicle is and how it moves, for a snapshot (SaveSync); null when not found.
