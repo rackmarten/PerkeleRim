@@ -15,13 +15,13 @@
     scripts/hitbox-test.ps1
     scripts/hitbox-test.ps1 -Build -KeepOpen
     scripts/hitbox-test.ps1 -Save Save10_2494F6F2_1_4B756D706F_Tamriel_000116_20261026170454_1_1
-    scripts/hitbox-test.ps1 -Layer 2   # the capsules on L_ANIMSTATIC instead
+    scripts/hitbox-test.ps1 -Layer 28  # the capsules on L_TRANSPARENT_SMALL_ANIM instead
 #>
 param(
     [switch] $Build,
     [switch] $KeepOpen,
     [string] $Save = '',  # AutoloadSave: a Skyrim save's file name instead of the newest save
-    [int] $Layer = 0,     # HitboxLayer: another Havok layer for the capsules (0: the usual, L_TRANSPARENT_SMALL_ANIM)
+    [int] $Layer = 0,     # HitboxLayer: another Havok layer for the capsules (0: the usual, L_ANIMSTATIC)
     [int] $TimeoutSeconds = 420
 )
 

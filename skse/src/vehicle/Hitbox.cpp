@@ -118,7 +118,9 @@ namespace PerkeleRim::Hitbox
 
         static_assert(sizeof(RE::bhkShape) == 0x28);  // bhkCapsuleShape adds nothing
 
-        constexpr auto  kLayer = RE::COL_LAYER::kTransparentSmallAnim;
+        // L_ANIMSTATIC, like doors and moving platforms. Arrows flew through L_TRANSPARENT_SMALL_ANIM
+        // in game, though Skyrim.esm's matrix and a projectile ray both said they would stop.
+        constexpr auto  kLayer = RE::COL_LAYER::kAnimStatic;
         // [Debug] HitboxLayer=<n> in PerkeleRim.ini tries another layer (the hitbox test), read once.
         std::uint32_t Layer()
         {
@@ -209,7 +211,7 @@ namespace PerkeleRim::Hitbox
             info.shape = hk.shape = hkShape;
             hk.motionType = static_cast<std::uint8_t>(RE::hkpMotion::MotionType::kKeyframed);
             // Parked, it may fall asleep, which is when Skyrim cuts the navmesh for a body on a
-            // navmesh-obstacle layer (L_TRANSPARENT_SMALL_ANIM is one); Follow wakes it to move it.
+            // navmesh-obstacle layer (L_ANIMSTATIC is one); Follow wakes it to move it.
             hk.enableDeactivation = true;
             hk.qualityType = Havok::kKeyframedQuality;
             hk.position = HavokPosition(a_state.position);
