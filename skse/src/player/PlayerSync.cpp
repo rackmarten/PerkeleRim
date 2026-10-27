@@ -10,6 +10,7 @@
 #include "fuel/Fuel.h"
 #include "garage/Garage.h"
 #include "hud/Hud.h"
+#include "Ini.h"
 #include "input.h"
 #include "intro/HelgenSkip.h"
 #include "intro/Intro.h"
@@ -26,6 +27,7 @@
 #include "play_mode.h"
 #include "pocket/Pocket.h"
 #include "rest/Rest.h"
+#include "safe/MetalHit.h"
 #include "safe/Safe.h"
 #include "shot/Shot.h"
 #include "stamina.h"
@@ -75,6 +77,7 @@ namespace PerkeleRim::PlayerSync
             std::uint32_t  anchorWorldspace = 0;
             std::uint32_t  anchorCell = 0;
             RE::NiPoint3   lastPlaced;  // where the player was last put (anchor or MSC pose)
+            float          seatDrop = 0.0f;  // how far under MSC's pose it was put, seated (Hitbox::SeatDrop)
             bool           sneak = false;  // what we last told Skyrim; its own flag can drop on its own
             int            sneakResend = 0;  // frames until a sneak event the graph ignored is sent again
             std::uint32_t  inputFrame = 0;
@@ -558,9 +561,23 @@ namespace PerkeleRim::PlayerSync
             }
         }
 
-        void Place(RE::PlayerCharacter* a_player, const Protocol::PlayerState& a_pose)
+        // How far to lower the player seated in vehicle a_vehicle, so Skyrim's body standing on MSC's
+        // seat keeps its head under the roof (Hitbox::SeatDrop): enemies' arrows hit the van, not the
+        // head. [Debug] SeatDrop=0 in PerkeleRim.ini keeps it on the seat. The camera stays at MSC's eye.
+        float SeatDrop(RE::PlayerCharacter* a_player, const Protocol::PlayerState& a_pose, const Protocol::VehicleState& a_vehicle)
         {
-            state.lastPlaced = RE::NiPoint3(a_pose.position[0], a_pose.position[1], a_pose.position[2]);
+            static const bool off = Ini::Value("SeatDrop") == "0";
+            Hitbox::Box       box{};
+            if (off || !Hitbox::Shape(a_vehicle.vehicle, box)) {
+                return 0.0f;
+            }
+            return Hitbox::SeatDrop(a_vehicle.position, a_vehicle.rotation, box, a_pose.position, a_player->GetHeight());
+        }
+
+        void Place(RE::PlayerCharacter* a_player, const Protocol::PlayerState& a_pose, float a_drop)
+        {
+            state.seatDrop = a_drop;
+            state.lastPlaced = RE::NiPoint3(a_pose.position[0], a_pose.position[1], a_pose.position[2] - a_drop);
             a_player->SetPosition(state.lastPlaced, true);
             a_player->SetHeading(a_pose.heading);
             a_player->data.angle.x = a_pose.pitch;
@@ -628,7 +645,7 @@ namespace PerkeleRim::PlayerSync
                 }
             }
             state.eye = RE::NiPoint3(a_pose.eye[0], a_pose.eye[1], a_pose.eye[2]);
-            const auto at = state.lastPlaced + state.eye;
+            const auto at = state.lastPlaced + state.eye + RE::NiPoint3(0.0f, 0.0f, state.seatDrop);
 
             // Update keeps the node's local transform, so give it the wanted world one in its
             // parent's frame (scale 1).
@@ -874,7 +891,7 @@ namespace PerkeleRim::PlayerSync
                 // The angles Skyrim built this frame's camera for, before Place changes them.
                 const float fromHeading = a_player->GetAngleZ();
                 const float fromPitch = a_player->data.angle.x;
-                Place(a_player, pose);
+                Place(a_player, pose, seated ? SeatDrop(a_player, pose, *driven) : 0.0f);
                 if ((pose.flags & Protocol::kPlayerNeeds) != 0) {
                     std::copy(std::begin(pose.needs), std::end(pose.needs), state.needs.begin());
                     state.hasNeeds = true;
@@ -956,10 +973,10 @@ namespace PerkeleRim::PlayerSync
             Drink::SetDrunk(state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, a_delta);
             if (second) {
                 SKSE::log::info(
-                    "player sync: frames={} placed={} new poses={} pos=({:.0f},{:.0f},{:.0f}) speed={:.1f} m/s heading={:.2f} pitch={:.2f} stance={} seated={} water={:.2f} van shift={:.1f} eye=({:.0f},{:.0f},{:.0f}) roll={:.2f} fov={:.0f}",
+                    "player sync: frames={} placed={} new poses={} pos=({:.0f},{:.0f},{:.0f}) speed={:.1f} m/s heading={:.2f} pitch={:.2f} stance={} seated={} drop={:.0f} water={:.2f} van shift={:.1f} eye=({:.0f},{:.0f},{:.0f}) roll={:.2f} fov={:.0f}",
                     state.frames, state.placed, state.newPoses, pose.position[0], pose.position[1], pose.position[2],
                     std::hypot(pose.velocity[0], pose.velocity[1]) * Coords::kMetersPerUnit, pose.heading, pose.pitch, pose.stance,
-                    state.seated, state.waterLevel, state.vanShift, pose.eye[0], pose.eye[1], pose.eye[2], pose.roll, pose.fov);
+                    state.seated, state.seatDrop, state.waterLevel, state.vanShift, pose.eye[0], pose.eye[1], pose.eye[2], pose.roll, pose.fov);
                 state.vanShift = 0.0f;
                 state.statTime = 0.0f;
                 state.frames = state.placed = state.newPoses = 0;
@@ -1248,6 +1265,7 @@ namespace PerkeleRim::PlayerSync
         REL::Relocation<std::uintptr_t> vtable{ RE::VTABLE_PlayerCharacter[0] };
         UpdateHook::original = vtable.write_vfunc(0xAD, UpdateHook::thunk);
         Safe::Install();
+        MetalHit::Install();
         REL::Relocation<std::uintptr_t> favorites{ RE::VTABLE_FavoritesHandler[0] };
         FavoritesHook::original = favorites.write_vfunc(0x1, FavoritesHook::thunk);
         REL::Relocation<std::uintptr_t> menuOpen{ RE::VTABLE_MenuOpenHandler[0] };

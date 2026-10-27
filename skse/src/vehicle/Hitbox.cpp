@@ -486,9 +486,25 @@ namespace PerkeleRim::Hitbox
         return true;
     }
 
+    bool Shape(std::uint32_t a_vehicle, Box& a_box)
+    {
+        if (a_vehicle < 1 || a_vehicle > Protocol::kVehicleCount || bodies[a_vehicle - 1].parts.empty()) {
+            return false;
+        }
+        a_box = bodies[a_vehicle - 1].box;
+        return true;
+    }
+
     std::uint32_t Hits(std::uint32_t a_vehicle)
     {
         return a_vehicle >= 1 && a_vehicle <= Protocol::kVehicleCount ? bodies[a_vehicle - 1].hits : 0;
+    }
+
+    void Struck(std::uint32_t a_vehicle)
+    {
+        if (a_vehicle >= 1 && a_vehicle <= Protocol::kVehicleCount) {
+            bodies[a_vehicle - 1].hits++;
+        }
     }
 
     bool Owns(const RE::bhkCollisionObject* a_object)

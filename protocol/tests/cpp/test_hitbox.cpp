@@ -183,3 +183,59 @@ TEST_CASE("climbed in counts in the van's cabin only, not beside, under or on to
     CHECK_FALSE(in(Protocol::kVehicleKekmet, level, kekmet, 0.0f, 150.0f, 60.0f));   // even in its seat: it has no cabin
     CHECK_FALSE(in(Protocol::kVehicleJonnez, level, van, -40.0f, 80.0f, 36.0f));
 }
+
+TEST_CASE("a hit on a seated player lands on the box's surface nearest where it came from")
+{
+    const Hitbox::Box box{ { -65.0f, -155.0f, -28.0f }, { 65.0f, 144.0f, 111.0f } };
+    const float       at[3] = { 1000.0f, 2000.0f, 0.0f };
+    const float       level[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    const float       s = std::sqrt(0.5f);
+    const float       quarter[4] = { 0.0f, 0.0f, s, s };  // its +X along world +Y
+    float             point[3];
+    float             normal[3];
+    const auto        is = [](const float (&a_v)[3], float a_x, float a_y, float a_z) {
+        return a_v[0] == doctest::Approx(a_x) && a_v[1] == doctest::Approx(a_y) && a_v[2] == doctest::Approx(a_z);
+    };
+
+    const float swing[3] = { 1100.0f, 2050.0f, 90.0f };  // a bandit's blade beside the driver's door
+    Hitbox::Surface(at, level, box, swing, point, normal);
+    CHECK(is(point, 1065.0f, 2050.0f, 90.0f));
+    CHECK(is(normal, 1.0f, 0.0f, 0.0f));
+
+    const float arrow[3] = { 960.0f, 2080.0f, 150.0f };  // an arrow at the head over the roof
+    Hitbox::Surface(at, level, box, arrow, point, normal);
+    CHECK(is(point, 960.0f, 2080.0f, 111.0f));
+    CHECK(is(normal, 0.0f, 0.0f, 1.0f));
+
+    const float corner[3] = { 1100.0f, 2300.0f, 200.0f };  // past the front's top corner, farthest past the front
+    Hitbox::Surface(at, level, box, corner, point, normal);
+    CHECK(is(point, 1065.0f, 2144.0f, 111.0f));
+    CHECK(is(normal, 0.0f, 1.0f, 0.0f));
+
+    const float inside[3] = { 1040.0f, 2000.0f, 50.0f };  // in the cabin: the nearest face, the right side
+    Hitbox::Surface(at, level, box, inside, point, normal);
+    CHECK(is(point, 1065.0f, 2000.0f, 50.0f));
+    CHECK(is(normal, 1.0f, 0.0f, 0.0f));
+
+    const float side[3] = { 1000.0f, 2100.0f, 50.0f };  // turned, world +Y is the van's +X side
+    Hitbox::Surface(at, quarter, box, side, point, normal);
+    CHECK(is(point, 1000.0f, 2065.0f, 50.0f));
+    CHECK(is(normal, 0.0f, 1.0f, 0.0f));
+}
+
+TEST_CASE("a seated player is lowered until its head is under the roof")
+{
+    const Hitbox::Box van{ { -65.0f, -155.0f, -28.0f }, { 65.0f, 144.0f, 111.0f } };
+    const float       at[3] = { 1000.0f, 2000.0f, 0.0f };
+    const float       level[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    const float       seat[3] = { 960.0f, 2080.0f, 36.0f };
+    // 36 + 128 = 164 at the top of its head, the roof's underside at 111 - 10.
+    CHECK(Hitbox::SeatDrop(at, level, van, seat, 128.0f) == doctest::Approx(63.0f));
+    CHECK(Hitbox::SeatDrop(at, level, van, seat, 60.0f) == 0.0f);  // a short one fits already
+    const float roof[3] = { 960.0f, 2080.0f, 300.0f };
+    CHECK(Hitbox::SeatDrop(at, level, van, roof, 128.0f) == Hitbox::kSeatDropMax);
+    const float s = std::sqrt(0.5f);
+    const float onSide[4] = { 0.0f, s, 0.0f, s };  // a quarter turn about Y: on its side
+    CHECK(Hitbox::SeatDrop(at, onSide, van, seat, 128.0f) == 0.0f);
+    CHECK(Hitbox::SeatDrop(at, level, van, seat, NAN) == 0.0f);
+}

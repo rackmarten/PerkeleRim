@@ -16,6 +16,9 @@ namespace PerkeleRim::Safe
     // (0 = on foot). Off for anything but a safe seat; call with 0 when MSC lets go of the player.
     void Set(RE::PlayerCharacter* a_player, std::uint32_t a_vehicle);
 
+    // The vehicle that keeps the player safe right now (hits on it land on the vehicle), 0 for none.
+    std::uint32_t Seat();
+
     // While alive, damage from MSC itself (a crash) goes through even in a safe seat.
     class OwnDamage
     {
