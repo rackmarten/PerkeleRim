@@ -48,5 +48,48 @@ namespace PerkeleRim
 
         // PlayerDrunkAdjusted, kept in MSC's own 0..8.
         public static float AddDrunk(float now, float delta) => Math.Min(8f, Math.Max(0f, now + delta));
+
+        // The Drink FSM's event for a drink from Skyrim (ConsumeEvent.drink, Wire.Drink*), null for none.
+        public static string DrinkEvent(uint drink)
+        {
+            switch (drink)
+            {
+                case Wire.DrinkBeer: return "DRINKBEER";
+                case Wire.DrinkBooze: return "DRINKVIINA";
+                case Wire.DrinkSpirit: return "DRINKSPIRIT";
+                case Wire.DrinkMilk: return "DRINKMILK";
+                case Wire.DrinkJuice: return "DRINKJUICE";
+                default: return null;
+            }
+        }
+
+        // Of several drinks in one menu the one shown: the strongest bottle, as food.h's Shown.
+        public static uint Shown(uint was, uint now) => Rank(now) > Rank(was) ? now : was;
+
+        static int Rank(uint drink)
+        {
+            switch (drink)
+            {
+                case Wire.DrinkJuice: return 1;
+                case Wire.DrinkMilk: return 2;
+                case Wire.DrinkBeer: return 3;
+                case Wire.DrinkBooze: return 4;
+                case Wire.DrinkSpirit: return 5;
+                default: return 0;
+            }
+        }
+
+        // The juice has nothing to throw after it (Juice -> Burb); the others throw their bottle,
+        // glass or carton.
+        public static bool Throws(uint drink) => DrinkEvent(drink) != null && drink != Wire.DrinkJuice;
+
+        // What the Drink FSM throws after a drink, by name: beer's empty bottle and BottleBeerFly,
+        // and the booze bottle, spirit bottle and milk carton by the same words.
+        public static bool IsDrinkLeftover(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            var n = name.ToLowerInvariant();
+            return n.Contains("bottle") || n.Contains("booze") || n.Contains("spirit") || n.Contains("milk") || n.Contains("glass") || n.Contains("empty");
+        }
     }
 }

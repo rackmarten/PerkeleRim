@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 44;
+    inline constexpr std::uint32_t kProtocolVersion = 45;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -705,10 +705,15 @@ namespace PerkeleRim::Protocol
 
     // ConsumeEvent: the player ate or drank something in Skyrim (its inventory, a hotkey). What it
     // does to MSC's needs, from protocol/cpp/food.h; MSC adds each to its global (PlayerHunger,
-    // PlayerThirst, PlayerUrine, PlayerDrunkAdjusted), needs not below 0, drunk 0..8. With
-    // kConsumeDrink MSC also shows its drinking and burp once the menu is closed (once for any
-    // number of drinks), its needs put back after.
-    inline constexpr std::uint32_t kConsumeDrink = 0x1;  // ConsumeEvent.flags: a drink from a bottle
+    // PlayerThirst, PlayerUrine, PlayerDrunkAdjusted), needs not below 0, drunk 0..8. With a drink
+    // (v45) MSC also shows its own drinking of that kind once the menu is closed (once for any
+    // number of drinks, the strongest), its needs put back after.
+    inline constexpr std::uint32_t kDrinkNone = 0;    // ConsumeEvent.drink: food, water, nothing shown
+    inline constexpr std::uint32_t kDrinkBeer = 1;    // DRINKBEER, the beer bottle
+    inline constexpr std::uint32_t kDrinkBooze = 2;   // DRINKVIINA, the booze bottle (wine, brandy)
+    inline constexpr std::uint32_t kDrinkSpirit = 3;  // DRINKSPIRIT, the spirit bottle (Skooma), never blinding
+    inline constexpr std::uint32_t kDrinkMilk = 4;    // DRINKMILK
+    inline constexpr std::uint32_t kDrinkJuice = 5;   // DRINKJUICE
 
     struct ConsumeEvent
     {
@@ -716,10 +721,10 @@ namespace PerkeleRim::Protocol
         float         thirst;  // < 0: less thirsty
         float         urine;
         float         drunk;   // added to PlayerDrunkAdjusted
-        std::uint32_t flags;   // kConsume*
+        std::uint32_t drink;   // kDrink*
     };
 
-    // The pocket: Skyrim's inventory holds MSC's beer, empty bottles, food and cigarettes as
+    // The pocket: Skyrim's inventory holds MSC's beer, juice, empty bottles, food and cigarettes as
     // PerkeleRim.esp items, one kind each (kPocket*), and MSC's money as Skyrim's gold. Skyrim's
     // counts are the truth.
     inline constexpr std::uint32_t kPocketBeer = 0;        // PocketChange.kind, PocketCounts.counts index
@@ -730,7 +735,8 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPocketMacaron = 5;     // a macaron box
     inline constexpr std::uint32_t kPocketCigarettes = 6;  // MSC's PlayerCigarettes, one item per cigarette
     inline constexpr std::uint32_t kPocketGold = 7;        // MSC's PlayerMoney, one gold per mark (Skyrim.esm Gold001)
-    inline constexpr std::uint32_t kPocketKinds = 8;
+    inline constexpr std::uint32_t kPocketJuice = 8;       // v45: MSC's juice(itemx), drunk in Skyrim
+    inline constexpr std::uint32_t kPocketKinds = 9;
 
     // PocketChange: MSC put delta of a kind into the pocket (> 0) or took it out (< 0). seq counts
     // up from 1 per session (MSC picks a new nonzero session each time its link comes up).
@@ -748,7 +754,7 @@ namespace PerkeleRim::Protocol
     {
         std::uint32_t session;
         std::uint32_t appliedSeq;
-        std::uint32_t counts[8];  // by kPocket*
+        std::uint32_t counts[9];  // by kPocket*
     };
 
     // ---- Models (MSC -> Skyrim) ----
@@ -1009,9 +1015,9 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(Consumed) == 8);
     static_assert(sizeof(PocketChange) == 16);
     static_assert(offsetof(PocketChange, delta) == 12);
-    static_assert(sizeof(PocketCounts) == 40);
+    static_assert(sizeof(PocketCounts) == 44);
     static_assert(sizeof(ConsumeEvent) == 20);
-    static_assert(offsetof(ConsumeEvent, flags) == 16);
+    static_assert(offsetof(ConsumeEvent, drink) == 16);
     static_assert(offsetof(PocketCounts, counts) == 8);
     static_assert(sizeof(ModelChunk) == 16);
     static_assert(offsetof(ModelChunk, offset) == 8);

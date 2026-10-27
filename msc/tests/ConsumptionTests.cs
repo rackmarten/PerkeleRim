@@ -79,5 +79,39 @@ namespace PerkeleRim.Tests
             Assert.That(Consumption.AddDrunk(7f, 2.5f), Is.EqualTo(8f));                          // Skooma on top
             Assert.That(Consumption.AddDrunk(0f, 0f), Is.EqualTo(0f));
         }
+
+        [Test]
+        public void DrinksFromSkyrimShowTheirOwnBottle()
+        {
+            Assert.That(Consumption.DrinkEvent(Wire.DrinkBeer), Is.EqualTo("DRINKBEER"));
+            Assert.That(Consumption.DrinkEvent(Wire.DrinkBooze), Is.EqualTo("DRINKVIINA"));
+            Assert.That(Consumption.DrinkEvent(Wire.DrinkSpirit), Is.EqualTo("DRINKSPIRIT"));
+            Assert.That(Consumption.DrinkEvent(Wire.DrinkMilk), Is.EqualTo("DRINKMILK"));
+            Assert.That(Consumption.DrinkEvent(Wire.DrinkJuice), Is.EqualTo("DRINKJUICE"));
+            Assert.That(Consumption.DrinkEvent(Wire.DrinkNone), Is.Null);
+            Assert.That(Consumption.DrinkEvent(99), Is.Null);
+            Assert.That(Consumption.Throws(Wire.DrinkBooze) && Consumption.Throws(Wire.DrinkMilk), Is.True);
+            Assert.That(Consumption.Throws(Wire.DrinkJuice) || Consumption.Throws(Wire.DrinkNone), Is.False);
+        }
+
+        [Test]
+        public void SeveralDrinksShowTheStrongest()
+        {
+            Assert.That(Consumption.Shown(Wire.DrinkNone, Wire.DrinkBeer), Is.EqualTo(Wire.DrinkBeer));
+            Assert.That(Consumption.Shown(Wire.DrinkBooze, Wire.DrinkBeer), Is.EqualTo(Wire.DrinkBooze));
+            Assert.That(Consumption.Shown(Wire.DrinkBooze, Wire.DrinkSpirit), Is.EqualTo(Wire.DrinkSpirit));
+            Assert.That(Consumption.Shown(Wire.DrinkJuice, Wire.DrinkMilk), Is.EqualTo(Wire.DrinkMilk));
+            Assert.That(Consumption.Shown(Wire.DrinkBeer, Wire.DrinkJuice), Is.EqualTo(Wire.DrinkBeer));
+        }
+
+        [Test]
+        public void ThrownLeftoversByName()
+        {
+            Assert.That(Consumption.IsDrinkLeftover("empty bottle(Clone)"), Is.True);
+            Assert.That(Consumption.IsDrinkLeftover("BottleBoozeFly(Clone)"), Is.True);
+            Assert.That(Consumption.IsDrinkLeftover("milk(Clone)"), Is.True);
+            Assert.That(Consumption.IsDrinkLeftover("sausages(itemx)"), Is.False);
+            Assert.That(Consumption.IsDrinkLeftover(null), Is.False);
+        }
     }
 }

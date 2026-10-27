@@ -979,7 +979,8 @@ namespace PerkeleRim::PlayerSync
 
         // E is Skyrim's activate and MSC's lean right (and MSC's use key on some things). While MSC's
         // crosshair is on something of its own (its prompt or hand icon is up), E is MSC's alone;
-        // otherwise it activates in Skyrim: doors, people, quest items.
+        // otherwise it activates in Skyrim: doors, people, quest items. With nothing under Skyrim's
+        // crosshair either, crouched in water it's a sip (Pocket::SipWater).
         struct ActivateHook
         {
             static bool thunk(RE::ActivateHandler* a_handler, RE::InputEvent* a_event)
@@ -987,7 +988,24 @@ namespace PerkeleRim::PlayerSync
                 if (state.owned && (!state.lookAt.empty() || state.lookAtUse)) {
                     return false;
                 }
+                if (state.owned && ActivatePressed(a_event) && !CrosshairTarget() &&
+                    Pocket::SipWater(state.waterLevel, state.sneak, !state.seated)) {
+                    return false;
+                }
                 return original(a_handler, a_event);
+            }
+
+            static bool ActivatePressed(RE::InputEvent* a_event)
+            {
+                auto* button = a_event ? a_event->AsButtonEvent() : nullptr;
+                auto* events = RE::UserEvents::GetSingleton();
+                return button && events && button->IsDown() && button->QUserEvent() == events->activate;
+            }
+
+            static bool CrosshairTarget()
+            {
+                auto* pick = RE::CrosshairPickData::GetSingleton();
+                return pick && static_cast<bool>(pick->GetActiveTarget());
             }
             static inline REL::Relocation<decltype(thunk)> original;
         };
