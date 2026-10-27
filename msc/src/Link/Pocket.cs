@@ -7,7 +7,8 @@ namespace PerkeleRim
     // The pocket's rules (docs/PROTOCOL.md "The pocket"): Skyrim's inventory holds MSC's beer, juice, empty
     // bottles, food and cigarettes, and its gold is MSC's money. Y puts what MSC's player carries
     // (or, hands empty, what the crosshair is on) in it; keys 3 to 8 drink a beer or eat food from
-    // it, or take an empty bottle out into MSC's hand. 1 and 2 stay MSC's (hands, tools). Skyrim's
+    // it, or take something to throw out into MSC's hand: an empty bottle, or once those are gone
+    // Skyrim's junk (protocol/cpp/junk.h). 1 and 2 stay MSC's (hands, tools). Skyrim's
     // hotbar can put these on other numbers (protocol/cpp/hotbar.h): MSC gets the key they stand
     // for. Unity-free.
     public static class Pocket
@@ -15,6 +16,7 @@ namespace PerkeleRim
         public const int None = -1;
         public const int PocketKey = 121;  // KeyCode.Y: free in MSC and in Skyrim
         public const int FirstSlotKey = 51;  // KeyCode.Alpha3
+        public const string JunkName = "junk(Clone)";  // MSC's body for a piece of Skyrim's junk (JunkLink)
 
         // Slot n (key 3 + n) holds this kind. Cigarettes have none: MSC
         // smokes them from its own count (I).
@@ -32,6 +34,7 @@ namespace PerkeleRim
             {
                 case "beer case(itemx)": return (int)Wire.PocketBeer;  // one bottle out of it
                 case "empty bottle(Clone)": return (int)Wire.PocketBottle;
+                case JunkName: return (int)Wire.PocketJunk;
                 case "sausages(itemx)": return (int)Wire.PocketSausages;
                 case "pizza(itemx)": return (int)Wire.PocketPizza;
                 case "potato chips(itemx)": return (int)Wire.PocketChips;
@@ -45,8 +48,15 @@ namespace PerkeleRim
         public static int SlotOfKey(int keyCode) =>
             keyCode >= FirstSlotKey && keyCode < FirstSlotKey + SlotKinds.Length ? keyCode - FirstSlotKey : None;
 
-        // Beer and food are used at once (drunk, eaten); an empty bottle comes out into the hand.
-        public static bool Consumable(int kind) => kind != None && kind != (int)Wire.PocketBottle && kind != (int)Wire.PocketCigarettes;
+        // Beer and food are used at once (drunk, eaten); an empty bottle or junk comes out into the hand.
+        public static bool Consumable(int kind) => kind != None && !Thrown(kind) && kind != (int)Wire.PocketCigarettes && kind != (int)Wire.PocketGold;
+
+        // Taken out to be thrown (key 3): an empty bottle or junk.
+        public static bool Thrown(int kind) => kind == (int)Wire.PocketBottle || kind == (int)Wire.PocketJunk;
+
+        // What key 3 takes out: empty bottles while there are any, then junk.
+        public static int ThrowKind(long bottles, long junk) =>
+            bottles <= 0 && junk > 0 ? (int)Wire.PocketJunk : (int)Wire.PocketBottle;
 
         // Seated in a vehicle only beer and food are used (4, 5 to 8); nothing goes in or out of the hand.
         public static bool WorksInVehicle(int keyCode) => Consumable(KindOfSlot(SlotOfKey(keyCode)));
@@ -83,7 +93,7 @@ namespace PerkeleRim
 
         // What a key press does. held: kind of what MSC's hand carries (None for nothing or something
         // not pocketable), holding: the hand carries anything, aimed: kind of the item the crosshair
-        // is on, available: how many of the slot's kind the pocket has.
+        // is on, available: how many of the slot's kind the pocket has (for 3, bottles and junk).
         public static Action Decide(int keyCode, int held, bool holding, int aimed, long available)
         {
             if (keyCode == PocketKey)
@@ -91,8 +101,8 @@ namespace PerkeleRim
             int kind = KindOfSlot(SlotOfKey(keyCode));
             if (kind == None) return Action.Nothing;
             if (Consumable(kind))
-                return available <= 0 ? Action.Nothing : held == (int)Wire.PocketBottle ? Action.PocketAndConsume : Action.Consume;
-            if (held == kind) return Action.Pocket;  // the same number again puts it back
+                return available <= 0 ? Action.Nothing : Thrown(held) ? Action.PocketAndConsume : Action.Consume;
+            if (held == kind || (Thrown(kind) && Thrown(held))) return Action.Pocket;  // the same number again puts it back
             if (available <= 0) return Action.Nothing;
             if (!holding) return Action.Take;
             return held != None ? Action.PocketAndTake : Action.DropAndTake;

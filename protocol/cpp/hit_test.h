@@ -20,6 +20,7 @@ namespace PerkeleRim::HitTest
     {
         kPunch,  // MSC's Hit key (H)
         kThrow,  // an empty bottle in the hand, thrown with the right button
+        kJunk,   // no empty bottles: key 3 takes junk out of Skyrim's inventory (a cabbage), thrown the same way
     };
 
     struct Scenario
@@ -37,6 +38,7 @@ namespace PerkeleRim::HitTest
     inline constexpr std::array kScenarios = {
         Scenario{ "punch", Attack::kPunch, 0.0f, 3, 0.4f },
         Scenario{ "bottle", Attack::kThrow, 0.0f, 3, 3.0f },
+        Scenario{ "junk", Attack::kJunk, 0.0f, 3, 3.0f },
         Scenario{ "drunk", Attack::kPunch, 2.0f, 3, 0.4f },
     };
 
@@ -79,6 +81,7 @@ namespace PerkeleRim::HitTest
         float drunk = 0.0f;    // MSC's drunk level Skyrim punched with
         float unarmed = 0.0f;  // the player's unarmed damage as Skyrim worked it out
         float speed = 0.0f;    // a throw's, m/s
+        float mass = 0.0f;     // a throw's, kg (0: MSC didn't say)
         float sneak = 1.0f;    // a throw's sneak attack multiplier
         float damage = 0.0f;   // what Skyrim cast on the target
         float before = 0.0f;   // the target's health before the attack
@@ -91,7 +94,7 @@ namespace PerkeleRim::HitTest
         if (a_scenario.attack == Attack::kPunch) {
             return Damage::Punch(a_hit.unarmed, a_hit.drunk);
         }
-        return Damage::Thrown(Damage::Punch(a_hit.unarmed), a_hit.speed) * a_hit.sneak;
+        return Damage::Thrown(Damage::Punch(a_hit.unarmed), a_hit.speed, a_hit.mass) * a_hit.sneak;
     }
 
     // Damage and health are compared within 10%, at least 1 point: health regenerates a little
@@ -151,7 +154,7 @@ namespace PerkeleRim::HitTest
         return { true, "x" + Number(ratio) + " at drunk " + Number(a_drunk) };
     }
 
-    inline constexpr std::string_view kCsvHeader = "scenario,hit,target,landed,drunk,unarmed,speed,sneak,expected,damage,before,after,drop,pass,note";
+    inline constexpr std::string_view kCsvHeader = "scenario,hit,target,landed,drunk,unarmed,speed,mass,sneak,expected,damage,before,after,drop,pass,note";
 
     // A CSV field: quoted when it holds a comma, a quote or a line break.
     inline std::string Field(std::string_view a_text)
@@ -172,7 +175,7 @@ namespace PerkeleRim::HitTest
     inline std::string Row(const Scenario& a_scenario, int a_hit, std::string_view a_target, const Hit& a_result, const Verdict& a_verdict)
     {
         std::string row = Field(a_scenario.name) + ',' + std::to_string(a_hit) + ',' + Field(a_target) + ',' + (a_result.landed ? "1" : "0");
-        for (const float value : { a_result.drunk, a_result.unarmed, a_result.speed, a_result.sneak, Expected(a_scenario, a_result), a_result.damage,
+        for (const float value : { a_result.drunk, a_result.unarmed, a_result.speed, a_result.mass, a_result.sneak, Expected(a_scenario, a_result), a_result.damage,
                  a_result.before, a_result.after, a_result.before - a_result.after }) {
             row += ',' + Number(value);
         }
@@ -182,6 +185,6 @@ namespace PerkeleRim::HitTest
     // A row for a check across scenarios (CheckDrunk): only its name, pass and note.
     inline std::string SummaryRow(std::string_view a_name, const Verdict& a_verdict)
     {
-        return Field(a_name) + ",,,,,,,,,,,,," + (a_verdict.pass ? "1" : "0") + ',' + Field(a_verdict.note);
+        return Field(a_name) + ",,,,,,,,,,,,,," + (a_verdict.pass ? "1" : "0") + ',' + Field(a_verdict.note);
     }
 }

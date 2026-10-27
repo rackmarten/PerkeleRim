@@ -190,11 +190,11 @@ namespace PerkeleRim.Game
             return now;
         }
 
-        static bool SendImpact(Link link, uint actor, uint kind, float speed, Vector3 way)
+        static bool SendImpact(Link link, uint actor, uint kind, float speed, Vector3 way, float mass = 0f)
         {
             var skyrimWay = Coords.UnityToSkyrim(new Vec3(way.x, way.y, way.z));
             float length = Mathf.Sqrt(skyrimWay.x * skyrimWay.x + skyrimWay.y * skyrimWay.y + skyrimWay.z * skyrimWay.z);
-            var impact = new ImpactEvent { actor = actor, kind = kind, speed = speed };
+            var impact = new ImpactEvent { actor = actor, kind = kind, speed = speed, mass = mass };
             if (length > 1e-6f)
             {
                 impact.direction[0] = skyrimWay.x / length;
@@ -251,7 +251,7 @@ namespace PerkeleRim.Game
                 var v = f.Body.velocity;
                 if (!f.Boosted && v.magnitude > 1f)
                 {
-                    bool bottle = Throwing.IsBottle(f.Body.name);
+                    bool bottle = Throwing.IsBottle(f.Body.name) || JunkLink.IsJunk(f.Body);  // junk flies like a bottle
                     float scale = Throwing.LaunchScale(bottle, f.Charge);
                     float was = v.magnitude;
                     f.Body.velocity = v *= scale;
@@ -268,10 +268,11 @@ namespace PerkeleRim.Game
                 f.Last = at;
                 f.LastSpeed = v.magnitude;
                 if (hit < 0) continue;
-                bool sent = SendImpact(link, now[hit].Id, Wire.ImpactThrown, v.magnitude, v);
+                float mass = JunkLink.MassOf(f.Body);
+                bool sent = SendImpact(link, now[hit].Id, Wire.ImpactThrown, v.magnitude, v, mass);
                 f.Body.velocity = -v * Throwing.Bounce;  // capsules don't collide with items: bounce it off by hand
                 flights.RemoveAt(i);
-                log($"actors: {f.Body.name} hit {now[hit].Id:X8} at {v.magnitude:0.0} m/s{(sent ? "" : ", but the ring is full")}");
+                log($"actors: {f.Body.name} hit {now[hit].Id:X8} at {v.magnitude:0.0} m/s, {mass:0.##} kg{(sent ? "" : ", but the ring is full")}");
             }
         }
 

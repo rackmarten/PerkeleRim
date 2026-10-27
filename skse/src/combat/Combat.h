@@ -39,6 +39,7 @@ namespace PerkeleRim::Combat
         float         drunk = 0.0f;
         float         speed = 0.0f;
         float         sneak = 1.0f;
+        float         mass = 0.0f;  // a throw's, kg (0: MSC didn't say)
     };
     const Hit& LastHit();
 

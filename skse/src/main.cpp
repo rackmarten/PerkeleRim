@@ -10,6 +10,7 @@
 #include "fuel/Fuel.h"
 #include "garage/Garage.h"
 #include "intro/Intro.h"
+#include "junk/ThrowJunk.h"
 #include "link/LinkService.h"
 #include "player/PlayerSync.h"
 #include "pocket/Pocket.h"
@@ -37,6 +38,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::Intro::OnDataLoaded();
             PerkeleRim::Drink::OnDataLoaded();
             PerkeleRim::Pocket::OnDataLoaded();
+            PerkeleRim::ThrowJunk::OnDataLoaded();
             PerkeleRim::CollisionSampler::OnDataLoaded();
             PerkeleRim::Combat::OnDataLoaded();
             PerkeleRim::Autoload::OnDataLoaded();

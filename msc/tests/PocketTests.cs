@@ -7,7 +7,7 @@ namespace PerkeleRim.Tests
     {
         const int Y = Pocket.PocketKey;
         const int Key1 = 49, Key2 = 50, Key3 = 51, Key4 = 52, Key5 = 53, Key8 = 56, Key9 = 57;
-        const int Beer = (int)Wire.PocketBeer, Bottle = (int)Wire.PocketBottle, Cigs = (int)Wire.PocketCigarettes;
+        const int Beer = (int)Wire.PocketBeer, Bottle = (int)Wire.PocketBottle, Cigs = (int)Wire.PocketCigarettes, Junk = (int)Wire.PocketJunk;
 
         [Test]
         public void ItemNamesMapToKinds()
@@ -23,6 +23,7 @@ namespace PerkeleRim.Tests
             Assert.That(Pocket.KindOf("spoiled sausages(itemx)"), Is.EqualTo(Pocket.None));
             Assert.That(Pocket.KindOf("empty(itemx)"), Is.EqualTo(Pocket.None));  // a drunk-out beer case
             Assert.That(Pocket.KindOf("ax(itemx)"), Is.EqualTo(Pocket.None));
+            Assert.That(Pocket.KindOf(Pocket.JunkName), Is.EqualTo(Junk));
         }
 
         [Test]
@@ -58,7 +59,8 @@ namespace PerkeleRim.Tests
             Assert.That(Pocket.Decide(Key5, Bottle, true, Pocket.None, 1), Is.EqualTo(Pocket.Action.PocketAndConsume));  // the bottle isn't lost
             Assert.That(Pocket.Decide(Key5, (int)Wire.PocketPizza, true, Pocket.None, 1), Is.EqualTo(Pocket.Action.Consume));
             Assert.That(Pocket.Decide(Key4, Pocket.None, false, Pocket.None, 0), Is.EqualTo(Pocket.Action.Nothing));
-            Assert.That(Pocket.Consumable(Bottle) || Pocket.Consumable(Cigs), Is.False);
+            Assert.That(Pocket.Consumable(Bottle) || Pocket.Consumable(Cigs) || Pocket.Consumable(Junk), Is.False);
+            Assert.That(Pocket.Decide(Key4, Junk, true, Pocket.None, 1), Is.EqualTo(Pocket.Action.PocketAndConsume));  // junk goes back first
         }
 
         [Test]
@@ -78,7 +80,39 @@ namespace PerkeleRim.Tests
             Assert.That(Pocket.Decide(Key3, Beer, true, Pocket.None, 0), Is.EqualTo(Pocket.Action.Nothing));
         }
 
-        static uint[] Counts(uint beer, uint bottles = 0, uint cigs = 0, uint gold = 0) => new uint[] { beer, bottles, 0, 0, 0, 0, cigs, gold };
+        [Test]
+        public void ThreeThrowsBottlesFirstThenJunk()
+        {
+            Assert.That(Pocket.ThrowKind(2, 5), Is.EqualTo(Bottle));
+            Assert.That(Pocket.ThrowKind(0, 5), Is.EqualTo(Junk));
+            Assert.That(Pocket.ThrowKind(0, 0), Is.EqualTo(Bottle));  // nothing: the bottle slot, which then has none
+            Assert.That(Pocket.Thrown(Bottle) && Pocket.Thrown(Junk), Is.True);
+            Assert.That(Pocket.Thrown(Beer), Is.False);
+        }
+
+        [Test]
+        public void JunkInTheHandGoesBackWithThreeOrY()
+        {
+            // 3 with junk in hand: back, whether bottles turned up meanwhile or not.
+            Assert.That(Pocket.Decide(Key3, Junk, true, Pocket.None, 4), Is.EqualTo(Pocket.Action.Pocket));
+            Assert.That(Pocket.Decide(Key3, Bottle, true, Pocket.None, 4), Is.EqualTo(Pocket.Action.Pocket));
+            Assert.That(Pocket.Decide(Y, Junk, true, Pocket.None, 0), Is.EqualTo(Pocket.Action.Pocket));
+            Assert.That(Pocket.Decide(Key3, Pocket.None, false, Pocket.None, 1), Is.EqualTo(Pocket.Action.Take));  // the one piece of junk left
+        }
+
+        static uint[] Counts(uint beer, uint bottles = 0, uint cigs = 0, uint gold = 0, uint junk = 0) => new uint[] { beer, bottles, 0, 0, 0, 0, cigs, gold, 0, junk };
+
+        [Test]
+        public void LedgerCountsJunkTakenOutLikeAnyKind()
+        {
+            var ledger = new PocketLedger(3);
+            ledger.OnCounts(3, 0, Counts(0, 0, 0, 0, 2));
+            Assert.That(ledger.Available(Junk), Is.EqualTo(2));
+            ledger.Sent(ledger.Next(Junk, -1));
+            Assert.That(ledger.Available(Junk), Is.EqualTo(1));  // before Skyrim's answer
+            ledger.OnCounts(3, 1, Counts(0, 0, 0, 0, 1));  // Skyrim set it aside
+            Assert.That(ledger.Available(Junk), Is.EqualTo(1));
+        }
 
         [Test]
         public void LedgerCountsChangesSkyrimHasNotAppliedYet()

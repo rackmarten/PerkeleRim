@@ -73,6 +73,20 @@ TEST_CASE("a thrown item hits by its speed, up to two sober punches")
     CHECK(Damage::Thrown(-5.0f, 15.0f) == 0.0f);
 }
 
+TEST_CASE("a thrown item hits by its weight too, MSC's bottle as before")
+{
+    const float punch = Damage::Punch(4.0f);
+    const float bottle = Damage::Thrown(punch, 15.0f);
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f) == doctest::Approx(bottle));  // unknown: the bottle
+    CHECK(Damage::Thrown(punch, 15.0f, Damage::kThrownMassBase) == doctest::Approx(bottle));
+    CHECK(Damage::Thrown(punch, 15.0f, 2.0f) == doctest::Approx(bottle * 2.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.25f) == doctest::Approx(bottle * 0.7071f).epsilon(0.001));  // a cabbage
+    CHECK(Damage::Thrown(punch, 15.0f, 0.01f) == doctest::Approx(bottle * Damage::kThrownMassMin));
+    CHECK(Damage::Thrown(punch, 15.0f, 50.0f) == doctest::Approx(bottle * Damage::kThrownMassMax));
+    CHECK(Damage::Thrown(punch, 2.0f, 50.0f) == 0.0f);  // weight doesn't help a throw too slow to hurt
+    CHECK(Damage::ThrownMass(-1.0f) == 1.0f);
+}
+
 TEST_CASE("a throw from sneak at someone who does not see Kumpo doubles")
 {
     CHECK(Damage::SneakAttack(true, 0) == 2.0f);

@@ -15,6 +15,7 @@
 #include "intro/Intro.h"
 #include "hands/HandView.h"
 #include "item/ItemView.h"
+#include "junk/ThrowJunk.h"
 #include "link/LinkService.h"
 #include "look_at.h"
 #include "model/ModelView.h"
@@ -835,6 +836,10 @@ namespace PerkeleRim::PlayerSync
                     Pocket::OnChange(a_player, a_data, a_size);
                     return;
                 }
+                if (a_type == Protocol::MessageType::JunkBack) {
+                    ThrowJunk::OnBack(a_player, a_data, a_size);
+                    return;
+                }
                 if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle &&
                     a_type != Protocol::MessageType::GearText && a_type != Protocol::MessageType::FuelText) {
                     return;
@@ -927,6 +932,7 @@ namespace PerkeleRim::PlayerSync
             hud.gear = state.gear;
             hud.fuel = state.fuel;
             hud.tools = valid && (pose.flags & Protocol::kPlayerTools) != 0;
+            hud.charge = valid && pose.throwCharge > 0 ? (pose.throwCharge - 1) / 254.0f : -1.0f;
             hud.money = Pocket::Money(a_player);
             hud.hasNeeds = state.hasNeeds;
             hud.needs = state.needs;

@@ -48,6 +48,7 @@ add_executable(protocol_tests
     tests/cpp/test_play_mode.cpp
     tests/cpp/test_intro.cpp
     tests/cpp/test_helgen_skip.cpp
+    tests/cpp/test_junk.cpp
 )
 if(WIN32)
     target_sources(protocol_tests PRIVATE cpp/link.cpp tests/cpp/test_link.cpp)

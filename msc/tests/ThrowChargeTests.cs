@@ -148,6 +148,20 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void SkyrimsHudGetsTheChargeInAByte()
+        {
+            var charge = new ThrowCharge();
+            Assert.That(charge.WireCharge(5f), Is.EqualTo(0));  // not charging
+            charge.Apply(new List<int> { R }, true, 5f);
+            Assert.That(charge.WireCharge(5f), Is.EqualTo(1));  // just started: 1, not 0
+            Assert.That(charge.WireCharge(5.5f), Is.EqualTo(128));
+            Assert.That(charge.WireCharge(6f), Is.EqualTo(255));
+            Assert.That(charge.WireCharge(9f), Is.EqualTo(255));
+            charge.Apply(new List<int>(), true, 9f);  // let go
+            Assert.That(charge.WireCharge(9f), Is.EqualTo(0));
+        }
+
+        [Test]
         public void TheItemIsPulledBackWithTheChargeButNotIntoTheFace()
         {
             Assert.That(ThrowCharge.WindBack(0f, 1f), Is.EqualTo(0f));

@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 45;
+        public const uint ProtocolVersion = 46;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -65,6 +65,7 @@ namespace PerkeleRim.Protocol
         public const uint ItemCapacity = 128;
         public const uint ItemVisible = 0x1;
         public const uint ItemHeld = 0x2;
+        public const uint ItemForm = 0x4;
         public const uint HandLayerValid = 0x1;
         public const uint ActorCapacity = 32;
         public const uint ParticleCapacity = 512;
@@ -116,7 +117,9 @@ namespace PerkeleRim.Protocol
         public const uint PocketCigarettes = 6;
         public const uint PocketGold = 7;
         public const uint PocketJuice = 8;
-        public const uint PocketKinds = 9;
+        public const uint PocketJunk = 9;
+        public const uint PocketKinds = 10;
+        public const uint JunkLanded = 0x1;
         public const uint MscSnapshotPathMax = 1024;
         public const uint ScreenshotPathMax = 1024;
         public const uint TimeBed = 0x1;
@@ -165,6 +168,8 @@ namespace PerkeleRim.Protocol
         ConsumeEvent = 29,
         FuelStations = 30,
         FuelText = 31,
+        JunkOut = 32,
+        JunkBack = 33,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -239,7 +244,8 @@ namespace PerkeleRim.Protocol
         public float heading;
         public float pitch;
         public byte stance;
-        public fixed byte reserved[3];
+        public byte throwCharge;
+        public fixed byte reserved[2];
         public uint generation;
         public fixed float eye[3];
         public float roll;
@@ -565,6 +571,8 @@ namespace PerkeleRim.Protocol
         public uint kind;
         public float speed;
         public fixed float direction[3];
+        public float mass;
+        public uint reserved;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -680,7 +688,28 @@ namespace PerkeleRim.Protocol
     {
         public uint session;
         public uint appliedSeq;
-        public fixed uint counts[9];
+        public fixed uint counts[10];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct JunkOut
+    {
+        public uint seq;
+        public uint form;
+        public float mass;
+        public uint reserved;
+        public fixed float boundsMin[3];
+        public fixed float boundsMax[3];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct JunkBack
+    {
+        public uint session;
+        public uint seq;
+        public uint flags;
+        public fixed float position[3];
+        public fixed float rotation[4];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
