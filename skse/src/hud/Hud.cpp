@@ -20,10 +20,12 @@ namespace PerkeleRim::Hud
         constexpr double kNeedRow = 18.0;
         constexpr double kNeedLabelWidth = 80.0;
         constexpr double kNeedBarWidth = 120.0, kNeedBarHeight = 8.0;
-        constexpr double kNeedHigh = 0.8;       // a bar this full turns red
         constexpr const char* kNeedNames[] = { "Thirst", "Hunger", "Stress", "Urine", "Fatigue", "Dirtiness", "Drunk" };
-        // A full bar: needs run 0..100; MSC's drunk level 0..8, but 2.5 is already deadly in water.
-        constexpr float kNeedFull[] = { 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 4.0f };
+        // A full bar: needs run up to 200, where MSC's player dies of them (its own HUD stops at 100, so
+        // 100 and 180 looked the same); MSC's drunk level 0..8, but 2.5 is already deadly in water.
+        constexpr float kNeedFull[] = { 200.0f, 200.0f, 200.0f, 200.0f, 200.0f, 200.0f, 4.0f };
+        // From here a bar is red (MSC's own HUD turns red above 100), marked on the bar.
+        constexpr float kNeedWarn[] = { 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 2.5f };
         constexpr std::size_t   kRows = 7;
         constexpr std::size_t kUrine = 3;
         constexpr std::uint32_t kUrineColor = 0xF2D21B, kUrineHighColor = 0xFF7A00;
@@ -256,7 +258,7 @@ namespace PerkeleRim::Hud
                     continue;
                 }
                 const double fraction = Fraction(a_view, i);
-                const bool   high = fraction >= kNeedHigh;
+                const bool   high = a_view.needs[i] >= kNeedWarn[i];
                 const auto   color = i == kUrine ? (high ? kUrineHighColor : kUrineColor) : (high ? kNeedHighColor : kNeedColor);
                 const double x0 = kNeedLabelWidth, y0 = static_cast<double>(i) * kNeedRow + 4.0;
                 Call(bar, "clear", {});
@@ -264,6 +266,8 @@ namespace PerkeleRim::Hud
                 if (fraction > 0.0) {
                     Fill(bar, color, 90.0, x0, y0, x0 + kNeedBarWidth * fraction, y0 + kNeedBarHeight);
                 }
+                const double warn = x0 + kNeedBarWidth * (kNeedWarn[i] / kNeedFull[i]);
+                Fill(bar, 0x808080, 80.0, warn - 0.5, y0 - 1.0, warn + 0.5, y0 + kNeedBarHeight + 1.0);
             }
         }
 
