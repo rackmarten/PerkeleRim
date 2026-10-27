@@ -70,7 +70,7 @@ namespace PerkeleRim::Pocket
             if (!effect) {
                 return;
             }
-            Protocol::ConsumeEvent message{ effect->hunger, effect->thirst, effect->urine, effect->drunk };
+            Protocol::ConsumeEvent message{ effect->hunger, effect->thirst, effect->urine, effect->drunk, effect->bottle ? Protocol::kConsumeDrink : 0u };
             const bool sent = LinkService::Get().Send(Protocol::MessageType::ConsumeEvent, &message, sizeof(message));
             SKSE::log::info("food: {} hunger {:+.0f} thirst {:+.0f} urine {:+.0f} drunk {:+.3f}{}", item->GetName(), effect->hunger, effect->thirst,
                 effect->urine, effect->drunk, sent ? "" : " (not sent, no link)");
@@ -266,17 +266,25 @@ namespace PerkeleRim::Pocket
         // The last thing bound to each number this session: Skyrim drops an item's hotkey with its
         // last one, and the default key then would eat something else (beer on 7 gone: 7 eats chips).
         static std::array<Hotbar::Bound, Hotbar::kSlots> last{};
-        auto bound = Loaded() && a_player ? BoundTo(a_player, a_slot, item) : Hotbar::Bound::None;
         if (a_slot < 0 || a_slot >= Hotbar::kSlots) {
             return 0;
         }
+        if (!Loaded() || !a_player) {
+            return Hotbar::Resolve(a_slot, Hotbar::Bound::None).mscKey;
+        }
+        const auto bound = BoundTo(a_player, a_slot, item);
         if (bound != Hotbar::Bound::None) {
             last[a_slot] = bound;
         } else if (last[a_slot] >= Hotbar::Bound::Beer) {
             SKSE::log::info("hotbar: {} had an item bound, none left", a_slot + 1);
             return 0;
         }
-        const auto action = Hotbar::Resolve(a_slot, bound);
+        std::uint32_t anywhere = 0;  // what all eight numbers hold, so a default gives way to its own binding
+        for (int slot = 0; slot < Hotbar::kSlots; slot++) {
+            RE::TESBoundObject* other = nullptr;
+            anywhere |= Hotbar::Bit(slot == a_slot ? bound : BoundTo(a_player, slot, other));
+        }
+        const auto action = Hotbar::Resolve(a_slot, bound, anywhere);
         if (action.use && item) {
             SKSE::log::info("hotbar: {} uses {}", a_slot + 1, item->GetName());
             RE::ActorEquipManager::GetSingleton()->EquipObject(a_player, item);  // eaten or drunk, EquipSink follows

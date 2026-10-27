@@ -38,6 +38,20 @@ TEST_CASE("other food and drink are used in Skyrim, nothing reaches MSC")
     CHECK(sweetroll.mscKey == 0);
 }
 
+TEST_CASE("a default gives way when what it stands for is bound to another number")
+{
+    const auto tools = Hotbar::Bit(Bound::Tools);
+    CHECK(Hotbar::Resolve(2, Bound::Tools, tools).mscKey == 50);  // Tools moved to 3
+    CHECK(Hotbar::Resolve(1, Bound::None, tools).mscKey == 0);    // 2 doesn't take the tools out any more
+    CHECK(Hotbar::Resolve(1, Bound::Other, tools).mscKey == 0);
+    CHECK(Hotbar::Resolve(0, Bound::None, tools).mscKey == 49);   // 1 is still the hand
+    const auto beer = Hotbar::Bit(Bound::Beer) | Hotbar::Bit(Bound::Consumable);
+    CHECK(Hotbar::Resolve(3, Bound::None, beer).mscKey == 0);     // MSC Beer on 7: 4 is free
+    CHECK(Hotbar::Resolve(4, Bound::None, beer).mscKey == 53);    // food defaults stay
+    CHECK(Hotbar::DefaultOf(7) == Bound::Macaron);
+    CHECK(Hotbar::DefaultOf(8) == Bound::None);
+}
+
 TEST_CASE("numbers outside 1 to 8 do nothing")
 {
     CHECK(Hotbar::Resolve(-1, Bound::Hands).mscKey == 0);

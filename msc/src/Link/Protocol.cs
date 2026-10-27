@@ -37,6 +37,8 @@ namespace PerkeleRim.Protocol
         public const uint PlayerBlocking = 0x10;
         public const uint PlayerChaseCamera = 0x20;
         public const uint PlayerInGame = 0x40;
+        public const uint PlayerTools = 0x80;
+        public const uint ConsumeDrink = 0x1;
         public const uint NeedThirst = 0;
         public const uint NeedHunger = 1;
         public const uint NeedStress = 2;
@@ -664,6 +666,7 @@ namespace PerkeleRim.Protocol
         public float thirst;
         public float urine;
         public float drunk;
+        public uint flags;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

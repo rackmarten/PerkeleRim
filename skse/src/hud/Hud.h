@@ -19,6 +19,7 @@ namespace PerkeleRim::Hud
         bool                 hand = false;      // look-at hand icon
         std::string          subtitle;          // empty = none
         std::string          gear;              // MSC's gear indicator while driving ("N", "3 HIGH"), empty = none
+        bool                 tools = false;     // MSC's tools are out: its wrench and screwdriver icon, top right
         bool                 hasNeeds = false;  // needs below are MSC's
         std::array<float, 7> needs{};           // PlayerState.needs, kNeed* order
         std::string          handsImage;        // MSC's first-person layer (HandView), full screen under the rest; empty = none

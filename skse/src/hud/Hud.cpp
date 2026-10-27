@@ -14,6 +14,8 @@ namespace PerkeleRim::Hud
         // Needs bars, top left under Skyrim's own HUD messages (about 3 lines), clear of the inventory and map.
         constexpr double kNeedsLeft = 40.0;     // from the visible frame's left edge
         constexpr double kNeedsTop = 110.0;     // first row's top, down from the visible frame's top edge
+        constexpr double kToolsRight = 60.0;    // MSC's tools icon center, from the visible frame's right edge
+        constexpr double kToolsTop = 70.0;      // and down from its top edge, where MSC shows it
         constexpr double kNeedSize = 14.0;      // label font size
         constexpr double kNeedRow = 18.0;
         constexpr double kNeedLabelWidth = 80.0;
@@ -131,6 +133,21 @@ namespace PerkeleRim::Hud
             Rect(a_clip, -10.0, -3.0, -7.4, 0.5);
         }
 
+        // MSC's tools icon: a wrench and a screwdriver side by side, white, as MSC shows them top right.
+        void DrawTools(RE::GFxValue& a_clip)
+        {
+            Circle(a_clip, 0x000000, 40.0, 17.0);
+            // Wrench: open jaw on top (two prongs), then the shaft.
+            Rect(a_clip, -10.0, -11.0, -7.5, -5.0);
+            Rect(a_clip, -4.5, -11.0, -2.0, -5.0);
+            Rect(a_clip, -10.0, -6.0, -2.0, -3.0);
+            Rect(a_clip, -7.5, -3.0, -4.5, 11.0);
+            // Screwdriver: handle, then the thin blade.
+            Rect(a_clip, 2.0, -11.0, 10.0, -8.0);
+            Rect(a_clip, 4.0, -8.0, 8.0, 1.0);
+            Rect(a_clip, 5.0, 1.0, 7.0, 11.0);
+        }
+
         // A single-line text field in Skyrim's HUD font, false if Scaleform refused it.
         bool MakeText(RE::GFxMovieView* a_movie, RE::GFxValue& a_parent, const char* a_name, double a_depth, double a_x, double a_y,
             double a_width, double a_size, const char* a_align, std::uint32_t a_color, RE::GFxValue& a_text)
@@ -188,6 +205,12 @@ namespace PerkeleRim::Hud
             RE::GFxValue gearBox, gear;
             a_clip.CreateEmptyMovieClip(&gearBox, "gearBox", 8);
             MakeText(a_movie, a_clip, "gear", 9.0, -kGearWidth * 0.5, 0.0, kGearWidth, kGearSize, "center", 0xFFFFFF, gear);
+
+            RE::GFxValue toolsClip;
+            if (a_clip.CreateEmptyMovieClip(&toolsClip, "tools", 10)) {
+                DrawTools(toolsClip);
+                toolsClip.SetMember("_visible", RE::GFxValue(false));
+            }
 
             RE::GFxValue needs;
             if (a_clip.CreateEmptyMovieClip(&needs, "needs", 7)) {
@@ -404,6 +427,13 @@ namespace PerkeleRim::Hud
                 }
             }
 
+            RE::GFxValue toolsClip;
+            if (clip.GetMember("tools", &toolsClip) && toolsClip.IsDisplayObject()) {
+                toolsClip.SetMember("_visible", RE::GFxValue(a_view.tools));
+                toolsClip.SetMember("_x", RE::GFxValue(static_cast<double>(rect.right) - kToolsRight - cx));
+                toolsClip.SetMember("_y", RE::GFxValue(static_cast<double>(rect.top) + kToolsTop - cy));
+            }
+
             RE::GFxValue needs;
             if (clip.GetMember("needs", &needs) && needs.IsDisplayObject()) {
                 needs.SetMember("_visible", RE::GFxValue(a_view.hasNeeds));
@@ -440,7 +470,7 @@ namespace PerkeleRim::Hud
         }
         const auto needs = Quantize(view);
         const bool textChanged = view.show != current.show || view.dot != current.dot || view.label != current.label || view.hand != current.hand ||
-                                 view.subtitle != current.subtitle || view.gear != current.gear;
+                                 view.subtitle != current.subtitle || view.gear != current.gear || view.tools != current.tools;
         const bool handsChanged = view.handsImage != current.handsImage || view.handsWidth != current.handsWidth ||
                                   view.handsHeight != current.handsHeight;
         const bool handsLoading = !view.handsImage.empty() && !handsSized;

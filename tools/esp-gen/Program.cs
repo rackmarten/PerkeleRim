@@ -480,6 +480,8 @@ var hotbarEffect = new MagicEffect(new FormKey(mod.ModKey, 0x919), SkyrimRelease
 };
 mod.MagicEffects.Add(hotbarEffect);
 Console.WriteLine($"  {hotbarEffect.FormKey.ID:X3} {hotbarEffect.EditorID}");
+// The equip slot vanilla lesser powers use (the voice).
+var voiceSlot = skyrim.Spells.First(s => s.Type == SpellType.LesserPower && !s.EquipmentType.IsNull).EquipmentType.FormKey;
 foreach (var (id, editorId, name, description) in new[] {
     (0x91Au, "PerkeleRimHotbarHands", "Empty Hands", "Kumpo puts his hands to use (My Summer Car's key 1). Favorite it and bind a number key."),
     (0x91Bu, "PerkeleRimHotbarTools", "Tools", "Kumpo takes his tools out (My Summer Car's key 2). Favorite it and bind a number key."),
@@ -496,6 +498,8 @@ foreach (var (id, editorId, name, description) in new[] {
         Flags = SpellDataFlag.ManualCostCalc,
         BaseCost = 0,
     };
+    // The voice slot, like vanilla powers: a hand spell would be taken off at once (fists only).
+    power.EquipmentType.SetTo(voiceSlot);
     power.Effects.Add(new Effect { BaseEffect = hotbarEffect.ToNullableLink(), Data = new EffectData() });
     mod.Spells.Add(power);
     Console.WriteLine($"  {power.FormKey.ID:X3} {power.EditorID}");

@@ -112,6 +112,7 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPlayerGrounded = 0x8;  // PlayerState.flags: MSC's player stands on something
     inline constexpr std::uint32_t kPlayerBlocking = 0x10;  // PlayerState.flags: MSC's player guards (right click), Skyrim blocks
     inline constexpr std::uint32_t kPlayerChaseCamera = 0x20;  // PlayerState.flags: MSC's chase camera (its F9, in a vehicle) is on: eye, roll and fov are that camera's, view* its direction
+    inline constexpr std::uint32_t kPlayerTools = 0x80;  // PlayerState.flags (v43): MSC's tools are out instead of the hand (its 2); Skyrim shows MSC's tools icon
     inline constexpr std::uint32_t kPlayerInGame = 0x40;  // PlayerState.flags (v41): MSC's player exists (its game is loaded), set whoever has the player; play mode hands over only then
 
     // PlayerState.needs order, MSC's globals: PlayerThirst, PlayerHunger, PlayerStress, PlayerUrine,
@@ -680,13 +681,18 @@ namespace PerkeleRim::Protocol
 
     // ConsumeEvent: the player ate or drank something in Skyrim (its inventory, a hotkey). What it
     // does to MSC's needs, from protocol/cpp/food.h; MSC adds each to its global (PlayerHunger,
-    // PlayerThirst, PlayerUrine, PlayerDrunkAdjusted), needs not below 0, drunk 0..8.
+    // PlayerThirst, PlayerUrine, PlayerDrunkAdjusted), needs not below 0, drunk 0..8. With
+    // kConsumeDrink MSC also shows its drinking and burp once the menu is closed (once for any
+    // number of drinks), its needs put back after.
+    inline constexpr std::uint32_t kConsumeDrink = 0x1;  // ConsumeEvent.flags: a drink from a bottle
+
     struct ConsumeEvent
     {
-        float hunger;  // < 0: less hungry
-        float thirst;  // < 0: less thirsty
-        float urine;
-        float drunk;   // added to PlayerDrunkAdjusted
+        float         hunger;  // < 0: less hungry
+        float         thirst;  // < 0: less thirsty
+        float         urine;
+        float         drunk;   // added to PlayerDrunkAdjusted
+        std::uint32_t flags;   // kConsume*
     };
 
     // The pocket: Skyrim's inventory holds MSC's beer, empty bottles, food and cigarettes as
@@ -976,7 +982,8 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(PocketChange) == 16);
     static_assert(offsetof(PocketChange, delta) == 12);
     static_assert(sizeof(PocketCounts) == 40);
-    static_assert(sizeof(ConsumeEvent) == 16);
+    static_assert(sizeof(ConsumeEvent) == 20);
+    static_assert(offsetof(ConsumeEvent, flags) == 16);
     static_assert(offsetof(PocketCounts, counts) == 8);
     static_assert(sizeof(ModelChunk) == 16);
     static_assert(offsetof(ModelChunk, offset) == 8);

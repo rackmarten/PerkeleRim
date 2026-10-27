@@ -339,6 +339,7 @@ namespace PerkeleRim.Game
             }
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             shelves.Update(playing);
+            pocket.Paused = input.Paused;
             pocket.Update(link, playing, player != null);
             windUp.Update(charge, Time.realtimeSinceStartup);
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
@@ -1097,6 +1098,7 @@ namespace PerkeleRim.Game
             s.flags = Wire.PlayerValid;
             if (controller != null && controller.enabled && controller.isGrounded) s.flags |= Wire.PlayerGrounded;  // Skyrim's fall damage
             if (block.Blocking) s.flags |= Wire.PlayerBlocking;  // Skyrim's block
+            if (PocketLink.ToolsOut()) s.flags |= Wire.PlayerTools;  // Skyrim shows MSC's tools icon
             var pos = island.IslandToSkyrim(ToVec3(Feet()));
             s.position[0] = pos.x;
             s.position[1] = pos.y;

@@ -60,6 +60,23 @@ namespace PerkeleRim.Game
         // BottleBeerFly) goes back into the pocket, until emptyUntil (-1 = none).
         const float EmptyWait = DrinkTime + 3f;
         float emptyUntil = -1f, nextEmptyLook;
+        bool emptyToPocket = true;  // false: a shown drink's bottle, Skyrim has it already
+
+        // A drink waiting for the hand to come out (1 pocket beer, 2 shown), the tools to take back
+        // out after (MSC's 2 at toolsBackAt), and a shown drink's needs to put back.
+        const string ToolsPath = "PLAYER/Pivot/AnimPivot/Camera/FPSCamera/2Spanner";
+        const float HandWait = 1f;
+        int drinkQueued;
+        float drinkQueuedAt;
+        bool toolsBack;
+        float toolsBackAt;
+        static readonly string[] ShowNeeds = { "PlayerHunger", "PlayerThirst", "PlayerUrine", "PlayerDrunkAdjusted", "PlayerWeight", "PlayerStress" };
+        readonly float[] shownNeeds = new float[ShowNeeds.Length];
+        bool showing, showPending;
+        float showUntil;
+
+        // Skyrim paused by a menu (PlayerLink sets it): a shown drink waits until the menu is closed.
+        public bool Paused;
         readonly HashSet<int> bottlesBefore = new HashSet<int>();
 
         public PocketLink(Action<string> log) { this.log = log; }
@@ -120,6 +137,14 @@ namespace PerkeleRim.Game
             // isn't taken for money spent or earned.
             if (inGame && Time.realtimeSinceStartup - inGameSince >= MoneySettle) MirrorMoney(link);
             if (emptyUntil >= 0f) CatchEmpty(link);
+            if (drinkQueued != 0) AdvanceQueuedDrink(link);
+            EndShow();
+            if (toolsBack && drinkQueued == 0 && Time.realtimeSinceStartup >= toolsBackAt && !Global("PlayerDrinkOn"))
+            {
+                toolsBack = false;
+                if (!ToolsOut()) { InputShim.Pulse(KeyCode.Alpha2); log("pocket: the tools back out"); }
+            }
+            if (showPending && !Paused && playing) { showPending = false; QueueDrink(link, true); }
             if (taking != null || takingKind != Pocket.None) { AdvanceTake(); presses.Clear(); return; }
             if (!playing) { presses.Clear(); return; }
             if (presses.Count > 0) Press(link, presses.Dequeue());
@@ -190,6 +215,15 @@ namespace PerkeleRim.Game
             urine.Value = Consumption.AddNeed(urine.Value, e.urine);
             drunk.Value = Consumption.AddDrunk(drunk.Value, e.drunk);
             log($"food: from Skyrim, hunger {hungerWas:0.#} -> {hunger.Value:0.#}, thirst {thirstWas:0.#} -> {thirst.Value:0.#}, drunk {drunkWas:0.###} -> {drunk.Value:0.###}");
+            if (showing)  // the needs going back after the shown drink include this one
+            {
+                shownNeeds[0] = Consumption.AddNeed(shownNeeds[0], e.hunger);
+                shownNeeds[1] = Consumption.AddNeed(shownNeeds[1], e.thirst);
+                shownNeeds[2] = Consumption.AddNeed(shownNeeds[2], e.urine);
+                shownNeeds[3] = Consumption.AddDrunk(shownNeeds[3], e.drunk);
+            }
+            // One drinking and burp for however many drinks, once the inventory is closed.
+            if ((e.flags & Wire.ConsumeDrink) != 0) showPending = true;
         }
 
         // ---- Keys ----
@@ -252,9 +286,11 @@ namespace PerkeleRim.Game
             string state = hand.ActiveStateName;
             bool holding = Holding(state);
             // As MSC's own checks: a tool, ax or flashlight out keeps the pick-up hand busy; smoking
-            // doesn't. Seated, the hand doesn't matter: only beer and food work there.
+            // doesn't. Beer and food don't need it (drunk with the left hand, eaten unseen), so they work
+            // with tools out too; seated, only they work.
             bool inVehicle = InVehicle();
-            if (inVehicle ? !Pocket.WorksInVehicle(key) : !holding && state != "Look for object")
+            bool consume = Pocket.WorksInVehicle(key);
+            if (inVehicle ? !consume : !consume && !holding && state != "Look for object")
             {
                 log($"pocket: {(inVehicle ? "in a vehicle" : "hands busy (" + state + ")")}, key {(KeyCode)key} ignored");
                 return;
@@ -348,11 +384,64 @@ namespace PerkeleRim.Game
 
         // MSC's own beer drinking, as from a case (beer case :: Use sends DRINKBEER): the animation,
         // the needs, then the empty bottle thrown. Not while a drink is going (it would cut it short).
-        void DrinkBeer(Link link)
+        void DrinkBeer(Link link) => QueueDrink(link, false);
+
+        // A drink: a pocket beer, or (show) just MSC's drinking and burp for drinks Kumpo had in
+        // Skyrim's inventory, its needs already counted. With the tools out MSC's 1 takes the hand
+        // out first and MSC's 2 brings the tools back after.
+        void QueueDrink(Link link, bool show)
         {
             // A beer case checks the left hand (busy drinking, pushing, giving the finger) and the helmet.
-            if (Global("PlayerDrinkOn") || Global("PlayerHandLeft") || Global("PlayerHelmet")) { log("pocket: can't drink now (left hand busy or helmet on)"); return; }
-            if (!Send(link, (int)Wire.PocketBeer, -1)) { log("pocket: the link is full, no beer"); return; }
+            if (Global("PlayerDrinkOn") || Global("PlayerHandLeft") || Global("PlayerHelmet") || drinkQueued != 0 || showing)
+            {
+                if (!show) log("pocket: can't drink now (left hand busy or helmet on)");
+                return;
+            }
+            if (ToolsOut())
+            {
+                InputShim.Pulse(KeyCode.Alpha1);
+                toolsBack = true;
+                drinkQueued = show ? 2 : 1;
+                drinkQueuedAt = Time.realtimeSinceStartup;
+                log("pocket: tools out, the hand first");
+                return;
+            }
+            StartDrink(link, show);
+        }
+
+        // Once the hand is out (or after a second, whatever MSC made of the 1).
+        void AdvanceQueuedDrink(Link link)
+        {
+            if (ToolsOut() && Time.realtimeSinceStartup - drinkQueuedAt < HandWait) return;
+            bool show = drinkQueued == 2;
+            drinkQueued = 0;
+            StartDrink(link, show);
+        }
+
+        // MSC's tools (2Spanner) are out instead of the hand.
+        public static bool ToolsOut()
+        {
+            var tools = GameObject.Find(ToolsPath);
+            return tools != null && tools.activeInHierarchy;
+        }
+
+        void StartDrink(Link link, bool show)
+        {
+            if (!show && !Send(link, (int)Wire.PocketBeer, -1)) { log("pocket: the link is full, no beer"); toolsBackAt = 0f; return; }
+            if (show)
+            {
+                // MSC's drink counts its own needs: put them back as they were once it's down.
+                var globals = FsmVariables.GlobalVariables;
+                for (int i = 0; i < ShowNeeds.Length; i++)
+                {
+                    var g = globals.FindFsmFloat(ShowNeeds[i]);
+                    shownNeeds[i] = g != null ? g.Value : float.NaN;
+                }
+                showing = true;
+                showUntil = Time.realtimeSinceStartup + DrinkTime;
+            }
+            emptyToPocket = !show;
+            if (toolsBack) toolsBackAt = Time.realtimeSinceStartup + DrinkTime;
             bottlesBefore.Clear();
             foreach (var go in EmptyBottles()) bottlesBefore.Add(go.GetInstanceID());
             emptyUntil = Time.realtimeSinceStartup + EmptyWait;
@@ -362,7 +451,21 @@ namespace PerkeleRim.Game
             if (camera != null)
                 foreach (var f in camera.GetComponents<PlayMakerFSM>())
                     if (f.FsmName == "PlayerFunctions") { functions = f; f.enabled = false; functionsBackAt = Time.realtimeSinceStartup + DrinkTime; }
-            log($"pocket: drinking a beer ({ledger.Available((int)Wire.PocketBeer)} left)");
+            log(show ? "pocket: MSC's drinking for the drinks from Skyrim's inventory" : $"pocket: drinking a beer ({ledger.Available((int)Wire.PocketBeer)} left)");
+        }
+
+        // The shown drink is down: MSC's needs back to before it, plus what Skyrim sent meanwhile.
+        void EndShow()
+        {
+            if (!showing || Time.realtimeSinceStartup < showUntil || Global("PlayerDrinkOn")) return;
+            showing = false;
+            var globals = FsmVariables.GlobalVariables;
+            for (int i = 0; i < ShowNeeds.Length; i++)
+            {
+                var g = globals.FindFsmFloat(ShowNeeds[i]);
+                if (g != null && !float.IsNaN(shownNeeds[i])) g.Value = shownNeeds[i];
+            }
+            log("pocket: the shown drink is down, MSC's needs as Skyrim's drinks left them");
         }
 
         // MSC's empty beer bottles in the world: copies of BottleBeerFly, renamed by their Go FSM.
@@ -388,6 +491,7 @@ namespace PerkeleRim.Game
             foreach (var go in EmptyBottles())
             {
                 if (bottlesBefore.Contains(go.GetInstanceID())) continue;
+                if (!emptyToPocket) { UnityEngine.Object.Destroy(go); emptyUntil = -1f; return; }  // Skyrim already has its bottle
                 if (!Send(link, (int)Wire.PocketBottle, 1)) return;  // the link is full: next look
                 UnityEngine.Object.Destroy(go);
                 emptyUntil = -1f;

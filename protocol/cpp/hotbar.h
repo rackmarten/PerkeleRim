@@ -5,7 +5,8 @@
 //  - MSC Beer and MSC's food become the pocket's 4 to 8: MSC's own drinking and eating;
 //  - other food and drink (and potions) are used in Skyrim, which tells MSC what they did (food.h);
 //  - an unbound number, or one bound to anything else (a sword, a spell), keeps its default: 1 and 2
-//    MSC's, 3 to 8 the pocket's.
+//    MSC's, 3 to 8 the pocket's, unless what the default stands for is bound to another number (Tools
+//    moved to 3: 2 does nothing).
 // Header-only and free of Skyrim types, so the protocol tests cover it.
 
 #pragma once
@@ -33,14 +34,25 @@ namespace PerkeleRim::Hotbar
         Consumable,  // any other food, drink or potion
     };
 
+    // What an unbound number stands for: 1 Empty Hands, 2 Tools, 3 an empty bottle, 4 beer, 5..8 food.
+    constexpr Bound DefaultOf(int a_slot)
+    {
+        constexpr Bound kDefaults[kSlots] = { Bound::Hands, Bound::Tools, Bound::Bottle, Bound::Beer, Bound::Sausages, Bound::Pizza, Bound::Chips, Bound::Macaron };
+        return a_slot >= 0 && a_slot < kSlots ? kDefaults[a_slot] : Bound::None;
+    }
+
+    // A set of Bounds (bit per value), e.g. everything bound to any number.
+    constexpr std::uint32_t Bit(Bound a_bound) { return 1u << static_cast<unsigned>(a_bound); }
+
     struct Action
     {
         std::uint16_t mscKey = 0;  // the Unity KeyCode MSC gets held while the number is, 0 for none
         bool          use = false;  // use the bound item in Skyrim (eat, drink)
     };
 
-    // Number key a_slot (0 for 1 .. 7 for 8) with a_bound on it.
-    constexpr Action Resolve(int a_slot, Bound a_bound)
+    // Number key a_slot (0 for 1 .. 7 for 8) with a_bound on it; a_anywhere: what all eight numbers
+    // hold (Bit per Bound).
+    constexpr Action Resolve(int a_slot, Bound a_bound, std::uint32_t a_anywhere = 0)
     {
         if (a_slot < 0 || a_slot >= kSlots) {
             return {};
@@ -55,7 +67,11 @@ namespace PerkeleRim::Hotbar
         case Bound::Chips: return { kAlpha1 + 6 };
         case Bound::Macaron: return { kAlpha1 + 7 };
         case Bound::Consumable: return { 0, true };
-        default: return { static_cast<std::uint16_t>(kAlpha1 + a_slot) };
+        default:
+            if ((a_anywhere & Bit(DefaultOf(a_slot))) != 0) {
+                return {};  // what it stands for is on another number now
+            }
+            return { static_cast<std::uint16_t>(kAlpha1 + a_slot) };
         }
     }
 }
