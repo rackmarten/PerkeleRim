@@ -71,7 +71,8 @@ namespace PerkeleRim::Needs
     // Kumpo's shake (#931). His hands are steady for kShakeGrace Skyrim hours after he was last
     // drunk (MSC's drunk level at kSteadyDrunk or more, a beer or two), then shake more and more
     // until kShakeFull hours dry. Being a little drunk steadies them in proportion. A game without a
-    // record of his last drink starts fully dry: he wakes up shaky.
+    // record of his last drink (a new game, a save from before the shake) counts from its first
+    // frame, as if he'd just had one: steady, shaky only after kShakeGrace.
     inline constexpr float kSteadyDrunk = 0.05f;  // one beer is about 0.08 for MSC's 79 kg Kumpo
     inline constexpr float kShakeGrace = 1.0f;    // Skyrim hours
     inline constexpr float kShakeFull = 24.0f;
@@ -91,15 +92,15 @@ namespace PerkeleRim::Needs
     public:
         void Step(float a_hoursNow, float a_drunk)
         {
-            if (a_drunk >= kSteadyDrunk) {
+            if (a_drunk >= kSteadyDrunk || lastDrunk_ == kNever) {
                 lastDrunk_ = a_hoursNow;
             }
         }
 
-        // Hours dry, fully dry without a record.
+        // Hours dry, none before the first Step without a record.
         float DryHours(float a_hoursNow) const
         {
-            return lastDrunk_ == kNever ? kShakeFull : (std::max)(0.0f, a_hoursNow - lastDrunk_);
+            return lastDrunk_ == kNever ? 0.0f : (std::max)(0.0f, a_hoursNow - lastDrunk_);
         }
 
         float LastDrunk() const { return lastDrunk_; }

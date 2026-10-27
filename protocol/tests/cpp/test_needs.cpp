@@ -50,20 +50,32 @@ TEST_CASE("the shake grows with hours dry, a beer or two steadies it")
     CHECK(Needs::Shake(24.0f, 0.08f) == 0.0f);                    // one beer
 }
 
-TEST_CASE("the dry clock starts dry, a drink restarts it")
+TEST_CASE("without a record the dry clock starts steady, a drink restarts it")
 {
     Needs::DryClock clock;
-    CHECK(clock.DryHours(10.0f) == Needs::kShakeFull);  // new game: he wakes up shaky
-    clock.Step(10.0f, 0.01f);                            // a sip isn't a beer
-    CHECK(clock.DryHours(10.0f) == Needs::kShakeFull);
-    clock.Step(10.0f, 0.1f);
-    CHECK(clock.DryHours(10.0f) == 0.0f);
-    clock.Step(13.0f, 0.0f);
-    CHECK(clock.DryHours(13.0f) == doctest::Approx(3.0f));
-    CHECK(Needs::Shake(clock.DryHours(13.0f), 0.0f) > 0.0f);
+    CHECK(clock.DryHours(10.0f) == 0.0f);  // a new game or an old save: steady
+    clock.Step(10.0f, 0.0f);               // the first frame starts the clock
+    CHECK(clock.LastDrunk() == 10.0f);
+    CHECK(Needs::Shake(clock.DryHours(10.5f), 0.0f) == 0.0f);
+    clock.Step(12.0f, 0.01f);  // a sip isn't a beer
+    CHECK(clock.DryHours(12.0f) == doctest::Approx(2.0f));
+    CHECK(Needs::Shake(clock.DryHours(12.0f), 0.0f) > 0.0f);
+    clock.Step(12.0f, 0.1f);
+    CHECK(clock.DryHours(12.0f) == 0.0f);
+    clock.Step(15.0f, 0.0f);
+    CHECK(clock.DryHours(15.0f) == doctest::Approx(3.0f));
     CHECK(clock.DryHours(5.0f) == 0.0f);  // never negative
     clock.Reset();
     CHECK(clock.LastDrunk() == Needs::kNever);
+}
+
+TEST_CASE("a saved last drink carries over")
+{
+    Needs::DryClock clock;
+    clock.SetLastDrunk(100.0f);
+    clock.Step(130.0f, 0.0f);
+    CHECK(clock.LastDrunk() == 100.0f);
+    CHECK(Needs::Shake(clock.DryHours(130.0f), 0.0f) == 1.0f);
 }
 
 TEST_CASE("the shake offset stays within its share of the screen and moves")
