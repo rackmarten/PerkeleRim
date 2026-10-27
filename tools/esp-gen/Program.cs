@@ -304,7 +304,7 @@ var stations = new (string Name, float X, float Y, float ToRoad)[]
 {
     ("Whiterun", 13177f, -13572f, 6f),          // the road west of the garage
     ("Dragon Bridge", -97272f, 76515f, -121f),  // south-east of the village
-    ("Windhelm", 145673f, 32291f, -56f),        // on the road from the stables toward Hollyfrost Farm, clear of the cliffs
+    ("Windhelm", 138655f, 26547f, -29.3f),      // east of the bridge below the city, its pump spot picked in game
     ("Ivarstead", 82640f, -74393f, -121f),      // on the road on to Riften
 };
 const float pumpY = -150f;        // the boiler's middle (DwePipeBoiler02: 96 around, 383 tall)
