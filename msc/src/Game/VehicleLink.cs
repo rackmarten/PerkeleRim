@@ -97,6 +97,9 @@ namespace PerkeleRim.Game
         public string ObjectName => objectName;
         public Vector3 Position => car != null ? car.position : Vector3.zero;
         public int Moves { get; private set; }
+        // The moped keeps a full tank (MSC fills it only from a two-stroke jerry can); the van and the
+        // Kekmet burn their diesel and fill up at Skyrim's pumps (FuelLink).
+        public bool EndlessFuel { get; set; }
         public string Contact(float within) => tune.Contact(within);
         // The driven vehicle's impacts this physics step (CrashSensor), for the engine's stall guard.
         public void Impacts(bool inImpact, float impact) => tune.Impacts(inImpact, impact);
@@ -169,23 +172,53 @@ namespace PerkeleRim.Game
             }
         }
 
-        // Fills the tank to its capacity, so a vehicle from a fresh save runs. Logs the tank's
-        // floats, since their names were never dumped.
+        // The tank's level and capacity in litres; false when the vehicle or its tank isn't found.
+        public bool Tank(out float level, out float capacity)
+        {
+            HutongGames.PlayMaker.FsmFloat l, c;
+            FuelTank(out l, out c, null);
+            level = l != null ? l.Value : 0f;
+            capacity = c != null ? c.Value : 0f;
+            return l != null && c != null;
+        }
+
+        public void SetFuel(float level)
+        {
+            HutongGames.PlayMaker.FsmFloat l, c;
+            FuelTank(out l, out c, null);
+            if (l != null) l.Value = level;
+        }
+
+        // Which side the fuel filler is on (+1 right, -1 left) and how far ahead of the vehicle's
+        // middle (Skyrim units, negative behind); false without one.
+        public bool Filler(out int side, out float forward)
+        {
+            side = -1;
+            forward = 0f;
+            var filler = car != null ? car.Find("LOD/FuelFiller") : null;
+            if (filler == null) return false;
+            var local = car.InverseTransformPoint(filler.position);
+            side = local.x >= 0f ? 1 : -1;
+            forward = (float)(local.z * Coords.UnitsPerMeter);
+            return true;
+        }
+
+        // Logs the tank's floats, since their names were never dumped, and fills an endless tank to
+        // its capacity, so the moped from a fresh save runs.
         void Refuel()
         {
             HutongGames.PlayMaker.FsmFloat level, capacity;
             var names = new System.Text.StringBuilder();
             FuelTank(out level, out capacity, names);
             if (names.Length > 0) log($"vehicle: {driverName} fuel tank floats:{names}");
-            if (level != null && capacity != null && capacity.Value > 0f && level.Value < capacity.Value)
+            if (EndlessFuel && level != null && capacity != null && capacity.Value > 0f && level.Value < capacity.Value)
             {
                 level.Value = capacity.Value;
                 log($"vehicle: filled the {driverName} tank ({level.Name} = {capacity.Name} = {capacity.Value:0.##})");
             }
         }
 
-        // Fuel is endless: Skyrim has no fuel stations yet and MSC's gauge isn't drawn there, so the
-        // tank ran dry unseen. Topped up once a second.
+        // The moped's fuel is endless (EndlessFuel): topped up once a second.
         void KeepFull()
         {
             HutongGames.PlayMaker.FsmFloat level, capacity;
@@ -297,6 +330,20 @@ namespace PerkeleRim.Game
         }
 
         const float AwayHeight = -5000f;
+
+        // Tows the vehicle onto spot (Skyrim world space, on the ground) facing heading, wherever it
+        // was: a dry tank called at a pump (FuelLink). Not while the player sits in it.
+        public void TowTo(Transform player, Vec3 spot, float heading)
+        {
+            if (car == null || player == null || Carries(player)) return;
+            away = false;
+            spotGeneration = island.Generation;
+            this.spot = spot;
+            spotHeading = heading;
+            Park(player, Vector3.zero);
+            nextGroundCheck = 0f;
+            log($"vehicle: towed the {driverName} to ({spot.x:0},{spot.y:0},{spot.z:0}) heading {heading:0.00}");
+        }
 
         // Where the vehicle is and how it moves, for a snapshot (SaveSync); null when not found.
         // Put away, it is where it was left.
@@ -593,7 +640,7 @@ namespace PerkeleRim.Game
             }
             Remember();
             tune.Update(driven);
-            if (Time.realtimeSinceStartup >= nextTopUp)
+            if (EndlessFuel && Time.realtimeSinceStartup >= nextTopUp)
             {
                 nextTopUp = Time.realtimeSinceStartup + 1f;
                 KeepFull();

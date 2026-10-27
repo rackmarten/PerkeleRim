@@ -7,6 +7,7 @@
 #include "death/Death.h"
 #include "debug/HitTest.h"
 #include "drink/Drink.h"
+#include "fuel/Fuel.h"
 #include "garage/Garage.h"
 #include "hud/Hud.h"
 #include "input.h"
@@ -88,6 +89,7 @@ namespace PerkeleRim::PlayerSync
             bool           lookAtUse = false; // MSC shows its hand icon
             std::string    subtitle;          // MSC's subtitle line
             std::string    gear;              // MSC's gear indicator while driving
+            std::string    fuel;              // MSC's fuel line (FuelText)
             bool           hasNeeds = false;  // needs below came from MSC since the handover
             std::array<float, 7> needs{};     // PlayerState.needs
             bool           cameraParentLogged = false;
@@ -248,6 +250,7 @@ namespace PerkeleRim::PlayerSync
             state.lookAtUse = false;
             state.subtitle.clear();
             state.gear.clear();
+            state.fuel.clear();
             state.hasNeeds = false;
             Hud::Set({});
             Drink::SetDrunk(0.0f, 0.0f);
@@ -832,7 +835,7 @@ namespace PerkeleRim::PlayerSync
                     return;
                 }
                 if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle &&
-                    a_type != Protocol::MessageType::GearText) {
+                    a_type != Protocol::MessageType::GearText && a_type != Protocol::MessageType::FuelText) {
                     return;
                 }
                 const auto text = LookAt::Decode(a_data, a_size);  // a Subtitle has the same payload
@@ -842,6 +845,8 @@ namespace PerkeleRim::PlayerSync
                     state.subtitle.assign(text->text);
                 } else if (a_type == Protocol::MessageType::GearText) {
                     state.gear.assign(text->text);
+                } else if (a_type == Protocol::MessageType::FuelText) {
+                    state.fuel.assign(text->text);
                 } else {
                     state.lookAt.assign(text->text);
                     state.lookAtUse = (text->flags & Protocol::kLookAtUse) != 0;
@@ -919,6 +924,7 @@ namespace PerkeleRim::PlayerSync
             hud.hand = state.lookAtUse;
             hud.subtitle = state.subtitle.empty() ? std::string(Intro::Caption()) : state.subtitle;  // the shack's wake-up caption carries over the handover
             hud.gear = state.gear;
+            hud.fuel = state.fuel;
             hud.tools = valid && (pose.flags & Protocol::kPlayerTools) != 0;
             hud.money = Pocket::Money(a_player);
             hud.hasNeeds = state.hasNeeds;
@@ -949,6 +955,7 @@ namespace PerkeleRim::PlayerSync
                 original(a_player, a_delta);
                 Death::Tick();
                 Pocket::Update(a_player, a_delta);
+                Fuel::Update();
                 if (!state.owned) {
                     Safe::Set(a_player, 0);  // keeps clearing god mode if it was slow to go off
                 }

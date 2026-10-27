@@ -291,6 +291,91 @@ foreach (var p in markers.Concat(pieces))
     Console.WriteLine($"  {p.FormKey.ID:X3} {name,-16} ({at.Position.X:0},{at.Position.Y:0},{at.Position.Z:0}) rot {at.Rotation.Z:0.000}");
 }
 
+// ---- Gas stations ----
+//
+// Dwemer oil pumps beside Skyrim's main roads (docs/PROTOCOL.md, "Fuel"): an open pole shed over
+// the lane with a dwemer boiler as the pump at its back. Each station's frame: origin at the shed's
+// middle, +Y toward the road, +X along it. Sites picked from Skyrim.esm's road meshes, terrain and
+// references (flat ground about 10 m off a road, nothing standing there). From 0xA00, clear of the
+// garage's ids. The SKSE plugin reads the pump spots (where Kumpo stands, facing the boiler) in
+// order from the PerkeleRimFuelPumps list (skse/src/fuel/Fuel.cpp).
+var stations = new (string Name, float X, float Y, float ToRoad)[]
+{
+    ("Whiterun", 13177f, -13572f, 6f),          // the road west of the garage
+    ("Dragon Bridge", -97272f, 76515f, -121f),  // south-east of the village
+    ("Windhelm", 144219f, 29326f, -47f),        // between the stables and the city, by the farms
+    ("Ivarstead", 82640f, -74393f, -121f),      // on the road on to Riften
+};
+const float pumpY = -150f;        // the boiler's middle (DwePipeBoiler02: 96 around, 383 tall)
+const float pumpSpotY = 30f;      // where Kumpo stands to use it, 84 in front of the boiler
+const float stationShedUp = 150f; // above the lowest ground: the posts (160 below the origin) still reach it
+var stationFootprint = (HalfX: 420f, HalfY: 300f);
+var mapMarker = new FormKey(skyrim.ModKey, 0x000010);
+
+nextId = 0xA00;
+var pumpSpots = new List<PlacedObject>();
+var stationMarkers = new List<PlacedObject>();
+var stationPieces = new List<PlacedObject>();
+foreach (var st in stations)
+{
+    float syaw = st.ToRoad * MathF.PI / 180f;
+    (float X, float Y) At(float x, float y)
+    {
+        float c = MathF.Cos(syaw), s = MathF.Sin(syaw);
+        return (st.X + x * c + y * s, st.Y - x * s + y * c);
+    }
+    float Ground(float x, float y) { var w = At(x, y); return terrain.HeightAt(w.X, w.Y); }
+    PlacedObject Put(FormKey baseObject, float x, float y, float z, float rot, bool persistent = false)
+    {
+        var w = At(x, y);
+        var placed = new PlacedObject(new FormKey(mod.ModKey, nextId++), SkyrimRelease.SkyrimSE)
+        {
+            Base = new FormLinkNullable<IPlaceableObjectGetter>(baseObject),
+            Placement = new Placement { Position = new P3Float(w.X, w.Y, z), Rotation = new P3Float(0f, 0f, Normalize(rot + syaw)) },
+        };
+        if (persistent) placed.MajorRecordFlagsRaw |= (int)PlacedObject.StaticMajorFlag.Persistent;
+        return placed;
+    }
+
+    float low = float.MaxValue, high = float.MinValue;
+    for (float x = -stationFootprint.HalfX; x <= stationFootprint.HalfX; x += 32f)
+    for (float y = -stationFootprint.HalfY; y <= stationFootprint.HalfY; y += 32f)
+    {
+        float h = Ground(x, y);
+        low = Math.Min(low, h);
+        high = Math.Max(high, h);
+    }
+    Console.WriteLine($"ground under the {st.Name} station: {low:0} .. {high:0}");
+
+    // Persistent: the pump spot (MSC needs it wherever the player is) and the map marker.
+    var spot = Put(marker, 0f, pumpSpotY, Ground(0f, pumpSpotY), MathF.PI, persistent: true);  // facing -Y, the boiler
+    spot.EditorID = $"PerkeleRimFuelPump{pumpSpots.Count}";
+    pumpSpots.Add(spot);
+    stationMarkers.Add(spot);
+    var onMap = Put(mapMarker, 0f, stationFootprint.HalfY, Ground(0f, stationFootprint.HalfY), 0f, persistent: true);
+    onMap.MapMarker = new MapMarker { Flags = MapMarker.Flag.Visible, Name = $"{st.Name} Dwemer Oil", Type = MapMarker.MarkerType.Smelter };
+    stationMarkers.Add(onMap);
+
+    stationPieces.Add(Put(Base(skyrim.Statics, "SFarmShed01"), 0f, 0f, low + stationShedUp, 0f));
+    float pumpGround = Ground(0f, pumpY);
+    stationPieces.Add(Put(Base(skyrim.Statics, "DwePipeBoiler02"), 0f, pumpY, pumpGround - 10f, 0f));
+    // A gear box on the boiler's front at hand height, the hub and pipes along the back into the ground.
+    stationPieces.Add(Put(Base(skyrim.Statics, "DwePipeGearAssembly02"), 0f, pumpY + 116f, pumpGround + 100f, 0f));
+    stationPieces.Add(Put(Base(skyrim.Statics, "DwePipe1wayX2"), 96f, pumpY - 60f, pumpGround + 40f, 0f));
+    stationPieces.Add(Put(Base(skyrim.Statics, "DwePipe1wayX2"), -96f, pumpY - 60f, pumpGround + 40f, MathF.PI));
+}
+
+foreach (var p in stationMarkers) persistentCell.Persistent.Add(p);
+foreach (var p in stationPieces)
+    Override(ExteriorAt(p.Placement!.Position.X, p.Placement.Position.Y)).Temporary.Add(p);
+foreach (var p in stationMarkers.Concat(stationPieces))
+{
+    var at = p.Placement!;
+    var name = cache.Resolve<IPlaceableObjectGetter>(p.Base.FormKey).EditorID;
+    Console.WriteLine($"  {p.FormKey.ID:X3} {name,-16} ({at.Position.X:0},{at.Position.Y:0},{at.Position.Z:0}) rot {at.Rotation.Z:0.000}");
+}
+uint stationsNextId = nextId;
+
 // ---- Drinks ----
 //
 // Fixed ids the SKSE plugin looks up (skse/src/drink/Drink.cpp), clear of the garage's. 0x900 was
@@ -573,7 +658,14 @@ foreach (var spot in stockSpots)
 mod.FormLists.Add(spotList);
 Console.WriteLine($"  910 {spotList.EditorID} ({spotList.Items.Count} spots)");
 
-mod.ModHeader.Stats.NextFormID = 0x91D;  // after PerkeleRimHotbarBottle (0x91C)
+// Fixed id the SKSE plugin looks up (skse/src/fuel/Fuel.cpp): the gas stations' pump spots in order.
+var pumpList = new FormList(new FormKey(mod.ModKey, 0x980), SkyrimRelease.SkyrimSE) { EditorID = "PerkeleRimFuelPumps" };
+foreach (var spot in pumpSpots)
+    pumpList.Items.Add(new FormLink<ISkyrimMajorRecordGetter>(spot.FormKey));
+mod.FormLists.Add(pumpList);
+Console.WriteLine($"  980 {pumpList.EditorID} ({pumpList.Items.Count} pumps)");
+
+mod.ModHeader.Stats.NextFormID = stationsNextId;  // after the gas stations (0xA00 on), past every record id
 // Header 1.70, not Mutagen's 1.71: Skyrim SE 1.5.97 skips 1.71 plugins, AE loads both.
 mod.ModHeader.Stats.Version = 1.7f;
 

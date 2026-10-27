@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 43;
+    inline constexpr std::uint32_t kProtocolVersion = 44;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -414,6 +414,8 @@ namespace PerkeleRim::Protocol
         DebugCommand = 27,     // Skyrim -> MSC
         IntroCue = 28,         // Skyrim -> MSC
         ConsumeEvent = 29,     // Skyrim -> MSC
+        FuelStations = 30,     // Skyrim -> MSC
+        FuelText = 31,         // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -662,6 +664,28 @@ namespace PerkeleRim::Protocol
         std::uint32_t count;       // <= kStockSpotsMax
         StockSpot     spots[16];   // kStockSpotsMax
     };
+
+    // FuelStations: the dwemer oil pumps along Skyrim's main roads (PerkeleRim.esp), sent each time
+    // the link comes up. Each pump's spot is on the ground in front of it, where Kumpo stands to use
+    // it, facing the pump. MSC brings its own diesel pump trigger to the pump the player is near,
+    // and tows a dry vehicle to one (msc/src/Link/Fuel.cs).
+    inline constexpr std::uint32_t kFuelPumpsMax = 8;
+
+    struct FuelPump
+    {
+        float position[3];  // Skyrim world space, on the ground in front of the pump
+        float heading;      // radians, clockwise from north: from the spot toward the pump
+    };
+
+    struct FuelStations
+    {
+        std::uint32_t count;  // <= kFuelPumpsMax
+        std::uint32_t reserved;
+        FuelPump      pumps[8];  // kFuelPumpsMax
+    };
+
+    // FuelText: the fuel line MSC wants on the HUD (the litres poured and the gold they cost, a low
+    // tank, a dry one), empty for none. Same payload as LookAtText, sent when it changes.
 
     // Consumed: MSC's player finished an alcoholic drink, lit a cigarette or ate something. Skyrim
     // heals by kind (protocol/cpp/damage.h). Drinks without alcohol aren't sent.
@@ -945,6 +969,10 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(WorldspaceChange, vehicleSpot) == 32);
     static_assert(offsetof(WorldspaceChange, vehicleHeading) == 44);
     static_assert(sizeof(LookAtText) == 8);
+    static_assert(sizeof(FuelPump) == 16);
+    static_assert(offsetof(FuelPump, heading) == 12);
+    static_assert(sizeof(FuelStations) == 136);
+    static_assert(offsetof(FuelStations, pumps) == 8);
     static_assert(sizeof(PlayerDamage) == 8);
     static_assert(offsetof(PlayerDamage, severity) == 4);
     static_assert(sizeof(PlayerDeath) == 8);
