@@ -68,6 +68,11 @@ namespace PerkeleRim.Game
         const float HandWait = 1f;
         int drinkQueued;
         int handFor;  // a key waiting for the hand to come out (3, Y), 0 for none
+        // The throwing stance (3): the bottle out now, when it left the hand, and 1 or 2 pressed meanwhile.
+        const float ThrowLook = 0.15f, ThrowSpeed = 2f;
+        bool throwStance, stanceAway;
+        GameObject thrown;
+        float leftAt = -1f;
         float handForAt;
         float drinkQueuedAt;
         bool toolsBack;
@@ -90,7 +95,11 @@ namespace PerkeleRim.Game
         public void Keys(List<int> held)
         {
             foreach (var k in held)
+            {
                 if (Pocket.IsKey(k) && keysDown.Add(k)) presses.Enqueue(k);
+                // MSC's own 1 and 2 (the hand, the tools) end the throwing stance: the bottle goes in first.
+                if ((k == (int)KeyCode.Alpha1 || k == (int)KeyCode.Alpha2) && keysDown.Add(k) && throwStance) stanceAway = true;
+            }
             keysDown.RemoveWhere(k => !held.Contains(k));
         }
 
@@ -149,6 +158,7 @@ namespace PerkeleRim.Game
             if (showPending && !Paused && playing) { showPending = false; QueueDrink(link, true); }
             if (taking != null || takingKind != Pocket.None) { AdvanceTake(); presses.Clear(); return; }
             if (!playing) { presses.Clear(); return; }
+            if (throwStance) WatchThrow(link);
             if (handFor != 0)
             {
                 // A key that needs the hand, pressed with the tools out: once MSC's 1 has it out.
@@ -324,7 +334,14 @@ namespace PerkeleRim.Game
             switch (action)
             {
                 case Pocket.Action.Pocket:
+                    throwStance = false;  // 3 again (or Y): the bottle back, the stance over
                     PocketItem(link, held, heldKind, true);
+                    break;
+                case Pocket.Action.PocketAndConsume:
+                    throwStance = false;
+                    if (!PocketItem(link, held, heldKind, true)) return;
+                    if (kind == (int)Wire.PocketBeer) DrinkBeer(link);
+                    else StartTake(link, kind, true);
                     break;
                 case Pocket.Action.PocketAimed:
                     PocketItem(link, aimed, aimedKind, false);
@@ -337,6 +354,7 @@ namespace PerkeleRim.Game
                     StartTake(link, kind, false);
                     break;
                 case Pocket.Action.PocketAndTake:
+                    throwStance = false;
                     // A case with more than the one bottle taken out is put down, not emptied bottle by bottle.
                     if (heldKind == (int)Wire.PocketBeer && Bottles(held) > 1) Drop(held);
                     else if (!PocketItem(link, held, heldKind, true)) return;
@@ -351,6 +369,51 @@ namespace PerkeleRim.Game
                         log($"pocket: key {(KeyCode)key} does nothing (holding {(held != null ? held.name : "nothing")}, {(kind != Pocket.None ? ledger.Available(kind) : 0)} in slot)");
                     break;
             }
+        }
+
+        // ---- The throwing stance ----
+
+        // 3 is a stance, not one bottle: after a throw the next empty bottle comes out by itself, while
+        // there are any. A drop (it lies still), something else picked up, 3 again, Y or another key
+        // ends it; another key puts the bottle in the hand away first, so switching never loses one.
+        void WatchThrow(Link link)
+        {
+            if (stanceAway)
+            {
+                stanceAway = false;
+                throwStance = false;
+                if (thrown == null) return;
+                var hand = PickUp();
+                bool inHand = hand != null && Holding(hand.ActiveStateName) && hand.FsmVariables.FindFsmGameObject("PickedObject").Value == thrown;
+                if (inHand) PocketItem(link, thrown, (int)Wire.PocketBottle, true);
+                else
+                {
+                    // MSC's 2 dropped it as it took the tools out; one already thrown flies on.
+                    var flyer = thrown.GetComponent<Rigidbody>();
+                    bool inFlight = flyer != null && flyer.velocity.magnitude > ThrowSpeed;
+                    if (!inFlight && Send(link, (int)Wire.PocketBottle, 1)) { UnityEngine.Object.Destroy(thrown); log("pocket: the dropped bottle back into the pocket"); }
+                }
+                thrown = null;
+                return;
+            }
+            if (taking != null) return;  // the next one is on its way
+            if (thrown == null) { throwStance = false; return; }
+            var pick = PickUp();
+            if (pick != null && Holding(pick.ActiveStateName) && pick.FsmVariables.FindFsmGameObject("PickedObject").Value == thrown) { leftAt = -1f; return; }
+            float now = Time.realtimeSinceStartup;
+            if (leftAt < 0f) { leftAt = now; return; }
+            if (now - leftAt < ThrowLook) return;
+            var body = thrown.GetComponent<Rigidbody>();
+            bool flying = body != null && body.velocity.magnitude > ThrowSpeed;
+            thrown = null;
+            if (flying && ledger.Available((int)Wire.PocketBottle) > 0)
+            {
+                log("pocket: thrown, the next empty bottle");
+                StartTake(link, (int)Wire.PocketBottle, false);
+                return;
+            }
+            throwStance = false;
+            log(flying ? "pocket: thrown, no empty bottles left" : "pocket: the bottle was put down, no more come out");
         }
 
         // ---- Into the pocket ----
@@ -630,6 +693,7 @@ namespace PerkeleRim.Game
             if (Holding(hand.ActiveStateName) && hand.FsmVariables.FindFsmGameObject("PickedObject").Value == taking)
             {
                 log($"pocket: {taking.name} in the hand ({ledger.Available(takingKind)} left in the pocket)");
+                if (takingKind == (int)Wire.PocketBottle) { throwStance = true; thrown = taking; leftAt = -1f; }
                 EndTake();
                 return;
             }

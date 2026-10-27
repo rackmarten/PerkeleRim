@@ -76,6 +76,7 @@ namespace PerkeleRim
             Consume,         // a beer is drunk or food eaten from the pocket
             Take,            // the slot's kind comes out into the free hand
             PocketAndTake,   // the held item goes in, then the slot's kind comes out
+            PocketAndConsume, // the empty bottle in the hand goes in, then a beer is drunk or food eaten
             DropAndTake,     // the held item isn't pocketable: it's dropped, then the slot's kind comes out
         }
 
@@ -88,7 +89,8 @@ namespace PerkeleRim
                 return held != None ? Action.Pocket : !holding && aimed != None ? Action.PocketAimed : Action.Nothing;
             int kind = KindOfSlot(SlotOfKey(keyCode));
             if (kind == None) return Action.Nothing;
-            if (Consumable(kind)) return available > 0 ? Action.Consume : Action.Nothing;
+            if (Consumable(kind))
+                return available <= 0 ? Action.Nothing : held == (int)Wire.PocketBottle ? Action.PocketAndConsume : Action.Consume;
             if (held == kind) return Action.Pocket;  // the same number again puts it back
             if (available <= 0) return Action.Nothing;
             if (!holding) return Action.Take;

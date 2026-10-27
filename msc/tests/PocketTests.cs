@@ -53,7 +53,8 @@ namespace PerkeleRim.Tests
         {
             Assert.That(Pocket.Decide(Key4, Pocket.None, false, Pocket.None, 3), Is.EqualTo(Pocket.Action.Consume));
             Assert.That(Pocket.Decide(Key4, Beer, true, Pocket.None, 3), Is.EqualTo(Pocket.Action.Consume));  // a case in hand stays there
-            Assert.That(Pocket.Decide(Key5, Bottle, true, Pocket.None, 1), Is.EqualTo(Pocket.Action.Consume));
+            Assert.That(Pocket.Decide(Key5, Bottle, true, Pocket.None, 1), Is.EqualTo(Pocket.Action.PocketAndConsume));  // the bottle isn't lost
+            Assert.That(Pocket.Decide(Key5, (int)Wire.PocketPizza, true, Pocket.None, 1), Is.EqualTo(Pocket.Action.Consume));
             Assert.That(Pocket.Decide(Key4, Pocket.None, false, Pocket.None, 0), Is.EqualTo(Pocket.Action.Nothing));
             Assert.That(Pocket.Consumable(Bottle) || Pocket.Consumable(Cigs), Is.False);
         }
