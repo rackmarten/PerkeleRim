@@ -322,16 +322,20 @@ namespace PerkeleRim::Hitbox
                 auto*       rb = part.body->GetRigidBody();
                 float       t[4];
                 _mm_storeu_ps(t, rb->motion.motionState.transform.translation.quad);
-                SKSE::log::info("hitbox: the {}'s capsule {} is {} Havok's world at ({:.0f},{:.0f},{:.0f}), filter {:08X}, world scale {}", a_body.name, i++,
+                SKSE::log::debug("hitbox: the {}'s capsule {} is {} Havok's world at ({:.0f},{:.0f},{:.0f}), filter {:08X}, world scale {}", a_body.name, i++,
                     rb->world == hkWorld ? "in" : "NOT in", t[0] / scale, t[1] / scale, t[2] / scale, rb->collidable.broadPhaseHandle.collisionFilterInfo.filter, scale);
             }
         }
 
         // Every projectile Skyrim stopped at one of the capsules (its impact names the capsule's
         // collision object): counted once and logged, so a test can tell an arrow at the van from one
-        // that fell short.
+        // that fell short. Only with HitboxTest=1 in PerkeleRim.ini.
         void CountHits(Body& a_body)
         {
+            static const bool testing = Ini::Value("HitboxTest") == "1";  // only the hitbox test reads them
+            if (!testing) {
+                return;
+            }
             auto* manager = RE::Projectile::Manager::GetSingleton();
             if (!manager) {
                 return;

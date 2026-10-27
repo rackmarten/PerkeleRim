@@ -689,11 +689,9 @@ namespace PerkeleRim::PlayerSync
             }
         }
 
-        // MSC's run (LeftShift) costs Skyrim stamina; with the bar empty the key is held back from MSC
-        // (from the next Publish on) until a fifth of the stamina is back.
         // The safe vehicle the player has climbed into without driving it: MSC lowers the camera and
         // lets him move between the seats, while Skyrim's body still stands, its head out of the
-        // roof. Its feet inside the vehicle's hitbox box; 0 for none.
+        // roof. Its feet in the vehicle's cabin (Hitbox::InCabin); 0 for none.
         std::uint32_t ClimbedInto(RE::PlayerCharacter* a_player)
         {
             const auto  at = a_player->GetPosition();
@@ -701,13 +699,15 @@ namespace PerkeleRim::PlayerSync
             for (std::uint32_t id = 1; id <= Protocol::kVehicleCount; id++) {
                 Protocol::VehicleState pose{};
                 Hitbox::Box            box{};
-                if (Damage::SafeSeat(id) && Hitbox::Where(id, pose, box) && Hitbox::Depth(pose.position, pose.rotation, box, feet) > 0.0f) {
+                if (Damage::SafeSeat(id) && Hitbox::Where(id, pose, box) && Hitbox::InCabin(id, pose.position, pose.rotation, box, feet)) {
                     return id;
                 }
             }
             return 0;
         }
 
+        // MSC's run (LeftShift) costs Skyrim stamina; with the bar empty the key is held back from MSC
+        // (from the next Publish on) until a fifth of the stamina is back.
         void Sprint(RE::PlayerCharacter* a_player, const Protocol::PlayerState* a_pose, bool a_seated, bool a_menu, float a_delta)
         {
             auto*       values = a_player->AsActorValueOwner();

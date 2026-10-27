@@ -57,6 +57,36 @@ namespace PerkeleRim::Hitbox
         return (std::max)(depth, 0.0f);
     }
 
+    // Where a player who has climbed into a vehicle without driving it (MSC lowers the camera and
+    // lets him move between the seats before Enter) has its feet: the van's cabin, its box above
+    // the ground clearance (the wheel arches, the bumpers and the ground beside it stay out), under
+    // the roof by more than a step (standing on it stays out) and off the bumpers' ends. Only the
+    // van has one; the Kekmet is an open frame whose box reaches out to its rear wheels.
+    inline constexpr float kCabinFloor = 40.0f;  // units above the box's bottom (the van's: 28 below its origin, its floor about 60 above that)
+    inline constexpr float kCabinRoof = 50.0f;   // units under the box's top
+    inline constexpr float kCabinEnds = 15.0f;   // units in from its front and back
+
+    inline bool Cabin(std::uint32_t a_vehicle, const Box& a_box, Box& a_out)
+    {
+        if (a_vehicle != Protocol::kVehicleHayosiko) {
+            return false;
+        }
+        a_out = a_box;
+        a_out.lo[1] += kCabinEnds;
+        a_out.hi[1] -= kCabinEnds;
+        a_out.lo[2] += kCabinFloor;
+        a_out.hi[2] -= kCabinRoof;
+        return a_out.lo[1] < a_out.hi[1] && a_out.lo[2] < a_out.hi[2];
+    }
+
+    // Whether feet at a_feet (world) are in vehicle a_vehicle's cabin, the vehicle at a_position
+    // turned by a_rotation with box a_box.
+    inline bool InCabin(std::uint32_t a_vehicle, const float (&a_position)[3], const float (&a_rotation)[4], const Box& a_box, const float (&a_feet)[3])
+    {
+        Box cabin{};
+        return Cabin(a_vehicle, a_box, cabin) && Depth(a_position, a_rotation, cabin, a_feet) > 0.0f;
+    }
+
     // The box around every mesh of a model at its rest pose, in the model root's frame (Skyrim axes
     // and units). False for a model without vertices.
     inline bool BoundsOf(const Model::Model& a_model, Box& a_out)

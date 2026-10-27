@@ -158,3 +158,28 @@ TEST_CASE("a point's depth inside a turned vehicle's box")
     const float below[3] = { 1000.0f, 2000.0f, 40.0f };
     CHECK(Hitbox::Depth(at, level, box, below) == 0.0f);
 }
+
+TEST_CASE("climbed in counts in the van's cabin only, not beside, under or on top of it")
+{
+    // The boxes PerkeleRim logs for MSC's models, the van turned a quarter about Z (its +Y along world -X).
+    const Hitbox::Box van{ { -65.0f, -155.0f, -28.0f }, { 65.0f, 144.0f, 111.0f } };
+    const Hitbox::Box kekmet{ { -69.0f, -134.0f, -49.0f }, { 69.0f, 244.0f, 150.0f } };
+    const float       at[3] = { 1000.0f, 2000.0f, 0.0f };
+    const float       level[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    const float       s = std::sqrt(0.5f);
+    const float       quarter[4] = { 0.0f, 0.0f, s, s };
+    const auto        in = [&](std::uint32_t a_vehicle, const float (&a_rotation)[4], const Hitbox::Box& a_box, float a_x, float a_y, float a_z) {
+        const float feet[3] = { at[0] + a_x, at[1] + a_y, at[2] + a_z };
+        return Hitbox::InCabin(a_vehicle, at, a_rotation, a_box, feet);
+    };
+    CHECK(in(Protocol::kVehicleHayosiko, level, van, -40.0f, 80.0f, 36.0f));    // in the driver's seat
+    CHECK(in(Protocol::kVehicleHayosiko, level, van, 0.0f, -100.0f, 20.0f));    // in the back
+    CHECK(in(Protocol::kVehicleHayosiko, quarter, van, -80.0f, -40.0f, 36.0f));  // the seat of the turned van
+    CHECK_FALSE(in(Protocol::kVehicleHayosiko, level, van, 0.0f, 0.0f, 110.0f));  // on the roof, a unit under its top
+    CHECK_FALSE(in(Protocol::kVehicleHayosiko, level, van, 60.0f, 140.0f, -20.0f));  // on the ground at the front bumper's corner
+    CHECK_FALSE(in(Protocol::kVehicleHayosiko, level, van, 60.0f, 140.0f, 30.0f));   // on the bumper's end
+    CHECK_FALSE(in(Protocol::kVehicleHayosiko, level, van, 60.0f, -100.0f, -10.0f)); // in a wheel arch, beside the van
+    CHECK_FALSE(in(Protocol::kVehicleKekmet, level, kekmet, 60.0f, -100.0f, 20.0f)); // beside the Kekmet's engine
+    CHECK_FALSE(in(Protocol::kVehicleKekmet, level, kekmet, 0.0f, 150.0f, 60.0f));   // even in its seat: it has no cabin
+    CHECK_FALSE(in(Protocol::kVehicleJonnez, level, van, -40.0f, 80.0f, 36.0f));
+}
