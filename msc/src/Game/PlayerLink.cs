@@ -29,6 +29,8 @@ namespace PerkeleRim.Game
     //  - puts Skyrim's actors near the player on the island as capsules and sends MSC's punches
     //    that land on them (ActorLink); H honks the driven vehicle, scattering them (VehicleHorn);
     //  - shares MSC's first-person layer (hands, drinks, tools in hand) with Skyrim (HandLayerSender);
+    //  - keeps MSC's own blackouts (drunk pass-out, knockout) from moving its player while the link is
+    //    up (PassOutGuard);
     //  - keeps MSC's player alive while handed over and sends what it would have died of as
     //    PlayerDamage (DeathGuard), plays MSC's death sound on PlayerDeath, and sends MSC's blood
     //    overlay for Skyrim's death ahead of time;
@@ -294,6 +296,7 @@ namespace PerkeleRim.Game
             link.Receive(OnMessage);
             voice.Update();
             FindPlayer();
+            PassOutGuard.Update(link.IsUp, player, log);
             foreach (var v in vehicles) v.Find();
             UseGround();
 
