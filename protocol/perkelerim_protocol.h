@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 43;
+    inline constexpr std::uint32_t kProtocolVersion = 46;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -136,7 +136,8 @@ namespace PerkeleRim::Protocol
         float         heading;      // radians
         float         pitch;        // radians, positive looks down
         std::uint8_t  stance;       // 0 standing, 1 crouching, 2 prone
-        std::uint8_t  reserved[3];
+        std::uint8_t  throwCharge;  // a throw being charged (v46): 0 none, 1..255 share of a full charge
+        std::uint8_t  reserved[2];
         std::uint32_t generation;   // WorldspaceChange.generation this pose belongs to
         // MSC's camera, with kPlayerCamera. Leaning, reaching, sitting and crouching move it, and
         // Skyrim puts its first-person camera there.
@@ -239,13 +240,14 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kItemCapacity = 128;  // ItemState.items
     inline constexpr std::uint32_t kItemVisible = 0x1;   // ItemPose.flags: MSC draws it
     inline constexpr std::uint32_t kItemHeld = 0x2;      // ItemPose.flags: in the player's hands
+    inline constexpr std::uint32_t kItemForm = 0x4;      // ItemPose.flags: model is a Skyrim form id, drawn with that form's own model (thrown junk, v46)
 
     // One MSC physics item (or one piece of it: a bottle in a case is its own item). Skyrim world
     // space like VehicleState: the model's root sits at position, turned by rotation (Skyrim space).
     struct ItemPose
     {
         std::uint32_t id;           // MSC's, stable while the item exists, never 0
-        std::uint32_t model;        // ModelChunk.model of its look, 0 = nothing to draw
+        std::uint32_t model;        // ModelChunk.model of its look (with kItemForm a Skyrim form id), 0 = nothing to draw
         std::uint32_t flags;        // kItem*
         float         position[3];
         float         rotation[4];  // x, y, z, w
@@ -414,6 +416,8 @@ namespace PerkeleRim::Protocol
         DebugCommand = 27,     // Skyrim -> MSC
         IntroCue = 28,         // Skyrim -> MSC
         ConsumeEvent = 29,     // Skyrim -> MSC
+        JunkOut = 32,          // Skyrim -> MSC (30 and 31 are the gas stations')
+        JunkBack = 33,         // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -543,6 +547,8 @@ namespace PerkeleRim::Protocol
         std::uint32_t kind;          // kImpact*
         float         speed;         // meters per second (kImpactThrown, kImpactVehicle)
         float         direction[3];  // the way it moved, unit vector in Skyrim space
+        float         mass;          // kilograms of a thrown item (v46; Damage::Thrown), 0 = unknown
+        std::uint32_t reserved;
     };
 
     // ThrownPath (v36): where an item MSC's player threw moved since the last frame, sent every frame
@@ -706,7 +712,9 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPocketMacaron = 5;     // a macaron box
     inline constexpr std::uint32_t kPocketCigarettes = 6;  // MSC's PlayerCigarettes, one item per cigarette
     inline constexpr std::uint32_t kPocketGold = 7;        // MSC's PlayerMoney, one gold per mark (Skyrim.esm Gold001)
-    inline constexpr std::uint32_t kPocketKinds = 8;
+    // 8 is the drinks' (#956, kPocketJuice); unused on this branch, its count 0.
+    inline constexpr std::uint32_t kPocketJunk = 9;        // junk to throw (v46, protocol/cpp/junk.h): a count of all of it; taking one out gets a JunkOut
+    inline constexpr std::uint32_t kPocketKinds = 10;
 
     // PocketChange: MSC put delta of a kind into the pocket (> 0) or took it out (< 0). seq counts
     // up from 1 per session (MSC picks a new nonzero session each time its link comes up).
@@ -724,7 +732,36 @@ namespace PerkeleRim::Protocol
     {
         std::uint32_t session;
         std::uint32_t appliedSeq;
-        std::uint32_t counts[8];  // by kPocket*
+        std::uint32_t counts[10];  // by kPocket*
+    };
+
+    // JunkOut (v46): Skyrim took one piece of junk out of the inventory for MSC's hand, answering
+    // the PocketChange of kPocketJunk with seq (form 0: there was none after all). MSC makes a body
+    // shaped like the bounds (the form's model space, Skyrim units) that flies like an empty bottle,
+    // and sends it in ItemState with kItemForm so Skyrim draws the form's model on it. mass is what
+    // the hits count (Damage::Thrown), from the item's weight (junk.h).
+    struct JunkOut
+    {
+        std::uint32_t seq;           // PocketChange.seq of the take
+        std::uint32_t form;          // the item's form id, 0 = none
+        float         mass;          // kilograms
+        std::uint32_t reserved;
+        float         boundsMin[3];  // Skyrim units, the model's own space
+        float         boundsMax[3];
+    };
+
+    // JunkBack (v46): a piece of junk JunkOut sent left MSC: with kJunkLanded it came to rest at
+    // position, turned by rotation (Skyrim space), and Skyrim places the real item there; without,
+    // it goes back into the inventory (put away, or MSC let go of it some other way).
+    inline constexpr std::uint32_t kJunkLanded = 0x1;  // JunkBack.flags
+
+    struct JunkBack
+    {
+        std::uint32_t session;      // PocketChange.session of the take
+        std::uint32_t seq;          // and its seq
+        std::uint32_t flags;        // kJunk*
+        float         position[3];  // Skyrim world units, with kJunkLanded
+        float         rotation[4];  // x, y, z, w
     };
 
     // ---- Models (MSC -> Skyrim) ----
@@ -860,6 +897,7 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(PlayerState, heading) == 32);
     static_assert(offsetof(PlayerState, pitch) == 36);
     static_assert(offsetof(PlayerState, stance) == 40);
+    static_assert(offsetof(PlayerState, throwCharge) == 41);
     static_assert(offsetof(PlayerState, generation) == 44);
     static_assert(offsetof(PlayerState, eye) == 48);
     static_assert(offsetof(PlayerState, roll) == 60);
@@ -962,7 +1000,8 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(TimePassed, flags) == 4);
     static_assert(sizeof(ScreenshotEvent) == 8);
     static_assert(offsetof(ScreenshotEvent, reserved) == 4);
-    static_assert(sizeof(ImpactEvent) == 24);
+    static_assert(sizeof(ImpactEvent) == 32);
+    static_assert(offsetof(ImpactEvent, mass) == 24);
     static_assert(offsetof(ImpactEvent, speed) == 8);
     static_assert(offsetof(ImpactEvent, direction) == 12);
     static_assert(sizeof(IntroCue) == 8);
@@ -981,7 +1020,15 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(Consumed) == 8);
     static_assert(sizeof(PocketChange) == 16);
     static_assert(offsetof(PocketChange, delta) == 12);
-    static_assert(sizeof(PocketCounts) == 40);
+    static_assert(sizeof(PocketCounts) == 48);
+    static_assert(sizeof(JunkOut) == 40);
+    static_assert(offsetof(JunkOut, mass) == 8);
+    static_assert(offsetof(JunkOut, boundsMin) == 16);
+    static_assert(offsetof(JunkOut, boundsMax) == 28);
+    static_assert(sizeof(JunkBack) == 40);
+    static_assert(offsetof(JunkBack, flags) == 8);
+    static_assert(offsetof(JunkBack, position) == 12);
+    static_assert(offsetof(JunkBack, rotation) == 24);
     static_assert(sizeof(ConsumeEvent) == 20);
     static_assert(offsetof(ConsumeEvent, flags) == 16);
     static_assert(offsetof(PocketCounts, counts) == 8);

@@ -32,6 +32,10 @@ namespace PerkeleRim::HitTest
         constexpr float         kPunchHold = 0.3f;   // past MSC's 0.15 s from the key to the fist's sweep
         constexpr float         kThrowHold = 1.0f;     // a full charge (ThrowCharge)
         constexpr float         kHoldSeconds = 2.0f;   // for MSC's "hold" to put the bottle in the hand
+        constexpr float         kJunkAsk = 0.6f;       // junk: after the inventory change, for its counts to reach MSC, key 3
+        constexpr float         kJunkHoldSeconds = 3.0f;  // and for Skyrim's answer and MSC's hand
+        constexpr RE::FormID    kEmptyBottle = 0x907;     // PerkeleRim.esp
+        constexpr RE::FormID    kCabbage = 0x064B3F;      // Skyrim.esm, junk (protocol/cpp/junk.h)
 
         enum class Phase
         {
@@ -76,6 +80,8 @@ namespace PerkeleRim::HitTest
             float                    soberSum = 0.0f, drunkSum = 0.0f, drunkLevel = 0.0f;
             int                      soberCount = 0, drunkCount = 0;
             bool                     ranSober = false, ranDrunk = false;
+            bool                     junkAsked = false;  // key 3 went to MSC for this junk throw
+            std::int32_t             bottlesTaken = 0;   // Empty Bottles the junk scenario took away, given back at the end
         } state;
 
         void RunConsole(const std::string& a_command, RE::TESObjectREFR* a_on)
@@ -157,6 +163,16 @@ namespace PerkeleRim::HitTest
             }
             Command("drunk 0");
             SendCommands();
+            if (state.bottlesTaken > 0) {
+                auto* data = RE::TESDataHandler::GetSingleton();
+                auto* form = data ? data->LookupForm(kEmptyBottle, "PerkeleRim.esp") : nullptr;
+                auto* player = RE::PlayerCharacter::GetSingleton();
+                if (form && player && form->As<RE::TESBoundObject>()) {
+                    player->AddObjectToContainer(form->As<RE::TESBoundObject>(), nullptr, state.bottlesTaken, nullptr);
+                    SKSE::log::info("hit test: {} Empty Bottles back", state.bottlesTaken);
+                }
+                state.bottlesTaken = 0;
+            }
             state.csv.close();
             if (a_why) {
                 SKSE::log::info("hit test: stopped, {} ({} of {} passed, results in {})", a_why, state.passed, state.rows, state.csvPath.string());
@@ -241,6 +257,33 @@ namespace PerkeleRim::HitTest
                 a_target->GetFormID(), ahead, radius, Health(a_target));
         }
 
+        // Something to throw into MSC's hand: an empty bottle (MSC's "hold", the pocket untouched), or
+        // for junk a cabbage, with the Empty Bottles gone so key 3 takes junk (sent in Holding).
+        void Arm(RE::PlayerCharacter* a_player)
+        {
+            state.junkAsked = false;
+            if (Current().attack == Attack::kThrow) {
+                Command("hold " + std::to_string(Protocol::kPocketBottle));
+                return;
+            }
+            auto* data = RE::TESDataHandler::GetSingleton();
+            if (Current().attack != Attack::kJunk || !data || !a_player) {
+                return;
+            }
+            auto* bottleForm = data->LookupForm(kEmptyBottle, "PerkeleRim.esp");
+            auto* cabbageForm = data->LookupForm(kCabbage, "Skyrim.esm");
+            auto* bottle = bottleForm ? bottleForm->As<RE::TESBoundObject>() : nullptr;
+            auto* cabbage = cabbageForm ? cabbageForm->As<RE::TESBoundObject>() : nullptr;
+            if (bottle && a_player->GetItemCount(bottle) > 0) {
+                state.bottlesTaken += a_player->GetItemCount(bottle);
+                a_player->RemoveItem(bottle, a_player->GetItemCount(bottle), RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+            }
+            if (cabbage && a_player->GetItemCount(cabbage) < 1) {
+                a_player->AddObjectToContainer(cabbage, nullptr, 1, nullptr);
+            }
+            SKSE::log::info("hit test: the Empty Bottles gone, a cabbage to throw");
+        }
+
         void Press()
         {
             state.hitsBefore = Combat::LastHit().count;
@@ -276,10 +319,8 @@ namespace PerkeleRim::HitTest
                 (Current().drunk > 0.0f ? state.ranDrunk : state.ranSober) = true;
             }
             if (++state.hit < Current().hits && Target() && !Target()->IsDead()) {
-                Go(Current().attack == Attack::kThrow ? Phase::Holding : Phase::Aiming);
-                if (Current().attack == Attack::kThrow) {
-                    Command("hold " + std::to_string(Protocol::kPocketBottle));
-                }
+                Go(Current().attack != Attack::kPunch ? Phase::Holding : Phase::Aiming);
+                Arm(RE::PlayerCharacter::GetSingleton());
                 return;
             }
             RemoveTarget();
@@ -419,10 +460,8 @@ namespace PerkeleRim::HitTest
             }
             RunConsole("tai", target);  // its AI off: it stands, doesn't fight back and nobody hears of it
             Stand(a_player, target, pose, true);
-            Go(Current().attack == Attack::kThrow ? Phase::Holding : Phase::Aiming);
-            if (Current().attack == Attack::kThrow) {
-                Command("hold " + std::to_string(Protocol::kPocketBottle));
-            }
+            Go(Current().attack != Attack::kPunch ? Phase::Holding : Phase::Aiming);
+            Arm(a_player);
             break;
         }
         case Phase::Holding:
@@ -430,8 +469,12 @@ namespace PerkeleRim::HitTest
             if (auto* target = Target(); target && posed) {
                 Stand(a_player, target, pose);
             }
+            if (state.phase == Phase::Holding && Current().attack == Attack::kJunk && !state.junkAsked && state.timer >= kJunkAsk) {
+                state.junkAsked = true;
+                Command("pocket 3");
+            }
             // A punch waits for MSC to have the capsule and a stagger to be over, a throw for the bottle.
-            if (state.timer >= (state.phase == Phase::Holding ? kHoldSeconds : 1.5f)) {
+            if (state.timer >= (state.phase != Phase::Holding ? 1.5f : Current().attack == Attack::kJunk ? kJunkHoldSeconds : kHoldSeconds)) {
                 Press();
             }
             break;
@@ -453,6 +496,7 @@ namespace PerkeleRim::HitTest
                 hit.unarmed = last.unarmed;
                 hit.drunk = last.drunk;
                 hit.speed = last.speed;
+                hit.mass = last.mass;
                 hit.sneak = last.sneak;
             }
             if ((state.landed && state.timer - state.landedAt >= kSpellSeconds) || (!state.landed && state.timer >= kHitTimeout)) {

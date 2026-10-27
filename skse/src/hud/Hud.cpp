@@ -41,12 +41,19 @@ namespace PerkeleRim::Hud
         constexpr double kGearRight = 30.0;   // from the visible frame's right edge to the box's right edge
         constexpr double kGearAbove = 70.0;   // text top, up from the frame's bottom edge
 
+        // A throw's charge: a bar just above the dot, gold once full.
+        constexpr double        kChargeHalfWidth = 24.0;
+        constexpr double        kChargeBottom = -9.0, kChargeTop = -13.0;  // from the screen center
+        constexpr int           kChargeSteps = 48;  // redrawn per step
+        constexpr std::uint32_t kChargeColor = 0xFFFFFF, kChargeFullColor = 0xFFD24A;
+
         // MSC's hands: their own clip on the movie's root, below every vanilla HUD element (those
         // sit at the timeline's negative depths) and below our layer.
         constexpr const char*  kHandsClipName = "perkeleRimHands";
         constexpr std::int32_t kHandsDepth = -16384;
 
         View                       current;
+        int                        drawnCharge = -1;  // current.charge in kChargeSteps, -1 none
         std::array<int, kRows>     drawnNeeds{};  // current.needs in 0.5 % steps of a full bar
         std::array<int, 3>         drawnLight{};  // current.handsLight in Color.setTransform percent
 
@@ -213,6 +220,9 @@ namespace PerkeleRim::Hud
                 DrawTools(toolsClip);
                 toolsClip.SetMember("_visible", RE::GFxValue(false));
             }
+
+            RE::GFxValue chargeClip;
+            a_clip.CreateEmptyMovieClip(&chargeClip, "charge", 11);
 
             RE::GFxValue needs;
             if (a_clip.CreateEmptyMovieClip(&needs, "needs", 7)) {
@@ -439,6 +449,19 @@ namespace PerkeleRim::Hud
                 }
             }
 
+            RE::GFxValue chargeClip;
+            if (clip.GetMember("charge", &chargeClip) && chargeClip.IsDisplayObject()) {
+                Call(chargeClip, "clear", {});
+                if (a_view.charge >= 0.0f) {
+                    const float  share = std::clamp(a_view.charge, 0.0f, 1.0f);
+                    const double right = -kChargeHalfWidth + 2.0 * kChargeHalfWidth * share;
+                    Fill(chargeClip, 0x000000, 55.0, -kChargeHalfWidth - 1.0, kChargeTop - 1.0, kChargeHalfWidth + 1.0, kChargeBottom + 1.0);
+                    if (share > 0.0f) {
+                        Fill(chargeClip, share >= 1.0f ? kChargeFullColor : kChargeColor, 100.0, -kChargeHalfWidth, kChargeTop, right, kChargeBottom);
+                    }
+                }
+            }
+
             RE::GFxValue toolsClip;
             if (clip.GetMember("tools", &toolsClip) && toolsClip.IsDisplayObject()) {
                 toolsClip.SetMember("_visible", RE::GFxValue(a_view.tools));
@@ -496,6 +519,7 @@ namespace PerkeleRim::Hud
             view = View{};
         }
         const auto needs = Quantize(view);
+        const int  charge = view.charge < 0.0f ? -1 : static_cast<int>(std::lround(std::clamp(view.charge, 0.0f, 1.0f) * kChargeSteps));
         const bool textChanged = view.show != current.show || view.dot != current.dot || view.label != current.label || view.hand != current.hand ||
                                  view.subtitle != current.subtitle || view.gear != current.gear || view.tools != current.tools ||
                                  view.money != current.money;
@@ -504,7 +528,7 @@ namespace PerkeleRim::Hud
         const bool handsLoading = !view.handsImage.empty() && !handsSized;
         const auto light = LightPercent(view);
         const bool lightChanged = !view.handsImage.empty() && light != drawnLight;
-        const bool changed = textChanged || handsChanged || handsLoading || lightChanged || view.hasNeeds != current.hasNeeds ||
+        const bool changed = textChanged || handsChanged || handsLoading || lightChanged || charge != drawnCharge || view.hasNeeds != current.hasNeeds ||
                              (view.hasNeeds && needs != drawnNeeds);
         if (!a_refresh && !changed) {
             return;
@@ -519,6 +543,7 @@ namespace PerkeleRim::Hud
             loggedLight = light;
         }
         current = view;
+        drawnCharge = charge;
         drawnNeeds = needs;
         drawnLight = light;
         SKSE::GetTaskInterface()->AddUITask([view]() { Apply(view); });

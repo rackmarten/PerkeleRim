@@ -42,7 +42,8 @@ TEST_CASE("the hit test's scenarios come from the ini's list")
     REQUIRE(all.size() == HitTest::kScenarios.size());
     CHECK(all[0].name == "punch");
     CHECK(all[1].name == "bottle");
-    CHECK(all[2].name == "drunk");  // last: MSC's camera sways on after it
+    CHECK(all[2].name == "junk");
+    CHECK(all[3].name == "drunk");  // last: MSC's camera sways on after it
 
     std::vector<std::string> unknown;
     const auto picked = HitTest::Parse(" bottle , punch,,run-over\r", &unknown);
@@ -63,10 +64,12 @@ TEST_CASE("the scenarios cover sober and drunk punches and a throw")
         CHECK(scenario.gap > 0.0f);
     }
     CHECK(HitTest::kScenarios[0].drunk == 0.0f);
-    CHECK(HitTest::kScenarios[2].drunk > 0.0f);
-    CHECK(HitTest::kScenarios[2].drunk < 2.5f);  // below where MSC's player can't stand still
+    CHECK(HitTest::kScenarios[3].drunk > 0.0f);
+    CHECK(HitTest::kScenarios[3].drunk < 2.5f);  // below where MSC's player can't stand still
     CHECK(HitTest::kScenarios[1].attack == HitTest::Attack::kThrow);
     CHECK(HitTest::kScenarios[1].drunk == 0.0f);
+    CHECK(HitTest::kScenarios[2].attack == HitTest::Attack::kJunk);
+    CHECK(HitTest::kScenarios[2].drunk == 0.0f);
 }
 
 TEST_CASE("a punch that landed passes when Skyrim cast and took what damage.h says")
@@ -95,7 +98,7 @@ TEST_CASE("a punch that landed passes when Skyrim cast and took what damage.h sa
 
 TEST_CASE("a drunk punch fails when MSC didn't take the drunk level")
 {
-    const auto& drunk = HitTest::kScenarios[2];
+    const auto& drunk = HitTest::kScenarios[3];
     CHECK(HitTest::Check(drunk, Punched(4.0f, 2.0f)).pass);
     CHECK(HitTest::Check(drunk, Punched(4.0f, 1.2f)).pass);  // MSC's level moves on its own a little
     CHECK(HitTest::Check(drunk, Punched(4.0f, 0.3f)).note == "MSC's drunk level was 0.3, not 2.0");
@@ -123,6 +126,24 @@ TEST_CASE("a throw passes by its speed, harmless ones fail")
     CHECK(HitTest::Check(bottle, hit).note == "harmless: thrown at 1.0 m/s");
 }
 
+TEST_CASE("thrown junk passes by its speed and weight")
+{
+    const auto&  junk = HitTest::kScenarios[2];
+    HitTest::Hit hit;
+    hit.landed = true;
+    hit.unarmed = 4.0f;
+    hit.speed = 20.0f;
+    hit.mass = 2.0f;  // twice the bottle's hit
+    hit.damage = 32.0f;
+    hit.before = 300.0f;
+    hit.after = 268.0f;
+    CHECK(HitTest::Expected(junk, hit) == doctest::Approx(32.0f));
+    CHECK(HitTest::Check(junk, hit).pass);
+
+    hit.mass = 0.0f;  // MSC didn't say: the bottle's 16
+    CHECK(HitTest::Check(junk, hit).note == "cast 32.0, damage.h says 16.0");
+}
+
 TEST_CASE("drunk punches against sober ones")
 {
     CHECK(HitTest::CheckDrunk(8.0f, Damage::Punch(4.0f, 2.0f), 2.0f).pass);
@@ -134,15 +155,15 @@ TEST_CASE("drunk punches against sober ones")
 TEST_CASE("the CSV rows match the header")
 {
     const int columns = Fields(std::string(HitTest::kCsvHeader));
-    CHECK(columns == 15);
+    CHECK(columns == 16);
 
     const auto& punch = HitTest::kScenarios[0];
     const auto  hit = Punched(4.0f, 0.0f);
     const auto  row = HitTest::Row(punch, 2, "Giant, \"Big\"", hit, HitTest::Check(punch, hit));
     CHECK(Fields(row) == columns);
-    CHECK(row == "punch,2,\"Giant, \"\"Big\"\"\",1,0.0,4.0,0.0,1.0,8.0,8.0,100.0,92.0,8.0,1,");
+    CHECK(row == "punch,2,\"Giant, \"\"Big\"\"\",1,0.0,4.0,0.0,0.0,1.0,8.0,8.0,100.0,92.0,8.0,1,");
 
     const auto summary = HitTest::SummaryRow("drunk vs punch", { false, "needs a landed punch, and a drunk one" });
     CHECK(Fields(summary) == columns);
-    CHECK(summary == "drunk vs punch,,,,,,,,,,,,,0,\"needs a landed punch, and a drunk one\"");
+    CHECK(summary == "drunk vs punch,,,,,,,,,,,,,,0,\"needs a landed punch, and a drunk one\"");
 }

@@ -80,6 +80,7 @@ namespace PerkeleRim.Game
         BeerGift beer;  // spike "beer" only
         ShelfStocker shelves;
         PocketLink pocket;
+        JunkLink junk;
         ModelSender models;
         ItemLink items;
         ParticleLink particles;
@@ -160,7 +161,8 @@ namespace PerkeleRim.Game
             vehicles = new[] { van, moped, kekmet };
             beer = new BeerGift(log);
             shelves = new ShelfStocker(island, ground, log);
-            pocket = new PocketLink(log);
+            junk = new JunkLink(island, log);
+            pocket = new PocketLink(junk, log);
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
             particles = new ParticleLink(island, models, () => Array.ConvertAll(vehicles, v => v.Car), log);
@@ -340,6 +342,7 @@ namespace PerkeleRim.Game
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             shelves.Update(playing);
             pocket.Paused = input.Paused;
+            junk.Update(link, playing, player);
             pocket.Update(link, playing, player != null);
             windUp.Update(charge, Time.realtimeSinceStartup);
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
@@ -441,6 +444,8 @@ namespace PerkeleRim.Game
                 pocket.OnCounts(payload, size);
             else if (type == MessageType.ConsumeEvent)
                 pocket.OnConsume(payload, size);
+            else if (type == MessageType.JunkOut)
+                junk.OnOut(payload, size);
             else if (type == MessageType.PlayerDeath)
                 DeathGuard.PlayDeathSound();
             else if (type == MessageType.PlayerShout)
@@ -1114,6 +1119,7 @@ namespace PerkeleRim.Game
                 s.pitch = pitch * Mathf.Deg2Rad;
             }
             s.stance = Stance.FromCrouchState(crouch != null ? crouch.ActiveStateName : null);
+            s.throwCharge = charge.WireCharge(Time.realtimeSinceStartup);  // Skyrim's HUD shows it
             var tv = chase.Active;
             var view = tv != null ? tv : viewCamera;
             if (view != null)

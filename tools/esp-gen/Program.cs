@@ -485,7 +485,7 @@ var voiceSlot = skyrim.Spells.First(s => s.Type == SpellType.LesserPower && !s.E
 foreach (var (id, editorId, name, description) in new[] {
     (0x91Au, "PerkeleRimHotbarHands", "Empty Hands", "Kumpo puts his hands to use (My Summer Car's key 1). Favorite it and bind a number key."),
     (0x91Bu, "PerkeleRimHotbarTools", "Tools", "Kumpo takes his tools out (My Summer Car's key 2). Favorite it and bind a number key."),
-    (0x91Cu, "PerkeleRimHotbarBottle", "Throw Empty Bottle", "Kumpo takes an Empty Bottle into his hand, to throw. Favorite it and bind a number key.") })
+    (0x91Cu, "PerkeleRimHotbarBottle", "Throw Junk", "Kumpo takes an Empty Bottle into his hand to throw, or once those are gone a piece of junk: clutter, then fruit and vegetables, cheapest first. Favorite it and bind a number key.") })
 {
     var power = new Spell(new FormKey(mod.ModKey, id), SkyrimRelease.SkyrimSE)
     {

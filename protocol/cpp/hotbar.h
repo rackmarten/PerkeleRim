@@ -1,7 +1,7 @@
 // Skyrim's favorites hotkeys as Kumpo's hotbar while MSC has the player (docs/PROTOCOL.md "The
 // hotbar"). Number keys 1 to 8 do what the player bound to them in Skyrim's Favorites menu:
 //  - PerkeleRim.esp's three powers become MSC's own keys: Empty Hands 1 (MSC's hand), Tools 2 (its
-//    spanner), Throw Empty Bottle the pocket's 3 (an empty bottle into the hand);
+//    spanner), Throw Junk the pocket's 3 (an empty bottle into the hand, then junk, junk.h);
 //  - MSC Beer and MSC's food become the pocket's 4 to 8: MSC's own drinking and eating;
 //  - other food and drink (and potions) are used in Skyrim, which tells MSC what they did (food.h);
 //  - an unbound number, or one bound to anything else (a sword, a spell), does nothing: no hidden
@@ -25,7 +25,7 @@ namespace PerkeleRim::Hotbar
         Other,       // something PerkeleRim leaves alone
         Hands,       // the Empty Hands power
         Tools,       // the Tools power
-        Bottle,      // the Throw Empty Bottle power
+        Bottle,      // the Throw Junk power
         Beer,        // MSC Beer
         Sausages,    // MSC's food, in the pocket's order
         Pizza,
@@ -35,7 +35,7 @@ namespace PerkeleRim::Hotbar
     };
 
     // What a number is bound to the first time PerkeleRim meets a save: 1 Empty Hands, 2 Tools, 3 Throw
-    // Empty Bottle, 4 MSC Beer, 5..8 MSC's food.
+    // Junk, 4 MSC Beer, 5..8 MSC's food.
     constexpr Bound DefaultOf(int a_slot)
     {
         constexpr Bound kDefaults[kSlots] = { Bound::Hands, Bound::Tools, Bound::Bottle, Bound::Beer, Bound::Sausages, Bound::Pizza, Bound::Chips, Bound::Macaron };
