@@ -20,6 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Setup in the launcher: the first time, Start PerkeleRim.bat finds My Summer Car and Skyrim (Steam libraries, Steam's own install records, or folders you pick), lists what's missing of MSCLoader, SKSE and Address Library, opens their download pages and waits while you install them, then installs PerkeleRim into both games. Skyrim's SKSE build is checked against the Skyrim version too.
 - Mod Organizer 2: when MO2 manages your Skyrim, the launcher asks once whether to start Skyrim through it; then Address Library may be an MO2 mod, `PerkeleRim.esp` is ticked in MO2's selected profile, and an older PerkeleRim installed as an MO2 mod gets a warning.
 
+### Changed
+
+- Saves from 0.1.x keep their MSC Beer, Sausages, Pizza, Potato Chips and Macaron Box: they become food items under the same IDs (tested in game on a 0.1.1 save, which loaded them and ate and drank them from the inventory).
+
 ### Removed
 
 - The endless pocket (beer, bottles and food topped back up) and mead and ale turning into MSC Beer when picked up: mead stays mead and is drunk in Skyrim.

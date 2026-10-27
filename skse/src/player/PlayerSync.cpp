@@ -1096,7 +1096,7 @@ namespace PerkeleRim::PlayerSync
                             // (protocol/cpp/hotbar.h); a menu's own use of numbers (binding hotkeys) is left alone.
                             auto& key = state.hotbar[code - kDik1];
                             if (button->IsDown()) {
-                                key =state.owned && !MenuHasInput() ? Pocket::Hotkey(RE::PlayerCharacter::GetSingleton(), static_cast<int>(code - kDik1))
+                                key = state.owned && !MenuHasInput() ? Pocket::Hotkey(RE::PlayerCharacter::GetSingleton(), static_cast<int>(code - kDik1))
                                                                      : Input::KeyFromScanCode(code);
                             }
                             state.input.SetKey(key, button->IsPressed());

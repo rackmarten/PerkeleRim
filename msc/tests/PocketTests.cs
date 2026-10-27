@@ -147,6 +147,7 @@ namespace PerkeleRim.Tests
             mirror.Reset();
             Assert.That(mirror.Step(9, 3, out set, out value), Is.EqualTo(6));
         }
+
         [Test]
         public void GoldStartsFromSkyrimThenFollowsEitherSide()
         {
