@@ -563,7 +563,8 @@ namespace PerkeleRim::PlayerSync
 
         // How far to lower the player seated in vehicle a_vehicle, so Skyrim's body standing on MSC's
         // seat keeps its head under the roof (Hitbox::SeatDrop): enemies' arrows hit the van, not the
-        // head. [Debug] SeatDrop=0 in PerkeleRim.ini keeps it on the seat. The camera stays at MSC's eye.
+        // head (the Gifu's: under its cab's roof, Hitbox::Roof). [Debug] SeatDrop=0 in PerkeleRim.ini
+        // keeps it on the seat. The camera stays at MSC's eye.
         float SeatDrop(RE::PlayerCharacter* a_player, const Protocol::PlayerState& a_pose, const Protocol::VehicleState& a_vehicle)
         {
             static const bool off = Ini::Value("SeatDrop") == "0";
@@ -571,6 +572,7 @@ namespace PerkeleRim::PlayerSync
             if (off || !Hitbox::Shape(a_vehicle.vehicle, box)) {
                 return 0.0f;
             }
+            box.hi[2] = Hitbox::Roof(a_vehicle.vehicle, box);
             return Hitbox::SeatDrop(a_vehicle.position, a_vehicle.rotation, box, a_pose.position, a_player->GetHeight());
         }
 

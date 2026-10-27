@@ -17,11 +17,11 @@ namespace PerkeleRim.Game
     //  - sends MSC's interaction text (LookAtText) and subtitle line (Subtitle) to Skyrim when they
     //    change, and its needs with every pose;
     //  - runs the vehicles (VehicleLink) on the same island, all drawn in Skyrim: the van on the
-    //    player's right, or at the spot the anchor names (the garage); the Jonnez moped ([) and the
-    //    Kekmet tractor (;) only once called, parked in front of the player, then left where they are
-    //    (] calls the van the same way, to wherever the player stands); the van and the Kekmet burn
-    //    diesel, fill up at Skyrim's dwemer oil pumps for gold and, called dry, are towed onto one
-    //    (FuelLink);
+    //    player's right, or at the spot the anchor names (the garage); the Jonnez moped ([), the
+    //    Kekmet tractor (;) and the Gifu truck (') only once called, parked in front of the player,
+    //    then left where they are (] calls the van the same way, to wherever the player stands); the
+    //    van, the Kekmet and the Gifu burn diesel, fill up at Skyrim's dwemer oil pumps for gold and,
+    //    called dry, are towed onto one (FuelLink);
     //  - puts what the player carries into Skyrim's inventory and uses it from there (Y, keys 3 to 8),
     //    and keeps MSC's cigarettes and Skyrim's the same (PocketLink);
     //  - reports the physics items around the player (ItemLink), whose models ModelSender sends;
@@ -77,7 +77,7 @@ namespace PerkeleRim.Game
         int hitKey = (int)KeyCode.H;  // MSC's Hit binding, read once the player is found
         int watchKey = (int)KeyCode.U;  // MSC's Watch binding, likewise
         Action<string> log;
-        VehicleLink van, moped, kekmet;
+        VehicleLink van, moped, kekmet, gifu;
         VehicleLink[] vehicles;
         BeerGift beer;  // spike "beer" only
         ShelfStocker shelves;
@@ -162,7 +162,10 @@ namespace PerkeleRim.Game
             van = new VehicleLink("HAYOSIKO(1500kg, 250)", "Hayosiko", new Vector3(3.5f, 0f, 2f), Wire.VehicleHayosiko, false, "PlayerKeyHayosiko", VehicleTune.Van, island, ground, log, new Vector3(0f, 0f, 6f));
             moped = new VehicleLink("JONNEZ ES(Clone)", "Jonnez", new Vector3(0f, 0f, 2.5f), Wire.VehicleJonnez, true, null, VehicleTune.Moped, island, ground, log);
             kekmet = new VehicleLink("KEKMET(350-400psi)", "Kekmet", new Vector3(0f, 0f, 4.5f), Wire.VehicleKekmet, true, null, VehicleTune.Kekmet, island, ground, log);
-            vehicles = new[] { van, moped, kekmet };
+            // The Gifu is 8.6 m long, 4.8 m of it behind its origin: parked well ahead, on flat ground under all of it.
+            gifu = new VehicleLink("GIFU(750/450psi)", "Gifu", new Vector3(0f, 0f, 8f), Wire.VehicleGifu, true, "PlayerKeyGifu", VehicleTune.Gifu, island, ground, log);
+            gifu.ParkHalfSize = new Vector2(1.3f, 4.6f);
+            vehicles = new[] { van, moped, kekmet, gifu };
             beer = new BeerGift(log);
             shelves = new ShelfStocker(island, ground, log);
             moped.EndlessFuel = true;
@@ -366,6 +369,7 @@ namespace PerkeleRim.Game
                 if (InputShim.GetKeyDown(KeyCode.LeftBracket)) fuel.Call(moped, player, Feet());
                 if (InputShim.GetKeyDown(KeyCode.RightBracket)) fuel.Call(van, player, Feet());
                 if (InputShim.GetKeyDown(KeyCode.Semicolon)) fuel.Call(kekmet, player, Feet());
+                if (InputShim.GetKeyDown(KeyCode.Quote)) fuel.Call(gifu, player, Feet());
             }
             fuel.Update(link, playing, player != null ? Feet() : Vector3.zero, playing ? Driven() : null, vehicles);
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind

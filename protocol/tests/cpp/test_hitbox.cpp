@@ -184,6 +184,40 @@ TEST_CASE("climbed in counts in the van's cabin only, not beside, under or on to
     CHECK_FALSE(in(Protocol::kVehicleJonnez, level, van, -40.0f, 80.0f, 36.0f));
 }
 
+TEST_CASE("climbed in counts in the Gifu's cab only, not on its tank, its tires or its roof")
+{
+    // The box of MSC's Gifu model (tires to beacons, mirror to mirror, the tank's end to the wipers);
+    // its cab's floor is about 83 above its origin, its roof 182.
+    const Hitbox::Box gifu{ { -102.0f, -339.0f, -5.0f }, { 102.0f, 262.0f, 222.0f } };
+    const float       at[3] = { 1000.0f, 2000.0f, 0.0f };
+    const float       level[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    const auto        in = [&](float a_x, float a_y, float a_z) {
+        const float feet[3] = { at[0] + a_x, at[1] + a_y, at[2] + a_z };
+        return Hitbox::InCabin(Protocol::kVehicleGifu, at, level, gifu, feet);
+    };
+    CHECK(in(-49.0f, 190.0f, 85.0f));         // on the driver's side of the cab's floor
+    CHECK(in(40.0f, 200.0f, 85.0f));          // the passenger's side
+    CHECK_FALSE(in(-49.0f, 190.0f, -5.0f));   // on the ground under the driver's door
+    CHECK_FALSE(in(-70.0f, 175.0f, 71.0f));   // on the front tire
+    CHECK_FALSE(in(0.0f, 0.0f, 205.0f));      // on the septic tank
+    CHECK_FALSE(in(0.0f, 100.0f, 120.0f));    // between the tank and the cab
+    CHECK_FALSE(in(0.0f, 200.0f, 183.0f));    // on the cab's roof
+    CHECK_FALSE(in(95.0f, 220.0f, 140.0f));   // out at the mirror
+}
+
+TEST_CASE("the Gifu's seated driver is lowered under its cab's roof, not the tank's top")
+{
+    const Hitbox::Box gifu{ { -102.0f, -339.0f, -5.0f }, { 102.0f, 262.0f, 222.0f } };
+    const float       at[3] = { 0.0f, 0.0f, 0.0f };
+    const float       level[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    const float       seat[3] = { -49.0f, 190.0f, 90.0f };
+    CHECK(Hitbox::Roof(Protocol::kVehicleGifu, gifu) == doctest::Approx(180.0f));
+    CHECK(Hitbox::Roof(Protocol::kVehicleHayosiko, gifu) == doctest::Approx(222.0f));
+    Hitbox::Box cab = gifu;
+    cab.hi[2] = Hitbox::Roof(Protocol::kVehicleGifu, gifu);
+    CHECK(Hitbox::SeatDrop(at, level, cab, seat, 128.0f) == doctest::Approx(48.0f));  // 90 + 128 - (180 - 10)
+}
+
 TEST_CASE("a hit on a seated player lands on the box's surface nearest where it came from")
 {
     const Hitbox::Box box{ { -65.0f, -155.0f, -28.0f }, { 65.0f, 144.0f, 111.0f } };

@@ -194,6 +194,14 @@ TEST_CASE("input and player slots carry the latest value")
     CHECK(std::memcmp(&partsOut, &moped, sizeof(moped)) == 0);
     REQUIRE(p.skyrim->ReadVehicleParts(kVehicleHayosiko, partsOut));
     CHECK(std::memcmp(&partsOut, &parts, sizeof(parts)) == 0);
+    // The last slot, the Gifu's, ends where the items begin.
+    VehicleParts gifu{};
+    gifu.vehicle = kVehicleGifu;
+    gifu.count = kVehiclePartCapacity;
+    gifu.parts[kVehiclePartCapacity - 1].flags = kPartVisible;
+    p.msc->WriteVehicleParts(gifu);
+    REQUIRE(p.skyrim->ReadVehicleParts(kVehicleGifu, partsOut));
+    CHECK(std::memcmp(&partsOut, &gifu, sizeof(gifu)) == 0);
 
     ItemState items{};
     CHECK_FALSE(p.skyrim->ReadItems(items));  // never written
