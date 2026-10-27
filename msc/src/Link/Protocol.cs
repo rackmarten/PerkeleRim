@@ -121,6 +121,7 @@ namespace PerkeleRim.Protocol
         public const uint ScreenshotPathMax = 1024;
         public const uint TimeBed = 0x1;
         public const uint StockSpotsMax = 16;
+        public const uint FuelPumpsMax = 8;
         public const uint MaterialCutout = 0x1;
         public const uint MaterialBlend = 0x2;
         public const uint MaterialUnlit = 0x4;
@@ -162,6 +163,8 @@ namespace PerkeleRim.Protocol
         DebugCommand = 27,
         IntroCue = 28,
         ConsumeEvent = 29,
+        FuelStations = 30,
+        FuelText = 31,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -639,6 +642,21 @@ namespace PerkeleRim.Protocol
         public uint generation;
         public uint count;
         public fixed float spots[64];  // StockSpotsMax StockSpot: position x, y, z, heading each
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct FuelPump
+    {
+        public fixed float position[3];
+        public float heading;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct FuelStations
+    {
+        public uint count;
+        public uint reserved;
+        public fixed float pumps[32];  // FuelPumpsMax FuelPump: position x, y, z, heading each
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
