@@ -18,6 +18,14 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void SkyrimsPauseFreezesMscExceptUnderItsOwnMenu()
+        {
+            Assert.That(OptionsMenu.Freezes(true, false), Is.True);   // Escape, the map
+            Assert.That(OptionsMenu.Freezes(true, true), Is.False);   // F1: toggles and sliders need MSC's clock
+            Assert.That(OptionsMenu.Freezes(false, false), Is.False);
+        }
+
+        [Test]
         public void PressesAgainWhenTheMenuDidNotComeUp()
         {
             var m = new OptionsMenu();
