@@ -30,6 +30,7 @@ namespace PerkeleRim.Game
         readonly Dictionary<VehicleLink, Baseline> last = new Dictionary<VehicleLink, Baseline>();
         uint generation;
         float poured, paid;   // this fill's litres and marks
+        VehicleLink filling;  // the vehicle this fill pours into
         float lastPour = float.NegativeInfinity;
         int pourPump = -1;
         string flash;
@@ -131,6 +132,7 @@ namespace PerkeleRim.Game
             money.Value = cash;
             poured += covered;
             paid += covered * price;
+            filling = v;
             lastPour = Time.realtimeSinceStartup;
             if (covered < gained)
             {
@@ -189,8 +191,9 @@ namespace PerkeleRim.Game
         {
             float now = Time.realtimeSinceStartup;
             if (flash != null && now < flashUntil) return flash;
-            if (poured > 0f && now - lastPour < PourShown) return Fuel.PourLine(poured, paid);
             float level, capacity;
+            if (poured > 0f && now - lastPour < PourShown && filling != null && filling.Tank(out level, out capacity))
+                return Fuel.PourLine(poured, paid, level, capacity);
             if (driven != null && !driven.EndlessFuel && driven.Tank(out level, out capacity) && Fuel.Low(level, capacity))
                 return Fuel.LowLine(level, capacity);
             return "";

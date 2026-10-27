@@ -293,9 +293,10 @@ foreach (var p in markers.Concat(pieces))
 
 // ---- Gas stations ----
 //
-// Dwemer oil pumps beside Skyrim's main roads (docs/PROTOCOL.md, "Fuel"): an open pole shed over
-// the lane with a dwemer boiler as the pump at its back. Each station's frame: origin at the shed's
-// middle, +Y toward the road, +X along it. Sites picked from Skyrim.esm's road meshes, terrain and
+// Dwemer oil pumps beside Skyrim's main roads (docs/PROTOCOL.md, "Fuel"): a dwemer boiler as the
+// pump, open to the sky so any vehicle fits beside it, its pipes running out both sides and bending
+// down into the ground. Each station's frame: origin in front of the boiler, +Y toward the road, +X
+// along it. Sites picked from Skyrim.esm's road meshes, terrain and
 // references (flat ground about 10 m off a road, nothing standing there). From 0xA00, clear of the
 // garage's ids. The SKSE plugin reads the pump spots (where Kumpo stands, facing the boiler) in
 // order from the PerkeleRimFuelPumps list (skse/src/fuel/Fuel.cpp).
@@ -308,8 +309,10 @@ var stations = new (string Name, float X, float Y, float ToRoad)[]
 };
 const float pumpY = -150f;        // the boiler's middle (DwePipeBoiler02: 96 around, 383 tall)
 const float pumpSpotY = 30f;      // where Kumpo stands to use it, 84 in front of the boiler
-const float stationShedUp = 150f; // above the lowest ground: the posts (160 below the origin) still reach it
-var stationFootprint = (HalfX: 420f, HalfY: 300f);
+const float pipeY = pumpY - 60f;  // the pipes along the boiler's back
+const float pipeRun = 192f;       // DwePipe1way01's middle off the boiler's (it is 382 long, its end inside the boiler)
+const float elbowAt = 574f;       // DwePipe2way01's corner: its arms reach 191 to the pipe's end and 192 down
+const float markerY = 300f;       // the map marker, toward the road
 var mapMarker = new FormKey(skyrim.ModKey, 0x000010);
 
 nextId = 0xA00;
@@ -337,32 +340,53 @@ foreach (var st in stations)
         return placed;
     }
 
-    float low = float.MaxValue, high = float.MinValue;
-    for (float x = -stationFootprint.HalfX; x <= stationFootprint.HalfX; x += 32f)
-    for (float y = -stationFootprint.HalfY; y <= stationFootprint.HalfY; y += 32f)
+    // A tilted piece: e maps the mesh's axes into the station's frame (columns X, Y, Z). Its axes in
+    // the world are read back into angles the way Angles above does (Z first, then Y, then X; vanilla
+    // dwemer pipe joints only meet under that order).
+    PlacedObject PutTurned(FormKey baseObject, float x, float y, float z, float[,] e)
     {
-        float h = Ground(x, y);
-        low = Math.Min(low, h);
-        high = Math.Max(high, h);
+        float c = MathF.Cos(-syaw), s = MathF.Sin(-syaw);
+        var m = new float[3, 3];
+        for (int j = 0; j < 3; j++)
+        {
+            m[0, j] = c * e[0, j] - s * e[1, j];
+            m[1, j] = s * e[0, j] + c * e[1, j];
+            m[2, j] = e[2, j];
+        }
+        float ry = MathF.Asin(Math.Clamp(m[0, 2], -1f, 1f)), rx = MathF.Atan2(-m[1, 2], m[2, 2]), rz = MathF.Atan2(-m[0, 1], m[0, 0]);
+        var placed = Put(baseObject, x, y, z, 0f);
+        placed.Placement!.Rotation = new P3Float(Normalize(-rx), Normalize(-ry), Normalize(-rz));
+        return placed;
     }
-    Console.WriteLine($"ground under the {st.Name} station: {low:0} .. {high:0}");
 
     // Persistent: the pump spot (MSC needs it wherever the player is) and the map marker.
     var spot = Put(marker, 0f, pumpSpotY, Ground(0f, pumpSpotY), MathF.PI, persistent: true);  // facing -Y, the boiler
     spot.EditorID = $"PerkeleRimFuelPump{pumpSpots.Count}";
     pumpSpots.Add(spot);
     stationMarkers.Add(spot);
-    var onMap = Put(mapMarker, 0f, stationFootprint.HalfY, Ground(0f, stationFootprint.HalfY), 0f, persistent: true);
+    var onMap = Put(mapMarker, 0f, markerY, Ground(0f, markerY), 0f, persistent: true);
     onMap.MapMarker = new MapMarker { Flags = MapMarker.Flag.Visible, Name = $"{st.Name} Dwemer Oil", Type = MapMarker.MarkerType.Smelter };
     stationMarkers.Add(onMap);
 
-    stationPieces.Add(Put(Base(skyrim.Statics, "SFarmShed01"), 0f, 0f, low + stationShedUp, 0f));
     float pumpGround = Ground(0f, pumpY);
     stationPieces.Add(Put(Base(skyrim.Statics, "DwePipeBoiler02"), 0f, pumpY, pumpGround - 10f, 0f));
-    // A gear box on the boiler's front at hand height, the hub and pipes along the back into the ground.
+    // A gear box on the boiler's front at hand height.
     stationPieces.Add(Put(Base(skyrim.Statics, "DwePipeGearAssembly02"), 0f, pumpY + 116f, pumpGround + 100f, 0f));
-    stationPieces.Add(Put(Base(skyrim.Statics, "DwePipe1wayX2"), 96f, pumpY - 60f, pumpGround + 40f, 0f));
-    stationPieces.Add(Put(Base(skyrim.Statics, "DwePipe1wayX2"), -96f, pumpY - 60f, pumpGround + 40f, MathF.PI));
+    // A pipe out of each side, level, into an elbow whose other arm (the mesh's +Y) goes down into the
+    // ground; its +X arm points back along the pipe.
+    foreach (int side in new[] { 1, -1 })
+    {
+        float runTop = float.MinValue;
+        for (float x = 75f; x <= elbowAt + 52f; x += 32f)
+            for (float y = pipeY - 52f; y <= pipeY + 52f; y += 52f) runTop = Math.Max(runTop, Ground(side * x, y));
+        float elbowGround = Ground(side * elbowAt, pipeY);
+        float pipeZ = Math.Max(runTop + 70f, elbowGround + 110f);
+        if (pipeZ - 192f > elbowGround - 10f)
+            Console.WriteLine($"  warning: the {st.Name} pipe's elbow ({(side > 0 ? "+X" : "-X")}) ends {pipeZ - 192f - elbowGround:0} above the ground");
+        stationPieces.Add(Put(Base(skyrim.Statics, "DwePipe1way01"), side * pipeRun, pipeY, pipeZ, side > 0 ? 0f : MathF.PI));
+        var elbow = new float[,] { { -side, 0f, 0f }, { 0f, 0f, -side }, { 0f, -1f, 0f } };
+        stationPieces.Add(PutTurned(Base(skyrim.Statics, "DwePipe2way01"), side * elbowAt, pipeY, pipeZ, elbow));
+    }
 }
 
 foreach (var p in stationMarkers) persistentCell.Persistent.Add(p);

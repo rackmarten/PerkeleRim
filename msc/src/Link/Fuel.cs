@@ -112,8 +112,8 @@ namespace PerkeleRim
         // ---- The HUD's fuel line ----
 
         // Invariant: MSC runs with Windows' culture, which may write 12,3.
-        public static string PourLine(float litres, float paid) =>
-            string.Format(CultureInfo.InvariantCulture, "{0} {1:0.0} L, {2:0} gold", Name, litres, Math.Round(paid));
+        public static string PourLine(float litres, float paid, float level, float capacity) =>
+            string.Format(CultureInfo.InvariantCulture, "{0} {1:0.0} L, {2:0} gold, tank {3:0.0} / {4:0} L", Name, litres, Math.Round(paid), level, capacity);
 
         public static string LowLine(float level, float capacity) =>
             string.Format(CultureInfo.InvariantCulture, "Fuel {0:0.0} / {1:0} L", level, capacity);

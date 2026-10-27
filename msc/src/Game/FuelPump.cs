@@ -12,6 +12,8 @@ namespace PerkeleRim.Game
     // at hand height; it goes back when Kumpo leaves. While it's here:
     //  - the store's opening hours, its pump switch and the police don't lock it (Check hand's USE
     //    goes straight to Activate hand instead of Check lock);
+    //  - the hose reaches HoseReach instead of 3 m (Calculate drops the nozzle further than that from
+    //    the camera), so a long vehicle like the Kekmet can be filled from beside the boiler;
     //  - Teimo's bill doesn't grow: the pump's Fuel and the register's DieselPurchase (Fuel times
     //    FuelPrice, set every frame while the nozzle is out) are held where they were. FuelLink takes
     //    the gold as the oil pours instead.
@@ -19,12 +21,15 @@ namespace PerkeleRim.Game
     {
         const string TriggerPath = "STORE/LOD/Pumps/GasolinePumpD/Functions/TriggerD";
         const float DefaultPrice = 4f;  // marks a litre; MSC's FuelPrice was 3.999 (2026-10-27)
+        const float HoseReach = 6f;     // meters from the trigger to the camera before the nozzle drops
         static readonly Vector3 HandSpot = new Vector3(0f, 1.35f, 0.45f);  // from the pump spot, facing the boiler (meters)
 
         readonly Action<string> log;
         Transform trigger;
         PlayMakerFSM use;
         FsmFloat pumped, purchase;
+        FsmFloat hose;  // Calculate's drop distance, MSC's 3 m at the store
+        float hoseHome;
         float pumpedHeld, purchaseHeld;
         Transform home;  // its parent at the store
         Vector3 homePosition;
@@ -88,6 +93,7 @@ namespace PerkeleRim.Game
                 foreach (var t in state.Transitions)
                     if (t.EventName == "USE") t.ToState = unlock ? "Activate hand" : "Check lock";
             }
+            if (hose != null) hose.Value = unlock ? HoseReach : hoseHome;
         }
 
         bool Find()
@@ -111,12 +117,29 @@ namespace PerkeleRim.Game
             var price = use.FsmVariables.FindFsmFloat("FuelPrice");
             if (price != null && price.Value > 0f) Price = price.Value;
             pumped = use.FsmVariables.FindFsmFloat("Fuel");
+            hose = HoseLimit(use);
+            if (hose != null) hoseHome = hose.Value;
             var register = use.FsmVariables.FindFsmGameObject("CashRegister");
             if (register != null && register.Value != null)
                 foreach (var f in register.Value.GetComponents<PlayMakerFSM>())
                     if (f.FsmName == "Data") purchase = f.FsmVariables.FindFsmFloat("DieselPurchase");
-            log($"fuel: found MSC's diesel pump, {Price:0.###} marks a litre, register {(purchase != null ? "found" : "missing")}");
+            log($"fuel: found MSC's diesel pump, {Price:0.###} marks a litre, register {(purchase != null ? "found" : "missing")}, hose {(hose != null ? $"{hoseHome:0.#} m" : "limit missing")}");
             return true;
+        }
+
+        // Calculate's FloatCompare of the trigger's distance to the camera against a constant.
+        static FsmFloat HoseLimit(PlayMakerFSM fsm)
+        {
+            var state = Array.Find(fsm.FsmStates, st => st.Name == "Calculate");
+            if (state == null) return null;
+            foreach (var action in state.Actions)
+            {
+                if (action.GetType().Name != "FloatCompare") continue;
+                var field = action.GetType().GetField("float2");
+                var limit = field != null ? field.GetValue(action) as FsmFloat : null;
+                if (limit != null && !limit.UseVariable) return limit;
+            }
+            return null;
         }
 
         // GameObject.Find skips inactive objects, and the store's LOD is off away from it.

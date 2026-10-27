@@ -134,7 +134,7 @@ namespace PerkeleRim.Tests
         [Test]
         public void HudLines()
         {
-            Assert.That(Fuel.PourLine(12.345f, 24.7f), Is.EqualTo("Dwemer oil 12.3 L, 25 gold"));
+            Assert.That(Fuel.PourLine(12.345f, 24.7f, 32.06f, 40f), Is.EqualTo("Dwemer oil 12.3 L, 25 gold, tank 32.1 / 40 L"));
             Assert.That(Fuel.LowLine(8.26f, 40f), Is.EqualTo("Fuel 8.3 / 40 L"));
             Assert.That(Fuel.DryLine, Does.Contain("50 gold"));
         }
