@@ -17,6 +17,9 @@ namespace PerkeleRim::Death
     // A Consumed message.
     void OnConsumed(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
 
+    // Starving or dehydrated (NeedEffects): a_amount health off now, quietly; enough of it kills.
+    void Starve(RE::PlayerCharacter* a_player, float a_amount);
+
     // Someone hit the player while MSC has it (Skyrim's hit event; the damage is Skyrim's own).
     void OnHit(RE::PlayerCharacter* a_player, bool a_blocked);
 

@@ -146,3 +146,14 @@ TEST_CASE("the CSV rows match the header")
     CHECK(Fields(summary) == columns);
     CHECK(summary == "drunk vs punch,,,,,,,,,,,,,0,\"needs a landed punch, and a drunk one\"");
 }
+
+TEST_CASE("a stressed punch is expected a little harder")
+{
+    const auto&  sober = HitTest::kScenarios[0];
+    HitTest::Hit hit;
+    hit.landed = true;
+    hit.unarmed = 4.0f;
+    CHECK(HitTest::Expected(sober, hit) == doctest::Approx(8.0f));
+    hit.stress = 200.0f;
+    CHECK(HitTest::Expected(sober, hit) == doctest::Approx(9.6f));
+}

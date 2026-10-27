@@ -20,7 +20,7 @@ namespace PerkeleRim::Combat
     void Update(RE::PlayerCharacter* a_player, std::uint32_t a_generation, float a_delta);
 
     // A PunchEvent message. a_drunk: MSC's drunk level (0..8), drunk punches hit harder.
-    void OnPunch(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk);
+    void OnPunch(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk, float a_stress);
 
     // An ImpactEvent message: a thrown item (hits like a punch, by its speed), the piss stream
     // (PerkeleRim.esp's poison) or the driven vehicle (knocked over, damage by speed) reached an
@@ -39,6 +39,7 @@ namespace PerkeleRim::Combat
         float         drunk = 0.0f;
         float         speed = 0.0f;
         float         sneak = 1.0f;
+        float         stress = 0.0f;
     };
     const Hit& LastHit();
 

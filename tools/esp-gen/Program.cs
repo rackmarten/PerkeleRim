@@ -392,6 +392,15 @@ foreach (var (effect, spell) in new[] {
     DrunkBuff(0x913, "PerkeleRimDrunkStaminaRate", ActorValue.StaminaRateMult, "Drunk: Second Wind", "Stamina regenerates <mag>% faster.") })
     Console.WriteLine($"  {effect.FormKey.ID:X3} {effect.EditorID}, {spell.FormKey.ID:X3} {spell.EditorID}");
 
+// Tired: MSC's fatigue slows stamina regen (Needs::FatigueRegenCut in protocol/cpp/needs.h), cast and
+// recast like the drunk bonuses (skse/src/needs/NeedEffects.cpp). Detrimental, so the magnitude is
+// taken off.
+{
+    var (effect, spell) = DrunkBuff(0x91D, "PerkeleRimTiredStaminaRate", ActorValue.StaminaRateMult, "Tired", "Stamina regenerates <mag>% slower.");
+    effect.Flags |= MagicEffect.Flag.Detrimental;
+    Console.WriteLine($"  {effect.FormKey.ID:X3} {effect.EditorID}, {spell.FormKey.ID:X3} {spell.EditorID}");
+}
+
 // ---- Pocket ----
 //
 // Fixed ids the SKSE plugin looks up (skse/src/pocket/Pocket.cpp): 0x906 + the protocol's kPocket*
@@ -573,7 +582,7 @@ foreach (var spot in stockSpots)
 mod.FormLists.Add(spotList);
 Console.WriteLine($"  910 {spotList.EditorID} ({spotList.Items.Count} spots)");
 
-mod.ModHeader.Stats.NextFormID = 0x91D;  // after PerkeleRimHotbarBottle (0x91C)
+mod.ModHeader.Stats.NextFormID = 0x921;  // after PerkeleRimTiredStaminaRate (0x91D, its spell 0x920)
 // Header 1.70, not Mutagen's 1.71: Skyrim SE 1.5.97 skips 1.71 plugins, AE loads both.
 mod.ModHeader.Stats.Version = 1.7f;
 

@@ -1,5 +1,7 @@
 #include "hud/Hud.h"
 
+#include "needs.h"
+
 namespace PerkeleRim::Hud
 {
     namespace
@@ -276,6 +278,38 @@ namespace PerkeleRim::Hud
         // which takes a frame: until then Set keeps coming back here (handsSized).
         std::atomic<bool> handsSized{ false };
 
+        // Kumpo's shake, as ShakeHands last queued it.
+        struct Shake
+        {
+            float amount = 0.0f, x = 0.0f, y = 0.0f;
+        };
+        Shake shakeDrawn;  // UI thread
+
+        // The hands clip over the visible frame, shaken: grown by twice the shake around the center and
+        // moved by the offset.
+        void PlaceHands(RE::GFxValue& a_hands, const RE::GRectF& a_rect, const Shake& a_shake)
+        {
+            const double w = a_rect.right - a_rect.left, h = a_rect.bottom - a_rect.top;
+            const double grow = 2.0 * Needs::kShakeMax * a_shake.amount;
+            a_hands.SetMember("_xscale", RE::GFxValue(100.0 * (1.0 + grow)));
+            a_hands.SetMember("_yscale", RE::GFxValue(100.0 * (1.0 + grow)));
+            a_hands.SetMember("_x", RE::GFxValue(a_rect.left - grow * w / 2.0 + a_shake.x * h));
+            a_hands.SetMember("_y", RE::GFxValue(a_rect.top - grow * h / 2.0 + a_shake.y * h));
+        }
+
+        void ApplyShake(const Shake& a_shake)
+        {
+            shakeDrawn = a_shake;
+            auto* ui = RE::UI::GetSingleton();
+            auto  menu = ui ? ui->GetMenu(RE::HUDMenu::MENU_NAME) : nullptr;
+            auto* movie = menu ? menu->uiMovie.get() : nullptr;
+            RE::GFxValue hands;
+            if (!movie || !movie->GetVariable(&hands, (std::string("_root.") + kHandsClipName).c_str()) || !hands.IsDisplayObject()) {
+                return;
+            }
+            PlaceHands(hands, movie->GetVisibleFrameRect(), a_shake);
+        }
+
         void ApplyHands(RE::GFxMovieView* a_movie, RE::GFxValue& a_root, const View& a_view)
         {
             const bool   show = a_view.show && !a_view.handsImage.empty() && a_view.handsWidth > 0 && a_view.handsHeight > 0;
@@ -314,8 +348,7 @@ namespace PerkeleRim::Hud
                 SKSE::log::info("hud: hands image {}", url);
             }
             const auto rect = a_movie->GetVisibleFrameRect();
-            hands.SetMember("_x", RE::GFxValue(static_cast<double>(rect.left)));
-            hands.SetMember("_y", RE::GFxValue(static_cast<double>(rect.top)));
+            PlaceHands(hands, rect, shakeDrawn);
             RE::GFxValue width, height, xscale, yscale;
             if (!hands.GetMember("img", &image) || !image.IsDisplayObject() || !image.GetMember("_width", &width) ||
                 !image.GetMember("_height", &height) || !image.GetMember("_xscale", &xscale) || !image.GetMember("_yscale", &yscale) ||
@@ -522,5 +555,16 @@ namespace PerkeleRim::Hud
         drawnNeeds = needs;
         drawnLight = light;
         SKSE::GetTaskInterface()->AddUITask([view]() { Apply(view); });
+    }
+
+    void ShakeHands(float a_shake, float a_x, float a_y)
+    {
+        static Shake queued;
+        const Shake  shake{ a_shake, a_x, a_y };
+        if (shake.amount == queued.amount && shake.x == queued.x && shake.y == queued.y) {
+            return;
+        }
+        queued = shake;
+        SKSE::GetTaskInterface()->AddUITask([shake]() { ApplyShake(shake); });
     }
 }

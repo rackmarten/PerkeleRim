@@ -92,6 +92,8 @@ Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, 
 
 Kumpo eats and drinks Skyrim's food: it feeds his MSC hunger and thirst, and Skyrim's ale, mead, wine and Skooma get him drunk (a bottle leaves an empty one to throw). Skyrim's gold is his MSC money, both ways.
 
+His needs count past the red mark: starving or thirsty past 150 drains health and kills, tired slows stamina regen, stressed punches harder, a full bladder slows him down and dirty Kumpo pays more at traders. His hands shake the longer he's been dry; a beer or two steadies them.
+
 Kumpo fights with his fists: weapons and spells can't be equipped while MSC has the player, armor works as usual, and the drunker he is, the harder he hits and the more he can take. A punch also cuts spider webs and breaks destructibles in front of him (oil pots, barricades), and so does a thrown bottle that hits one. A throw from sneak at someone who hasn't noticed Kumpo is a sneak attack for double damage. Sitting in the Hayosiko van or the Kekmet is safe: nothing in Skyrim can hurt Kumpo there (the moped is no shelter, and a crash still hurts).
 
 ## Known issues
