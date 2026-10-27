@@ -159,6 +159,7 @@ namespace PerkeleRim.Game
             if (inGame && Time.realtimeSinceStartup - inGameSince >= MoneySettle) MirrorMoney(link);
             if (emptyUntil >= 0f) CatchEmpty(link);
             if (drinkQueued != 0) AdvanceQueuedDrink(link);
+            if (showing) HoldShownNeeds();
             EndShow();
             if (toolsBack && drinkQueued == 0 && Time.realtimeSinceStartup >= toolsBackAt && !Global("PlayerDrinkOn"))
             {
@@ -579,13 +580,20 @@ namespace PerkeleRim.Game
             if (!showing || Time.realtimeSinceStartup < showUntil || Global("PlayerDrinkOn")) return;
             showing = false;
             DrinkShow.Restore(log);
+            HoldShownNeeds();
+            log("pocket: the shown drink is down, MSC's needs as Skyrim's drinks left them");
+        }
+
+        // Every frame of a shown drink, not just at its end: MSC's booze adds +0.45 drunk a second
+        // while it's drunk (the spirit +1.1), enough to black Kumpo out before it's down.
+        void HoldShownNeeds()
+        {
             var globals = FsmVariables.GlobalVariables;
             for (int i = 0; i < ShowNeeds.Length; i++)
             {
                 var g = globals.FindFsmFloat(ShowNeeds[i]);
                 if (g != null && !float.IsNaN(shownNeeds[i])) g.Value = shownNeeds[i];
             }
-            log("pocket: the shown drink is down, MSC's needs as Skyrim's drinks left them");
         }
 
         // MSC's empty beer bottles in the world: copies of BottleBeerFly, renamed by their Go FSM. Any
