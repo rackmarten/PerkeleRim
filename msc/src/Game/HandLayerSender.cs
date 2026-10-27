@@ -39,6 +39,7 @@ namespace PerkeleRim.Game
         Camera handCamera;
         Camera camera;
         Camera menuCamera;  // the copy of MSC's menu camera, below it
+        Camera menuSource;  // MSC's menu camera while it has Skyrim's aspect
         GameObject[] strays = new GameObject[0];
         int handLayer = -1;
         bool borrowed;
@@ -81,6 +82,11 @@ namespace PerkeleRim.Game
                 if (camera != null) camera.enabled = false;
                 Return();
                 PrepareTarget(width, height);
+                // MSC picks its buttons through this camera (Camera.main while its menu is up) in its
+                // own window, 640 x 480; drawn at Skyrim's 16:9 the picks sat 0.75 as far from the
+                // center as the cursor. With Skyrim's aspect they land where Skyrim shows the cursor.
+                menu.aspect = (float)width / height;
+                menuSource = menu;
                 PrepareMenu(menu);
                 menuCamera.enabled = true;
                 Publish(ref layer, Wire.HandLayerValid | Wire.HandLayerMenu);
@@ -88,6 +94,11 @@ namespace PerkeleRim.Game
                 return;
             }
             if (menuCamera != null) menuCamera.enabled = false;
+            if (menuSource != null)
+            {
+                menuSource.ResetAspect();
+                menuSource = null;
+            }
             bool want = playing && Enabled && width > 0 && height > 0 && direct && FindHandCamera();
             if (playing && !direct && !warned)
             {

@@ -132,13 +132,8 @@ TEST_CASE("the cursor goes to MSC as 0..1 of Skyrim's screen")
     CHECK(MscMenu::Normalize(100.0f, 0.0f) == 0.5f);  // no screen size yet
 }
 
-TEST_CASE("the cursor is a share of the back buffer, not of MenuCursor's screen")
+TEST_CASE("the cursor is a share of the back buffer the menu is drawn over")
 {
-    // 0.2 pass, windowed 1920 x 1080: the cursor's tip at x 1425 on AUTO CLUTCH (text 1309..1497)
-    // picked past its end through MenuCursor's ~1800 wide screen, and the toggles never.
-    const float span = MscMenu::CursorSpan(1920.0f, 1800.0f);
-    CHECK(span == 1920.0f);
-    CHECK(MscMenu::Normalize(1425.0f, span) * 1920.0f == doctest::Approx(1425.0f));
-    CHECK(MscMenu::Normalize(1425.0f, 1800.0f) * 1920.0f > 1497.0f);  // the old mapping
-    CHECK(MscMenu::CursorSpan(0.0f, 1800.0f) == 1800.0f);              // renderer not ready yet
+    CHECK(MscMenu::CursorSpan(1920.0f, 1800.0f) == 1920.0f);
+    CHECK(MscMenu::CursorSpan(0.0f, 1800.0f) == 1800.0f);  // renderer not ready yet
 }
