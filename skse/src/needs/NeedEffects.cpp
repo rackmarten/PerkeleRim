@@ -176,11 +176,15 @@ namespace PerkeleRim::NeedEffects
         if (a_version >= 1 && a_intfc->ReadRecordData(last)) {
             state.dry.SetLastDrunk(last);
         }
-        SKSE::log::info("needs: save loaded, Kumpo was last drunk at hour {:.1f}", last);
+        if (last == Needs::kNever) {
+            SKSE::log::info("needs: save loaded, no drink of Kumpo's in it, he's steady for now");
+        } else {
+            SKSE::log::info("needs: save loaded, Kumpo was last drunk at hour {:.1f}", last);
+        }
         return true;
     }
 
-    // New game, or before a save loads: a save without the record wakes Kumpo up dry.
+    // New game, or before a save loads: a save without the record counts from its first frame, steady.
     void Revert()
     {
         state.dry.Reset();
