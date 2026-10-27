@@ -18,7 +18,7 @@
 
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
-    SKSE::Init(a_skse);
+    SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 64 });  // MetalHit's call hook
 
     SKSE::log::info(
         "PerkeleRim loaded (plugin {}, Skyrim runtime {})",

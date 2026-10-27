@@ -57,6 +57,66 @@ namespace PerkeleRim::Hitbox
         return (std::max)(depth, 0.0f);
     }
 
+    // Where a hit coming from a_from lands on the box (the same frame as Depth): the point of its
+    // surface closest to a_from, or from inside, of the nearest face; a_normal is that face's outward
+    // normal. A hit on the player in a safe seat sparks there (skse/src/safe/MetalHit.cpp).
+    inline void Surface(const float (&a_position)[3], const float (&a_rotation)[4], const Box& a_box, const float (&a_from)[3], float (&a_point)[3], float (&a_normal)[3])
+    {
+        float m[3][3];
+        Coords::ToMatrix({ a_rotation[0], a_rotation[1], a_rotation[2], a_rotation[3] }, m);
+        const float d[3] = { a_from[0] - a_position[0], a_from[1] - a_position[1], a_from[2] - a_position[2] };
+        float       local[3];
+        int         axis = 0;      // the face's axis
+        float       side = 1.0f;   // and which end of it
+        float       out = 0.0f;    // how far outside past that face
+        float       in = 1e9f;     // inside: how far from the nearest face
+        for (int k = 0; k < 3; k++) {
+            local[k] = m[0][k] * d[0] + m[1][k] * d[1] + m[2][k] * d[2];  // transpose: world to vehicle
+            const float below = a_box.lo[k] - local[k];
+            const float above = local[k] - a_box.hi[k];
+            if ((std::max)(below, above) > out) {
+                out = (std::max)(below, above);
+                axis = k;
+                side = above > below ? 1.0f : -1.0f;
+            }
+            if (out <= 0.0f && (std::min)(-below, -above) < in) {
+                in = (std::min)(-below, -above);
+                axis = k;
+                side = -above < -below ? 1.0f : -1.0f;
+            }
+        }
+        float p[3];
+        for (int k = 0; k < 3; k++) {
+            p[k] = (std::clamp)(local[k], a_box.lo[k], a_box.hi[k]);
+        }
+        p[axis] = side > 0.0f ? a_box.hi[axis] : a_box.lo[axis];
+        for (int j = 0; j < 3; j++) {
+            a_point[j] = a_position[j] + m[j][0] * p[0] + m[j][1] * p[1] + m[j][2] * p[2];
+            a_normal[j] = m[j][axis] * side;
+        }
+    }
+
+    // How far to lower Skyrim's player while it sits in a vehicle, so its a_height tall body (feet at
+    // a_feet) stays kSeatHeadroom under the box's top: MSC seats it on the seat, where a standing
+    // Skyrim body pokes its head out of the roof for every enemy to hit. 0 when it fits already or
+    // the vehicle lies on its side, at most kSeatDropMax. A vertical drop, in Skyrim units.
+    inline constexpr float kSeatHeadroom = 10.0f;
+    inline constexpr float kSeatDropMax = 120.0f;
+
+    inline float SeatDrop(const float (&a_position)[3], const float (&a_rotation)[4], const Box& a_box, const float (&a_feet)[3], float a_height)
+    {
+        float m[3][3];
+        Coords::ToMatrix({ a_rotation[0], a_rotation[1], a_rotation[2], a_rotation[3] }, m);
+        const float up = m[2][2];  // world up along the box's own up
+        if (!(up > 0.5f) || !(a_height > 0.0f)) {
+            return 0.0f;
+        }
+        const float d[3] = { a_feet[0] - a_position[0], a_feet[1] - a_position[1], a_feet[2] - a_position[2] };
+        const float head = m[0][2] * d[0] + m[1][2] * d[1] + m[2][2] * d[2] + a_height * up;
+        const float drop = (head - (a_box.hi[2] - kSeatHeadroom)) / up;
+        return std::isfinite(drop) ? (std::clamp)(drop, 0.0f, kSeatDropMax) : 0.0f;
+    }
+
     // Where a player who has climbed into a vehicle without driving it (MSC lowers the camera and
     // lets him move between the seats before Enter) has its feet: the van's cabin, its box above
     // the ground clearance (the wheel arches, the bumpers and the ground beside it stay out), under

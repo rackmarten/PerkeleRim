@@ -88,6 +88,11 @@ namespace PerkeleRim::Safe
         }
     }
 
+    std::uint32_t Seat()
+    {
+        return Safe() ? state.vehicle : 0;
+    }
+
     OwnDamage::OwnDamage()
     {
         state.own++;
