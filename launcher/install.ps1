@@ -108,16 +108,22 @@ function Install-ModFile([string] $Source, [string] $DestDir) {
     return $true
 }
 
-# Points F11 screenshots at $Dir (ScreenshotDir in the SKSE plugin's ini), keeping the ini's other
-# lines. Written without a BOM: the plugin reads plain UTF-8. $true when it wrote.
-function Set-ScreenshotDir([string] $IniPath, [string] $Dir) {
-    $line = "ScreenshotDir=$Dir"
+# Sets $Key=$Value in the SKSE plugin's ini, keeping its other lines; an empty $Value takes the
+# key out. Written without a BOM: the plugin reads plain UTF-8. $true when it wrote.
+function Set-PluginSetting([string] $IniPath, [string] $Key, [string] $Value) {
     $old = if (Test-Path -LiteralPath $IniPath) { @(Get-Content -LiteralPath $IniPath -Encoding UTF8) } else { @() }
-    if ($old -contains $line) { return $false }
-    $lines = @($old | Where-Object { $_ -notmatch '^\s*ScreenshotDir\s*=' }) + $line
+    $others = @($old | Where-Object { $_ -notmatch "^\s*$([regex]::Escape($Key))\s*=" })
+    $lines = if ($Value) { $others + "$Key=$Value" } else { $others }
+    if ($Value -and $old -contains "$Key=$Value") { return $false }
+    if (-not $Value -and $others.Count -eq $old.Count) { return $false }
     New-Item -ItemType Directory -Force (Split-Path $IniPath) | Out-Null
     [IO.File]::WriteAllLines($IniPath, [string[]] $lines, (New-Object Text.UTF8Encoding $false))
     return $true
+}
+
+# Points F11 screenshots at $Dir (ScreenshotDir in the SKSE plugin's ini).
+function Set-ScreenshotDir([string] $IniPath, [string] $Dir) {
+    return Set-PluginSetting $IniPath 'ScreenshotDir' $Dir
 }
 
 # Makes $Plugin active in a plugins.txt (Skyrim's own in %LOCALAPPDATA%, or an MO2 profile's).

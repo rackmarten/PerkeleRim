@@ -32,6 +32,7 @@ namespace PerkeleRim::Garage
             std::vector<Spot>         shelves;
             bool                      visited = false;  // this save's first handover already went to the garage
             bool                      stocked = false;  // this save's shelves got MSC's items
+            bool                      skipped = false;  // this new game skipped Helgen to the spawn marker (not saved)
         } state;
     }
 
@@ -64,6 +65,7 @@ namespace PerkeleRim::Garage
     {
         state.visited = false;
         state.stocked = false;
+        state.skipped = false;
     }
 
     void OnDataLoaded()
@@ -102,12 +104,17 @@ namespace PerkeleRim::Garage
             state.fade ? "found" : "missing");
     }
 
+    RE::TESObjectREFR* Spawn()
+    {
+        return state.spawn;
+    }
+
     RE::TESObjectREFR* FirstVisit()
     {
         if (state.visited) {
             return nullptr;
         }
-        return state.wake ? state.wake : state.spawn;
+        return state.wake && !state.skipped ? state.wake : state.spawn;
     }
 
     void Visited()
@@ -117,10 +124,19 @@ namespace PerkeleRim::Garage
 
     void CartStart()
     {
-        if (!state.visited) {
+        if (!state.visited && !state.skipped) {
             state.visited = true;
             SKSE::log::info("garage: this save started in the Helgen cart, its first handover starts where Kumpo stands");
         }
+    }
+
+    // Unbound is still running for a moment after the skip (Papyrus completes it): CartStart stays
+    // out of it from here.
+    void SkippedHelgen()
+    {
+        state.skipped = true;
+        state.visited = false;
+        SKSE::log::info("garage: Helgen skipped, the first handover starts at the spawn marker with the van on the pit");
     }
 
     bool WakeUp(RE::TESObjectREFR* a_marker)

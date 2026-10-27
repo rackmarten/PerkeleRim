@@ -98,6 +98,19 @@ Describe 'Installing files' {
         Get-Content $ini | Should -Be @('Other=1', 'ScreenshotDir=C:\PerkeleRim\Screenshots')
         [IO.File]::ReadAllBytes($ini)[0] | Should -Be ([byte] [char] 'O')
     }
+    It 'sets a plugin setting once and takes it out when it has no value' {
+        $ini = "$TestDrive\Plugins2\PerkeleRim.ini"
+        Set-PluginSetting $ini 'HelgenSide' '' | Should -BeFalse
+        Test-Path $ini | Should -BeFalse
+        New-Item -ItemType Directory -Force (Split-Path $ini) | Out-Null
+        Set-Content $ini 'ScreenshotDir=C:\Shots'
+        Set-PluginSetting $ini 'HelgenSide' 'Stormcloak' | Should -BeTrue
+        Set-PluginSetting $ini 'HelgenSide' 'Stormcloak' | Should -BeFalse
+        Get-Content $ini | Should -Be @('ScreenshotDir=C:\Shots', 'HelgenSide=Stormcloak')
+        Set-PluginSetting $ini 'HelgenSide' '' | Should -BeTrue
+        Set-PluginSetting $ini 'HelgenSide' '' | Should -BeFalse
+        Get-Content $ini | Should -Be 'ScreenshotDir=C:\Shots'
+    }
     It 'enables PerkeleRim.esp once, in a plugins.txt that is not there yet too' {
         $plugins = "$TestDrive\Local\Skyrim Special Edition\plugins.txt"
         Enable-SkyrimPlugin $plugins 'PerkeleRim.esp' | Should -BeTrue

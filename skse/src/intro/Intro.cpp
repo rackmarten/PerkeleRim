@@ -1,6 +1,7 @@
 #include "intro/Intro.h"
 
 #include "hud/Hud.h"
+#include "intro/HelgenSkip.h"
 #include "intro_cues.h"
 #include "link/LinkService.h"
 
@@ -65,6 +66,7 @@ namespace PerkeleRim::Intro
         auto* data = RE::TESDataHandler::GetSingleton();
         state.fade = data ? data->LookupForm<RE::TESImageSpaceModifier>(kFade, kFadePlugin) : nullptr;
         SKSE::log::info("intro: Unbound {}, fade {}", state.unbound ? "found" : "missing", state.fade ? "found" : "missing");
+        HelgenSkip::OnDataLoaded();
     }
 
     void OnNewGame()
@@ -72,6 +74,7 @@ namespace PerkeleRim::Intro
         state.cues.NewGame();
         state.ralofDone = false;
         state.captionCue = 0;
+        HelgenSkip::OnNewGame();
         SKSE::log::info("intro: new game, Kumpo passes out once MSC is in its game");
     }
 
@@ -80,6 +83,7 @@ namespace PerkeleRim::Intro
         state.cues.Loaded();
         state.ralofDone = false;
         state.captionCue = 0;
+        HelgenSkip::OnGameLoaded();
     }
 
     void WakeUp()
@@ -114,9 +118,14 @@ namespace PerkeleRim::Intro
             SKSE::log::info("intro: Ralof's first line in the cart ended");
             state.cues.OnTopicEnd(kRalofFinallyAwake);
         }
+        const bool woke = state.cues.Woke();
         if (const auto cue = state.cues.Tick(a_delta, a_msc && Running())) {  // no cart (a mod that skips it): no cues
             Send(cue);
         }
+        if (!woke && state.cues.Woke()) {
+            HelgenSkip::Woke();  // MSC or not, Helgen is skipped a few seconds later
+        }
+        HelgenSkip::Tick(a_delta);
         const float before = state.captionSince;
         if (state.captionCue) {
             state.captionSince += a_delta;
