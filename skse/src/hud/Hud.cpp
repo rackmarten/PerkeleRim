@@ -42,6 +42,7 @@ namespace PerkeleRim::Hud
         constexpr double kGearAbove = 70.0;   // text top, up from the frame's bottom edge
         // MSC's fuel line (litres poured and their gold, a low or dry tank), above the gear.
         constexpr double kFuelAbove = 104.0;
+        constexpr double kFuelWidth = 900.0;  // its text field; the box fits the text
 
         // MSC's hands: their own clip on the movie's root, below every vanilla HUD element (those
         // sit at the timeline's negative depths) and below our layer.
@@ -212,7 +213,7 @@ namespace PerkeleRim::Hud
 
             RE::GFxValue fuelBox, fuel;
             a_clip.CreateEmptyMovieClip(&fuelBox, "fuelBox", 11);
-            MakeText(a_movie, a_clip, "fuel", 12.0, -kGearWidth * 0.5, 0.0, kGearWidth, kGearSize, "center", 0xFFFFFF, fuel);
+            MakeText(a_movie, a_clip, "fuel", 12.0, -kFuelWidth * 0.5, 0.0, kFuelWidth, kGearSize, "center", 0xFFFFFF, fuel);
 
             RE::GFxValue toolsClip;
             if (a_clip.CreateEmptyMovieClip(&toolsClip, "tools", 10)) {
@@ -424,7 +425,7 @@ namespace PerkeleRim::Hud
             }
 
             // Bottom right on a dark box, its right edge kGearRight from the frame's.
-            const auto rightBox = [&](const char* a_text, const char* a_box, const std::string& a_value, double a_above) {
+            const auto rightBox = [&](const char* a_text, const char* a_box, const std::string& a_value, double a_above, double a_field) {
                 RE::GFxValue text, box;
                 clip.GetMember(a_text, &text);
                 clip.GetMember(a_box, &box);
@@ -439,7 +440,7 @@ namespace PerkeleRim::Hud
                 const double boxWidth = (width.IsNumber() ? width.GetNumber() : 0.0) + 2.0 * kBoxPadX;
                 const double middle = static_cast<double>(rect.right) - kGearRight - boxWidth * 0.5 - cx;
                 text.SetMember("_visible", RE::GFxValue(has));
-                text.SetMember("_x", RE::GFxValue(middle - kGearWidth * 0.5));
+                text.SetMember("_x", RE::GFxValue(middle - a_field * 0.5));
                 text.SetMember("_y", RE::GFxValue(top));
                 box.SetMember("_x", RE::GFxValue(middle));
                 Call(box, "clear", {});
@@ -447,8 +448,8 @@ namespace PerkeleRim::Hud
                     DrawBox(box, text, top, kGearSize);
                 }
             };
-            rightBox("gear", "gearBox", a_view.gear, kGearAbove);
-            rightBox("fuel", "fuelBox", a_view.fuel, kFuelAbove);
+            rightBox("gear", "gearBox", a_view.gear, kGearAbove, kGearWidth);
+            rightBox("fuel", "fuelBox", a_view.fuel, kFuelAbove, kFuelWidth);
 
             RE::GFxValue toolsClip;
             if (clip.GetMember("tools", &toolsClip) && toolsClip.IsDisplayObject()) {

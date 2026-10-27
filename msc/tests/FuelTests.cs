@@ -58,7 +58,7 @@ namespace PerkeleRim.Tests
         public void DryAndLowTanks()
         {
             Assert.That(Fuel.Dry(0f), Is.True);
-            Assert.That(Fuel.Dry(0.04f), Is.True);
+            Assert.That(Fuel.Dry(0.2f), Is.True);
             Assert.That(Fuel.Dry(0.5f), Is.False);
             Assert.That(Fuel.Low(9.9f, 40f), Is.True);
             Assert.That(Fuel.Low(10f, 40f), Is.False);

@@ -14,7 +14,7 @@ namespace PerkeleRim
         public const float TowFee = 50f;          // marks (gold) to tow a dry vehicle onto a pump
         public const float TowReach = 2100f;      // units (30 m): a call this close to a pump tows
         public const float LaneOffset = 134f;     // units from the pump's spot to the lane's middle
-        public const float DryLevel = 0.05f;      // litres: at or below, the tank counts as dry
+        public const float DryLevel = 0.25f;      // litres: at or below, the tank counts as dry (the van stalls at 0.2)
         public const float LowShare = 0.25f;      // the HUD warns under this share of the tank
         public const float MinLitres = 0.1f;      // money for less than this stops the pour
         public const string Name = "Dwemer oil";
