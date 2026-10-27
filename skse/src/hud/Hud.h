@@ -33,4 +33,9 @@ namespace PerkeleRim::Hud
     // Only queues work when something visible changed, or with a_refresh (rebuilds the layer if
     // the HUD lost it).
     void Set(const View& a_view, bool a_refresh = false);
+
+    // Kumpo's shake (Needs::Shake, 0..1) and the hands' offset now (Needs::ShakeOffset for a screen 1
+    // tall, so a share of the screen height). The layer grows a little while it shakes so its edges
+    // stay off screen. Queues nothing while the hands are steady.
+    void ShakeHands(float a_shake, float a_x, float a_y);
 }

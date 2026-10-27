@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "damage.h"
+#include "needs.h"
 
 namespace PerkeleRim::HitTest
 {
@@ -83,6 +84,7 @@ namespace PerkeleRim::HitTest
         float speed = 0.0f;    // a throw's, m/s
         float mass = 0.0f;     // a throw's, kg (0: MSC didn't say)
         float sneak = 1.0f;    // a throw's sneak attack multiplier
+        float stress = 0.0f;   // MSC's stress Skyrim punched with (Needs::StressPunch)
         float damage = 0.0f;   // what Skyrim cast on the target
         float before = 0.0f;   // the target's health before the attack
         float after = 0.0f;    // and once the spell had landed
@@ -92,7 +94,7 @@ namespace PerkeleRim::HitTest
     inline float Expected(const Scenario& a_scenario, const Hit& a_hit)
     {
         if (a_scenario.attack == Attack::kPunch) {
-            return Damage::Punch(a_hit.unarmed, a_hit.drunk);
+            return Damage::Punch(a_hit.unarmed, a_hit.drunk) * Needs::StressPunch(a_hit.stress);
         }
         return Damage::Thrown(Damage::Punch(a_hit.unarmed), a_hit.speed, a_hit.mass) * a_hit.sneak;
     }

@@ -51,6 +51,7 @@ add_executable(protocol_tests
     tests/cpp/test_junk.cpp
     tests/cpp/test_msc_menu.cpp
     tests/cpp/test_swf.cpp
+    tests/cpp/test_needs.cpp
 )
 if(WIN32)
     target_sources(protocol_tests PRIVATE cpp/link.cpp tests/cpp/test_link.cpp)

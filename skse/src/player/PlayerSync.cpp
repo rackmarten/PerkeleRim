@@ -20,6 +20,7 @@
 #include "look_at.h"
 #include "menu/MscMenuView.h"
 #include "model/ModelView.h"
+#include "needs/NeedEffects.h"
 #include "particle/ParticleView.h"
 #include "piss_tap.h"
 #include "play_mode.h"
@@ -266,6 +267,7 @@ namespace PerkeleRim::PlayerSync
             Drink::SetDrunk(0.0f, 0.0f);
             CollisionSampler::Stop();
             Combat::Stop();
+            NeedEffects::Stop();
             VehicleView::Hide();
             ItemView::Clear();
             ParticleView::Hide();
@@ -817,7 +819,8 @@ namespace PerkeleRim::PlayerSync
                     return;
                 }
                 if (a_type == Protocol::MessageType::PunchEvent) {
-                    Combat::OnPunch(a_player, a_data, a_size, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f);
+                    Combat::OnPunch(a_player, a_data, a_size, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f,
+                        state.hasNeeds ? state.needs[Protocol::kNeedStress] : 0.0f);
                     return;
                 }
                 if (a_type == Protocol::MessageType::ImpactEvent) {
@@ -921,6 +924,7 @@ namespace PerkeleRim::PlayerSync
             const bool menu = MenuHasInput();
             Combat::Disarm(a_player);
             Combat::Drunk(a_player, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, a_delta);
+            NeedEffects::Update(a_player, state.hasNeeds ? &state.needs : nullptr, a_delta);
             Combat::Guard(a_player, valid && !seated && !menu && (pose.flags & Protocol::kPlayerBlocking) != 0, !menu);
             Combat::Shouts(a_player);
             Sprint(a_player, valid ? &pose : nullptr, seated, menu, a_delta);

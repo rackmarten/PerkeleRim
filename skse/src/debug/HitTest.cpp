@@ -498,6 +498,7 @@ namespace PerkeleRim::HitTest
                 hit.speed = last.speed;
                 hit.mass = last.mass;
                 hit.sneak = last.sneak;
+                hit.stress = last.stress;
             }
             if ((state.landed && state.timer - state.landedAt >= kSpellSeconds) || (!state.landed && state.timer >= kHitTimeout)) {
                 Record();

@@ -112,6 +112,7 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 | Finn's home | A plank shack with a usable bed next to the garage, in the exterior worldspace (no load screen). The first handover of a save (not a new game, which already woke him at the garage's spawn marker) wakes Finn up by the bed with Skyrim's fade up from black; the van waits on the pit. The first handover near the garage has MSC stock the shelves once per save (beer cases and food from MSC's store spawner, `StockShelves`); the SKSE cosave remembers both. |
 | Pre-built car | Save with a finished Satsuma, or start with Hayosiko van / Gifu / Kekmet, which are drivable from the start. |
 | Beer and emotes | MSC simulates; Skyrim draws arms/particles; drunk level drives Skyrim image-space effects (Skooma-style blur). |
+| Needs | MSC's needs count in Skyrim from MSC's red line (100) to its death line (200): starving drains health and can kill, fatigue slows stamina regen, stress punches harder, a full bladder slows the walk, dirt makes traders dearer. Kumpo's hands shake the longer he's been dry, a beer steadies them. See PROTOCOL.md, Needs. |
 | Crouch = sneak | MSC crouch → Skyrim player sneak state. |
 | Piss on Jarl → bounty | Skyrim traces the urine arc; on NPC hit, send an assault alarm credited to the player. |
 | Talking / quests | Activate key → Skyrim; dialogue, doors and quest pickups work natively. Quest items go into Skyrim's inventory through the activate pass-through. |

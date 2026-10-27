@@ -339,6 +339,8 @@ namespace PerkeleRim.Game
             if (playing) CatchFall();
             StepWalk();
             MotorBoost.Active = playing;
+            var urine = needs != null && needs[(int)Wire.NeedUrine] != null ? needs[(int)Wire.NeedUrine].Value : 0f;
+            MotorBoost.NeedScale = Needs.UrineSpeed(urine);  // a full bladder slows Kumpo
             DeathGuard.Active = owned;
             DeathGuard.Update();
             SendDamage(link);

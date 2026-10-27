@@ -13,6 +13,7 @@
 #include "junk/ThrowJunk.h"
 #include "link/LinkService.h"
 #include "menu/MscMenuView.h"
+#include "needs/NeedEffects.h"
 #include "player/PlayerSync.h"
 #include "pocket/Pocket.h"
 #include "rest/Rest.h"
@@ -42,6 +43,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::ThrowJunk::OnDataLoaded();
             PerkeleRim::CollisionSampler::OnDataLoaded();
             PerkeleRim::Combat::OnDataLoaded();
+            PerkeleRim::NeedEffects::OnDataLoaded();
             PerkeleRim::Autoload::OnDataLoaded();
             PerkeleRim::Rest::OnDataLoaded();
             PerkeleRim::HitTest::OnDataLoaded();
