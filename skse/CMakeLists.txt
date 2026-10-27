@@ -20,7 +20,7 @@ add_commonlibsse_plugin(
     ${PROJECT_NAME}
     NAME "PerkeleRim"
     AUTHOR "Marek Uncik"
-    SOURCES src/main.cpp src/link/LinkService.cpp src/player/PlayerSync.cpp src/collision/CollisionSampler.cpp src/collision/StaticMeshes.cpp src/combat/Combat.cpp src/vehicle/VehicleView.cpp src/vehicle/Hitbox.cpp src/vehicle/HitboxTest.cpp src/model/ModelView.cpp src/item/ItemView.cpp src/particle/ParticleView.cpp src/hands/HandView.cpp src/death/Death.cpp src/garage/Garage.cpp src/intro/Intro.cpp src/hud/Hud.cpp src/drink/Drink.cpp src/pocket/Pocket.cpp src/safe/Safe.cpp src/autoload/Autoload.cpp src/save/Cosave.cpp src/save/SaveSync.cpp src/rest/Rest.cpp src/shot/Shot.cpp src/shot/BackBuffer.cpp src/debug/HitTest.cpp src/needs/NeedEffects.cpp ../protocol/cpp/link.cpp
+    SOURCES src/main.cpp src/link/LinkService.cpp src/player/PlayerSync.cpp src/collision/CollisionSampler.cpp src/collision/StaticMeshes.cpp src/combat/Combat.cpp src/vehicle/VehicleView.cpp src/vehicle/Hitbox.cpp src/vehicle/HitboxTest.cpp src/model/ModelView.cpp src/item/ItemView.cpp src/particle/ParticleView.cpp src/hands/HandView.cpp src/death/Death.cpp src/garage/Garage.cpp src/fuel/Fuel.cpp src/intro/Intro.cpp src/hud/Hud.cpp src/drink/Drink.cpp src/pocket/Pocket.cpp src/safe/Safe.cpp src/autoload/Autoload.cpp src/save/Cosave.cpp src/save/SaveSync.cpp src/rest/Rest.cpp src/shot/Shot.cpp src/shot/BackBuffer.cpp src/debug/HitTest.cpp src/needs/NeedEffects.cpp ../protocol/cpp/link.cpp
 )
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)

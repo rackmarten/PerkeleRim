@@ -17,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Other common shouts have a Finnish word of their own: Whirlwind Sprint "Vittu!", Fire Breath "Mitä helvettiä!?", Frost Breath "Voi vittu!", Become Ethereal "Jumalauta.", Dragonrend "Saatana!", Slow Time "Saatana...", Marked for Death "Kyrpä!", Clear Skies "Voi saatana!", Storm Call "Jumalauta jo!". Any other shout is still a random swear.
 - The drunker Kumpo is, the shorter Skyrim's shout cooldown, down to a third of it at full drunk: a full Fus Ro Dah is back in 15 s instead of 45.
 - Showing the middle finger (V) to a guard or a Jarl within about 5 m in front of you adds a 5 gold bounty in their hold, once per person per minute.
+- Dwemer oil stations beside Skyrim's main roads, by the garage outside Whiterun, south-east of Dragon Bridge, by the bridge below Windhelm and between Ivarstead and Riften, each on the map. Fill up the My Summer Car way: stop by the dwemer pump, open the fuel hatch, unscrew the cap, take the nozzle and pour. Every litre costs gold as it pours, at My Summer Car's own diesel price, and the pour stops when the gold runs out. The HUD shows the litres, the gold and the tank as it fills, and the hose reaches 6 m, so the tractor can fill up too.
+- Fuel runs out: the van and the Kekmet burn their diesel as in My Summer Car (the moped's tank stays full). The HUD warns under a quarter of a tank. A dry vehicle won't start, and calling it only works at a station, where it's towed onto the pump for 50 gold (free if it's already within 100 m) with its parking brake pulled.
 - Vehicles are solid in Skyrim: the van, the moped and the Kekmet stop arrows, spells and flames (hiding behind the parked van works, and arrows hit it with a metal clang) and people walk around them instead of through them. Ragdolls and dropped items bounce off too. Kumpo himself still walks through, and NPCs can't see him behind the van. At driving speed (from about 7 km/h) the hitbox steps aside so running people over works as before; Kumpo stays safe in the van and the Kekmet while seated, and in the van now also once he has climbed in before pressing Enter.
 - Setup in the launcher: the first time, Start PerkeleRim.bat finds My Summer Car and Skyrim (Steam libraries, Steam's own install records, or folders you pick), lists what's missing of MSCLoader, SKSE and Address Library, opens their download pages and waits while you install them, then installs PerkeleRim into both games. Skyrim's SKSE build is checked against the Skyrim version too.
 - Kumpo's needs matter in Skyrim, from the red mark at 100 to the end of the bar at 200: hunger or thirst past 150 drains health and can kill him (no more free reset to 0 at 200), fatigue slows stamina regen (up to 75% slower, "Tired" in Active Effects), stress makes punches up to 20% harder, a full bladder slows his walk and run by up to 30%, and being dirty makes traders up to 30% dearer, buying and selling. A swim washes the dirt off.
@@ -29,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Removed
 
+- Endless fuel for the van and the Kekmet.
 - The endless pocket (beer, bottles and food topped back up) and mead and ale turning into MSC Beer when picked up: mead stays mead and is drunk in Skyrim.
 
 ### Fixed
