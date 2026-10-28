@@ -1,5 +1,6 @@
 #include "player/PlayerSync.h"
 
+#include "blackout/Blackout.h"
 #include "camera.h"
 #include "collision/CollisionSampler.h"
 #include "combat/Combat.h"
@@ -88,6 +89,7 @@ namespace PerkeleRim::PlayerSync
             Wading::Edge    wading;   // waist-deep water washes Kumpo once per wade in
             std::array<std::uint16_t, 8> hotbar{ 49, 50, 51, 52, 53, 54, 55, 56 };  // MSC's key for each number held (Pocket::Hotkey)
             bool           seated = false;
+            bool           standing = false;  // this frame's pose was MSC's valid one for the current anchor
             float          waterLevel = 0.0f;  // fraction of Kumpo under water, for the log
             RE::NiPoint3   eye;              // Skyrim's camera relative to the placed feet (MSC's eye), 0 when not posed
             float          savedFov = 0.0f;   // Skyrim's worldFOV before MSC's took over, 0 = untouched
@@ -229,6 +231,7 @@ namespace PerkeleRim::PlayerSync
                 return;
             }
             state.owned = false;
+            state.standing = false;
             state.input.ReleaseAll();
             std::fill(std::begin(state.debugKeys), std::end(state.debugKeys), 0);
             state.input.Block(Input::KeyFromScanCode(Input::kDikLeftShift), false);
@@ -820,6 +823,7 @@ namespace PerkeleRim::PlayerSync
                     driven = &vehicles[i];
                 }
             }
+            state.standing = valid;
             const bool seated = valid && driven != nullptr;
             Safe::Set(a_player, seated ? driven->vehicle : valid ? ClimbedInto(a_player) : 0);
             if (seated != state.seated) {
@@ -868,6 +872,10 @@ namespace PerkeleRim::PlayerSync
                 }
                 if (a_type == Protocol::MessageType::JunkBack) {
                     ThrowJunk::OnBack(a_player, a_data, a_size);
+                    return;
+                }
+                if (a_type == Protocol::MessageType::Blackout) {
+                    Blackout::OnMessage(a_data, a_size);
                     return;
                 }
                 if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle &&
@@ -1001,6 +1009,7 @@ namespace PerkeleRim::PlayerSync
                     MscMenuView::Tick(a_delta);  // while paused the menu ticks itself
                     ReadMscInGame();
                     Intro::Tick(a_delta, LinkService::Get().IsUp() && state.mscInGame, state.owned);
+                    Blackout::Tick(a_player, a_delta);
                 }
                 if (state.garage && a_delta > 0.0f) {
                     TravelToGarage(a_player, a_delta);
@@ -1324,6 +1333,16 @@ namespace PerkeleRim::PlayerSync
     bool Seated()
     {
         return state.owned && state.seated;
+    }
+
+    bool Standing()
+    {
+        return state.owned && state.standing;
+    }
+
+    std::uint32_t Generation()
+    {
+        return state.generation;
     }
 
     void DebugHandOver()

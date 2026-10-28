@@ -12,7 +12,8 @@ namespace PerkeleRim.Game
     // (they only move on in Update); one found going anyway (an event, a save from before) is ended
     // here: back to its idle state, PLAYER let go of WakePivot where it is, the blackout's screen
     // off and what it took (volume, mouse look, PlayerStop) given back. A load ends one the same way
-    // (RestLink.OnLoadReset). The link going down gives MSC its blackouts back.
+    // (RestLink.OnLoadReset). The link going down gives MSC its blackouts back. A knockout ended while
+    // the link is up still knocks him out the way Skyrim can show (BlackoutLink).
     public static class PassOutGuard
     {
         const float FindEvery = 1f;
@@ -21,6 +22,15 @@ namespace PerkeleRim.Game
         static float nextFind;
         static readonly PlayMakerFSM[] fsms = new PlayMakerFSM[PassOut.Objects.Length];
         static readonly bool[] switchedOff = new bool[PassOut.Objects.Length];
+        static bool knockedOut;
+
+        // A knockout ended while the link was up since the last call.
+        public static bool TakeKnockout()
+        {
+            bool was = knockedOut;
+            knockedOut = false;
+            return was;
+        }
 
         // Every frame from PlayerLink, once MSC's player is found.
         public static void Update(bool linkUp, Transform player, Action<string> log)
@@ -33,7 +43,11 @@ namespace PerkeleRim.Game
                 var obj = PassOut.Objects[i];
                 if (linkUp)
                 {
-                    if (PassOut.Running(obj, fsm.ActiveStateName)) End(fsm, obj, player, log, "while the link is up");
+                    if (PassOut.Running(obj, fsm.ActiveStateName))
+                    {
+                        End(fsm, obj, player, log, "while the link is up");
+                        if (obj == PassOut.KnockOutObject) knockedOut = true;
+                    }
                     if (fsm.enabled)
                     {
                         fsm.enabled = false;

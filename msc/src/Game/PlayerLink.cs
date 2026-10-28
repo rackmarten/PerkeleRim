@@ -30,7 +30,7 @@ namespace PerkeleRim.Game
     //    that land on them (ActorLink); H honks the driven vehicle, scattering them (VehicleHorn);
     //  - shares MSC's first-person layer (hands, drinks, tools in hand) with Skyrim (HandLayerSender);
     //  - keeps MSC's own blackouts (drunk pass-out, knockout) from moving its player while the link is
-    //    up (PassOutGuard);
+    //    up (PassOutGuard) and blacks him out its own way, for Skyrim to wake him somewhere (BlackoutLink);
     //  - keeps MSC's player alive while handed over and sends what it would have died of as
     //    PlayerDamage (DeathGuard), plays MSC's death sound on PlayerDeath, and sends MSC's blood
     //    overlay for Skyrim's death ahead of time;
@@ -98,6 +98,7 @@ namespace PerkeleRim.Game
         MscMenuLink menu;  // MSC's options menu shown in Skyrim (F1)
         SaveSync saves;
         RestLink rest;
+        BlackoutLink blackout;
         Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
         Collider groundTemplate;  // MSC ground the island chunks copy layer, tag and material from
 
@@ -190,6 +191,7 @@ namespace PerkeleRim.Game
             ConsumeWatch.Install(log);
             saves = new SaveSync(island, vehicles, items, () => playing, () => player, log);
             rest = new RestLink(log);
+            blackout = new BlackoutLink(log);
         }
 
         // A beer case next to the player (spike command "beer").
@@ -347,6 +349,7 @@ namespace PerkeleRim.Game
             MotorBoost.Active = playing;
             var urine = needs != null && needs[(int)Wire.NeedUrine] != null ? needs[(int)Wire.NeedUrine].Value : 0f;
             MotorBoost.NeedScale = Needs.UrineSpeed(urine);  // a full bladder slows Kumpo
+            blackout.Update(link, owned, player != null);
             DeathGuard.Active = owned;
             DeathGuard.Update();
             SendDamage(link);
@@ -495,11 +498,17 @@ namespace PerkeleRim.Game
             else if (type == MessageType.FuelStations)
                 fuel.OnStations(payload, size);
             else if (type == MessageType.LoadReset)
+            {
                 rest.OnLoadReset();
+                blackout.Reset();
+            }
             else if (type == MessageType.PlayerWashed)
                 rest.OnWashed();
             else if (type == MessageType.TimePassed)
+            {
                 rest.OnTimePassed(payload, size);
+                blackout.OnTimePassed(payload, size);
+            }
             else if (type == MessageType.MscSave || type == MessageType.MscLoad)
                 saves.OnMessage(type, payload, size);
             else if (type == MessageType.DebugCommand)
