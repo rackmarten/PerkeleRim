@@ -1,5 +1,7 @@
 #include "hud/Hud.h"
 
+#include <mutex>
+
 #include "needs.h"
 
 namespace PerkeleRim::Hud
@@ -58,6 +60,9 @@ namespace PerkeleRim::Hud
         constexpr std::int32_t kHandsDepth = -16384;
 
         View                       current;
+        std::atomic<bool>          covered{ false };  // Cover
+        std::mutex                 appliedLock;
+        View                       applied;           // the last view queued to Apply, for Cover's own
         int                        drawnCharge = -1;  // current.charge in kChargeSteps, -1 none
         std::array<int, kRows>     drawnNeeds{};  // current.needs in 0.5 % steps of a full bar
         std::array<int, 3>         drawnLight{};  // current.handsLight in Color.setTransform percent
@@ -329,7 +334,7 @@ namespace PerkeleRim::Hud
 
         void ApplyHands(RE::GFxMovieView* a_movie, RE::GFxValue& a_root, const View& a_view)
         {
-            const bool   show = a_view.show && !a_view.handsImage.empty() && a_view.handsWidth > 0 && a_view.handsHeight > 0;
+            const bool   show = a_view.show && !a_view.handsImage.empty() && a_view.handsWidth > 0 && a_view.handsHeight > 0 && !covered;
             RE::GFxValue hands;
             a_root.GetMember(kHandsClipName, &hands);
             if (!hands.IsDisplayObject()) {
@@ -431,18 +436,19 @@ namespace PerkeleRim::Hud
             clip.SetMember("_x", RE::GFxValue(cx));
             clip.SetMember("_y", RE::GFxValue(cy));
 
+            const bool   open = !covered;  // no menu over the view
             RE::GFxValue dot, text, box, handClip;
             if (clip.GetMember("dot", &dot) && dot.IsDisplayObject()) {
-                dot.SetMember("_visible", RE::GFxValue(a_view.dot));
+                dot.SetMember("_visible", RE::GFxValue(a_view.dot && open));
             }
             clip.GetMember("text", &text);
             clip.GetMember("box", &box);
             if (clip.GetMember("hand", &handClip) && handClip.IsDisplayObject()) {
-                handClip.SetMember("_visible", RE::GFxValue(a_view.hand));
+                handClip.SetMember("_visible", RE::GFxValue(a_view.hand && open));
             }
             if (text.IsDisplayObject() && box.IsDisplayObject()) {
                 const double top = kLabelBelow + (a_view.hand ? kHandSpace : 0.0);
-                const bool   hasLabel = !a_view.label.empty();
+                const bool   hasLabel = !a_view.label.empty() && open;
                 text.SetText(a_view.label.c_str());
                 text.SetMember("_visible", RE::GFxValue(hasLabel));
                 text.SetMember("_y", RE::GFxValue(top));
@@ -497,7 +503,7 @@ namespace PerkeleRim::Hud
             RE::GFxValue chargeClip;
             if (clip.GetMember("charge", &chargeClip) && chargeClip.IsDisplayObject()) {
                 Call(chargeClip, "clear", {});
-                if (a_view.charge >= 0.0f) {
+                if (a_view.charge >= 0.0f && open) {
                     const float  share = std::clamp(a_view.charge, 0.0f, 1.0f);
                     const double right = -kChargeHalfWidth + 2.0 * kChargeHalfWidth * share;
                     Fill(chargeClip, 0x000000, 55.0, -kChargeHalfWidth - 1.0, kChargeTop - 1.0, kChargeHalfWidth + 1.0, kChargeBottom + 1.0);
@@ -509,7 +515,7 @@ namespace PerkeleRim::Hud
 
             RE::GFxValue toolsClip;
             if (clip.GetMember("tools", &toolsClip) && toolsClip.IsDisplayObject()) {
-                toolsClip.SetMember("_visible", RE::GFxValue(a_view.tools));
+                toolsClip.SetMember("_visible", RE::GFxValue(a_view.tools && open));
                 toolsClip.SetMember("_x", RE::GFxValue(static_cast<double>(rect.right) - kToolsRight - cx));
                 toolsClip.SetMember("_y", RE::GFxValue(static_cast<double>(rect.top) + kToolsTop - cy));
             }
@@ -591,7 +597,26 @@ namespace PerkeleRim::Hud
         drawnCharge = charge;
         drawnNeeds = needs;
         drawnLight = light;
+        {
+            std::lock_guard lock(appliedLock);
+            applied = view;
+        }
         SKSE::GetTaskInterface()->AddUITask([view]() { Apply(view); });
+    }
+
+    void Cover(bool a_covered)
+    {
+        if (covered.exchange(a_covered) == a_covered) {
+            return;
+        }
+        SKSE::GetTaskInterface()->AddUITask([]() {
+            View view;
+            {
+                std::lock_guard lock(appliedLock);
+                view = applied;
+            }
+            Apply(view);
+        });
     }
 
     void ShakeHands(float a_shake, float a_x, float a_y)

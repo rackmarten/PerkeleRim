@@ -20,6 +20,7 @@ namespace PerkeleRim::HeldDrinkView
             RE::NiPointer<RE::NiNode> node;
             Held::Vec                 boundsMin, boundsMax;  // its form's object bounds
             bool                      placedLogged = false;
+            bool                      covered = false;  // Cover
             int                       world = -1;  // PerkeleRim.ini HeldDrinkScene=world: the world's scene instead (to compare)
         } state;
 
@@ -90,8 +91,11 @@ namespace PerkeleRim::HeldDrinkView
     void Update(RE::PlayerCharacter* a_player, bool a_shown, float a_delta)
     {
         state.age += a_delta;
-        if (state.last.form == 0 || state.age >= kStaleSeconds || !a_shown) {
-            Drop(state.last.form == 0 ? "MSC's bottle left the hand" : a_shown ? "nothing from MSC" : "a menu, the chase camera or no MSC camera");
+        if (state.last.form == 0 || state.age >= kStaleSeconds || !a_shown || state.covered) {
+            Drop(state.last.form == 0 ? "MSC's bottle left the hand"
+                 : state.covered      ? "a menu over the view"
+                 : a_shown            ? "nothing from MSC"
+                                      : "the chase camera or no MSC camera");
             return;
         }
         if (state.last.form != state.form && !Load(state.last.form)) {
@@ -110,13 +114,23 @@ namespace PerkeleRim::HeldDrinkView
             Drop("no length");
             return;
         }
+        // From the camera Skyrim draws the world with, which MSC's hand layer lines up with; the
+        // camera root (PoseCamera) only when there's none. NiCamera looks along its +X with +Y up
+        // and +Z right; the held drink's camera space is +X right, +Y forward, +Z up.
+        auto*        view = RE::Main::WorldRootCamera();
         Held::Matrix cameraRotate;
         for (int r = 0; r < 3; r++) {
-            for (int c = 0; c < 3; c++) {
-                cameraRotate[r][c] = eye->world.rotate.entry[r][c];
+            if (view) {
+                cameraRotate[r][0] = view->world.rotate.entry[r][2];
+                cameraRotate[r][1] = view->world.rotate.entry[r][0];
+                cameraRotate[r][2] = view->world.rotate.entry[r][1];
+            } else {
+                for (int c = 0; c < 3; c++) {
+                    cameraRotate[r][c] = eye->world.rotate.entry[r][c];
+                }
             }
         }
-        const auto& at = eye->world.translate;
+        const auto& at = view ? view->world.translate : eye->world.translate;
         const auto  world = Held::ToParent(cameraRotate, { at.x, at.y, at.z }, local);
 
         if (state.node->parent != scene) {
@@ -150,12 +164,29 @@ namespace PerkeleRim::HeldDrinkView
                             "camera; its parent at ({:.0f}, {:.0f}, {:.0f}) scale {:.2f}, the camera at ({:.0f}, {:.0f}, {:.0f})",
                 m.bottom[0], m.bottom[1], m.bottom[2], m.top[0], m.top[1], m.top[2], bottle.Length(), p.x, p.y, p.z, scene->world.scale, eye->world.translate.x,
                 eye->world.translate.y, eye->world.translate.z);
+            const auto& fov = camera->GetRuntimeData2();
+            const auto& draw = RE::DrawWorld::GetSingleton();
+            SKSE::log::info("held drink: fov {:.1f} world, {:.1f} first person (camera); {:.1f} world, {:.1f} first person (drawn)", fov.worldFOV,
+                fov.firstPersonFOV, draw.worldFOV, draw.firstPersonFOV);
+            if (view) {
+                // The drawing camera against the camera root, in the root's own axes (right, forward, up).
+                const auto off = eye->world.rotate.Transpose() * (view->world.translate - eye->world.translate);
+                SKSE::log::info("held drink: the world's camera is ({:.1f}, {:.1f}, {:.1f}) from the camera root (right, forward, up)", off.x, off.y, off.z);
+            }
         }
     }
 
     bool IsHeldDrink(const RE::NiAVObject* a_object)
     {
         return a_object && a_object->name == kNodeName;
+    }
+
+    void Cover(bool a_covered)
+    {
+        state.covered = a_covered;
+        if (a_covered) {
+            Drop("a menu over the view");
+        }
     }
 
     void Clear()

@@ -11,6 +11,9 @@ namespace PerkeleRim::ItemView
     void Update(const Protocol::ItemState* a_state, std::uint32_t a_generation);
     void Clear();
 
+    // A Skyrim menu is over the view: the items hide (one in the hand would show through it).
+    void Cover(bool a_covered);
+
     // A copy of a Skyrim form's own model (thrown junk, a drink in the hand), without its collision:
     // it only shows. Null when the form has no model or it didn't load (logged once per form).
     RE::NiPointer<RE::NiNode> FormModel(RE::FormID a_form);

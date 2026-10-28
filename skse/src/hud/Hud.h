@@ -38,4 +38,9 @@ namespace PerkeleRim::Hud
     // tall, so a share of the screen height). The layer grows a little while it shakes so its edges
     // stay off screen. Queues nothing while the hands are steady.
     void ShakeHands(float a_shake, float a_x, float a_y);
+
+    // A Skyrim menu is over the view (PlayerSync's menu events, also while the game is paused and
+    // Set isn't called): MSC's hands, the dot, the look-at prompt, the throw's charge and the tools
+    // icon hide; the needs, subtitle, gear and fuel stay. Any thread.
+    void Cover(bool a_covered);
 }

@@ -24,6 +24,7 @@ namespace PerkeleRim::ItemView
             std::unordered_map<std::uint64_t, std::vector<RE::NiPointer<RE::NiNode>>>  spare;  // by Key
             std::unordered_set<RE::FormID>                                              failed;  // forms whose model didn't load, logged once
             std::size_t                                                                 shown = 0;  // last logged
+            bool                                                                        covered = false;  // Cover
         } state;
 
         // The node the player's own 3D hangs in, like VehicleView, so items are lit and culled like the world.
@@ -134,7 +135,7 @@ namespace PerkeleRim::ItemView
                 continue;
             }
             const bool visible = (pose.flags & Protocol::kItemVisible) != 0;
-            item.node->SetAppCulled(!visible);
+            item.node->SetAppCulled(!visible || state.covered);
             if (scene && item.node->parent != scene) {
                 if (item.node->parent) {
                     item.node->parent->DetachChild(item.node.get());
@@ -155,6 +156,18 @@ namespace PerkeleRim::ItemView
         if (shown != state.shown) {
             state.shown = shown;
             SKSE::log::info("item view: {} items shown of {}", shown, count);
+        }
+    }
+
+    void Cover(bool a_covered)
+    {
+        state.covered = a_covered;
+        if (a_covered) {
+            for (auto& [id, item] : state.items) {
+                if (item.node) {
+                    item.node->SetAppCulled(true);
+                }
+            }
         }
     }
 

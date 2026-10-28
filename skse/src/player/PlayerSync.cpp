@@ -95,6 +95,7 @@ namespace PerkeleRim::PlayerSync
             RE::NiPoint3   eye;              // Skyrim's camera relative to the placed feet (MSC's eye), 0 when not posed
             float          savedFov = 0.0f;   // Skyrim's worldFOV before MSC's took over, 0 = untouched
             float          savedFirstPersonFov = 0.0f;  // and its firstPersonFOV
+            float          savedDrawFirstPersonFov = 0.0f;  // and DrawWorld's, which the first-person pass draws with
             bool           wasThirdPerson = false;  // Skyrim's camera was third person at the handover
             std::string    lookAt;            // MSC's interaction text
             bool           lookAtUse = false; // MSC shows its hand icon
@@ -132,25 +133,6 @@ namespace PerkeleRim::PlayerSync
         {
             auto* ui = RE::UI::GetSingleton();
             return ui && (ui->GameIsPaused() || ui->IsMenuOpen(RE::CursorMenu::MENU_NAME));
-        }
-
-        // A Skyrim menu covers the view: one with the input, or Favorites and the others that neither
-        // pause nor show a cursor. MSC's hands and the held drink hide under them; the HUD movie,
-        // which holds the hands, stays up under menus.
-        bool MenuOver()
-        {
-            if (MenuHasInput()) {
-                return true;
-            }
-            auto* ui = RE::UI::GetSingleton();
-            if (!ui) {
-                return false;
-            }
-            static const std::string_view kMenus[] = { RE::FavoritesMenu::MENU_NAME, RE::TweenMenu::MENU_NAME, RE::InventoryMenu::MENU_NAME,
-                RE::MagicMenu::MENU_NAME, RE::MapMenu::MENU_NAME, RE::JournalMenu::MENU_NAME, RE::ContainerMenu::MENU_NAME, RE::BarterMenu::MENU_NAME,
-                RE::GiftMenu::MENU_NAME, RE::LockpickingMenu::MENU_NAME, RE::BookMenu::MENU_NAME, RE::Console::MENU_NAME, RE::StatsMenu::MENU_NAME,
-                RE::DialogueMenu::MENU_NAME };
-            return std::ranges::any_of(kMenus, [&](std::string_view a_menu) { return ui->IsMenuOpen(a_menu); });
         }
 
         // A menu pauses the game (Escape, the map, inventories): MSC freezes its time as well.
@@ -277,6 +259,7 @@ namespace PerkeleRim::PlayerSync
                     camera->GetRuntimeData2().worldFOV = state.savedFov;
                     camera->GetRuntimeData2().firstPersonFOV = state.savedFirstPersonFov;
                 }
+                RE::DrawWorld::GetSingleton().firstPersonFOV = state.savedDrawFirstPersonFov;
                 state.savedFov = 0.0f;
             }
             if (state.wasThirdPerson) {
@@ -694,12 +677,20 @@ namespace PerkeleRim::PlayerSync
 
             if (a_pose.fov > 1.0f) {
                 auto& data = camera->GetRuntimeData2();
+                auto& draw = RE::DrawWorld::GetSingleton();
                 if (state.savedFov <= 0.0f) {
                     state.savedFov = data.worldFOV;
                     state.savedFirstPersonFov = data.firstPersonFOV;
+                    state.savedDrawFirstPersonFov = draw.firstPersonFOV;
+                    SKSE::log::info("player sync: Skyrim's fov was {:.1f} world, {:.1f} first person (camera), {:.1f} world, {:.1f} first person (drawn)",
+                        data.worldFOV, data.firstPersonFOV, draw.worldFOV, draw.firstPersonFOV);
                 }
                 data.worldFOV = Camera::SkyrimFov(a_pose.fov);
-                data.firstPersonFOV = data.worldFOV;  // the held drink (HeldDrinkView) in the first-person scene lines up with MSC's hand
+                // The held drink (HeldDrinkView) is drawn in the first-person pass: at the world's fov
+                // it lines up with MSC's hand. DrawWorld's pair is what the passes draw with (copied in
+                // its own units, a frame behind at most).
+                data.firstPersonFOV = data.worldFOV;
+                draw.firstPersonFOV = draw.worldFOV;
             }
             return true;
         }
@@ -978,8 +969,7 @@ namespace PerkeleRim::PlayerSync
             HandView::Update(link.ReadHandLayer(hands) ? &hands : nullptr, a_delta);
             Combat::Update(a_player, state.generation, a_delta);
             const bool menu = MenuHasInput();
-            const bool covered = MenuOver();
-            HeldDrinkView::Update(a_player, posed && !chase && !covered, a_delta);  // hidden under a menu, like the hands
+            HeldDrinkView::Update(a_player, posed && !chase, a_delta);
             Combat::Disarm(a_player);
             Combat::Drunk(a_player, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, a_delta);
             NeedEffects::Update(a_player, state.hasNeeds ? &state.needs : nullptr, a_delta);
@@ -1006,7 +996,7 @@ namespace PerkeleRim::PlayerSync
             hud.money = Pocket::Money(a_player);
             hud.hasNeeds = state.hasNeeds;
             hud.needs = state.needs;
-            hud.handsImage = covered ? std::string() : HandView::Image();  // a drink or a cigarette over Favorites, say
+            hud.handsImage = HandView::Image();
             hud.handsWidth = HandView::Width();
             hud.handsHeight = HandView::Height();
             hud.handsLight = HandView::Light(a_player);
@@ -1280,13 +1270,42 @@ namespace PerkeleRim::PlayerSync
             }
         };
 
+        // Menus that are always there or only decorate (the HUD, fades, the cursor): they cover nothing.
+        bool CoversView(std::string_view a_menu)
+        {
+            static constexpr std::string_view kOverlays[] = { "HUD Menu", "Fader Menu", "Cursor Menu", "Mist Menu", "Kinect Menu", "LoadWaitSpinner",
+                "Overlay Menu", "Overlay Interaction Menu" };
+            return std::ranges::find(kOverlays, a_menu) == std::end(kOverlays);
+        }
+
         // A menu that pauses the game stops the Update hook, so publish the cleared input right away
-        // instead of leaving MSC walking with whatever was held.
+        // instead of leaving MSC walking with whatever was held. Any Skyrim menu (Esc, Tab, M,
+        // Favorites, dialogue, the console) also covers MSC's overlay right here, paused or not: the
+        // hands, the look-at prompt, the held drink and items hide until the last one closes.
         class MenuSink : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
         {
         public:
             RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
             {
+                if (a_event && CoversView(a_event->menuName.c_str())) {
+                    const std::string name(a_event->menuName.c_str());
+                    const auto        found = std::ranges::find(open, name);
+                    if (a_event->opening && found == open.end()) {
+                        open.push_back(name);
+                    } else if (!a_event->opening && found != open.end()) {
+                        open.erase(found);
+                    }
+                    const bool covered = !open.empty();
+                    if (covered != shownCovered) {
+                        shownCovered = covered;
+                        SKSE::log::info("player sync: MSC's overlay {} ({} {})", covered ? "hidden" : "shown again", name, a_event->opening ? "opened" : "closed");
+                        Hud::Cover(covered);
+                        SKSE::GetTaskInterface()->AddTask([covered]() {
+                            HeldDrinkView::Cover(covered);
+                            ItemView::Cover(covered);
+                        });
+                    }
+                }
                 if (state.owned && a_event) {
                     // The game may not count as paused yet while the menu is still opening.
                     bool pauses = false;
@@ -1299,6 +1318,10 @@ namespace PerkeleRim::PlayerSync
                 }
                 return RE::BSEventNotifyControl::kContinue;
             }
+
+        private:
+            std::vector<std::string> open;  // menus over the view, by name
+            bool                     shownCovered = false;
         };
     }
 

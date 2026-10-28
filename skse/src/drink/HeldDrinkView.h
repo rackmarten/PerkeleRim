@@ -18,9 +18,12 @@ namespace PerkeleRim::HeldDrinkView
     void OnMessage(const std::uint8_t* a_data, std::uint32_t a_size);  // HeldDrink
 
     // Every frame while MSC has the player, after the camera was posed. a_shown: the camera sits at
-    // MSC's first-person one and no Skyrim menu is up.
+    // MSC's first-person one (not its chase camera).
     void Update(RE::PlayerCharacter* a_player, bool a_shown, float a_delta);
 
     // Out of the hand: the handback, the link down, a load.
     void Clear();
+
+    // A Skyrim menu is over the view: the drink hides until it's gone.
+    void Cover(bool a_covered);
 }
