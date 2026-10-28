@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 48;
+    inline constexpr std::uint32_t kProtocolVersion = 49;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -425,6 +425,7 @@ namespace PerkeleRim::Protocol
         FuelText = 31,         // MSC -> Skyrim
         JunkOut = 32,          // Skyrim -> MSC
         JunkBack = 33,         // MSC -> Skyrim
+        Blackout = 34,         // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -597,11 +598,27 @@ namespace PerkeleRim::Protocol
     // TimePassed (v37): the player waited or slept in Skyrim (the Wait menu, a bed) while MSC has the
     // player. MSC advances its clock and its needs by that many hours (msc/src/Link/Rest.cs).
     inline constexpr std::uint32_t kTimeBed = 0x1;  // TimePassed.flags: slept in a bed, else waited
+    // TimePassed.flags (v49): he woke up from a Blackout (sent with kTimeBed): MSC also sobers him up
+    // by its metabolism over the hours and starts its hangover (msc/src/Link/Blackout.cs).
+    inline constexpr std::uint32_t kTimeBlackout = 0x2;
 
     struct TimePassed
     {
         float         hours;  // game hours that passed, > 0
         std::uint32_t flags;  // kTime*
+    };
+
+    // Blackout (v49): MSC's player blacked out while handed over: drunk past MSC's pass-out line
+    // (msc/src/Link/Blackout.cs) or knocked out. Skyrim fades out, wakes him at a random map marker
+    // in Tamriel some hours later and sends TimePassed with kTimeBed | kTimeBlackout once he stands
+    // there (protocol/cpp/blackout_wake.h).
+    inline constexpr std::uint32_t kBlackoutDrunk = 1;     // Blackout.kind: passed out drunk
+    inline constexpr std::uint32_t kBlackoutKnockout = 2;  // Blackout.kind: knocked out
+
+    struct Blackout
+    {
+        std::uint32_t kind;  // kBlackout*
+        std::uint32_t reserved;
     };
 
     // IntroCue (v41): Kumpo's Helgen intro on a new game (protocol/cpp/intro_cues.h), whoever has the
@@ -1046,6 +1063,8 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ImpactEvent, mass) == 24);
     static_assert(offsetof(ImpactEvent, speed) == 8);
     static_assert(offsetof(ImpactEvent, direction) == 12);
+    static_assert(sizeof(Blackout) == 8);
+    static_assert(offsetof(Blackout, reserved) == 4);
     static_assert(sizeof(IntroCue) == 8);
     static_assert(offsetof(IntroCue, reserved) == 4);
     static_assert(sizeof(PlayerShout) == 16);

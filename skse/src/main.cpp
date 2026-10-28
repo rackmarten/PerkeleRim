@@ -2,6 +2,7 @@
 // Documents/My Games/Skyrim Special Edition/SKSE/PerkeleRim.log.
 
 #include "autoload/Autoload.h"
+#include "blackout/Blackout.h"
 #include "collision/CollisionSampler.h"
 #include "combat/Combat.h"
 #include "death/Death.h"
@@ -48,12 +49,14 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::Rest::OnDataLoaded();
             PerkeleRim::HitTest::OnDataLoaded();
             PerkeleRim::MscMenuView::OnDataLoaded();
+            PerkeleRim::Blackout::OnDataLoaded();
         } else if (a_msg->type == SKSE::MessagingInterface::kPreLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
             PerkeleRim::Death::Hide();  // the reload after a death
             PerkeleRim::Rest::OnGameLoad();  // before the release: MSC stops pissing and the like at once
             PerkeleRim::PlayerSync::OnGameLoad();
             if (a_msg->type == SKSE::MessagingInterface::kNewGame) {
                 PerkeleRim::Intro::OnNewGame();
+                PerkeleRim::Blackout::OnGameLoaded();
                 PerkeleRim::PlayerSync::OnGameLoaded();
             }
         } else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame) {
@@ -62,6 +65,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::Combat::OnGameLoaded();
             PerkeleRim::HitTest::OnGameLoaded();
             PerkeleRim::Intro::OnGameLoaded();
+            PerkeleRim::Blackout::OnGameLoaded();
             if (a_msg->data) {  // the load worked (its success flag is the pointer's value)
                 PerkeleRim::PlayerSync::OnGameLoaded();  // after SaveSync's MscLoad
             }

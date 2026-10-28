@@ -256,7 +256,7 @@ Not in the detail dump; read from the scene file (`level2`) by the strings aroun
 
 PassOut's flow: `Test alc` -> `Check hunger` (the Finnish wedding achievement, `PassingOutTime` from hunger, a wait) -> `Still drunk check` (back to `Test alc` if sober enough) -> `Pass out` (activates the blackout screen, `Data.DrunkPassingOut` +1, `sleep_on`, `GameVolume` eased down) -> `Move` (PLAYER out of any vehicle, MouseLook off, `PlayerStop`, `PlayerCurrentVehicle = ""`) -> `State 2` (`PlayerSleeps`, global `PASSOUT`) -> `Calc rates` (needs rates for the time asleep) -> `Check time of day` / `Advance day` / `Check day` / `Monday` -> `Jail?` -> `Where?` (distance to `WakePivot`, PLAYER parented to `WakePivot`, a random pick) -> `Random pos` (a random child of `Spawn`), `Cottage` or `Pena` (Fittan's `DRUNKSPAWN`) -> `Set position` (`WakePivot` to `PlayerPos`) -> `Wake up` (`sleep_off`, `WAKEUP`, volume back) -> `AnimateWake` (turns `WakePivot` to stand up) -> `State 5` (a groan, PLAYER let go, MouseLook on, `PlayerSleeps`/`PlayerSeated`/`PlayerComputer`/`PlayerStop` false, the hangover) -> `Test alc`. KnockOut has the same states from `State 1` without the alcohol and spawn checks.
 
-PerkeleRim switches both FSMs off while the link is up and ends one that runs anyway (`msc/src/Game/PassOutGuard.cs`).
+PerkeleRim switches both FSMs off while the link is up and ends one that runs anyway (`msc/src/Game/PassOutGuard.cs`), and blacks the player out its own way instead: Skyrim wakes him at a random map marker (PROTOCOL.md, [Blackouts](PROTOCOL.md#blackouts)).
 
 ## Global variables of interest
 

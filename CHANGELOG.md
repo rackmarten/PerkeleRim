@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Blackouts: drinking past My Summer Car's pass-out line (or being knocked out) while Kumpo is handed over fades Skyrim to black, and he wakes up hours later somewhere else in Skyrim, at a random town, farm, mill, stable or dock, on solid ground, with My Summer Car's needs moved on as for a night's sleep, its hangover shaking the view and his hangover groan. He used to fall through the world (protocol v49).
 - Skyrim's food and drink feed Kumpo: eating lowers My Summer Car's hunger, drinks lower thirst, and ale, mead, wine, brandy and Skooma raise his drunk level by strength. A bottle of alcohol leaves an empty bottle in the inventory, and once the inventory is closed Kumpo drinks it in My Summer Car (once, however many he had). MSC Beer and MSC's food can be eaten and drunk from Skyrim's inventory too.
 - Every drink has its own bottle: once the inventory is closed Kumpo drinks ale and mead from My Summer Car's beer bottle, wine, brandy and Sujamma from its booze bottle, Skooma from its spirit bottle (without My Summer Car's chance of going blind), milk from the carton and juice from the juice. Each bottle of alcohol leaves its own empty: Empty Bottle for ale and mead, Empty Wine Bottle, Empty Liquor Bottle and Empty Skooma Bottle.
 - Drunk by bottle: a mead gets Kumpo a little drunker than an ale, a whole bottle of wine about three beers, brandy and Sujamma like My Summer Car's booze bottle.
