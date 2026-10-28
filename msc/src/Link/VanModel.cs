@@ -21,8 +21,10 @@ namespace PerkeleRim
         public static readonly string[] Skip = { "(^|/)coll", "^DeadBody" };
 
         // The lights (switched-on lamps, gauge lights, dashboard indicators): drawn glowing. The Gifu's
-        // lit head and tail lamps are one mesh beside its PowerON, not in it.
-        public static readonly string[] Lights = { "Electricity/PowerON", "Electricity/Driving/DrivingLights", "GaugesLights", "Dashboard/Indicators/" };
+        // lit head and tail lamps are one mesh beside its PowerON, not in it; its beacons' lit domes and
+        // its work lights' lit quads are shown only while on.
+        public static readonly string[] Lights = { "Electricity/PowerON", "Electricity/Driving/DrivingLights", "GaugesLights", "Dashboard/Indicators/",
+            "/LightDomeON$", "work_lights/WorkLight" };
 
         public static readonly string[] SkipMaterials = { "Default-Material" };
 
@@ -41,9 +43,12 @@ namespace PerkeleRim
 
         // What a Unity Light below the vehicle is for (Wire.Light*), 0 = Skyrim doesn't draw it (the
         // blinkers, the moped's dummy). Paths are the van's, the moped's and the Kekmet's: beams are
-        // spots below BeamsShort / BeamsLong, the van's tail lights sit below both of them.
+        // spots below BeamsShort / BeamsLong, the van's tail lights sit below both of them. The Gifu's
+        // work lights and beacons go by their objects' names, whatever their type.
         public static uint LightRole(string path, bool spot)
         {
+            if (path.Contains("work_lights/")) return Wire.LightWork;
+            if (path.Contains("/Beacon/")) return Wire.LightBeacon;
             if (path.Contains("Indicator") || path.Contains("Blinkers")) return 0;
             if (spot && path.Contains("BeamsLong")) return Wire.LightHigh;
             if (spot && path.Contains("BeamsShort")) return Wire.LightLow;

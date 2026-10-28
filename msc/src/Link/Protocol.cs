@@ -86,6 +86,8 @@ namespace PerkeleRim.Protocol
         public const uint LightBrake = 4;
         public const uint LightReverse = 5;
         public const uint LightInterior = 6;
+        public const uint LightWork = 7;
+        public const uint LightBeacon = 8;
         public const uint ModelTextureRgba8 = 1;
         public const uint ModelTextureSizeMax = 2048;
         public const uint ModelMeshVertexMax = 65535;
