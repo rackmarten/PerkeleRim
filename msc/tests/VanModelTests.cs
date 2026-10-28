@@ -30,6 +30,10 @@ namespace PerkeleRim.Tests
             Assert.That(VanModel.LightRole("KEKMET/LOD/InteriorLight/Light", false), Is.EqualTo(Wire.LightInterior));
             Assert.That(VanModel.LightRole("HAYOSIKO/LOD/Electricity/PowerON/Blinkers/Left/FrontIndicator", false), Is.EqualTo(0u));
             Assert.That(VanModel.LightRole("JONNEZ ES(Clone)/LOD/Suspension/Steering/SteeringPivot/Headlight/Light", false), Is.EqualTo(0u));
+            Assert.That(VanModel.LightRole("LOD/work_lights/WorkLightLeft", true), Is.EqualTo(Wire.LightWork));
+            Assert.That(VanModel.LightRole("LOD/Beacon/BeaconRight/LightDomeON/Light", true), Is.EqualTo(Wire.LightBeacon));
+            Assert.That(VanModel.LightRole("LOD/Beacon/BeaconLeft/LightDomeON/Light", false), Is.EqualTo(Wire.LightBeacon));
+            Assert.That(VanModel.LightRole("Dashboard/Knobs/KnobBeacon/Pivot/mesh", false), Is.EqualTo(0u));
         }
 
         [Test]
@@ -40,6 +44,10 @@ namespace PerkeleRim.Tests
             Assert.That(VanModel.IsLight("LOD/Electricity/Driving/DrivingLights"));  // the Gifu's lamps
             Assert.That(VanModel.IsLight("LOD/Dashboard/Indicators/indicator_oil"));
             Assert.That(VanModel.IsLight("LOD/Dashboard/Gauges/NeedleFuel/Needle"), Is.False);
+            Assert.That(VanModel.IsLight("LOD/Beacon/BeaconLeft/LightDomeON"));  // the Gifu's beacons and work lights
+            Assert.That(VanModel.IsLight("LOD/Beacon/BeaconLeft/LightDomeOFF"), Is.False);
+            Assert.That(VanModel.IsLight("LOD/work_lights/WorkLightRight/Quad 1"));
+            Assert.That(VanModel.IsLight("LOD/work_lights"), Is.False, "the lamp housings");
             var lit = VanModel.Lit(new ModelMaterialData { Flags = Wire.MaterialBlend, Glossiness = 0.4f });
             Assert.That(lit.Emissive, Is.EqualTo(new[] { VanModel.Glow, VanModel.Glow, VanModel.Glow }));
             Assert.That(lit.Flags, Is.EqualTo(Wire.MaterialBlend));

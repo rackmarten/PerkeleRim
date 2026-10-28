@@ -815,6 +815,8 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kLightBrake = 4;            // brake light
     inline constexpr std::uint32_t kLightReverse = 5;          // reversing light
     inline constexpr std::uint32_t kLightInterior = 6;         // cabin light
+    inline constexpr std::uint32_t kLightWork = 7;             // work light (the Gifu's, over its tail)
+    inline constexpr std::uint32_t kLightBeacon = 8;           // rotating beacon (the Gifu's, on its roof)
     inline constexpr std::uint32_t kModelNodeNameMax = 64;     // ModelNode.name bytes, UTF-8, zero padded
     inline constexpr std::uint32_t kModelTextureRgba8 = 1;     // ModelTexture.format
     inline constexpr std::uint32_t kModelTextureSizeMax = 2048;  // width and height limit
