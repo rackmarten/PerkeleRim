@@ -26,38 +26,6 @@ namespace PerkeleRim::ItemView
             std::size_t                                                                 shown = 0;  // last logged
         } state;
 
-        // A copy of a Skyrim form's own model (thrown junk), without its collision: it only shows
-        // where MSC's body for it is. Null when the form has no model or it didn't load.
-        RE::NiPointer<RE::NiNode> FormModel(RE::FormID a_form)
-        {
-            if (state.failed.contains(a_form)) {
-                return nullptr;
-            }
-            auto* form = RE::TESForm::LookupByID(a_form);
-            auto* model = form ? form->As<RE::TESModel>() : nullptr;
-            const char* path = model ? model->GetModel() : nullptr;
-            RE::NiPointer<RE::NiNode> loaded;
-            const auto full = path && *path ? fmt::format("Meshes\\{}", path) : std::string();
-            if (full.empty() || RE::BSModelDB::Demand(full.c_str(), loaded, {}) != RE::BSResource::ErrorCode::kNone || !loaded) {
-                state.failed.insert(a_form);
-                SKSE::log::warn("item view: no model for {:08X} ({})", a_form, full.empty() ? "it has none" : full);
-                return nullptr;
-            }
-            auto* clone = loaded->Clone();
-            RE::NiPointer<RE::NiNode> node(clone ? clone->AsNode() : nullptr);
-            if (!node) {
-                state.failed.insert(a_form);
-                SKSE::log::warn("item view: {} didn't copy", full);
-                return nullptr;
-            }
-            RE::BSVisit::TraverseScenegraphObjects(node.get(), [](RE::NiAVObject* a_object) {
-                a_object->collisionObject.reset();
-                return RE::BSVisit::BSVisitControl::kContinue;
-            });
-            SKSE::log::info("item view: {} for {:08X}", full, a_form);
-            return node;
-        }
-
         // The node the player's own 3D hangs in, like VehicleView, so items are lit and culled like the world.
         RE::NiNode* Scene()
         {
@@ -104,6 +72,36 @@ namespace PerkeleRim::ItemView
             RE::NiUpdateData update{};
             a_node.Update(update);
         }
+    }
+
+    RE::NiPointer<RE::NiNode> FormModel(RE::FormID a_form)
+    {
+        if (state.failed.contains(a_form)) {
+            return nullptr;
+        }
+        auto* form = RE::TESForm::LookupByID(a_form);
+        auto* model = form ? form->As<RE::TESModel>() : nullptr;
+        const char* path = model ? model->GetModel() : nullptr;
+        RE::NiPointer<RE::NiNode> loaded;
+        const auto full = path && *path ? fmt::format("Meshes\\{}", path) : std::string();
+        if (full.empty() || RE::BSModelDB::Demand(full.c_str(), loaded, {}) != RE::BSResource::ErrorCode::kNone || !loaded) {
+            state.failed.insert(a_form);
+            SKSE::log::warn("item view: no model for {:08X} ({})", a_form, full.empty() ? "it has none" : full);
+            return nullptr;
+        }
+        auto* clone = loaded->Clone();
+        RE::NiPointer<RE::NiNode> node(clone ? clone->AsNode() : nullptr);
+        if (!node) {
+            state.failed.insert(a_form);
+            SKSE::log::warn("item view: {} didn't copy", full);
+            return nullptr;
+        }
+        RE::BSVisit::TraverseScenegraphObjects(node.get(), [](RE::NiAVObject* a_object) {
+            a_object->collisionObject.reset();
+            return RE::BSVisit::BSVisitControl::kContinue;
+        });
+        SKSE::log::info("item view: {} for {:08X}", full, a_form);
+        return node;
     }
 
     void Update(const Protocol::ItemState* a_state, std::uint32_t a_generation)

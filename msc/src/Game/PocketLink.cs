@@ -88,6 +88,7 @@ namespace PerkeleRim.Game
         readonly float[] shownNeeds = new float[ShowNeeds.Length];
         bool showing, showPending;
         uint showDrink;  // the strongest drink since the last one shown (Wire.Drink*)
+        uint showForm;   // its Skyrim item (ConsumeEvent.form), whose model Kumpo holds
         float showUntil;
 
         // Skyrim paused by a menu (PlayerLink sets it): a shown drink waits until the menu is closed.
@@ -171,6 +172,7 @@ namespace PerkeleRim.Game
             if (drinkQueued != 0) AdvanceQueuedDrink(link);
             if (showing) HoldShownNeeds();
             EndShow();
+            DrinkShow.Update(link, showing, log);
             if (toolsBack && drinkQueued == 0 && Time.realtimeSinceStartup >= toolsBackAt && !Global("PlayerDrinkOn"))
             {
                 toolsBack = false;
@@ -272,7 +274,13 @@ namespace PerkeleRim.Game
                 shownNeeds[3] = Consumption.AddDrunk(shownNeeds[3], e.drunk);
             }
             // One drinking for however many drinks, the strongest bottle, once the inventory is closed.
-            if (Consumption.DrinkEvent(e.drink) != null) { showDrink = Consumption.Shown(showDrink, e.drink); showPending = true; }
+            if (Consumption.DrinkEvent(e.drink) != null)
+            {
+                var shown = Consumption.Shown(showDrink, e.drink);
+                if (shown != showDrink) showForm = e.form;
+                showDrink = shown;
+                showPending = true;
+            }
         }
 
         // ---- Keys ----
@@ -556,9 +564,11 @@ namespace PerkeleRim.Game
         {
             if (!show && !Send(link, (int)Wire.PocketBeer, -1)) { log("pocket: the link is full, no beer"); toolsBackAt = 0f; return; }
             uint drink = show ? showDrink : Wire.DrinkBeer;
+            uint form = show ? showForm : 0u;
             if (show)
             {
                 showDrink = Wire.DrinkNone;
+                showForm = 0;
                 // MSC's drink counts its own needs: put them back as they were once it's down.
                 var globals = FsmVariables.GlobalVariables;
                 for (int i = 0; i < ShowNeeds.Length; i++)
@@ -573,7 +583,7 @@ namespace PerkeleRim.Game
             bottlesBefore.Clear();
             foreach (var go in EmptyBottles(show)) bottlesBefore.Add(go.GetInstanceID());
             if (!show) PlayMakerFSM.BroadcastEvent("DRINKBEER");
-            else if (!DrinkShow.Start(drink, log)) { showing = false; return; }
+            else if (!DrinkShow.Start(drink, form, log)) { showing = false; return; }
             if (toolsBack) toolsBackAt = Time.realtimeSinceStartup + DrinkTime;
             emptyUntil = Consumption.Throws(drink) ? Time.realtimeSinceStartup + EmptyWait : -1f;
             // As the case does: no smoking or gestures until the beer is down.

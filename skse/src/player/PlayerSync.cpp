@@ -8,6 +8,7 @@
 #include "death/Death.h"
 #include "debug/HitTest.h"
 #include "drink/Drink.h"
+#include "drink/HeldDrinkView.h"
 #include "fuel/Fuel.h"
 #include "garage/Garage.h"
 #include "hud/Hud.h"
@@ -93,6 +94,7 @@ namespace PerkeleRim::PlayerSync
             float          waterLevel = 0.0f;  // fraction of Kumpo under water, for the log
             RE::NiPoint3   eye;              // Skyrim's camera relative to the placed feet (MSC's eye), 0 when not posed
             float          savedFov = 0.0f;   // Skyrim's worldFOV before MSC's took over, 0 = untouched
+            float          savedFirstPersonFov = 0.0f;  // and its firstPersonFOV
             bool           wasThirdPerson = false;  // Skyrim's camera was third person at the handover
             std::string    lookAt;            // MSC's interaction text
             bool           lookAtUse = false; // MSC shows its hand icon
@@ -254,6 +256,7 @@ namespace PerkeleRim::PlayerSync
             if (state.savedFov > 0.0f) {
                 if (auto* camera = RE::PlayerCamera::GetSingleton()) {
                     camera->GetRuntimeData2().worldFOV = state.savedFov;
+                    camera->GetRuntimeData2().firstPersonFOV = state.savedFirstPersonFov;
                 }
                 state.savedFov = 0.0f;
             }
@@ -276,6 +279,7 @@ namespace PerkeleRim::PlayerSync
             NeedEffects::Stop();
             VehicleView::Hide();
             ItemView::Clear();
+            HeldDrinkView::Clear();
             ParticleView::Hide();
             HandView::Hide();
             Publish();
@@ -673,8 +677,10 @@ namespace PerkeleRim::PlayerSync
                 auto& data = camera->GetRuntimeData2();
                 if (state.savedFov <= 0.0f) {
                     state.savedFov = data.worldFOV;
+                    state.savedFirstPersonFov = data.firstPersonFOV;
                 }
                 data.worldFOV = Camera::SkyrimFov(a_pose.fov);
+                data.firstPersonFOV = data.worldFOV;  // the held drink (HeldDrinkView) in the first-person scene lines up with MSC's hand
             }
             return true;
         }
@@ -878,6 +884,10 @@ namespace PerkeleRim::PlayerSync
                     Blackout::OnMessage(a_data, a_size);
                     return;
                 }
+                if (a_type == Protocol::MessageType::HeldDrink) {
+                    HeldDrinkView::OnMessage(a_data, a_size);
+                    return;
+                }
                 if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle &&
                     a_type != Protocol::MessageType::GearText && a_type != Protocol::MessageType::FuelText) {
                     return;
@@ -949,6 +959,7 @@ namespace PerkeleRim::PlayerSync
             HandView::Update(link.ReadHandLayer(hands) ? &hands : nullptr, a_delta);
             Combat::Update(a_player, state.generation, a_delta);
             const bool menu = MenuHasInput();
+            HeldDrinkView::Update(a_player, posed && !chase && !menu, a_delta);  // hidden under a menu, like the hands
             Combat::Disarm(a_player);
             Combat::Drunk(a_player, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, a_delta);
             NeedEffects::Update(a_player, state.hasNeeds ? &state.needs : nullptr, a_delta);
@@ -975,7 +986,9 @@ namespace PerkeleRim::PlayerSync
             hud.money = Pocket::Money(a_player);
             hud.hasNeeds = state.hasNeeds;
             hud.needs = state.needs;
-            hud.handsImage = HandView::Image();
+            // The HUD movie stays up under Skyrim's menus (inventory, Favorites, dialogue) and its clips
+            // with it: MSC's hands (a drink, a cigarette) hide while one has the input.
+            hud.handsImage = menu ? std::string() : HandView::Image();
             hud.handsWidth = HandView::Width();
             hud.handsHeight = HandView::Height();
             hud.handsLight = HandView::Light(a_player);

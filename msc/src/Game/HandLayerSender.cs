@@ -20,7 +20,7 @@ namespace PerkeleRim.Game
     // with its own light at the player.
     public sealed class HandLayerSender
     {
-        const string HandCameraPath = "PLAYER/Pivot/AnimPivot/Camera/FPSCamera/FPSCamera/HandCamera";
+        internal const string HandCameraPath = "PLAYER/Pivot/AnimPivot/Camera/FPSCamera/FPSCamera/HandCamera";
         const float StatWindow = 5f;
         const float FarClip = 20f;         // HandCamera stops at 5 m, which cuts the piss stream
         const float LightsRefresh = 2f;    // seconds between scans for MSC's lights
@@ -29,6 +29,9 @@ namespace PerkeleRim.Game
         public static bool SaveRequested;   // spike "handlayer save"
         public static bool Tint;            // spike "handlayer tint": a see-through red background, to check Skyrim draws the layer
         public static float Ambient = 0.5f, Sun = 0.8f;  // spike "handlayer light <ambient> <sun>": the neutral lighting
+        // Drawn as see-through holes in the layer (DrinkShow: MSC's bottle while Skyrim draws its own
+        // there): they hide what's behind them, the fingers round the back, and show Skyrim's frame.
+        public static Renderer[] Holes;
 
         readonly Action<string> log;
         readonly bool direct;
@@ -56,6 +59,8 @@ namespace PerkeleRim.Game
         readonly Dictionary<Material, Material> alphaMaterials = new Dictionary<Material, Material>();
         Shader alphaShader;
         bool alphaShaderTried;
+        Material holeMaterial;
+        bool holeTried;
         RenderTexture target;
         SharedTexture shared;
         uint copies;
@@ -269,6 +274,7 @@ namespace PerkeleRim.Game
             }
 
             SwapParticleMaterials();
+            SwapHoles();
         }
 
         internal void EndRender()
@@ -308,6 +314,40 @@ namespace PerkeleRim.Game
                 r.sharedMaterials = replaced;
             }
         }
+
+        // Holes: all their materials become one that writes depth and transparent black, so whatever
+        // is behind them is cut out (in front of them it's depth tested as usual).
+        void SwapHoles()
+        {
+            var holes = Holes;
+            if (holes == null || holes.Length == 0) return;
+            if (!holeTried)
+            {
+                holeTried = true;
+                var m = new Material(HoleSource) { name = "PerkeleRim.Hole" };
+                holeMaterial = m.shader != null && m.shader.isSupported ? m : null;
+                log(holeMaterial != null ? "hand layer: hole shader ready" : "hand layer: hole shader NOT supported, held bottles show MSC's");
+            }
+            if (holeMaterial == null) return;
+            foreach (var r in holes)
+            {
+                if (r == null || !r.enabled) continue;
+                var originals = r.sharedMaterials;
+                var replaced = new Material[originals.Length];
+                for (int i = 0; i < replaced.Length; i++) replaced[i] = holeMaterial;
+                swapped.Add(r);
+                swappedOriginals.Add(originals);
+                r.sharedMaterials = replaced;
+            }
+        }
+
+        // Transparent black with depth, drawn before the opaque things (the hand), both sides of its faces.
+        const string HoleSource = @"Shader ""PerkeleRim/Hole"" {
+SubShader {
+  Tags { ""Queue""=""Geometry-1"" ""RenderType""=""Opaque"" }
+  Pass { ZWrite On ZTest LEqual Cull Off Lighting Off Fog { Mode Off } Blend Off ColorMask RGBA Color (0,0,0,0) }
+}
+}";
 
         Material AlphaWriting(Material original)
         {

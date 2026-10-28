@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 49;
+        public const uint ProtocolVersion = 50;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -180,6 +180,7 @@ namespace PerkeleRim.Protocol
         JunkOut = 32,
         JunkBack = 33,
         Blackout = 34,
+        HeldDrink = 35,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -738,6 +739,17 @@ namespace PerkeleRim.Protocol
         public float urine;
         public float drunk;
         public uint drink;
+        public uint form;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct HeldDrink
+    {
+        public uint form;
+        public uint reserved;
+        public fixed float bottom[3];
+        public fixed float top[3];
+        public fixed float side[3];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
