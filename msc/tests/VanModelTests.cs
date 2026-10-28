@@ -37,6 +37,7 @@ namespace PerkeleRim.Tests
         {
             Assert.That(VanModel.IsLight("LOD/Electricity/PowerON/Brake/brake"));
             Assert.That(VanModel.IsLight("LOD/Dashboard/Gauges/GaugesLights"));
+            Assert.That(VanModel.IsLight("LOD/Electricity/Driving/DrivingLights"));  // the Gifu's lamps
             Assert.That(VanModel.IsLight("LOD/Dashboard/Indicators/indicator_oil"));
             Assert.That(VanModel.IsLight("LOD/Dashboard/Gauges/NeedleFuel/Needle"), Is.False);
             var lit = VanModel.Lit(new ModelMaterialData { Flags = Wire.MaterialBlend, Glossiness = 0.4f });
