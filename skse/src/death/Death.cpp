@@ -225,6 +225,23 @@ namespace PerkeleRim::Death
             damage.cause == Protocol::kDamageCrash ? "an MSC crash" : "an MSC death (not a crash)");
     }
 
+    void Starve(RE::PlayerCharacter* a_player, float a_amount)
+    {
+        if (a_amount <= 0.0f || state.lethal) {
+            return;
+        }
+        auto*       values = a_player->AsActorValueOwner();
+        const float health = values->GetActorValue(RE::ActorValue::kHealth);
+        if (a_amount >= health) {
+            SKSE::log::info("death: Kumpo starved (hunger or thirst), {:.1f} health left", health);
+            state.lethal = true;
+            state.lethalDamage = a_amount;
+            return;
+        }
+        const Safe::OwnDamage own;  // no grunt or blood a frame: it's slow
+        values->DamageActorValue(RE::ActorValue::kHealth, a_amount);
+    }
+
     void OnConsumed(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
     {
         Protocol::Consumed consumed{};

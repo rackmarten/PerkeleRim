@@ -171,8 +171,7 @@ namespace PerkeleRim.Game
 
         // t in the root's frame without the root's position and rotation (the model carries the scale, a
         // pose only moves and turns it). Built from local transforms: going through world matrices out
-        // on the island (10 km from Unity's origin) left millimeters of noise, so equal items got
-        // different keys.
+        // on the island (kilometers from Unity's origin) left noise, so equal items got different keys.
         public static Matrix4x4 RelativeTo(Transform root, Transform t)
         {
             var m = Matrix4x4.identity;
@@ -217,6 +216,7 @@ namespace PerkeleRim.Game
                 queued.Remove(job.Id);  // its renderers went off since the scan; asked again by the next one
                 yield break;
             }
+            LinkHost.KeepAlive();
             var blob = model.Encode();
             foreach (var payload in ModelData.Split(blob, job.Id)) pending.Enqueue(payload);
             pendingId = job.Id;
@@ -259,6 +259,7 @@ namespace PerkeleRim.Game
         // root), named name and "name#<n>" from the second submesh on.
         public void AddRenderer(ModelData model, Materials materials, MeshRenderer renderer, Matrix4x4 m, string name, int node, Look look)
         {
+            LinkHost.KeepAlive();  // a big vehicle's read outlasts the link's timeout
             var filter = renderer.GetComponent<MeshFilter>();
             var mesh = filter != null ? filter.sharedMesh : null;
             if (mesh == null) return;
@@ -473,6 +474,7 @@ namespace PerkeleRim.Game
         // Straight from the texture when it is readable, else drawn into a RenderTexture and read back.
         static ModelTextureData Pixels(Texture texture, Action<string> log)
         {
+            LinkHost.KeepAlive();
             var data = Direct(texture as Texture2D) ?? Blitted(texture);
             var t2 = texture as Texture2D;
             log($"model: texture {texture.name} {(t2 != null ? t2.format.ToString() : texture.GetType().Name)} {texture.width}x{texture.height} -> " +

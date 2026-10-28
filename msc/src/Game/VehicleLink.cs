@@ -6,9 +6,9 @@ namespace PerkeleRim.Game
 {
     // One MSC vehicle on the collision island, driven by PlayerLink (one instance per vehicle):
     //  - when the player is put down on a new anchor on foot, the vehicle is parked next to it, or
-    //    at the spot the anchor names for it (ParkAt); a vehicle on call (the moped, the Kekmet) is
-    //    instead put away until the player calls it (Summon), which parks it in front of the player
-    //    wherever it was;
+    //    at the spot the anchor names for it (ParkAt); a vehicle on call (the moped, the Kekmet, the
+    //    Gifu) is instead put away until the player calls it (Summon), which parks it in front of the
+    //    player wherever it was;
     //  - when the player sits in it, the vehicle carries the player to the new anchor instead;
     //  - while there is no island ground under it, it is held (kinematic) and keeps its speed for
     //    when the ground arrives, so it never falls off the edge of the streamed area;
@@ -23,7 +23,7 @@ namespace PerkeleRim.Game
         const float GroundCheckEvery = 0.25f;
         // Half width and half length (meters) of the ground that must be flat where a vehicle parks
         // (van sized; generous for the moped), and how uneven it may be.
-        static readonly Vector2 ParkHalfSize = new Vector2(1f, 2.3f);
+        static readonly Vector2 VanHalfSize = new Vector2(1f, 2.3f);
         // The parts MSC turns and spins per wheel, in VehicleState.wheelSpin order (the van's names).
         static readonly string[] WheelModels = { "wheelFL/tire", "wheelFR/tire", "wheelRL/tire", "wheelRR/tire" };
 
@@ -97,9 +97,12 @@ namespace PerkeleRim.Game
         public string ObjectName => objectName;
         public Vector3 Position => car != null ? car.position : Vector3.zero;
         public int Moves { get; private set; }
-        // The moped keeps a full tank (MSC fills it only from a two-stroke jerry can); the van and the
-        // Kekmet burn their diesel and fill up at Skyrim's pumps (FuelLink).
+        // The moped keeps a full tank (MSC fills it only from a two-stroke jerry can); the van, the
+        // Kekmet and the Gifu burn their diesel and fill up at Skyrim's pumps (FuelLink).
         public bool EndlessFuel { get; set; }
+        // Half width and half length (meters) of the ground that must be flat where it parks, around
+        // its origin: van sized unless set (the Gifu's is longer).
+        public Vector2 ParkHalfSize { get; set; } = VanHalfSize;
         public string Contact(float within) => tune.Contact(within);
         // The driven vehicle's impacts this physics step (CrashSensor), for the engine's stall guard.
         public void Impacts(bool inImpact, float impact) => tune.Impacts(inImpact, impact);
@@ -113,11 +116,21 @@ namespace PerkeleRim.Game
             }
         }
 
+        // The active root object named name. GameObject.Find reads a '/' as a path, and the Gifu's
+        // name has one (GIFU(750/450psi)), so such a name is looked up among the rigidbodies instead.
+        static GameObject FindRoot(string name)
+        {
+            if (name.IndexOf('/') < 0) return GameObject.Find(name);
+            foreach (var body in UnityEngine.Object.FindObjectsOfType<Rigidbody>())
+                if (body.transform.parent == null && body.name == name) return body.gameObject;
+            return null;
+        }
+
         public void Find()
         {
             if (car != null || Time.realtimeSinceStartup < nextFind) return;
             nextFind = Time.realtimeSinceStartup + 1f;
-            var go = GameObject.Find(objectName);
+            var go = FindRoot(objectName);
             if (go == null) return;
             car = go.transform;
             body = go.GetComponent<Rigidbody>();

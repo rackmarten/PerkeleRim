@@ -10,7 +10,10 @@
 #include "fuel/Fuel.h"
 #include "garage/Garage.h"
 #include "intro/Intro.h"
+#include "junk/ThrowJunk.h"
 #include "link/LinkService.h"
+#include "menu/MscMenuView.h"
+#include "needs/NeedEffects.h"
 #include "player/PlayerSync.h"
 #include "pocket/Pocket.h"
 #include "rest/Rest.h"
@@ -19,7 +22,7 @@
 
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
-    SKSE::Init(a_skse);
+    SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 64 });  // MetalHit's call hook
 
     SKSE::log::info(
         "PerkeleRim loaded (plugin {}, Skyrim runtime {})",
@@ -37,11 +40,14 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::Intro::OnDataLoaded();
             PerkeleRim::Drink::OnDataLoaded();
             PerkeleRim::Pocket::OnDataLoaded();
+            PerkeleRim::ThrowJunk::OnDataLoaded();
             PerkeleRim::CollisionSampler::OnDataLoaded();
             PerkeleRim::Combat::OnDataLoaded();
+            PerkeleRim::NeedEffects::OnDataLoaded();
             PerkeleRim::Autoload::OnDataLoaded();
             PerkeleRim::Rest::OnDataLoaded();
             PerkeleRim::HitTest::OnDataLoaded();
+            PerkeleRim::MscMenuView::OnDataLoaded();
         } else if (a_msg->type == SKSE::MessagingInterface::kPreLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
             PerkeleRim::Death::Hide();  // the reload after a death
             PerkeleRim::Rest::OnGameLoad();  // before the release: MSC stops pissing and the like at once

@@ -73,6 +73,20 @@ TEST_CASE("a thrown item hits by its speed, up to two sober punches")
     CHECK(Damage::Thrown(-5.0f, 15.0f) == 0.0f);
 }
 
+TEST_CASE("a thrown item hits by its weight too, MSC's bottle as before")
+{
+    const float punch = Damage::Punch(4.0f);
+    const float bottle = Damage::Thrown(punch, 15.0f);
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f) == doctest::Approx(bottle));  // unknown: the bottle
+    CHECK(Damage::Thrown(punch, 15.0f, Damage::kThrownMassBase) == doctest::Approx(bottle));
+    CHECK(Damage::Thrown(punch, 15.0f, 2.0f) == doctest::Approx(bottle * 2.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.25f) == doctest::Approx(bottle * 0.7071f).epsilon(0.001));  // a cabbage
+    CHECK(Damage::Thrown(punch, 15.0f, 0.01f) == doctest::Approx(bottle * Damage::kThrownMassMin));
+    CHECK(Damage::Thrown(punch, 15.0f, 50.0f) == doctest::Approx(bottle * Damage::kThrownMassMax));
+    CHECK(Damage::Thrown(punch, 2.0f, 50.0f) == 0.0f);  // weight doesn't help a throw too slow to hurt
+    CHECK(Damage::ThrownMass(-1.0f) == 1.0f);
+}
+
 TEST_CASE("a throw from sneak at someone who does not see Kumpo doubles")
 {
     CHECK(Damage::SneakAttack(true, 0) == 2.0f);
@@ -237,10 +251,11 @@ TEST_CASE("a thrown item's way passes a destructible or not")
     CHECK(Damage::SegmentDistance(from, from, beside) == doctest::Approx(std::sqrt(10.0f * 10.0f + 25.0f * 25.0f)));  // no way at all
 }
 
-TEST_CASE("the van and the Kekmet are safe seats, the moped is not")
+TEST_CASE("the van, the Kekmet and the Gifu are safe seats, the moped is not")
 {
     CHECK(Damage::SafeSeat(Protocol::kVehicleHayosiko));
     CHECK(Damage::SafeSeat(Protocol::kVehicleKekmet));
+    CHECK(Damage::SafeSeat(Protocol::kVehicleGifu));
     CHECK_FALSE(Damage::SafeSeat(Protocol::kVehicleJonnez));
     CHECK_FALSE(Damage::SafeSeat(0));  // on foot
 }
@@ -248,6 +263,7 @@ TEST_CASE("the van and the Kekmet are safe seats, the moped is not")
 TEST_CASE("enemy hits cost nothing in a safe seat, everything elsewhere")
 {
     CHECK(Damage::Incoming(Protocol::kVehicleKekmet, 80.0f) == 0.0f);
+    CHECK(Damage::Incoming(Protocol::kVehicleGifu, 80.0f) == 0.0f);
     CHECK(Damage::Incoming(Protocol::kVehicleHayosiko, 500.0f) == 0.0f);
     CHECK(Damage::Incoming(Protocol::kVehicleJonnez, 80.0f) == doctest::Approx(80.0f));
     CHECK(Damage::Incoming(0, 80.0f) == doctest::Approx(80.0f));

@@ -12,6 +12,9 @@ namespace PerkeleRim.Game
     // transparent background, and right after it rendered the texture is copied into one Skyrim
     // opens on the GPU (SharedTexture). Only while the player is handed over, and only with MSC
     // started with -force-gfx-direct (scripts/launch-msc.ps1 does that).
+    // While Skyrim shows MSC's options menu (F1, MscMenuLink) the same texture holds the menu
+    // instead: a hidden copy of the menu's camera renders it on a transparent background
+    // (kHandLayerMenu), and the hands are off.
     // The hidden render is lit neutrally (BeginRender/EndRender: fixed ambient and one light of
     // our own instead of MSC's), so the layer looks the same at any MSC hour; Skyrim tints it
     // with its own light at the player.
@@ -35,6 +38,8 @@ namespace PerkeleRim.Game
 
         Camera handCamera;
         Camera camera;
+        Camera menuCamera;  // the copy of MSC's menu camera, below it
+        Camera menuSource;  // MSC's menu camera while it has Skyrim's aspect
         GameObject[] strays = new GameObject[0];
         int handLayer = -1;
         bool borrowed;
@@ -67,10 +72,33 @@ namespace PerkeleRim.Game
             direct = Array.Exists(Environment.GetCommandLineArgs(), a => string.Equals(a, "-force-gfx-direct", StringComparison.OrdinalIgnoreCase));
         }
 
-        // Every MSC frame (LateUpdate); a_width/a_height: Skyrim's screen (InputState).
-        public void Update(Link link, bool playing, uint width, uint height)
+        // Every MSC frame (LateUpdate); a_width/a_height: Skyrim's screen (InputState); menu: MSC's
+        // menu camera while Skyrim shows the menu (MscMenuLink.Camera), else null.
+        public void Update(Link link, bool playing, uint width, uint height, Camera menu = null)
         {
             var layer = new HandLayer();
+            if (menu != null && Enabled && width > 0 && height > 0 && direct)
+            {
+                if (camera != null) camera.enabled = false;
+                Return();
+                PrepareTarget(width, height);
+                // MSC picks its buttons through this camera (Camera.main while its menu is up) in its
+                // own window, 640 x 480; drawn at Skyrim's 16:9 the picks sat 0.75 as far from the
+                // center as the cursor. With Skyrim's aspect they land where Skyrim shows the cursor.
+                menu.aspect = (float)width / height;
+                menuSource = menu;
+                PrepareMenu(menu);
+                menuCamera.enabled = true;
+                Publish(ref layer, Wire.HandLayerValid | Wire.HandLayerMenu);
+                link.WriteHandLayer(ref layer);
+                return;
+            }
+            if (menuCamera != null) menuCamera.enabled = false;
+            if (menuSource != null)
+            {
+                menuSource.ResetAspect();
+                menuSource = null;
+            }
             bool want = playing && Enabled && width > 0 && height > 0 && direct && FindHandCamera();
             if (playing && !direct && !warned)
             {
@@ -88,18 +116,43 @@ namespace PerkeleRim.Game
             Prepare(width, height);
             Borrow();
             camera.enabled = true;
-            if (shared != null)
-            {
-                layer.frame = copies;
-                layer.flags = Wire.HandLayerValid;
-                layer.texture = shared.Handle;
-                layer.width = shared.Width;
-                layer.height = shared.Height;
-                layer.format = shared.Format;
-                layer.costMicros = (uint)(costTicks * 1000000L / Stopwatch.Frequency);
-            }
+            Publish(ref layer, Wire.HandLayerValid);
             link.WriteHandLayer(ref layer);
             LogStats();
+        }
+
+        void Publish(ref HandLayer layer, uint flags)
+        {
+            if (shared == null) return;
+            layer.frame = copies;
+            layer.flags = flags;
+            layer.texture = shared.Handle;
+            layer.width = shared.Width;
+            layer.height = shared.Height;
+            layer.format = shared.Format;
+            layer.costMicros = (uint)(costTicks * 1000000L / Stopwatch.Frequency);
+        }
+
+        // The menu's camera (Systems/OptionsMenu/CAM: layer GUI, clears depth only over MSC's view)
+        // copied every frame into our target, on transparent black. MSC's menu needs no lighting of ours.
+        void PrepareMenu(Camera source)
+        {
+            if (menuCamera == null || menuCamera.transform.parent != source.transform)
+            {
+                if (menuCamera != null) UnityEngine.Object.Destroy(menuCamera.gameObject);
+                var go = new GameObject("PerkeleRim.MenuLayer");
+                go.transform.SetParent(source.transform, false);
+                menuCamera = go.AddComponent<Camera>();
+                menuCamera.enabled = false;
+                go.AddComponent<HandLayerCamera>().Owner = this;
+                go.GetComponent<HandLayerCamera>().Menu = true;
+                log("hand layer: menu camera added below " + source.name);
+            }
+            menuCamera.CopyFrom(source);
+            menuCamera.depth = source.depth - 1;
+            menuCamera.targetTexture = target;
+            menuCamera.clearFlags = CameraClearFlags.SolidColor;
+            menuCamera.backgroundColor = new Color(0f, 0f, 0f, 0f);
         }
 
         bool FindHandCamera()
@@ -129,6 +182,18 @@ namespace PerkeleRim.Game
                 FindStrays();
                 log($"hand layer: camera added below {HandCameraPath}, {strays.Length} first-person renderers on layer Default");
             }
+            PrepareTarget(width, height);
+            // HandCamera's settings (fov, clip planes, culling mask) every frame, then our own target.
+            camera.CopyFrom(handCamera);
+            camera.depth = handCamera.depth - 1;
+            camera.farClipPlane = Mathf.Max(handCamera.farClipPlane, FarClip);
+            camera.targetTexture = target;
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = Tint ? new Color(0.3f, 0f, 0f, 0.3f) : new Color(0f, 0f, 0f, 0f);
+        }
+
+        void PrepareTarget(uint width, uint height)
+        {
             if (target == null || target.width != (int)width || target.height != (int)height)
             {
                 if (shared != null) { shared.Dispose(); shared = null; }
@@ -137,13 +202,6 @@ namespace PerkeleRim.Game
                 target.Create();
                 log($"hand layer: render texture {width}x{height}");
             }
-            // HandCamera's settings (fov, clip planes, culling mask) every frame, then our own target.
-            camera.CopyFrom(handCamera);
-            camera.depth = handCamera.depth - 1;
-            camera.farClipPlane = Mathf.Max(handCamera.farClipPlane, FarClip);
-            camera.targetTexture = target;
-            camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = Tint ? new Color(0.3f, 0f, 0f, 0.3f) : new Color(0f, 0f, 0f, 0f);
         }
 
         // A few first-person things below FPSCamera sit on layer Default, so MSC draws them with the
@@ -383,18 +441,21 @@ Category {
     public class HandLayerCamera : MonoBehaviour
     {
         internal HandLayerSender Owner;
+        internal bool Menu;  // MSC's options menu: no lighting of ours
         long start;
 
         void OnPreCull()
         {
             start = Stopwatch.GetTimestamp();
+            if (Menu) return;
             try { Owner?.BeginRender(); }
             catch (Exception e) { HandLayerSender.Enabled = false; ModConsoleLog("hand layer: lighting FAILED, off: " + e); }
         }
 
         void OnPostRender()
         {
-            try { Owner?.EndRender(); }
+            if (!Menu)
+                try { Owner?.EndRender(); }
             catch (Exception e) { HandLayerSender.Enabled = false; ModConsoleLog("hand layer: restore FAILED, off: " + e); }
             try { Owner?.Copy(start); }
             catch (Exception e) { HandLayerSender.Enabled = false; ModConsoleLog("hand layer: copy FAILED, off: " + e); }

@@ -2,16 +2,21 @@
 
 #include "food.h"
 #include "hotbar.h"
+#include "junk/ThrowJunk.h"
 #include "link/LinkService.h"
+#include "player/PlayerSync.h"
 
 namespace PerkeleRim::Pocket
 {
     namespace
     {
         constexpr auto kPlugin = "PerkeleRim.esp"sv;
-        // Fixed local form ids, assigned by tools/esp-gen: the items at kFirstItem + kPocket* kind
-        // (gold is Skyrim's own), and the hotbar powers.
-        constexpr RE::FormID kFirstItem = 0x906;
+        // Fixed local form ids, assigned by tools/esp-gen: the items by kPocket* kind (0x906 + kind up
+        // to cigarettes; gold is Skyrim's own, juice came later), and the hotbar powers.
+        // kPocketJunk is ThrowJunk's, not one item, so it's left out.
+        constexpr RE::FormID kItemIds[] = { 0x906, 0x907, 0x908, 0x909, 0x90A, 0x90B, 0x90C, 0, 0x940 };
+        constexpr std::uint32_t kItemKinds = Protocol::kPocketJuice + 1;
+        static_assert(std::size(kItemIds) == kItemKinds && Protocol::kPocketJunk == kItemKinds);
         constexpr RE::FormID kGold = 0x00000F;  // Skyrim.esm Gold001
         constexpr RE::FormID kHotbarHands = 0x91A;
         constexpr RE::FormID kHotbarTools = 0x91B;
@@ -19,11 +24,18 @@ namespace PerkeleRim::Pocket
 
         constexpr float kCountEvery = 0.25f;  // seconds between looks at the inventory
 
+        static_assert(static_cast<std::uint32_t>(Food::Drink::Beer) == Protocol::kDrinkBeer);
+        static_assert(static_cast<std::uint32_t>(Food::Drink::Booze) == Protocol::kDrinkBooze);
+        static_assert(static_cast<std::uint32_t>(Food::Drink::Spirit) == Protocol::kDrinkSpirit);
+        static_assert(static_cast<std::uint32_t>(Food::Drink::Milk) == Protocol::kDrinkMilk);
+        static_assert(static_cast<std::uint32_t>(Food::Drink::Juice) == Protocol::kDrinkJuice);
+
         using Counts = std::array<std::uint32_t, Protocol::kPocketKinds>;
 
         struct State
         {
-            std::array<RE::TESBoundObject*, Protocol::kPocketKinds> items{};
+            std::array<RE::TESBoundObject*, kItemKinds>               items{};
+            std::array<RE::TESBoundObject*, std::size(Food::kEmptyIds)> empties{};  // by Food::Empty
             std::array<RE::SpellItem*, 3>                            powers{};  // Hands, Tools, Bottle
             std::unordered_map<RE::FormID, Food::Effect>             food;      // food.h's table, resolved
             std::uint32_t                                            session = 0;  // MSC's, of the last PocketChange
@@ -34,12 +46,22 @@ namespace PerkeleRim::Pocket
             bool                                                     dirty = false;      // send now, don't wait for the next look
             bool                                                     linkUp = false;
             float                                                    sinceCount = kCountEvery;
+            float                                                    sinceSip = Food::Water::kSipSeconds;
         } state;
 
         bool Loaded()
         {
             return std::ranges::all_of(state.items, [](auto* a_item) { return a_item != nullptr; }) &&
-                   std::ranges::all_of(state.powers, [](auto* a_power) { return a_power != nullptr; });
+                   std::ranges::all_of(state.powers, [](auto* a_power) { return a_power != nullptr; }) &&
+                   std::all_of(state.empties.begin() + 1, state.empties.end(), [](auto* a_item) { return a_item != nullptr; });
+        }
+
+        void SendConsume(const char* a_what, const Food::Effect& a_effect)
+        {
+            Protocol::ConsumeEvent message{ a_effect.hunger, a_effect.thirst, a_effect.urine, a_effect.drunk, static_cast<std::uint32_t>(a_effect.drink) };
+            const bool sent = LinkService::Get().Send(Protocol::MessageType::ConsumeEvent, &message, sizeof(message));
+            SKSE::log::info("food: {} hunger {:+.0f} thirst {:+.0f} urine {:+.0f} drunk {:+.3f} drink {}{}", a_what, a_effect.hunger, a_effect.thirst,
+                a_effect.urine, a_effect.drunk, message.drink, sent ? "" : " (not sent, no link)");
         }
 
         // What an ingestible does to MSC's needs: food.h's table, else by its sound and weight for
@@ -70,13 +92,10 @@ namespace PerkeleRim::Pocket
             if (!effect) {
                 return;
             }
-            Protocol::ConsumeEvent message{ effect->hunger, effect->thirst, effect->urine, effect->drunk, effect->bottle ? Protocol::kConsumeDrink : 0u };
-            const bool sent = LinkService::Get().Send(Protocol::MessageType::ConsumeEvent, &message, sizeof(message));
-            SKSE::log::info("food: {} hunger {:+.0f} thirst {:+.0f} urine {:+.0f} drunk {:+.3f}{}", item->GetName(), effect->hunger, effect->thirst,
-                effect->urine, effect->drunk, sent ? "" : " (not sent, no link)");
-            if (effect->bottle) {
-                player->AddObjectToContainer(state.items[Protocol::kPocketBottle], nullptr, 1, nullptr);
-                state.dirty = true;
+            SendConsume(item->GetName(), *effect);
+            if (auto* empty = state.empties[static_cast<std::size_t>(effect->empty)]) {
+                player->AddObjectToContainer(empty, nullptr, 1, nullptr);
+                state.dirty = true;  // the beer's Empty Bottle is a pocket kind
             }
         }
 
@@ -99,9 +118,10 @@ namespace PerkeleRim::Pocket
         Counts Count(RE::PlayerCharacter* a_player)
         {
             Counts counts{};
-            for (std::size_t i = 0; i < counts.size(); i++) {
+            for (std::size_t i = 0; i < state.items.size(); i++) {
                 counts[i] = static_cast<std::uint32_t>((std::max)(0, a_player->GetItemCount(state.items[i])));
             }
+            counts[Protocol::kPocketJunk] = ThrowJunk::Count(a_player);
             return counts;
         }
 
@@ -188,7 +208,7 @@ namespace PerkeleRim::Pocket
                 }
                 const auto kind = want == Hotbar::Bound::Beer ? Protocol::kPocketBeer
                                                               : static_cast<std::uint32_t>(want) - static_cast<std::uint32_t>(Hotbar::Bound::Sausages) + Protocol::kPocketSausages;
-                auto* item = kind < Protocol::kPocketKinds ? state.items[kind] : nullptr;
+                auto* item = kind < kItemKinds ? state.items[kind] : nullptr;
                 if (!item || !changes || !changes->entryList || a_player->GetItemCount(item) <= 0) {
                     continue;
                 }
@@ -215,17 +235,21 @@ namespace PerkeleRim::Pocket
     {
         static EquipSink equipSink;
         auto* data = RE::TESDataHandler::GetSingleton();
-        for (std::uint32_t i = 0; i < Protocol::kPocketKinds; i++) {
+        for (std::uint32_t i = 0; i < kItemKinds; i++) {
             // Food or misc item: untyped lookups (the typed ones match one exact form type).
-            auto* form = !data ? nullptr : i == Protocol::kPocketGold ? RE::TESForm::LookupByID(kGold) : data->LookupForm(kFirstItem + i, kPlugin);
+            auto* form = !data ? nullptr : i == Protocol::kPocketGold ? RE::TESForm::LookupByID(kGold) : data->LookupForm(kItemIds[i], kPlugin);
             state.items[i] = form ? form->As<RE::TESBoundObject>() : nullptr;
+        }
+        for (std::size_t i = 1; i < state.empties.size(); i++) {
+            auto* form = data ? data->LookupForm(Food::kEmptyIds[i], kPlugin) : nullptr;
+            state.empties[i] = form ? form->As<RE::TESBoundObject>() : nullptr;
         }
         const RE::FormID powers[] = { kHotbarHands, kHotbarTools, kHotbarBottle };
         for (std::size_t i = 0; i < state.powers.size(); i++) {
             state.powers[i] = data ? data->LookupForm<RE::SpellItem>(powers[i], kPlugin) : nullptr;
         }
         if (!Loaded()) {
-            SKSE::log::warn("pocket: {} has no pocket items or hotbar powers, rebuild it with scripts/build-esp.ps1", kPlugin);
+            SKSE::log::warn("pocket: {} has no pocket items, empty bottles or hotbar powers, rebuild it with scripts/build-esp.ps1", kPlugin);
             return;
         }
         std::size_t missing = 0;
@@ -243,12 +267,29 @@ namespace PerkeleRim::Pocket
         }
     }
 
+    bool SipWater(float a_level, bool a_crouched, bool a_onFoot)
+    {
+        if (!Loaded() || !Food::Water::CanSip(a_level, a_crouched, a_onFoot, state.sinceSip)) {
+            return false;
+        }
+        state.sinceSip = 0.0f;
+        SendConsume("a sip of water", Food::kWater);
+        if (auto* audio = RE::BSAudioManager::GetSingleton()) {
+            audio->Play(Food::kSoundSoup);
+        }
+        return true;
+    }
+
     void Update(RE::PlayerCharacter* a_player, float a_delta)
     {
         if (!Loaded() || !a_player) {
             return;
         }
+        state.sinceSip += a_delta;
         const bool up = LinkService::Get().IsUp();
+        if (!up || !PlayerSync::Owned()) {
+            ThrowJunk::Release();  // MSC's bodies for it are gone with the player
+        }
         if (up != state.linkUp) {
             state.linkUp = up;
             state.sentValid = false;  // a new MSC, or the same one back: it gets the counts again
@@ -272,8 +313,8 @@ namespace PerkeleRim::Pocket
         std::ranges::copy(state.counts, message.counts);
         if (LinkService::Get().Send(Protocol::MessageType::PocketCounts, &message, sizeof(message))) {
             if (!state.sentValid || state.counts != state.sent) {
-                SKSE::log::info("pocket: counts to MSC {} {} {} {} {} {} {} gold {} (applied {}:{})", state.counts[0], state.counts[1], state.counts[2],
-                    state.counts[3], state.counts[4], state.counts[5], state.counts[6], state.counts[7], state.session, state.applied);
+                SKSE::log::info("pocket: counts to MSC {} {} {} {} {} {} {} gold {} juice {} junk {} (applied {}:{})", state.counts[0], state.counts[1], state.counts[2],
+                    state.counts[3], state.counts[4], state.counts[5], state.counts[6], state.counts[7], state.counts[Protocol::kPocketJuice], state.counts[Protocol::kPocketJunk], state.session, state.applied);
             }
             state.sent = state.counts;
             state.sentValid = true;
@@ -297,7 +338,13 @@ namespace PerkeleRim::Pocket
         }
         state.applied = change.seq;
         state.dirty = true;
-        auto* item = change.kind < Protocol::kPocketKinds ? state.items[change.kind] : nullptr;
+        if (change.kind == Protocol::kPocketJunk) {
+            if (change.delta < 0) {
+                ThrowJunk::Take(a_player, change.session, change.seq);  // one at a time: MSC takes one per key
+            }
+            return;
+        }
+        auto* item = change.kind < kItemKinds ? state.items[change.kind] : nullptr;
         if (!item) {
             SKSE::log::warn("pocket: change for unknown kind {} dropped", change.kind);
             return;

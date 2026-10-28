@@ -9,7 +9,8 @@ namespace PerkeleRim.Game
 {
     // Keeps MSC's player alive while Skyrim has handed it over: Skyrim's health is the only one, and
     // MSC's death (its death screen, a reload, permadeath deleting the save) would break the link's
-    // game. What MSC would have died of becomes PlayerDamage for Skyrim instead.
+    // game. What MSC would have died of becomes PlayerDamage for Skyrim instead, except hunger and
+    // thirst, which stay at 200 for Skyrim to drain health on (protocol/cpp/needs.h).
     //
     // Vehicle crashes kill through the global DEATH event (FPSCamera :: Death turns it into the
     // Crash death and activates Systems/Death). A Harmony prefix on Fsm.ProcessEvent, which every
@@ -73,7 +74,23 @@ namespace PerkeleRim.Game
             if (!Active || __instance.activate == null || !__instance.activate.Value) return true;
             var target = __instance.Fsm != null ? __instance.Fsm.GetOwnerDefaultTarget(__instance.gameObject) : null;
             if (target == null || target.name != "Death" || target.transform.parent == null || target.transform.parent.name != "Systems") return true;
-            Hit(Wire.DamageOther, $"{Path(__instance.Fsm)} :: {__instance.Fsm.Name} in {__instance.Fsm.ActiveStateName} would start Systems/Death:{TakeCauses(target)}");
+            var starved = StarvedNeed(__instance.Fsm);
+            if (starved != null)
+            {
+                // Hunger or thirst at 200: Skyrim drains health for as long as it stays there
+                // (protocol/cpp/needs.h), so the need goes back to where it was instead of the free
+                // reset to 0, and no crash damage.
+                TakeCauses(target);
+                var need = FsmVariables.GlobalVariables.FindFsmFloat(starved);
+                if (need != null) need.Value = Needs.Full;
+                if (Time.realtimeSinceStartup - lastStarvedLog > 60f)
+                {
+                    lastStarvedLog = Time.realtimeSinceStartup;
+                    log($"death: {starved} reached MSC's death line, kept at {Needs.Full} for Skyrim's drain instead");
+                }
+            }
+            else
+                Hit(Wire.DamageOther, $"{Path(__instance.Fsm)} :: {__instance.Fsm.Name} in {__instance.Fsm.ActiveStateName} would start Systems/Death:{TakeCauses(target)}");
             __instance.Finish();
             return false;
         }
@@ -89,6 +106,20 @@ namespace PerkeleRim.Game
                     if (b.Value) { causes += " " + b.Name; b.Value = false; }
             }
             return causes.Length > 0 ? causes : " no cause set";
+        }
+
+        static float lastStarvedLog = -100f;
+
+        // Simulation's thirst (State 6) and hunger (State 7) deaths: the global they starve on, else null.
+        static string StarvedNeed(Fsm fsm)
+        {
+            if (fsm == null || fsm.Name != "Simulation") return null;
+            switch (fsm.ActiveStateName)
+            {
+                case "State 6": return "PlayerThirst";
+                case "State 7": return "PlayerHunger";
+                default: return null;
+            }
         }
 
         // Simulation's need deaths (thirst, hunger, urine, stress, burn): each sets its need to 0 and

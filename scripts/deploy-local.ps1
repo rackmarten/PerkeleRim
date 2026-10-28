@@ -25,6 +25,8 @@ if ($Target -in 'all', 'skse') {
     Copy-Built $dll (Join-Path $skyrim 'Data/SKSE/Plugins')
     $pdb = [IO.Path]::ChangeExtension($dll, '.pdb')
     if (Test-Path $pdb) { Copy-Built $pdb (Join-Path $skyrim 'Data/SKSE/Plugins') }
+    # The empty movie MSC's menu is drawn in (F1), written by the plugin's build.
+    Copy-Built (Join-Path (Split-Path $dll) 'MscMenu.swf') (Join-Path $skyrim 'Data/Interface/PerkeleRim')
 }
 
 if ($Target -in 'all', 'msc') {

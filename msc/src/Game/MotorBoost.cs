@@ -29,6 +29,8 @@ namespace PerkeleRim.Game
 
         // Set every frame by PlayerLink: true while MSC plays the player for Skyrim.
         public static bool Active;
+        // Set every frame by PlayerLink: what the needs do to the speed (Needs.UrineSpeed), 1 = nothing.
+        public static float NeedScale = 1f;
 
         static bool installed;
         static FieldInfo movementField;
@@ -112,7 +114,7 @@ namespace PerkeleRim.Game
 
             if (speedGlobal != null)
             {
-                float speed = speedGlobal.Value * Scale;
+                float speed = speedGlobal.Value * Scale * NeedScale;
                 foreach (var f in speedFields) f.SetValue(movement, speed);
             }
             if (accelerationField != null)

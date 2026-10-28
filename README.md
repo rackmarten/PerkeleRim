@@ -84,13 +84,15 @@ Loading a save hands the player to My Summer Car by itself; if MSC isn't running
 | H (driving) | horn: people in the way run off |
 | F8 (driving) | chase camera for filming, on / off (hides the HUD) |
 | F11 | screenshot of both games, to Screenshots next to Start PerkeleRim.bat |
-| [ / ] / ; (on foot) | call the Jonnez moped / the Hayosiko van / the Kekmet tractor: it's parked in front of you, wherever it was |
+| [ / ] / ; / ' (on foot) | call the Jonnez moped / the Hayosiko van / the Kekmet tractor / the Gifu truck: it's parked in front of you, wherever it was |
 | Y | puts what Kumpo carries (or looks at) into Skyrim's inventory |
 | 1 to 8 | Skyrim's favorites hotkeys: at first 1 hands, 2 tools, 3 an empty bottle to throw, 4 MSC Beer, 5 to 8 MSC's food; rebind them, or any Skyrim food and drink, in Skyrim's Favorites menu (R on foot) |
 
 Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, P, O, J, I, ...) still work. Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).
 
 Kumpo eats and drinks Skyrim's food: it feeds his MSC hunger and thirst, and Skyrim's ale, mead, wine and Skooma get him drunk (a bottle leaves an empty one to throw). Skyrim's gold is his MSC money, both ways.
+
+His needs count past the red mark: starving or thirsty past 150 drains health and kills, tired slows stamina regen, stressed punches harder, a full bladder slows him down and dirty Kumpo pays more at traders. His hands shake the longer he's been dry; a beer or two steadies them.
 
 Kumpo fights with his fists: weapons and spells can't be equipped while MSC has the player, armor works as usual, and the drunker he is, the harder he hits and the more he can take. A punch also cuts spider webs and breaks destructibles in front of him (oil pots, barricades), and so does a thrown bottle that hits one. A throw from sneak at someone who hasn't noticed Kumpo is a sneak attack for double damage. Sitting in the Hayosiko van or the Kekmet is safe: nothing in Skyrim can hurt Kumpo there (the moped is no shelter, and a crash still hurts).
 
@@ -107,12 +109,12 @@ No dates, just intentions. What comes next depends a lot on what people enjoy, s
 
 **Next**
 
-- **The Satsuma** on the Whiterun tundra, next to the van, moped and Kekmet.
+- **The Satsuma** on the Whiterun tundra, next to the van, moped, Kekmet and Gifu.
 - **Water and swimming**: swim instead of walking on the bottom, drink from lakes and rivers for thirst, and vehicles that don't just drive through water.
 
 **Later, maybe**
 
-- The Gifu truck, delivery jobs and traffic.
+- Delivery jobs for the Gifu, and traffic.
 - More Finnish summer: clear weather, long bright evenings, a sauna by the garage.
 
 **Not planned**

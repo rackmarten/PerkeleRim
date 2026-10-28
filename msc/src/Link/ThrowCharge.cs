@@ -43,6 +43,10 @@ namespace PerkeleRim
         // Seconds the button has been held, 0 when it is not being charged.
         public float Held(float now) => Charging ? Math.Max(0f, now - startedAt) : 0f;
 
+        // PlayerState.throwCharge for Skyrim's HUD: 0 while not charging, else 1 + the share of a full
+        // charge in 254 steps (255 full).
+        public byte WireCharge(float now) => Charging ? (byte)(1 + Math.Round(Fraction(Held(now)) * 254f)) : (byte)0;
+
         // keys: the held key codes for this MSC frame, changed in place. carrying: MSC's hand holds an
         // item it would throw. now: seconds. Call every frame, after BlockButton (which owns a
         // right click with free hands). A press that began before the item was picked up is left

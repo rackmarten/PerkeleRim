@@ -130,6 +130,43 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void MscMenuCarriesSkyrimsCursor()
+        {
+            var f = new InputFrame();
+            var s = State(0, 0);
+            s.flags |= Wire.InputMscMenu;
+            s.cursorX = 0.25f;
+            s.cursorY = 1.5f;  // off the screen: clamped
+            f.Update(ref s);
+            Assert.That(f.MscMenu, Is.True);
+            Assert.That(f.CursorX, Is.EqualTo(0.25f));
+            Assert.That(f.CursorY, Is.EqualTo(1f));
+
+            s.flags = Wire.InputMscMenu;  // the menu flag means nothing without the player
+            f.Update(ref s);
+            Assert.That(f.MscMenu, Is.False);
+            Assert.That(f.CursorX, Is.EqualTo(0.5f));
+
+            s.flags = Wire.InputOwnsPlayer | Wire.InputMscMenu;
+            s.cursorX = float.NaN;
+            f.Update(ref s);
+            Assert.That(f.CursorX, Is.EqualTo(0f));
+            f.Reset();
+            Assert.That(f.MscMenu, Is.False);
+        }
+
+        [Test]
+        public void CursorPixelsCountFromTheBottomLeft()
+        {
+            float x, y;
+            InputFrame.CursorPixels(0.25f, 0.1f, 1920, 1080, out x, out y);
+            Assert.That(x, Is.EqualTo(480f).Within(1e-3));
+            Assert.That(y, Is.EqualTo(972f).Within(1e-3));
+            InputFrame.CursorPixels(0f, 0f, 800, 600, out x, out y);
+            Assert.That(y, Is.EqualTo(600f));
+        }
+
+        [Test]
         public void HandoverSeedsAgain()
         {
             var f = new InputFrame();

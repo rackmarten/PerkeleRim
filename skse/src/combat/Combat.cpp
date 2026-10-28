@@ -5,6 +5,7 @@
 #include "death/Death.h"
 #include "finger.h"
 #include "link/LinkService.h"
+#include "needs.h"
 #include "player/PlayerSync.h"
 #include "shout.h"
 
@@ -462,7 +463,7 @@ namespace PerkeleRim::Combat
         }
     }
 
-    void OnPunch(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk)
+    void OnPunch(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk, float a_stress)
     {
         if (a_size < sizeof(Protocol::PunchEvent)) {
             SKSE::log::warn("combat: bad punch message ({} bytes)", a_size);
@@ -482,13 +483,13 @@ namespace PerkeleRim::Combat
         auto*       values = target->AsActorValueOwner();
         const float max = values ? values->GetPermanentActorValue(RE::ActorValue::kHealth) : 0.0f;
         const float unarmed = Unarmed(a_player, target);
-        const float damage = Damage::Punch(unarmed, a_drunk);
+        const float damage = Damage::Punch(unarmed, a_drunk) * Needs::StressPunch(a_stress);
         const float health = values ? values->GetActorValue(RE::ActorValue::kHealth) : 0.0f;  // the spell lands next frame
         caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
-        lastHit = { lastHit.count + 1, target->GetFormID(), false, damage, unarmed, a_drunk, 0.0f, 1.0f };
-        SKSE::log::info("combat: the player punched {} for {:.0f} (unarmed {:.1f}, drunk {:.1f}), it had {:.0f} of {:.0f} max health", NameOf(target),
-            damage, unarmed, a_drunk, health, max);
+        lastHit = { lastHit.count + 1, target->GetFormID(), false, damage, unarmed, a_drunk, 0.0f, 1.0f, 0.0f, a_stress };
+        SKSE::log::info("combat: the player punched {} for {:.0f} (unarmed {:.1f}, drunk {:.1f}, stress {:.0f}), it had {:.0f} of {:.0f} max health",
+            NameOf(target), damage, unarmed, a_drunk, a_stress, health, max);
     }
 
     const Hit& LastHit()
@@ -667,19 +668,19 @@ namespace PerkeleRim::Combat
         const int   detection = target->RequestDetectionLevel(a_player);
         const float sneak = Damage::SneakAttack(sneaking, detection);
         const float unarmed = Unarmed(a_player, target);
-        const float damage = Damage::Thrown(Damage::Punch(unarmed), impact.speed) * sneak;
+        const float damage = Damage::Thrown(Damage::Punch(unarmed), impact.speed, impact.mass) * sneak;
         if (damage <= 0.0f) {
             SKSE::log::info("combat: a throw at {:.1f} m/s bounced off {} harmlessly", impact.speed, NameOf(target));
             return;
         }
         caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
-        lastHit = { lastHit.count + 1, target->GetFormID(), true, damage, unarmed, 0.0f, impact.speed, sneak };
+        lastHit = { lastHit.count + 1, target->GetFormID(), true, damage, unarmed, 0.0f, impact.speed, sneak, impact.mass };
         if (sneak > 1.0f) {
             RE::SendHUDMessage::ShowHUDMessage(fmt::format("Sneak attack for {:.1f}x damage", sneak).c_str());
         }
-        SKSE::log::info("combat: the player's throw at {:.1f} m/s hit {} for {:.0f} of {:.0f} max health (from sneak {}, its detection level {}, x{:.1f})", impact.speed,
-            NameOf(target), damage, max, sneaking, detection, sneak);
+        SKSE::log::info("combat: the player's throw at {:.1f} m/s ({:.2f} kg, x{:.2f} by weight) hit {} for {:.0f} of {:.0f} max health (from sneak {}, its detection level {}, x{:.1f})",
+            impact.speed, impact.mass, Damage::ThrownMass(impact.mass), NameOf(target), damage, max, sneaking, detection, sneak);
     }
 
     void OnHorn(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)

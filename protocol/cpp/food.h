@@ -2,7 +2,9 @@
 // eats or drinks in Skyrim (its inventory, a hotkey) and Skyrim sends MSC a ConsumeEvent with these
 // numbers. MSC's scale: hunger and thirst rise about 110 an hour of play (one tick +1.42 / +1.83 every
 // 45 s), its HUD bar fills at 100 and 200 kills. MSC's own beer takes about 20 thirst and adds about
-// 0.08 drunk (PlayerDrunkAdjusted; five beers about 0.4), the yardstick for the alcohol below.
+// 0.08 drunk (PlayerDrunkAdjusted; five beers about 0.4), its booze bottle about 0.45: the
+// yardsticks for the alcohol below. Each drink also says which of MSC's drinks it shows (Drink, the
+// protocol's kDrink*) and which empty bottle it leaves in Skyrim's inventory (Empty).
 // Vanilla and DLC food is listed by form id; anything else (other mods' food) goes by its use sound
 // and weight (Fallback). Header-only and free of Skyrim types, so the protocol tests cover it.
 
@@ -21,10 +23,33 @@ namespace PerkeleRim::Food
         Dawnguard,    // Dawnguard.esm
         HearthFires,  // HearthFires.esm
         Dragonborn,   // Dragonborn.esm
-        PerkeleRim,   // PerkeleRim.esp (MSC's food and beer, tools/esp-gen)
+        PerkeleRim,   // PerkeleRim.esp (MSC's food, beer and juice, tools/esp-gen)
     };
 
     inline constexpr const char* kPluginFiles[] = { "Skyrim.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm", "PerkeleRim.esp" };
+
+    // MSC's drinking shown for it, once Skyrim's menu is closed: the protocol's kDrink* values.
+    enum class Drink : std::uint8_t
+    {
+        None,    // food, or nothing to show
+        Beer,    // DRINKBEER: ale, mead
+        Booze,   // DRINKVIINA, the booze bottle: wine, brandy, Sujamma
+        Spirit,  // DRINKSPIRIT, the spirit bottle: Skooma (MSC's blindness roll is blocked)
+        Milk,    // DRINKMILK
+        Juice,   // DRINKJUICE: juice, other mods' soft drinks
+    };
+
+    // The empty bottle a drink leaves in Skyrim's inventory: PerkeleRim.esp misc items (kEmptyIds).
+    enum class Empty : std::uint8_t
+    {
+        None,
+        Beer,    // 0x907 Empty Bottle, the one key 3 takes into MSC's hand
+        Wine,    // Empty Wine Bottle
+        Liquor,  // Empty Liquor Bottle: brandy, Sujamma, Flin
+        Skooma,  // Empty Skooma Bottle
+    };
+
+    inline constexpr std::uint32_t kEmptyIds[] = { 0, 0x907, 0x941, 0x942, 0x943 };  // by Empty, local to PerkeleRim.esp
 
     // Added to MSC's needs. Negative hunger and thirst: less hungry, less thirsty.
     struct Effect
@@ -33,10 +58,18 @@ namespace PerkeleRim::Food
         float thirst = 0.0f;
         float urine = 0.0f;
         float drunk = 0.0f;
-        bool  bottle = false;  // drunk from a bottle: an Empty Bottle is left in the inventory
+        Drink drink = Drink::None;  // MSC's drinking shown for it
+        Empty empty = Empty::None;  // left in the inventory
 
         constexpr bool Alcohol() const { return drunk > 0.0f; }
     };
+
+    // Of several drinks at once (one menu), the one MSC shows: the strongest bottle.
+    constexpr Drink Shown(Drink a_was, Drink a_now)
+    {
+        constexpr int rank[] = { 0, 3, 4, 5, 2, 1 };  // None, Beer, Booze, Spirit, Milk, Juice
+        return rank[static_cast<int>(a_now)] > rank[static_cast<int>(a_was)] ? a_now : a_was;
+    }
 
     // Kinds of food, so the table reads as a menu.
     inline constexpr Effect kNibble{ -5.0f };                    // a leek, a potato, butter, flour
@@ -50,13 +83,17 @@ namespace PerkeleRim::Food
     inline constexpr Effect kMeal{ -60.0f, -10.0f, 2.0f };       // a homecooked meal
     inline constexpr Effect kSoup{ -25.0f, -20.0f, 4.0f };
     inline constexpr Effect kStew{ -40.0f, -15.0f, 4.0f };
-    inline constexpr Effect kMilk{ -10.0f, -25.0f, 6.0f };
-    inline constexpr Effect kDrink{ 0.0f, -20.0f, 5.0f };        // something to drink that isn't listed
+    inline constexpr Effect kMilk{ -10.0f, -25.0f, 6.0f, 0.0f, Drink::Milk };
+    inline constexpr Effect kJuice{ -5.0f, -25.0f, 6.0f, 0.0f, Drink::Juice };
+    inline constexpr Effect kDrink{ 0.0f, -20.0f, 5.0f, 0.0f, Drink::Juice };  // a soft drink that isn't listed
+    inline constexpr Effect kWater{ 0.0f, -10.0f, 2.0f };                      // a sip from a lake or a river
 
     // Alcohol by strength: a beer-sized bottle quenches thirst like MSC's beer, wine and spirits less.
-    constexpr Effect Ale(float a_drunk) { return { -3.0f, -20.0f, 6.0f, a_drunk, true }; }
-    constexpr Effect Wine(float a_drunk) { return { -2.0f, -12.0f, 4.0f, a_drunk, true }; }
-    constexpr Effect Spirit(float a_drunk) { return { -1.0f, -5.0f, 2.0f, a_drunk, true }; }
+    // Ale and mead show MSC's beer bottle, wine and spirits its booze bottle, Skooma its spirit.
+    constexpr Effect Ale(float a_drunk) { return { -3.0f, -20.0f, 6.0f, a_drunk, Drink::Beer, Empty::Beer }; }
+    constexpr Effect Wine(float a_drunk) { return { -2.0f, -12.0f, 4.0f, a_drunk, Drink::Booze, Empty::Wine }; }
+    constexpr Effect Liquor(float a_drunk) { return { -1.0f, -5.0f, 2.0f, a_drunk, Drink::Booze, Empty::Liquor }; }
+    constexpr Effect Skooma(float a_drunk) { return { -1.0f, -5.0f, 2.0f, a_drunk, Drink::Spirit, Empty::Skooma }; }
 
     struct Entry
     {
@@ -68,8 +105,9 @@ namespace PerkeleRim::Food
 
     // PerkeleRim.esp's MSC items are 0x906 + kPocket* (Pocket.cpp, tools/esp-gen).
     inline constexpr Entry kTable[] = {
-        // Alcohol. MSC beer is the yardstick: Skyrim's ale and mead are about the same, the named
-        // meads and wines stronger, spirits like MSC's booze (+0.45 a bottle) and Skooma a joke.
+        // Alcohol. MSC beer is the yardstick: Skyrim's ale the same, meads a little stronger (a bottle
+        // as big as a beer), a whole bottle of wine about three beers, spirits like MSC's booze
+        // (+0.45 a bottle) or more, and Skooma a joke.
         { Plugin::PerkeleRim, 0x906, "MSC Beer", Ale(0.08f) },
         { Plugin::Skyrim, 0x034C5E, "Ale", Ale(0.08f) },
         { Plugin::Skyrim, 0x034C5D, "Nord Mead", Ale(0.10f) },
@@ -80,27 +118,28 @@ namespace PerkeleRim::Food
         { Plugin::Skyrim, 0x0F693F, "Black-Briar Reserve", Ale(0.25f) },
         { Plugin::Dragonborn, 0x03572F, "Ashfire Mead", Ale(0.15f) },
         { Plugin::Dragonborn, 0x0248CE, "Matze", Ale(0.10f) },
-        { Plugin::Dragonborn, 0x0248CC, "Shein", Wine(0.15f) },
-        { Plugin::Skyrim, 0x03133C, "Wine", Wine(0.20f) },
-        { Plugin::Skyrim, 0x0C5348, "Wine", Wine(0.20f) },
-        { Plugin::Skyrim, 0x03133B, "Alto Wine", Wine(0.20f) },
-        { Plugin::Skyrim, 0x0C5349, "Alto Wine", Wine(0.20f) },
-        { Plugin::Skyrim, 0x0F257E, "Jessica's Wine", Wine(0.20f) },
-        { Plugin::Skyrim, 0x085368, "Spiced Wine", Wine(0.18f) },
-        { Plugin::Skyrim, 0x01895F, "Firebrand Wine", Wine(0.25f) },
-        { Plugin::Dragonborn, 0x0320DF, "Emberbrand Wine", Wine(0.25f) },
-        { Plugin::HearthFires, 0x003536, "Surilie Brothers Wine", Wine(0.22f) },
-        { Plugin::HearthFires, 0x003535, "Argonian Bloodwine", Wine(0.25f) },
-        { Plugin::Skyrim, 0x036D53, "Colovian Brandy", Spirit(0.45f) },
-        { Plugin::Dragonborn, 0x0207E6, "Sujamma", Spirit(0.40f) },
-        { Plugin::Dragonborn, 0x024E0B, "Sadri's Sujamma", Spirit(0.50f) },
-        { Plugin::Dragonborn, 0x0207E5, "Flin", Spirit(0.40f) },
-        { Plugin::Skyrim, 0x057A7A, "Skooma", Spirit(1.5f) },
-        { Plugin::Skyrim, 0x057A7B, "Kordir's Skooma", Spirit(1.5f) },
-        { Plugin::Dawnguard, 0x01391D, "Redwater Skooma", Spirit(2.0f) },
-        { Plugin::Skyrim, 0x03F4BD, "Double-Distilled Skooma", Spirit(2.5f) },
+        { Plugin::Dragonborn, 0x0248CC, "Shein", Wine(0.20f) },
+        { Plugin::Skyrim, 0x03133C, "Wine", Wine(0.25f) },
+        { Plugin::Skyrim, 0x0C5348, "Wine", Wine(0.25f) },
+        { Plugin::Skyrim, 0x03133B, "Alto Wine", Wine(0.25f) },
+        { Plugin::Skyrim, 0x0C5349, "Alto Wine", Wine(0.25f) },
+        { Plugin::Skyrim, 0x0F257E, "Jessica's Wine", Wine(0.25f) },
+        { Plugin::Skyrim, 0x085368, "Spiced Wine", Wine(0.25f) },
+        { Plugin::Skyrim, 0x01895F, "Firebrand Wine", Wine(0.28f) },
+        { Plugin::Dragonborn, 0x0320DF, "Emberbrand Wine", Wine(0.28f) },
+        { Plugin::HearthFires, 0x003536, "Surilie Brothers Wine", Wine(0.25f) },
+        { Plugin::HearthFires, 0x003535, "Argonian Bloodwine", Wine(0.28f) },
+        { Plugin::Skyrim, 0x036D53, "Colovian Brandy", Liquor(0.50f) },
+        { Plugin::Dragonborn, 0x0207E6, "Sujamma", Liquor(0.50f) },
+        { Plugin::Dragonborn, 0x024E0B, "Sadri's Sujamma", Liquor(0.60f) },
+        { Plugin::Dragonborn, 0x0207E5, "Flin", Liquor(0.45f) },
+        { Plugin::Skyrim, 0x057A7A, "Skooma", Skooma(1.5f) },
+        { Plugin::Skyrim, 0x057A7B, "Kordir's Skooma", Skooma(1.5f) },
+        { Plugin::Dawnguard, 0x01391D, "Redwater Skooma", Skooma(2.0f) },
+        { Plugin::Skyrim, 0x03F4BD, "Double-Distilled Skooma", Skooma(2.5f) },
 
-        // MSC's own food, as Skyrim items.
+        // MSC's own food and juice, as Skyrim items.
+        { Plugin::PerkeleRim, 0x940, "Juice", kJuice },
         { Plugin::PerkeleRim, 0x908, "Sausages", kCooked },
         { Plugin::PerkeleRim, 0x909, "Pizza", kRoast },
         { Plugin::PerkeleRim, 0x90A, "Potato Chips", { -15.0f, 5.0f } },
@@ -228,8 +267,9 @@ namespace PerkeleRim::Food
     inline constexpr std::uint32_t kSoundSoup = 0x10E2EA;
     inline constexpr std::uint32_t kSoundBottle = 0x0B6435;
 
-    // Food from other mods, by its use sound and weight: bottles quench thirst (no alcohol is
-    // guessed, and no empty bottle), soup is soup, food is snack sized up to a roast for 2 and more.
+    // Food from other mods, by its use sound and weight: bottles are soft drinks (thirst, MSC's
+    // juice drinking; no alcohol is guessed, and no empty bottle), soup is soup, food is snack sized
+    // up to a roast for 2 and more.
     constexpr Effect Fallback(Sound a_sound, float a_weight)
     {
         switch (a_sound) {
@@ -239,5 +279,18 @@ namespace PerkeleRim::Food
         }
         const float weight = std::clamp(a_weight, 0.0f, 2.0f);
         return { -(10.0f + 17.5f * weight) };  // 10 for a crumb, 45 for a roast
+    }
+
+    // Drinking water: crouched (MSC's crouch is Skyrim's sneak) in water at least ankle deep, E
+    // with nothing under Skyrim's crosshair is a sip (kWater), at most one every kSipSeconds.
+    namespace Water
+    {
+        inline constexpr float kSipLevel = 0.1f;    // submerged fraction at the feet (GetSubmergeLevel)
+        inline constexpr float kSipSeconds = 1.5f;  // a sip's length: holding or mashing E doesn't drink a lake
+
+        constexpr bool CanSip(float a_level, bool a_crouched, bool a_onFoot, float a_sinceLast)
+        {
+            return a_onFoot && a_crouched && a_level >= kSipLevel && a_sinceLast >= kSipSeconds;
+        }
     }
 }

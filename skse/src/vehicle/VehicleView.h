@@ -2,7 +2,7 @@
 
 #include "link.h"
 
-// Draws MSC's vehicles (the van, the moped, the Kekmet) in Skyrim from their VehicleStates: MSC's
+// Draws MSC's vehicles (the van, the moped, the Kekmet, the Gifu) in Skyrim from their VehicleStates: MSC's
 // own model of each (ModelView) hung straight into the scene graph, so it has no reference and no
 // collision of its own (the collision sampler must not see it), with every object of it (wheels,
 // doors, controls, lights) posed and shown from VehicleParts. Hitbox gives it a solid body in

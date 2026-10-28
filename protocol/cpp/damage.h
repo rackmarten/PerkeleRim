@@ -94,10 +94,27 @@ namespace PerkeleRim::Damage
 
     inline constexpr float kThrownShare = 2.0f;  // of the punch at full speed: aiming a throw is hard enough
 
-    inline float Thrown(float a_punch, float a_speed)
+    // And by its weight (v46): MSC's empty beer bottle (kThrownMassBase) hits as above, a lighter or
+    // heavier item by the square root of its mass against the bottle's, kept within kThrownMassMin to
+    // kThrownMassMax times: Skyrim's junk weighs its weight in kilograms (junk.h), so a cabbage (0.25)
+    // hits 0.7 times as hard, an item of weight 2 twice, a beer case (MSC's, about 10 kg) three times.
+    // a_mass 0 (unknown) counts as the bottle.
+    inline constexpr float kThrownMassBase = 0.5f;  // kilograms, MSC's BottleBeerFly
+    inline constexpr float kThrownMassMin = 0.5f;
+    inline constexpr float kThrownMassMax = 3.0f;
+
+    inline float ThrownMass(float a_mass)
+    {
+        if (!(a_mass > 0.0f)) {
+            return 1.0f;
+        }
+        return (std::clamp)(std::sqrt(a_mass / kThrownMassBase), kThrownMassMin, kThrownMassMax);
+    }
+
+    inline float Thrown(float a_punch, float a_speed, float a_mass = 0.0f)
     {
         const float scale = (std::clamp)((a_speed - kThrownSpeedMin) / (kThrownSpeedFull - kThrownSpeedMin), 0.0f, 1.0f);
-        return (std::max)(0.0f, a_punch) * kThrownShare * scale;
+        return (std::max)(0.0f, a_punch) * kThrownShare * scale * ThrownMass(a_mass);
     }
 
     // A throw that left the player's hand while he sneaked and hits a target that does not see him
@@ -336,12 +353,12 @@ namespace PerkeleRim::Damage
         return std::pow((a_height - a_settings.min) * a_settings.mult, a_settings.exponent);
     }
 
-    // Seated in the Hayosiko van or the Kekmet the player is safe from enemies (a stopgap until the
+    // Seated in the Hayosiko van, the Kekmet or the Gifu the player is safe from enemies (a stopgap until the
     // vehicles get a real hitbox in Skyrim): dragon fire, bites, arrows, spells, melee do nothing.
     // The moped doesn't protect, and MSC's own crash damage still lands (Death::Hurt).
     inline bool SafeSeat(std::uint32_t a_vehicle)
     {
-        return a_vehicle == Protocol::kVehicleHayosiko || a_vehicle == Protocol::kVehicleKekmet;
+        return a_vehicle == Protocol::kVehicleHayosiko || a_vehicle == Protocol::kVehicleKekmet || a_vehicle == Protocol::kVehicleGifu;
     }
 
     // What a hit that Skyrim deals the player costs while it sits in a_vehicle (0 = on foot).

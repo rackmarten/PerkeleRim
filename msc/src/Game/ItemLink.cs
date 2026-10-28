@@ -26,6 +26,7 @@ namespace PerkeleRim.Game
             public uint Id;
             public uint Model;
             public Renderer[] Renderers;  // the ones its model is made of
+            public bool Form;             // Model is a Skyrim form id (junk, JunkLink): Skyrim draws its own model
         }
 
         readonly Island island;
@@ -99,6 +100,7 @@ namespace PerkeleRim.Game
             foreach (var t in items)
             {
                 if (t == null || (player != null && t.IsChildOf(player))) continue;
+                if (JunkLink.FormOf(t) != 0) continue;  // Skyrim's own item: gone with the handback, in its inventory
                 var body = t.GetComponent<Rigidbody>();
                 bool moving = body != null && !body.isKinematic;
                 var v = moving ? body.velocity : Vector3.zero;
@@ -206,7 +208,7 @@ namespace PerkeleRim.Game
         ItemPose Pose(Entry e, Transform player)
         {
             var t = e.Transform;
-            var pose = new ItemPose { id = e.Id, model = e.Model };
+            var pose = new ItemPose { id = e.Id, model = e.Model, flags = e.Form ? Wire.ItemForm : 0u };
             var p = island.IslandToSkyrim(new Vec3(t.position.x, t.position.y, t.position.z));
             pose.position[0] = p.x;
             pose.position[1] = p.y;
@@ -217,7 +219,7 @@ namespace PerkeleRim.Game
             pose.rotation[1] = q.y;
             pose.rotation[2] = q.z;
             pose.rotation[3] = q.w;
-            if (t.gameObject.activeInHierarchy && AnyEnabled(e.Renderers)) pose.flags |= Wire.ItemVisible;
+            if (t.gameObject.activeInHierarchy && (e.Form || AnyEnabled(e.Renderers))) pose.flags |= Wire.ItemVisible;
             if (t.IsChildOf(player)) pose.flags |= Wire.ItemHeld;
             return pose;
         }
@@ -249,6 +251,12 @@ namespace PerkeleRim.Game
             foreach (var item in items)
             {
                 if (entries.Count >= Wire.ItemCapacity) break;
+                uint form = JunkLink.FormOf(item);
+                if (form != 0)
+                {
+                    entries.Add(new Entry { Transform = item, Id = unchecked((uint)item.GetInstanceID()), Model = form, Renderers = new Renderer[0], Form = true });
+                    continue;
+                }
                 var root = item;
                 Add(item, t => t == root);
                 foreach (Transform child in item)
@@ -284,6 +292,7 @@ namespace PerkeleRim.Game
         static bool IsItem(Rigidbody body, Transform player)
         {
             var t = body.transform;
+            if (JunkLink.FormOf(t) != 0) return true;  // Skyrim's junk: its looks are Skyrim's own
             if (t == player || t.GetComponentInChildren<MeshRenderer>() == null) return false;
             // A vehicle is never one: MSC makes the parked moped light enough to lift by hand, and
             // as an item its whole model was read again (half a second) whenever its parts moved.

@@ -63,6 +63,10 @@ namespace PerkeleRim.Game
         // twentieth of what such a spring needs. Too much rebound damping (6.5) made it slow to
         // settle after a turn, now 4.5. Past half its travel the progressive springs take over.
         public static readonly Settings Kekmet = new Settings { Mass = 1.2f, CenterDrop = 0.1f, Spring = 0.8f, Travel = 6f, Bump = 3.5f, Rebound = 4.5f, CushionFrom = 0.5f, Cushion = 0.7f, Power = 2f, Grip = 1.3f, LeaveTipUpY = Upright.MaxTiltCos };
+        // The Gifu as MSC has it at first, with more forward grip for Skyrim's hills like the others
+        // and its center of mass a bit lower (a tall cab-over with its tank up high); it gets off at
+        // the van's tilt.
+        public static readonly Settings Gifu = new Settings { Mass = 1f, CenterDrop = 0.2f, Spring = 1f, Travel = 1f, Grip = 1.3f, LeaveTipUpY = Upright.MaxTiltCos };
         static readonly string[] BodyColliders = { "CarCollider", "TrafficTrigger" };
 
         // MSC sets things up in its own Start; tune after it.

@@ -7,7 +7,8 @@ namespace PerkeleRim.Game
     //  - TimePassed: the clock (sun, hour, day) moves on by the hours waited or slept and the needs
     //    change by MSC's own sleep rates (Link/Rest.cs);
     //  - LoadReset: whatever the player was doing is stopped before a loaded save gives control back
-    //    (Link/LoadReset.cs), so a piss, a cigarette or a raised hand never carries over. The needs
+    //    (Link/LoadReset.cs), so a piss, a cigarette, a raised hand or a blackout (PassOutGuard)
+    //    never carries over. The needs
     //    come from the save (SaveSync).
     //  - PlayerWashed: Kumpo waded into Skyrim's water up to his waist, so his dirtiness goes to 0.
     public class RestLink
@@ -147,6 +148,7 @@ namespace PerkeleRim.Game
                 if (cigarette != null) cigarette.Value = false;
             }
             moved += Reset(player.transform, LoadReset.Crouch);
+            moved += PassOutGuard.EndAll(player.transform, log, "load");
             var globals = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
             foreach (var name in LoadReset.Flags)
             {

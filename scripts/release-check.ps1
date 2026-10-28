@@ -66,7 +66,7 @@ try {
         }
     }
 
-    foreach ($built in 'files/Skyrim/Data/SKSE/Plugins/PerkeleRim.dll', 'files/Skyrim/Data/PerkeleRim.esp') {
+    foreach ($built in 'files/Skyrim/Data/SKSE/Plugins/PerkeleRim.dll', 'files/Skyrim/Data/Interface/PerkeleRim/MscMenu.swf', 'files/Skyrim/Data/PerkeleRim.esp') {
         if (-not (Test-Path -LiteralPath (Join-Path $root $built))) { $problems += "$built is missing." }
     }
 

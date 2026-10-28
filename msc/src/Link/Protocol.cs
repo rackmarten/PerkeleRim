@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 44;
+        public const uint ProtocolVersion = 48;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -17,19 +17,20 @@ namespace PerkeleRim.Protocol
         public const uint OffsetInputSlot = 128;
         public const uint OffsetPlayerSlot = 256;
         public const uint OffsetVehicleSlot = 384;
-        public const uint OffsetVehiclePartsSlot = 768;
-        public const uint OffsetItemSlot = 25536;
-        public const uint OffsetHandLayerSlot = 30720;
-        public const uint OffsetActorSlot = 30784;
-        public const uint OffsetParticleSlot = 32384;
-        public const uint OffsetRingToMsc = 48832;
+        public const uint OffsetVehiclePartsSlot = 896;
+        public const uint OffsetItemSlot = 33920;
+        public const uint OffsetHandLayerSlot = 39104;
+        public const uint OffsetActorSlot = 39168;
+        public const uint OffsetParticleSlot = 40768;
+        public const uint OffsetRingToMsc = 57216;
         public const uint RingToMscCapacity = 4194304;
-        public const uint OffsetRingToSkyrim = 4243200;
+        public const uint OffsetRingToSkyrim = 4251584;
         public const uint RingToSkyrimCapacity = 262144;
-        public const uint MappingSize = 4505408;
+        public const uint MappingSize = 4513792;
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint InputPaused = 0x2;
+        public const uint InputMscMenu = 0x4;
         public const uint PlayerValid = 0x1;
         public const uint PlayerCamera = 0x2;
         public const uint PlayerNeeds = 0x4;
@@ -38,7 +39,13 @@ namespace PerkeleRim.Protocol
         public const uint PlayerChaseCamera = 0x20;
         public const uint PlayerInGame = 0x40;
         public const uint PlayerTools = 0x80;
-        public const uint ConsumeDrink = 0x1;
+        public const uint DrinkNone = 0;
+        public const uint DrinkBeer = 1;
+        public const uint DrinkBooze = 2;
+        public const uint DrinkSpirit = 3;
+        public const uint DrinkMilk = 4;
+        public const uint DrinkJuice = 5;
+        public const uint PlayerMscMenu = 0x100;
         public const uint NeedThirst = 0;
         public const uint NeedHunger = 1;
         public const uint NeedStress = 2;
@@ -53,14 +60,17 @@ namespace PerkeleRim.Protocol
         public const uint VehicleHayosiko = 1;
         public const uint VehicleJonnez = 2;
         public const uint VehicleKekmet = 3;
-        public const uint VehicleCount = 3;
+        public const uint VehicleGifu = 4;
+        public const uint VehicleCount = 4;
         public const uint AnchorVehicleSpot = 0x1;
         public const uint VehiclePartCapacity = 256;
         public const uint PartVisible = 0x1;
         public const uint ItemCapacity = 128;
         public const uint ItemVisible = 0x1;
         public const uint ItemHeld = 0x2;
+        public const uint ItemForm = 0x4;
         public const uint HandLayerValid = 0x1;
+        public const uint HandLayerMenu = 0x2;
         public const uint ActorCapacity = 32;
         public const uint ParticleCapacity = 512;
         public const uint LookAtTextMax = 255;
@@ -110,7 +120,10 @@ namespace PerkeleRim.Protocol
         public const uint PocketMacaron = 5;
         public const uint PocketCigarettes = 6;
         public const uint PocketGold = 7;
-        public const uint PocketKinds = 8;
+        public const uint PocketJuice = 8;
+        public const uint PocketJunk = 9;
+        public const uint PocketKinds = 10;
+        public const uint JunkLanded = 0x1;
         public const uint MscSnapshotPathMax = 1024;
         public const uint ScreenshotPathMax = 1024;
         public const uint TimeBed = 0x1;
@@ -159,6 +172,8 @@ namespace PerkeleRim.Protocol
         ConsumeEvent = 29,
         FuelStations = 30,
         FuelText = 31,
+        JunkOut = 32,
+        JunkBack = 33,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -196,6 +211,8 @@ namespace PerkeleRim.Protocol
         public double mouseWheel;
         public uint screenWidth;
         public uint screenHeight;
+        public float cursorX;
+        public float cursorY;
 
         public bool IsKeyDown(int keyCode)
         {
@@ -220,7 +237,6 @@ namespace PerkeleRim.Protocol
         public uint seq;
         public uint reserved;
         public InputState value;
-        public fixed byte pad[8];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -233,7 +249,8 @@ namespace PerkeleRim.Protocol
         public float heading;
         public float pitch;
         public byte stance;
-        public fixed byte reserved[3];
+        public byte throwCharge;
+        public fixed byte reserved[2];
         public uint generation;
         public fixed float eye[3];
         public float roll;
@@ -559,6 +576,8 @@ namespace PerkeleRim.Protocol
         public uint kind;
         public float speed;
         public fixed float direction[3];
+        public float mass;
+        public uint reserved;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -674,7 +693,28 @@ namespace PerkeleRim.Protocol
     {
         public uint session;
         public uint appliedSeq;
-        public fixed uint counts[8];
+        public fixed uint counts[10];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct JunkOut
+    {
+        public uint seq;
+        public uint form;
+        public float mass;
+        public uint reserved;
+        public fixed float boundsMin[3];
+        public fixed float boundsMax[3];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct JunkBack
+    {
+        public uint session;
+        public uint seq;
+        public uint flags;
+        public fixed float position[3];
+        public fixed float rotation[4];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -684,7 +724,7 @@ namespace PerkeleRim.Protocol
         public float thirst;
         public float urine;
         public float drunk;
-        public uint flags;
+        public uint drink;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

@@ -13,6 +13,8 @@ namespace PerkeleRim::HandView
 
     // The image for the HUD ("img://" + this), empty while there's nothing to draw.
     const std::string& Image();
+    // The same while the texture holds MSC's options menu instead (MscMenu draws it), else empty.
+    const std::string& MenuImage();
     std::uint32_t      Width();
     std::uint32_t      Height();
 
