@@ -20,8 +20,9 @@ namespace PerkeleRim
         // Paths below the van's root left out: colliders and the dead body.
         public static readonly string[] Skip = { "(^|/)coll", "^DeadBody" };
 
-        // The lights (switched-on lamps, gauge lights, dashboard indicators): drawn glowing.
-        public static readonly string[] Lights = { "Electricity/PowerON", "GaugesLights", "Dashboard/Indicators/" };
+        // The lights (switched-on lamps, gauge lights, dashboard indicators): drawn glowing. The Gifu's
+        // lit head and tail lamps are one mesh beside its PowerON, not in it.
+        public static readonly string[] Lights = { "Electricity/PowerON", "Electricity/Driving/DrivingLights", "GaugesLights", "Dashboard/Indicators/" };
 
         public static readonly string[] SkipMaterials = { "Default-Material" };
 

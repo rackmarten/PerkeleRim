@@ -11,7 +11,7 @@ namespace PerkeleRim::VehicleView
         // Each vehicle's model as MSC sends it (ModelChunk, msc/src/Game/VehicleModel.cs), read from
         // MSC's running vehicle and named like PlayerCurrentVehicle: one node per MSC object, posed
         // from VehicleParts. Nothing is drawn until it has arrived. By vehicle id - 1.
-        constexpr std::array<std::string_view, Protocol::kVehicleCount> kModelNames{ "Hayosiko", "Jonnez", "Kekmet" };
+        constexpr std::array<std::string_view, Protocol::kVehicleCount> kModelNames{ "Hayosiko", "Jonnez", "Kekmet", "Gifu" };
 
         struct Lamp
         {

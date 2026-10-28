@@ -353,12 +353,12 @@ namespace PerkeleRim::Damage
         return std::pow((a_height - a_settings.min) * a_settings.mult, a_settings.exponent);
     }
 
-    // Seated in the Hayosiko van or the Kekmet the player is safe from enemies (a stopgap until the
+    // Seated in the Hayosiko van, the Kekmet or the Gifu the player is safe from enemies (a stopgap until the
     // vehicles get a real hitbox in Skyrim): dragon fire, bites, arrows, spells, melee do nothing.
     // The moped doesn't protect, and MSC's own crash damage still lands (Death::Hurt).
     inline bool SafeSeat(std::uint32_t a_vehicle)
     {
-        return a_vehicle == Protocol::kVehicleHayosiko || a_vehicle == Protocol::kVehicleKekmet;
+        return a_vehicle == Protocol::kVehicleHayosiko || a_vehicle == Protocol::kVehicleKekmet || a_vehicle == Protocol::kVehicleGifu;
     }
 
     // What a hit that Skyrim deals the player costs while it sits in a_vehicle (0 = on foot).

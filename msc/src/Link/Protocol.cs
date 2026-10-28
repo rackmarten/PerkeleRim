@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 47;
+        public const uint ProtocolVersion = 48;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -17,16 +17,16 @@ namespace PerkeleRim.Protocol
         public const uint OffsetInputSlot = 128;
         public const uint OffsetPlayerSlot = 256;
         public const uint OffsetVehicleSlot = 384;
-        public const uint OffsetVehiclePartsSlot = 768;
-        public const uint OffsetItemSlot = 25536;
-        public const uint OffsetHandLayerSlot = 30720;
-        public const uint OffsetActorSlot = 30784;
-        public const uint OffsetParticleSlot = 32384;
-        public const uint OffsetRingToMsc = 48832;
+        public const uint OffsetVehiclePartsSlot = 896;
+        public const uint OffsetItemSlot = 33920;
+        public const uint OffsetHandLayerSlot = 39104;
+        public const uint OffsetActorSlot = 39168;
+        public const uint OffsetParticleSlot = 40768;
+        public const uint OffsetRingToMsc = 57216;
         public const uint RingToMscCapacity = 4194304;
-        public const uint OffsetRingToSkyrim = 4243200;
+        public const uint OffsetRingToSkyrim = 4251584;
         public const uint RingToSkyrimCapacity = 262144;
-        public const uint MappingSize = 4505408;
+        public const uint MappingSize = 4513792;
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint InputPaused = 0x2;
@@ -60,7 +60,8 @@ namespace PerkeleRim.Protocol
         public const uint VehicleHayosiko = 1;
         public const uint VehicleJonnez = 2;
         public const uint VehicleKekmet = 3;
-        public const uint VehicleCount = 3;
+        public const uint VehicleGifu = 4;
+        public const uint VehicleCount = 4;
         public const uint AnchorVehicleSpot = 0x1;
         public const uint VehiclePartCapacity = 256;
         public const uint PartVisible = 0x1;

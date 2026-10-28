@@ -97,7 +97,7 @@ namespace PerkeleRim::Hitbox
     }
 
     // How far to lower Skyrim's player while it sits in a vehicle, so its a_height tall body (feet at
-    // a_feet) stays kSeatHeadroom under the box's top: MSC seats it on the seat, where a standing
+    // a_feet) stays kSeatHeadroom under the box's top (pass the box with Roof's top for the Gifu): MSC seats it on the seat, where a standing
     // Skyrim body pokes its head out of the roof for every enemy to hit. 0 when it fits already or
     // the vehicle lies on its side, at most kSeatDropMax. A vertical drop, in Skyrim units.
     inline constexpr float kSeatHeadroom = 10.0f;
@@ -120,14 +120,32 @@ namespace PerkeleRim::Hitbox
     // Where a player who has climbed into a vehicle without driving it (MSC lowers the camera and
     // lets him move between the seats before Enter) has its feet: the van's cabin, its box above
     // the ground clearance (the wheel arches, the bumpers and the ground beside it stay out), under
-    // the roof by more than a step (standing on it stays out) and off the bumpers' ends. Only the
-    // van has one; the Kekmet is an open frame whose box reaches out to its rear wheels.
+    // the roof by more than a step (standing on it stays out) and off the bumpers' ends. The Gifu's
+    // is its cab at the front, above its front wheels and under the cab's roof, which the septic
+    // tank behind it and the beacons stand over. The Kekmet is an open frame whose box reaches out
+    // to its rear wheels: none.
     inline constexpr float kCabinFloor = 40.0f;  // units above the box's bottom (the van's: 28 below its origin, its floor about 60 above that)
     inline constexpr float kCabinRoof = 50.0f;   // units under the box's top
     inline constexpr float kCabinEnds = 15.0f;   // units in from its front and back
 
+    // The Gifu's cab in its box (the box from its tires' bottom to the beacons, mirror to mirror,
+    // tank to wipers; MSC's model has the cab's floor 88 units above the bottom and its roof 187).
+    inline constexpr float kGifuCabLength = 135.0f;  // units back from the box's front
+    inline constexpr float kGifuCabFloor = 78.0f;    // units above the box's bottom (the front tires' top is 76)
+    inline constexpr float kGifuCabRoof = 185.0f;    // units above the box's bottom
+    inline constexpr float kGifuCabSides = 20.0f;    // units in from either side (the mirrors stick out)
+
     inline bool Cabin(std::uint32_t a_vehicle, const Box& a_box, Box& a_out)
     {
+        if (a_vehicle == Protocol::kVehicleGifu) {
+            a_out = a_box;
+            a_out.lo[0] += kGifuCabSides;
+            a_out.hi[0] -= kGifuCabSides;
+            a_out.lo[1] = a_box.hi[1] - kGifuCabLength;
+            a_out.lo[2] = a_box.lo[2] + kGifuCabFloor;
+            a_out.hi[2] = (std::min)(a_box.hi[2], a_box.lo[2] + kGifuCabRoof);
+            return a_out.lo[0] < a_out.hi[0] && a_out.lo[1] < a_out.hi[1] && a_out.lo[2] < a_out.hi[2];
+        }
         if (a_vehicle != Protocol::kVehicleHayosiko) {
             return false;
         }
@@ -137,6 +155,13 @@ namespace PerkeleRim::Hitbox
         a_out.lo[2] += kCabinFloor;
         a_out.hi[2] -= kCabinRoof;
         return a_out.lo[1] < a_out.hi[1] && a_out.lo[2] < a_out.hi[2];
+    }
+
+    // The top of the roof over vehicle a_vehicle's seat, in its box's frame: the box's top, but the
+    // Gifu's cab roof, under its tank and beacons, for SeatDrop.
+    inline float Roof(std::uint32_t a_vehicle, const Box& a_box)
+    {
+        return a_vehicle == Protocol::kVehicleGifu ? (std::min)(a_box.hi[2], a_box.lo[2] + kGifuCabRoof) : a_box.hi[2];
     }
 
     // Whether feet at a_feet (world) are in vehicle a_vehicle's cabin, the vehicle at a_position

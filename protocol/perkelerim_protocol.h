@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 47;
+    inline constexpr std::uint32_t kProtocolVersion = 48;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -34,16 +34,16 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kOffsetInputSlot = 128;
     inline constexpr std::uint32_t kOffsetPlayerSlot = 256;
     inline constexpr std::uint32_t kOffsetVehicleSlot = 384;
-    inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 768;   // after kVehicleCount VehicleSlots
-    inline constexpr std::uint32_t kOffsetItemSlot = 25536;         // after kVehicleCount VehiclePartsSlots
-    inline constexpr std::uint32_t kOffsetHandLayerSlot = 30720;
-    inline constexpr std::uint32_t kOffsetActorSlot = 30784;
-    inline constexpr std::uint32_t kOffsetParticleSlot = 32384;
-    inline constexpr std::uint32_t kOffsetRingToMsc = 48832;        // RingHeader, data follows
+    inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 896;   // after kVehicleCount VehicleSlots
+    inline constexpr std::uint32_t kOffsetItemSlot = 33920;         // after kVehicleCount VehiclePartsSlots
+    inline constexpr std::uint32_t kOffsetHandLayerSlot = 39104;
+    inline constexpr std::uint32_t kOffsetActorSlot = 39168;
+    inline constexpr std::uint32_t kOffsetParticleSlot = 40768;
+    inline constexpr std::uint32_t kOffsetRingToMsc = 57216;        // RingHeader, data follows
     inline constexpr std::uint32_t kRingToMscCapacity = 4194304;    // 4 MiB: collision chunks
-    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4243200;   // 48832 + 64 + 4 MiB
+    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4251584;   // 57216 + 64 + 4 MiB
     inline constexpr std::uint32_t kRingToSkyrimCapacity = 262144;  // 256 KiB: events
-    inline constexpr std::uint32_t kMappingSize = 4505408;         // 4243200 + 64 + 256 KiB
+    inline constexpr std::uint32_t kMappingSize = 4513792;         // 4251584 + 64 + 256 KiB
 
     enum class Side : std::uint32_t
     {
@@ -170,7 +170,8 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kVehicleHayosiko = 1;  // VehicleState.vehicle: the Hayosiko van
     inline constexpr std::uint32_t kVehicleJonnez = 2;    // VehicleState.vehicle: the Jonnez moped
     inline constexpr std::uint32_t kVehicleKekmet = 3;    // VehicleState.vehicle: the Kekmet tractor
-    inline constexpr std::uint32_t kVehicleCount = 3;     // vehicle ids are 1..kVehicleCount
+    inline constexpr std::uint32_t kVehicleGifu = 4;      // VehicleState.vehicle: the Gifu truck
+    inline constexpr std::uint32_t kVehicleCount = 4;     // vehicle ids are 1..kVehicleCount
 
     // MSC -> Skyrim, one slot per vehicle: vehicle id v is VehicleSlot v - 1 from kOffsetVehicleSlot
     // (its VehicleParts likewise from kOffsetVehiclePartsSlot). Skyrim world space like PlayerState;

@@ -1,7 +1,7 @@
 #pragma once
 
-// A safe seat: while the player sits in the Hayosiko van or the Kekmet, or has climbed into one,
-// enemies can't hurt it. The vehicles' hitboxes stop what comes through the body, but Skyrim's player
+// A safe seat: while the player sits in the Hayosiko van, the Kekmet or the Gifu, or has climbed
+// into the van or the Gifu's cab, enemies can't hurt it. The vehicles' hitboxes stop what comes through the body, but Skyrim's player
 // stands at full height where MSC seats it, its head out of the roof. Dragon fire, bites, arrows, spells and
 // melee all do nothing: god mode is on for as long as the seat lasts (and given back as it was),
 // and the player's own health damage entry drops hits from attackers. Staggers, recoils, knockdowns

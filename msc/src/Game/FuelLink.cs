@@ -6,8 +6,8 @@ using UnityEngine;
 
 namespace PerkeleRim.Game
 {
-    // Fuel along Skyrim's roads (docs/PROTOCOL.md, "Fuel"; rules in msc/src/Link/Fuel.cs). The van
-    // and the Kekmet burn MSC's diesel as MSC burns it; Skyrim sends the dwemer oil pumps
+    // Fuel along Skyrim's roads (docs/PROTOCOL.md, "Fuel"; rules in msc/src/Link/Fuel.cs). The van,
+    // the Kekmet and the Gifu burn MSC's diesel as MSC burns it; Skyrim sends the dwemer oil pumps
     // (FuelStations) and this:
     //  - brings MSC's diesel pump to the one Kumpo is near (FuelPump), so the hatch, the cap, the
     //    nozzle and pouring are MSC's own;
