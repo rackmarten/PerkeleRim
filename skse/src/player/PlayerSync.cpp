@@ -134,6 +134,25 @@ namespace PerkeleRim::PlayerSync
             return ui && (ui->GameIsPaused() || ui->IsMenuOpen(RE::CursorMenu::MENU_NAME));
         }
 
+        // A Skyrim menu covers the view: one with the input, or Favorites and the others that neither
+        // pause nor show a cursor. MSC's hands and the held drink hide under them; the HUD movie,
+        // which holds the hands, stays up under menus.
+        bool MenuOver()
+        {
+            if (MenuHasInput()) {
+                return true;
+            }
+            auto* ui = RE::UI::GetSingleton();
+            if (!ui) {
+                return false;
+            }
+            static const std::string_view kMenus[] = { RE::FavoritesMenu::MENU_NAME, RE::TweenMenu::MENU_NAME, RE::InventoryMenu::MENU_NAME,
+                RE::MagicMenu::MENU_NAME, RE::MapMenu::MENU_NAME, RE::JournalMenu::MENU_NAME, RE::ContainerMenu::MENU_NAME, RE::BarterMenu::MENU_NAME,
+                RE::GiftMenu::MENU_NAME, RE::LockpickingMenu::MENU_NAME, RE::BookMenu::MENU_NAME, RE::Console::MENU_NAME, RE::StatsMenu::MENU_NAME,
+                RE::DialogueMenu::MENU_NAME };
+            return std::ranges::any_of(kMenus, [&](std::string_view a_menu) { return ui->IsMenuOpen(a_menu); });
+        }
+
         // A menu pauses the game (Escape, the map, inventories): MSC freezes its time as well.
         bool GamePaused()
         {
@@ -959,7 +978,8 @@ namespace PerkeleRim::PlayerSync
             HandView::Update(link.ReadHandLayer(hands) ? &hands : nullptr, a_delta);
             Combat::Update(a_player, state.generation, a_delta);
             const bool menu = MenuHasInput();
-            HeldDrinkView::Update(a_player, posed && !chase && !menu, a_delta);  // hidden under a menu, like the hands
+            const bool covered = MenuOver();
+            HeldDrinkView::Update(a_player, posed && !chase && !covered, a_delta);  // hidden under a menu, like the hands
             Combat::Disarm(a_player);
             Combat::Drunk(a_player, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, a_delta);
             NeedEffects::Update(a_player, state.hasNeeds ? &state.needs : nullptr, a_delta);
@@ -986,9 +1006,7 @@ namespace PerkeleRim::PlayerSync
             hud.money = Pocket::Money(a_player);
             hud.hasNeeds = state.hasNeeds;
             hud.needs = state.needs;
-            // The HUD movie stays up under Skyrim's menus (inventory, Favorites, dialogue) and its clips
-            // with it: MSC's hands (a drink, a cigarette) hide while one has the input.
-            hud.handsImage = menu ? std::string() : HandView::Image();
+            hud.handsImage = covered ? std::string() : HandView::Image();  // a drink or a cigarette over Favorites, say
             hud.handsWidth = HandView::Width();
             hud.handsHeight = HandView::Height();
             hud.handsLight = HandView::Light(a_player);

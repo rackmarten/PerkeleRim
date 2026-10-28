@@ -46,7 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- My Summer Car's hands (a drink or a cigarette in them) no longer show over Skyrim's inventory and other menus.
+- My Summer Car's hands (a drink or a cigarette in them) no longer show over Skyrim's inventory, Favorites and other menus.
 - Drinking until Kumpo passes out no longer flings him across Skyrim's map, or keeps flinging him after a load. MSC's own blackout (and its knockout) stays off while Skyrim plays Kumpo through MSC, and a load ends one that was already going.
 - Kumpo's hangover goes with the Skyrim save: loading a save brings back that save's hangover, or none, instead of keeping the camera shaking from the hangover he had before the load.
 - Sleeping in a Skyrim bed while Kumpo is in My Summer Car counts as sleep again, not waiting: 8 hours in a bed take his fatigue to 0 (it was read as waiting, which takes only part of it).
