@@ -28,6 +28,7 @@ namespace PerkeleRim::HitTest
         constexpr float         kOwnedSettle = 4.0f;       // MSC's island gets built under the player
         constexpr float         kLevelTimeout = 8.0f;
         constexpr float         kLevelPitch = 0.05f;  // radians, about 3 degrees: level enough
+        constexpr float         kAimPitch = 0.12f;    // and about 7 degrees to press at, as MSC's drunk camera drifts
         constexpr float         kHitTimeout = 4.0f;   // from the key's press until the hit reaches Skyrim
         constexpr float         kSpellSeconds = 0.5f;  // from the hit until its spell has landed on the health
         constexpr float         kPunchHold = 0.3f;   // past MSC's 0.15 s from the key to the fist's sweep
@@ -211,8 +212,9 @@ namespace PerkeleRim::HitTest
 
         // Turns MSC's camera level with mouse moves: a throw flies where it looks, and a punch reaches
         // further. MSC's sensitivity isn't known, so the gain halves whenever it overshoots, and a move
-        // that tilted the wrong way turns the sign around.
-        bool Leveled(const Protocol::PlayerState& a_pose, float a_delta)
+        // that tilted the wrong way turns the sign around. Not a_learn: the gain and sign stay as they
+        // are (between hits, where a drunk camera's own drift would fool them).
+        bool Leveled(const Protocol::PlayerState& a_pose, float a_delta, bool a_learn = true)
         {
             const float pitch = a_pose.viewPitch;
             if (std::abs(pitch) < kLevelPitch) {
@@ -223,7 +225,7 @@ namespace PerkeleRim::HitTest
                 return false;
             }
             state.step = 0.0f;
-            if (state.lastPitch != 0.0f) {
+            if (a_learn && state.lastPitch != 0.0f) {
                 if (std::abs(pitch) > std::abs(state.lastPitch) + 0.01f && (pitch > 0.0f) == (state.lastPitch > 0.0f)) {
                     state.pitchSign = -state.pitchSign;  // went the wrong way
                 } else if ((pitch > 0.0f) != (state.lastPitch > 0.0f)) {
@@ -282,15 +284,17 @@ namespace PerkeleRim::HitTest
                 state.bottlesTaken += a_player->GetItemCount(bottle);
                 a_player->RemoveItem(bottle, a_player->GetItemCount(bottle), RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
             }
-            if (cabbage && a_player->GetItemCount(cabbage) < 1) {
+            if (cabbage && ThrowJunk::Left(a_player, cabbage) < 1) {  // the last one may still be in the air, in the inventory until it lands
                 a_player->AddObjectToContainer(cabbage, nullptr, 1, nullptr);
             }
             ThrowJunk::OnlyOne(cabbage ? cabbage->GetFormID() : 0);
             SKSE::log::info("hit test: the Empty Bottles gone, a cabbage to throw");
         }
 
-        void Press()
+        void Press(const Protocol::PlayerState& a_pose, bool a_posed)
         {
+            SKSE::log::info("hit test: {} {}: pressing, camera pitch {:.2f}{}", Current().name, state.hit + 1, a_posed ? a_pose.viewPitch : 0.0f,
+                a_posed && std::abs(a_pose.viewPitch) >= kAimPitch ? " (gave up levelling it)" : "");
             state.hitsBefore = Combat::LastHit().count;
             state.result = {};
             state.result.before = Health(Target());
@@ -479,11 +483,20 @@ namespace PerkeleRim::HitTest
                 Command("pocket 3");
             }
             // A punch waits for MSC to have the capsule and a stagger to be over, a throw for the bottle.
-            if (state.timer >= (state.phase != Phase::Holding ? 1.5f : Current().attack == Attack::kJunk ? kJunkHoldSeconds : kHoldSeconds)) {
-                Press();
+            // And for the camera to be level again: drunk, it drifts between hits, and a punch along a
+            // camera turned up passes over the target's head.
+            if (const bool level = posed && (Leveled(pose, a_delta, false) || std::abs(pose.viewPitch) < kAimPitch);
+                state.timer >= (state.phase != Phase::Holding ? 1.5f : Current().attack == Attack::kJunk ? kJunkHoldSeconds : kHoldSeconds) &&
+                (level || state.timer >= kLevelTimeout)) {
+                Press(pose, posed);
             }
             break;
         case Phase::Pressing:
+            // Still in front of the view: MSC's punch goes out 0.15 s after the key, a throw when it's
+            // let go, and a drunk camera sways meanwhile.
+            if (auto* target = Target(); target && posed) {
+                Stand(a_player, target, pose);
+            }
             if (state.timer >= (Current().attack == Attack::kPunch ? kPunchHold : kThrowHold)) {
                 PlayerSync::DebugHold(Current().attack == Attack::kPunch ? kKeyH : kMouse1, false);
                 Go(Phase::Waiting);

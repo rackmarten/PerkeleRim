@@ -22,6 +22,9 @@ namespace PerkeleRim::ThrowJunk
     // Everything out is the inventory's again: the link went down, MSC let go of the player, a load.
     void Release();
 
+    // Pieces of a_item in the inventory that aren't out (thrown ones stay in it until they land).
+    std::int32_t Left(RE::PlayerCharacter* a_player, RE::TESBoundObject* a_item);
+
     // The hit test (debug/HitTest.cpp): only one piece of a_form counts as junk, so every throw is
     // that item and none comes out after it by itself; 0 is all junk again.
     void OnlyOne(RE::FormID a_form);

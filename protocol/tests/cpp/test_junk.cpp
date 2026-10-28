@@ -77,6 +77,22 @@ TEST_CASE("a roll out of range is clamped")
     CHECK(Junk::Pick(items, Roll(99)) == 1);
 }
 
+TEST_CASE("pieces out in MSC's hand or the air aren't there to throw")
+{
+    CHECK(Junk::Available(3, 0) == 3);
+    CHECK(Junk::Available(3, 1) == 2);
+    CHECK(Junk::Available(1, 1) == 0);
+    CHECK(Junk::Available(0, 1) == 0);  // sold or dropped meanwhile
+}
+
+TEST_CASE("the hit test's one piece counts after the one still flying")
+{
+    CHECK(Junk::Available(1, 0, true) == 1);
+    CHECK(Junk::Available(5, 0, true) == 1);
+    CHECK(Junk::Available(1, 1, true) == 0);  // thrown, not landed: nothing to throw yet
+    CHECK(Junk::Available(2, 1, true) == 1);  // one added meanwhile is there at once
+}
+
 TEST_CASE("a unit of weight is a kilogram, weightless junk still weighs a little")
 {
     CHECK(Junk::Mass(0.25f) == doctest::Approx(0.25f));

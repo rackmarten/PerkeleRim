@@ -74,6 +74,15 @@ namespace PerkeleRim::Junk
         return a_item.kind != Kind::kOther && !a_item.quest && a_item.weight <= kWeightMax;
     }
 
+    // How many of one item there are to throw: the inventory's less those out in MSC's hand or the
+    // air (they stay in the inventory until they land). a_onlyOne (the hit test's ThrowJunk::OnlyOne):
+    // at most one, counted after the ones out, so a piece added while the last one flies is there.
+    constexpr std::int32_t Available(std::int32_t a_inventory, std::int32_t a_out, bool a_onlyOne = false)
+    {
+        const std::int32_t left = a_inventory - a_out;
+        return left <= 0 ? 0 : a_onlyOne ? 1 : left;
+    }
+
     // How many pieces there are to throw.
     constexpr std::int64_t Total(std::span<const Item> a_items)
     {

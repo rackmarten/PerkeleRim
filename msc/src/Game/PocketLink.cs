@@ -57,6 +57,7 @@ namespace PerkeleRim.Game
         PlayMakerFSM takingUse;  // its Use FSM (null for an empty bottle)
         bool trimmed;            // a new beer case is down to one bottle (spike "hold 0")
         bool eating;             // eaten as soon as it has loaded, never held
+        bool holdOnly;           // spike "hold": into the hand without the throwing stance
         float takingSince;
         uint junkSeq;            // junk being taken out: the PocketChange Skyrim answers with a JunkOut
 
@@ -117,8 +118,16 @@ namespace PerkeleRim.Game
         // Spike command "pocket <key>": as if Skyrim's key went down.
         public void Press(int keyCode) => presses.Enqueue(keyCode);
 
-        // Spike command "hold <kind>": a new item of a kind into the hand, the pocket untouched.
-        public void Hold(int kind) { if (taking == null && takingKind == Pocket.None) StartTake(null, kind, false); }
+        // Spike command "hold <kind>": a new item of a kind into the hand, the pocket untouched. No
+        // throwing stance either: the hit test's next throw would otherwise be whatever key 3 rolled
+        // out of Skyrim's pocket after this one, and a bottle left over in the hand.
+        public void Hold(int kind)
+        {
+            if (taking != null || takingKind != Pocket.None) return;
+            throwStance = false;
+            StartTake(null, kind, false);
+            if (takingKind != Pocket.None) holdOnly = true;
+        }
 
         public void OnCounts(byte[] payload, int size)
         {
@@ -792,7 +801,7 @@ namespace PerkeleRim.Game
             if (Holding(hand.ActiveStateName) && hand.FsmVariables.FindFsmGameObject("PickedObject").Value == taking)
             {
                 log($"pocket: {taking.name} in the hand ({ledger.Available(takingKind)} left in the pocket)");
-                if (Pocket.Thrown(takingKind)) { throwStance = true; thrown = taking; thrownKind = takingKind; leftAt = -1f; }
+                if (Pocket.Thrown(takingKind) && !holdOnly) { throwStance = true; thrown = taking; thrownKind = takingKind; leftAt = -1f; }
                 EndTake();
                 return;
             }
@@ -808,6 +817,7 @@ namespace PerkeleRim.Game
             takingKind = Pocket.None;
             takingUse = null;
             eating = false;
+            holdOnly = false;
         }
     }
 }
