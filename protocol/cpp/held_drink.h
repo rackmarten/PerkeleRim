@@ -35,7 +35,7 @@ namespace PerkeleRim::Held
 
     inline constexpr float kMaxHeight = 21.0f;  // units (30 cm): a model taller than this is shrunk to it
     inline constexpr float kNeckDown = 0.2f;    // the neck, this share of the model's height under its top
-    inline constexpr float kLiftUp = 2.0f;      // units the bottle sits above the grip, along the camera's up (by eye, in game)
+    inline constexpr float kLiftUp = 7.0f;      // units (10 cm) the bottle sits above the grip, along the camera's up (by eye, in game)
 
     inline Vec   Sub(Vec a, Vec b) { return { a.x - b.x, a.y - b.y, a.z - b.z }; }
     inline Vec   Add(Vec a, Vec b) { return { a.x + b.x, a.y + b.y, a.z + b.z }; }
