@@ -18,8 +18,7 @@ namespace PerkeleRim::People
         struct State
         {
             Bystanders::Fleeing fleeing;
-            // Each fleeing actor's markers, by its form id times 2, plus 1 for where it runs to.
-            std::unordered_map<std::uint64_t, RE::ObjectRefHandle> markers;
+            std::unordered_map<RE::FormID, RE::ObjectRefHandle> markers;  // each fleeing actor's, by its form id
             std::uint32_t vehicle = 0;  // what SetInVehicle last said
             double        wayCheckAt = -1e9;
             unsigned      fled = 0;     // for the log
@@ -81,40 +80,31 @@ namespace PerkeleRim::People
             return package ? package->GetObjectTypeName() : "no package";
         }
 
-        std::uint64_t MarkerKey(std::uint32_t a_id, bool a_to)
+        void DropMarker(std::uint32_t a_id)
         {
-            return std::uint64_t{ a_id } * 2 + (a_to ? 1 : 0);
-        }
-
-        void DropMarkers(std::uint32_t a_id)
-        {
-            for (const bool to : { false, true }) {
-                const auto found = state.markers.find(MarkerKey(a_id, to));
-                if (found == state.markers.end()) {
-                    continue;
-                }
-                if (auto marker = found->second.get()) {
-                    marker->Disable();
-                    marker->SetDelete(true);
-                }
-                state.markers.erase(found);
+            const auto found = state.markers.find(a_id);
+            if (found == state.markers.end()) {
+                return;
             }
+            if (auto marker = found->second.get()) {
+                marker->Disable();
+                marker->SetDelete(true);
+            }
+            state.markers.erase(found);
         }
 
-        // a_id's marker (a_to: where it runs to, else what it runs from) at a_at, placed the first
-        // time; nullptr if Skyrim wouldn't place one.
-        RE::TESObjectREFR* MarkerAt(RE::PlayerCharacter* a_player, std::uint32_t a_id, bool a_to, const RE::NiPoint3& a_at)
+        // a_id's marker at a_at, placed the first time; nullptr if Skyrim wouldn't place one.
+        RE::TESObjectREFR* MarkerAt(RE::PlayerCharacter* a_player, std::uint32_t a_id, const RE::NiPoint3& a_at)
         {
-            const auto key = MarkerKey(a_id, a_to);
-            auto       marker = state.markers[key].get();
+            auto marker = state.markers[a_id].get();
             if (!marker) {
                 auto* base = RE::TESForm::LookupByID<RE::TESBoundObject>(kXMarker);
                 marker = base ? a_player->PlaceObjectAtMe(base, false) : nullptr;
                 if (!marker) {
-                    state.markers.erase(key);
+                    state.markers.erase(a_id);
                     return nullptr;
                 }
-                state.markers[key] = marker->GetHandle();
+                state.markers[a_id] = marker->GetHandle();
             }
             marker->SetPosition(a_at);
             return marker.get();
@@ -122,9 +112,7 @@ namespace PerkeleRim::People
 
         void LetGo(std::uint32_t a_id)
         {
-            const auto to = state.markers.find(MarkerKey(a_id, true));
-            const auto target = to != state.markers.end() ? to->second.get() : nullptr;
-            DropMarkers(a_id);
+            DropMarker(a_id);
             auto* actor = RE::TESForm::LookupByID<RE::Actor>(a_id);
             if (!actor || actor->IsDead()) {
                 return;
@@ -137,8 +125,7 @@ namespace PerkeleRim::People
             if (reset) {
                 actor->EvaluatePackage(true, true);
             }
-            SKSE::log::info("people: {} ({:08X}) stops fleeing{}, {:.0f} units from where it was to run to: {}", NameOf(actor), a_id,
-                reset ? ", its AI reset" : "", target ? actor->GetPosition().GetDistance(target->GetPosition()) : -1.0f, PackageOf(actor));
+            SKSE::log::info("people: {} ({:08X}) stops fleeing{}: {}", NameOf(actor), a_id, reset ? ", its AI reset" : "", PackageOf(actor));
         }
 
         // Every dialogue with the player starts with Actor::SetDialogueWithPlayer(true, ...): talking to
@@ -192,16 +179,13 @@ namespace PerkeleRim::People
             return false;
         }
         // Out of the lane to its own side, outside combat: a flee package (no crime, no aggro) from a
-        // marker on the vehicle's line level with it (Damage::FleeFrom), to one off the road on its
-        // side (Damage::FleeTo). Fleeing from the player, or from the line alone, let the navmesh
-        // pick a way down the road. Without a marker, from the player.
+        // marker on the vehicle's line level with it (Damage::FleeFrom). Fleeing from the player let
+        // the navmesh pick a way down the road or back past the vehicle. Without a marker, from the player.
         const auto pos = a_actor->GetPosition();
-        float      fromX, fromY, toX, toY;
+        float      fromX, fromY;
         Damage::FleeFrom(pos.x - a_from.x, pos.y - a_from.y, a_wayX, a_wayY, fromX, fromY);
-        Damage::FleeTo(pos.x - a_from.x, pos.y - a_from.y, a_wayX, a_wayY, toX, toY);
-        auto* marker = MarkerAt(a_player, a_actor->GetFormID(), false, RE::NiPoint3(a_from.x + fromX, a_from.y + fromY, pos.z));
-        auto* target = MarkerAt(a_player, a_actor->GetFormID(), true, RE::NiPoint3(a_from.x + toX, a_from.y + toY, pos.z));
-        a_actor->InitiateFlee(marker ? marker : static_cast<RE::TESObjectREFR*>(a_player), false, true, false, nullptr, target, Bystanders::kFleeUnits,
+        auto* marker = MarkerAt(a_player, a_actor->GetFormID(), RE::NiPoint3(a_from.x + fromX, a_from.y + fromY, pos.z));
+        a_actor->InitiateFlee(marker ? marker : static_cast<RE::TESObjectREFR*>(a_player), false, true, false, nullptr, nullptr, Bystanders::kFleeUnits,
             Bystanders::kFleeUnits);
         state.fled++;
         SKSE::log::info("people: {} ({:08X}) {} {} ({:.0f} units away, {:.0f} off its line, {}; now running {})", NameOf(a_actor), a_actor->GetFormID(),
