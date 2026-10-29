@@ -35,6 +35,7 @@ namespace PerkeleRim::Held
 
     inline constexpr float kMaxHeight = 21.0f;  // units (30 cm): a model taller than this is shrunk to it
     inline constexpr float kNeckDown = 0.2f;    // the neck, this share of the model's height under its top
+    inline constexpr float kLiftUp = 2.0f;      // units the bottle sits above the grip, along the camera's up (by eye, in game)
 
     inline Vec   Sub(Vec a, Vec b) { return { a.x - b.x, a.y - b.y, a.z - b.z }; }
     inline Vec   Add(Vec a, Vec b) { return { a.x + b.x, a.y + b.y, a.z + b.z }; }
@@ -59,7 +60,7 @@ namespace PerkeleRim::Held
     }
 
     // The model (bounds a_min..a_max in its own space, standing along +Z) held by its neck at
-    // a_grip, pointing from a_bottom to a_top, in the camera's space. False when MSC's bottle or
+    // a_grip (kLiftUp higher), pointing from a_bottom to a_top, in the camera's space. False when MSC's bottle or
     // the model has no length, or side runs along it.
     inline bool Place(Vec a_bottom, Vec a_top, Vec a_side, Vec a_grip, Vec a_min, Vec a_max, Pose& a_out)
     {
@@ -83,7 +84,8 @@ namespace PerkeleRim::Held
             a_out.rotate[2][c] = columns[c].z;
         }
         a_out.scale = SizeOf(a_min, a_max);
-        a_out.translate = Sub(a_grip, Apply(a_out.rotate, Scale(NeckOf(a_min, a_max), a_out.scale)));
+        const Vec held{ a_grip.x, a_grip.y, a_grip.z + kLiftUp };
+        a_out.translate = Sub(held, Apply(a_out.rotate, Scale(NeckOf(a_min, a_max), a_out.scale)));
         return true;
     }
 

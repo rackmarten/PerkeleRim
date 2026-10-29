@@ -29,10 +29,11 @@ TEST_CASE("held drink is held by its neck in the fist")
     // MSC's bottle upright in front of the camera, the fist on it at (5, 30, 2).
     REQUIRE(Place({ 5, 30, -6 }, { 5, 30, 6 }, { 1, 0, 0 }, { 5, 30, 2 }, kMin, kMax, pose));
     CHECK(pose.scale == doctest::Approx(1.0f));  // its own size, not MSC's bottle's 12 units
-    CheckNear(Placed(pose, kNeck), { 5, 30, 2 });
-    CheckNear(Placed(pose, { 0, 1, 20.5f }), { 5, 30, 6 });   // its top out of the fist, the way MSC's points
-    CheckNear(Placed(pose, { 0, 1, 0.5f }), { 5, 30, -14 });  // the body hangs below
-    CheckNear(Placed(pose, { 3, 1, 16.5f }), { 8, 30, 2 });   // +X along side
+    const float up = kLiftUp;
+    CheckNear(Placed(pose, kNeck), { 5, 30, 2 + up });                // in the fist, a little up
+    CheckNear(Placed(pose, { 0, 1, 20.5f }), { 5, 30, 6 + up });     // its top out of the fist, the way MSC's points
+    CheckNear(Placed(pose, { 0, 1, 0.5f }), { 5, 30, -14 + up });    // the body hangs below
+    CheckNear(Placed(pose, { 3, 1, 16.5f }), { 8, 30, 2 + up });     // +X along side
 }
 
 TEST_CASE("held drink keeps its own size unless it is taller than a bottle")
@@ -42,7 +43,7 @@ TEST_CASE("held drink keeps its own size unless it is taller than a bottle")
     Pose pose;
     REQUIRE(Place({ 0, 0, 0 }, { 0, 0, 10 }, { 0, 1, 0 }, { 0, 0, 5 }, { -10, -10, 0 }, { 10, 10, 42 }, pose));
     CHECK(pose.scale == doctest::Approx(0.5f));
-    CheckNear(Placed(pose, NeckOf({ -10, -10, 0 }, { 10, 10, 42 })), { 0, 0, 5 });
+    CheckNear(Placed(pose, NeckOf({ -10, -10, 0 }, { 10, 10, 42 })), { 0, 0, 5 + kLiftUp });
 }
 
 TEST_CASE("held drink follows a tilted bottle and its turn")
@@ -53,8 +54,8 @@ TEST_CASE("held drink follows a tilted bottle and its turn")
     const Vec grip{ 4, 12, -2 };  // halfway
     Pose      pose;
     REQUIRE(Place(bottom, top, { 0, 0, 1 }, grip, kMin, kMax, pose));  // side not quite across: only its part across counts
-    CheckNear(Placed(pose, kNeck), grip);
-    CheckNear(Placed(pose, { 0, 1, 20.5f }), { 4, 12 - 0.8f * 4, -2 + 0.6f * 4 });  // 4 units on toward MSC's top
+    CheckNear(Placed(pose, kNeck), { grip.x, grip.y, grip.z + kLiftUp });  // up is the camera's, whatever the tilt
+    CheckNear(Placed(pose, { 0, 1, 20.5f }), { 4, 12 - 0.8f * 4, -2 + 0.6f * 4 + kLiftUp });  // 4 units on toward MSC's top
     // A rotation: lengths kept, right-handed.
     const Vec x = Apply(pose.rotate, { 1, 0, 0 }), y = Apply(pose.rotate, { 0, 1, 0 }), z = Apply(pose.rotate, { 0, 0, 1 });
     CHECK(Length(x) == doctest::Approx(1.0f));
@@ -78,7 +79,7 @@ TEST_CASE("held drink goes from the camera's space to its parent's")
     // A camera at (100, 200, 300) looking east: its forward (+Y) is world +X, its right (+X) world -Y.
     const Matrix camera = { { 0, 1, 0 }, { -1, 0, 0 }, { 0, 0, 1 } };
     const Pose   world = ToParent(camera, { 100, 200, 300 }, local);
-    CheckNear(Placed(world, kNeck), { 110, 200, 300 });  // the neck ten units ahead of the camera
-    CheckNear(Placed(world, { 0, 1, 20.5f }), { 110, 200, 304 });
+    CheckNear(Placed(world, kNeck), { 110, 200, 300 + kLiftUp });  // the neck ten units ahead of the camera
+    CheckNear(Placed(world, { 0, 1, 20.5f }), { 110, 200, 304 + kLiftUp });
     CheckNear(Apply(world.rotate, { 1, 0, 0 }), { 0, -1, 0 });
 }
