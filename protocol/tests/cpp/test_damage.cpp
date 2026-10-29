@@ -321,6 +321,17 @@ TEST_CASE("people flee from the vehicle's line, out to their own side")
     CHECK(y == 0.0f);
 }
 
+TEST_CASE("a flee ends off the road on the actor's own side")
+{
+    float x = 0.0f, y = 0.0f;
+    Damage::FleeTo(200.0f, 3000.0f, 0.0f, 1.0f, x, y);  // heading +Y, to the right
+    CHECK(x == doctest::Approx(Damage::kFleeToAsideUnits));
+    CHECK(y == doctest::Approx(3000.0f));
+    Damage::FleeTo(-50.0f, 1000.0f, 0.0f, 1.0f, x, y);  // a little to the left
+    CHECK(x == doctest::Approx(-Damage::kFleeToAsideUnits));
+    CHECK(Damage::kFleeToAsideUnits > Damage::kWayLaneMaxUnits);
+}
+
 TEST_CASE("the horn carries further at speed, the far ones flee")
 {
     CHECK(Damage::HornReach(0.0f) == Damage::kHornUnits);

@@ -354,7 +354,9 @@ namespace PerkeleRim::Damage
     // vehicle; a_dx, a_dy as for InVehicleWay. No way: the vehicle itself.
     inline constexpr float kFleeFromBehindUnits = 150.0f;
 
-    inline void FleeFrom(float a_dx, float a_dy, float a_wayX, float a_wayY, float& a_outX, float& a_outY)
+    // The point on the vehicle's line level with the actor, a_aside over toward the actor's side
+    // (negative: the far side). a_dx, a_dy as for InVehicleWay; no way: the vehicle itself.
+    inline void BesideLine(float a_dx, float a_dy, float a_wayX, float a_wayY, float a_aside, float& a_outX, float& a_outY)
     {
         const float way = std::hypot(a_wayX, a_wayY);
         if (way < 1e-4f) {
@@ -366,8 +368,22 @@ namespace PerkeleRim::Damage
         const float ahead = a_dx * ux + a_dy * uy;
         // Right of the way is (y, -x); the actor's side by the sign of its cross product.
         const float sign = a_dx * uy - a_dy * ux >= 0.0f ? 1.0f : -1.0f;
-        a_outX = ux * ahead - sign * uy * kFleeFromBehindUnits;
-        a_outY = uy * ahead + sign * ux * kFleeFromBehindUnits;
+        a_outX = ux * ahead + sign * uy * a_aside;
+        a_outY = uy * ahead - sign * ux * a_aside;
+    }
+
+    inline void FleeFrom(float a_dx, float a_dy, float a_wayX, float a_wayY, float& a_outX, float& a_outY)
+    {
+        BesideLine(a_dx, a_dy, a_wayX, a_wayY, -kFleeFromBehindUnits, a_outX, a_outY);
+    }
+
+    // Where the flee should end: level with the actor, kFleeToAsideUnits off the vehicle's line on
+    // its own side, clear of the widest lane. Returned and taken as for FleeFrom.
+    inline constexpr float kFleeToAsideUnits = 800.0f;  // about 11 m
+
+    inline void FleeTo(float a_dx, float a_dy, float a_wayX, float a_wayY, float& a_outX, float& a_outY)
+    {
+        BesideLine(a_dx, a_dy, a_wayX, a_wayY, kFleeToAsideUnits, a_outX, a_outY);
     }
 
     // The horn (HornEvent): actors in the vehicle's way dive aside (HornDodge), so they stop
