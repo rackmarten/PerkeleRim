@@ -7,8 +7,8 @@
 //    (Bystanders::MayTalk): Actor::SetDialogueWithPlayer refuses, so neither E, someone walking up to
 //    him nor a force-greet opens the dialogue menu that would take the controls mid-drive;
 //  - civilians (Bystanders::Flees) in the driven vehicle's way (Damage::InVehicleWay, further ahead the
-//    faster it goes) run out of it to their own side: a flee package outside combat (no crime, no
-//    aggro) from a marker on the vehicle's line level with them (Damage::FleeFrom). It's let go
+//    faster it goes) run from it: a flee package outside combat (no crime, no aggro) from a marker
+//    on the vehicle's line level with them (Damage::FleeFrom; they may still run along the road). It's let go
 //    (EvaluatePackage, the marker deleted) a few seconds after the vehicle stops coming at them.
 // Main thread, but the dialogue hook may run on Skyrim's AI threads.
 namespace PerkeleRim::People

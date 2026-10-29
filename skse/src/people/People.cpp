@@ -178,9 +178,10 @@ namespace PerkeleRim::People
         if (!state.fleeing.Start(a_actor->GetFormID(), NowSeconds())) {
             return false;
         }
-        // Out of the lane to its own side, outside combat: a flee package (no crime, no aggro) from a
-        // marker on the vehicle's line level with it (Damage::FleeFrom). Fleeing from the player let
-        // the navmesh pick a way down the road or back past the vehicle. Without a marker, from the player.
+        // Outside combat: a flee package (no crime, no aggro) from a marker on the vehicle's line level
+        // with it (Damage::FleeFrom), meant to send it out of the lane to its own side. In game the
+        // navmesh still often picks a way down the road, as fleeing from the player did; a flee-to ref
+        // (InitiateFlee's a_ref) stopped the flee altogether. Without a marker, from the player.
         const auto pos = a_actor->GetPosition();
         float      fromX, fromY;
         Damage::FleeFrom(pos.x - a_from.x, pos.y - a_from.y, a_wayX, a_wayY, fromX, fromY);
