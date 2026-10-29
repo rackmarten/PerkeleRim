@@ -50,7 +50,7 @@ namespace PerkeleRim::Held
     }
 
     // The model's scale: its own size, shrunk to kMaxHeight when taller.
-    inline float SizeOf(Vec a_min, Vec a_max) { return std::min(1.0f, kMaxHeight / std::max(a_max.z - a_min.z, 1e-4f)); }
+    inline float SizeOf(Vec a_min, Vec a_max) { return (std::min)(1.0f, kMaxHeight / (std::max)(a_max.z - a_min.z, 1e-4f)); }
 
     // Its neck in its own space: the middle of its bounds, kNeckDown of its height under its top.
     inline Vec NeckOf(Vec a_min, Vec a_max)
