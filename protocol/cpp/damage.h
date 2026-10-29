@@ -8,7 +8,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <cstddef>
 #include <cstdint>
+#include <iterator>
 
 #include "../perkelerim_protocol.h"
 
@@ -88,7 +90,8 @@ namespace PerkeleRim::Damage
 
     // A thrown item hits by its speed: nothing at kThrownSpeedMin, twice a sober punch from kThrownSpeedFull
     // on. MSC's own throw lands in between; a bottle, thrown twice as fast (msc/src/Link/Throwing.cs),
-    // hits like two punches from range. a_punch: the player's sober Punch.
+    // hits like two punches from range. a_punch: the player's sober Punch (DrunkThrow below, not
+    // DrunkPunch, makes a drunk throw harder).
     inline constexpr float kThrownSpeedMin = 2.0f;    // meters per second
     inline constexpr float kThrownSpeedFull = 15.0f;
 
@@ -111,10 +114,69 @@ namespace PerkeleRim::Damage
         return (std::clamp)(std::sqrt(a_mass / kThrownMassBase), kThrownMassMin, kThrownMassMax);
     }
 
-    inline float Thrown(float a_punch, float a_speed, float a_mass = 0.0f)
+    // And by Kumpo's level, so throws keep up with Skyrim's levelled enemies: kThrownLevelStep of the
+    // level 1 hit more per level, so a Nord's sober full-charge bottle hits 16 at level 1, 30 at 10, 70 at 35.
+    inline constexpr float kThrownLevelStep = 0.1f;
+
+    inline float ThrownLevel(int a_level)
+    {
+        return 1.0f + kThrownLevelStep * static_cast<float>((std::max)(0, a_level - 1));
+    }
+
+    // And by MSC's drunk level: drinking is Kumpo's potion. The multiplier runs linearly between these
+    // points and stays flat past the last: x1.5 after one beer (0.1), x2 tipsy (0.4, five beers), x3 at
+    // drunk 1, x6.5 blind drunk (3), so at level 35 Alduin (2355) takes about 34 bottles sober and 6 blind drunk.
+    struct DrunkThrowPoint
+    {
+        float drunk;
+        float mult;
+    };
+
+    inline constexpr DrunkThrowPoint kDrunkThrow[] = { { 0.0f, 1.0f }, { 0.1f, 1.5f }, { 0.4f, 2.0f }, { 1.0f, 3.0f }, { 2.0f, 4.5f }, { 3.0f, 6.5f } };
+
+    // And by the target's armor, as Skyrim takes it off an arrow: kArmorScaling percent less per point
+    // of armor rating, at most kArmorMaxShare (Skyrim.esm's fArmorScalingFactor and fMaxArmorRating).
+    // The hit is a spell in Skyrim, which armor wouldn't touch, so it's taken off here.
+    inline constexpr float kArmorScaling = 0.12f;
+    inline constexpr float kArmorMaxShare = 0.8f;
+
+    inline float ArmorTaken(float a_armor)
+    {
+        return 1.0f - (std::clamp)(a_armor * kArmorScaling / 100.0f, 0.0f, kArmorMaxShare);
+    }
+
+    inline float DrunkThrow(float a_drunk)
+    {
+        if (!(a_drunk > kDrunkThrow[0].drunk)) {
+            return kDrunkThrow[0].mult;
+        }
+        for (std::size_t i = 1; i < std::size(kDrunkThrow); i++) {
+            const auto& from = kDrunkThrow[i - 1];
+            const auto& to = kDrunkThrow[i];
+            if (a_drunk < to.drunk) {
+                return from.mult + (to.mult - from.mult) * (a_drunk - from.drunk) / (to.drunk - from.drunk);
+            }
+        }
+        return kDrunkThrow[std::size(kDrunkThrow) - 1].mult;
+    }
+
+    // a_level: Kumpo's (Skyrim's player level); a_armor: the target's armor rating.
+    inline float Thrown(float a_punch, float a_speed, float a_mass = 0.0f, float a_drunk = 0.0f, int a_level = 1, float a_armor = 0.0f)
     {
         const float scale = (std::clamp)((a_speed - kThrownSpeedMin) / (kThrownSpeedFull - kThrownSpeedMin), 0.0f, 1.0f);
-        return (std::max)(0.0f, a_punch) * kThrownShare * scale * ThrownMass(a_mass);
+        return (std::max)(0.0f, a_punch) * kThrownShare * scale * ThrownMass(a_mass) * ThrownLevel(a_level) * DrunkThrow(a_drunk) *
+               ArmorTaken(a_armor);
+    }
+
+    // A throw that hits an actor trains Archery, Skyrim's ranged skill, so Kumpo levels while MSC has
+    // him (nothing else he does there gives skill experience): as a bow shot, by its base damage, here
+    // the throw's sober, level 1 and unarmored hit (a full-charge bottle 16, about an iron bow's shot).
+    // PlayerCharacter::AddSkillExperience takes it as skill use, Skyrim's own multipliers on top.
+    inline constexpr float kThrownSkillUseShare = 1.0f;
+
+    inline float ThrownSkillUse(float a_punch, float a_speed, float a_mass = 0.0f)
+    {
+        return Thrown(a_punch, a_speed, a_mass) * kThrownSkillUseShare;
     }
 
     // A throw that left the player's hand while he sneaked and hits a target that does not see him

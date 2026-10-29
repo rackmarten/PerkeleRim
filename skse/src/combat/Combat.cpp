@@ -593,7 +593,7 @@ namespace PerkeleRim::Combat
         }
     }
 
-    void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
+    void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk)
     {
         if (a_size < sizeof(Protocol::ImpactEvent)) {
             SKSE::log::warn("combat: bad impact message ({} bytes)", a_size);
@@ -688,19 +688,38 @@ namespace PerkeleRim::Combat
         const int   detection = target->RequestDetectionLevel(a_player);
         const float sneak = Damage::SneakAttack(sneaking, detection);
         const float unarmed = Unarmed(a_player, target);
-        const float damage = Damage::Thrown(Damage::Punch(unarmed), impact.speed, impact.mass) * sneak;
+        // Armor as Skyrim weighs it against an arrow: what it wears (CalcArmorRating) or its DamageResist,
+        // the larger. A Whiterun guard reads 86 for both, so one already holds the other and adding them
+        // would count the armor twice.
+        const int   level = a_player->GetLevel();
+        const float worn = target->CalcArmorRating();
+        const float resist = values->GetActorValue(RE::ActorValue::kDamageResist);
+        const float armor = (std::max)({ 0.0f, worn, resist });
+        const float damage = Damage::Thrown(Damage::Punch(unarmed), impact.speed, impact.mass, a_drunk, level, armor) * sneak;
         if (damage <= 0.0f) {
             SKSE::log::info("combat: a throw at {:.1f} m/s bounced off {} harmlessly", impact.speed, NameOf(target));
             return;
         }
+        const float health = values->GetActorValue(RE::ActorValue::kHealth);
         caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
-        lastHit = { lastHit.count + 1, target->GetFormID(), true, damage, unarmed, 0.0f, impact.speed, sneak, impact.mass };
+        lastHit = { lastHit.count + 1, target->GetFormID(), true, damage, unarmed, a_drunk, impact.speed, sneak, impact.mass, 0.0f, level, armor };
         if (sneak > 1.0f) {
             RE::SendHUDMessage::ShowHUDMessage(fmt::format("Sneak attack for {:.1f}x damage", sneak).c_str());
         }
-        SKSE::log::info("combat: the player's throw at {:.1f} m/s ({:.2f} kg, x{:.2f} by weight) hit {} for {:.0f} of {:.0f} max health (from sneak {}, its detection level {}, x{:.1f})",
-            impact.speed, impact.mass, Damage::ThrownMass(impact.mass), NameOf(target), damage, max, sneaking, detection, sneak);
+        SKSE::log::info("combat: the player's throw at {:.1f} m/s ({:.2f} kg, x{:.2f} by weight, level {} x{:.1f}, drunk {:.2f} x{:.2f}, armor {:.0f} worn, {:.0f} resist x{:.2f}) "
+                        "hit {} for {:.0f}, it had {:.0f} of {:.0f} max health (from sneak {}, its detection level {}, x{:.1f})",
+            impact.speed, impact.mass, Damage::ThrownMass(impact.mass), level, Damage::ThrownLevel(level), a_drunk, Damage::DrunkThrow(a_drunk), worn, resist,
+            Damage::ArmorTaken(armor), NameOf(target), damage, health, max, sneaking, detection, sneak);
+        // Archery experience, as a bow shot would give (Damage::ThrownSkillUse).
+        const float use = Damage::ThrownSkillUse(Damage::Punch(unarmed), impact.speed, impact.mass);
+        auto*       skills = a_player->GetInfoRuntimeData().skills;
+        auto*       archery = skills && skills->data ? &skills->data->skills[RE::PlayerCharacter::PlayerSkills::Data::Skill::kArchery] : nullptr;
+        const float before = archery ? archery->xp : 0.0f;
+        a_player->AddSkillExperience(RE::ActorValue::kArchery, use);
+        SKSE::log::info("combat: archery +{:.1f} skill use: level {:.0f}, experience {:.1f} -> {:.1f} of {:.1f}", use,
+            a_player->AsActorValueOwner()->GetBaseActorValue(RE::ActorValue::kArchery), before, archery ? archery->xp : 0.0f,
+            archery ? archery->levelThreshold : 0.0f);
     }
 
     void OnHorn(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)

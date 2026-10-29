@@ -5,7 +5,8 @@
     unsaved; it deploys this checkout's build, -Build builds first), so they load their newest saves.
     The SKSE plugin's driver (skse/src/debug/HitTest.cpp) then hands Kumpo to MSC and runs the
     scenarios of protocol/cpp/hit_test.h: punch (sober), bottle (an empty bottle thrown at full
-    charge) and drunk (MSC's drunk level 2), each at a Whiterun guard placed just ahead with its AI off. Meanwhile
+    charge), junk (a cabbage), drunk (punches at MSC's drunk level 2), drunk-bottle and drunker-bottle
+    (a bottle at drunk 1 and 2), each at a Whiterun guard placed just ahead with its AI off. Meanwhile
     this watches for a crash (a new crash-*.log), either game gone and a hang (PerkeleRim.log still for
     -HangSeconds). At the end it prints the driver's log lines and the CSV (Documents/My Games/
     PerkeleRim/hittest.csv), closes both games and takes [Debug] out of the ini again. Exits 1 when a
@@ -110,7 +111,7 @@ $failed = 0
 if (Test-Path $csv) {
     Write-Host "--- $csv"
     $rows = @(Import-Csv $csv)
-    $rows | Format-Table scenario, hit, target, landed, drunk, speed, expected, damage, drop, pass, note -AutoSize | Out-Host
+    $rows | Format-Table scenario, hit, target, landed, drunk, speed, level, armor, expected, damage, drop, pass, note -AutoSize | Out-Host
     $failed = @($rows | Where-Object { $_.pass -ne '1' }).Count
     Write-Host "$($rows.Count - $failed) of $($rows.Count) passed" -ForegroundColor $(if ($failed) { 'Red' } else { 'Green' })
 }
