@@ -20,7 +20,7 @@ namespace PerkeleRim.Game
     // with its own light at the player.
     public sealed class HandLayerSender
     {
-        const string HandCameraPath = "PLAYER/Pivot/AnimPivot/Camera/FPSCamera/FPSCamera/HandCamera";
+        internal const string HandCameraPath = "PLAYER/Pivot/AnimPivot/Camera/FPSCamera/FPSCamera/HandCamera";
         const float StatWindow = 5f;
         const float FarClip = 20f;         // HandCamera stops at 5 m, which cuts the piss stream
         const float LightsRefresh = 2f;    // seconds between scans for MSC's lights
@@ -29,6 +29,8 @@ namespace PerkeleRim.Game
         public static bool SaveRequested;   // spike "handlayer save"
         public static bool Tint;            // spike "handlayer tint": a see-through red background, to check Skyrim draws the layer
         public static float Ambient = 0.5f, Sun = 0.8f;  // spike "handlayer light <ambient> <sun>": the neutral lighting
+        // Left out of the layer (DrinkShow: MSC's bottle while Skyrim draws its own in the hand).
+        public static Renderer[] Hidden;
 
         readonly Action<string> log;
         readonly bool direct;
@@ -56,6 +58,8 @@ namespace PerkeleRim.Game
         readonly Dictionary<Material, Material> alphaMaterials = new Dictionary<Material, Material>();
         Shader alphaShader;
         bool alphaShaderTried;
+        Material hiddenMaterial;
+        bool hiddenTried;
         RenderTexture target;
         SharedTexture shared;
         uint copies;
@@ -269,6 +273,7 @@ namespace PerkeleRim.Game
             }
 
             SwapParticleMaterials();
+            SwapHidden();
         }
 
         internal void EndRender()
@@ -308,6 +313,40 @@ namespace PerkeleRim.Game
                 r.sharedMaterials = replaced;
             }
         }
+
+        // Hidden: all their materials become one that draws nothing, for the hidden render only
+        // (like the particle materials; a renderer turned off there would still be culled in).
+        void SwapHidden()
+        {
+            var hidden = Hidden;
+            if (hidden == null || hidden.Length == 0) return;
+            if (!hiddenTried)
+            {
+                hiddenTried = true;
+                var m = new Material(HiddenSource) { name = "PerkeleRim.Hidden" };
+                hiddenMaterial = m.shader != null && m.shader.isSupported ? m : null;
+                log(hiddenMaterial != null ? "hand layer: hidden shader ready" : "hand layer: hidden shader NOT supported, held bottles show MSC's");
+            }
+            if (hiddenMaterial == null) return;
+            foreach (var r in hidden)
+            {
+                if (r == null || !r.enabled) continue;
+                var originals = r.sharedMaterials;
+                var replaced = new Material[originals.Length];
+                for (int i = 0; i < replaced.Length; i++) replaced[i] = hiddenMaterial;
+                swapped.Add(r);
+                swappedOriginals.Add(originals);
+                r.sharedMaterials = replaced;
+            }
+        }
+
+        // Writes no color and no depth.
+        const string HiddenSource = @"Shader ""PerkeleRim/Hidden"" {
+SubShader {
+  Tags { ""Queue""=""Geometry"" ""RenderType""=""Opaque"" }
+  Pass { ZWrite Off ColorMask 0 Lighting Off Fog { Mode Off } }
+}
+}";
 
         Material AlphaWriting(Material original)
         {

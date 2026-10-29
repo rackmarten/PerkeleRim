@@ -3,6 +3,7 @@
 #include "coords.h"
 #include "damage.h"
 #include "death/Death.h"
+#include "drink/HeldDrinkView.h"
 #include "finger.h"
 #include "link/LinkService.h"
 #include "needs.h"
@@ -99,6 +100,25 @@ namespace PerkeleRim::Combat
         {
             auto* race = a_actor->GetRace();
             return race && race->HasKeywordString("ActorTypeDragon"sv);
+        }
+
+        // Skyrim's first-person body on or off, all but the held drink. Its root stays shown (an
+        // older build culled it).
+        void ShowFirstPerson(RE::NiAVObject* a_firstPerson, bool a_show)
+        {
+            if (a_firstPerson->GetAppCulled()) {
+                a_firstPerson->SetAppCulled(false);
+            }
+            auto* node = a_firstPerson->AsNode();
+            if (!node) {
+                a_firstPerson->SetAppCulled(!a_show);
+                return;
+            }
+            for (auto& child : node->GetChildren()) {
+                if (child && !HeldDrinkView::IsHeldDrink(child.get()) && child->GetAppCulled() == a_show) {
+                    child->SetAppCulled(!a_show);
+                }
+            }
         }
 
         float Setting(const char* a_name, float a_default)
@@ -842,9 +862,10 @@ namespace PerkeleRim::Combat
             return;
         }
         // The drawn hands (fists, a weapon) would show in Skyrim's first person over MSC's own hands.
-        // Checked every frame: the model is rebuilt on equipment changes.
-        if (auto* firstPerson = a_player->Get3D(true); firstPerson && !firstPerson->GetAppCulled()) {
-            firstPerson->SetAppCulled(true);
+        // Checked every frame: the model is rebuilt on equipment changes. Its children are hidden,
+        // not the first-person 3D itself, which holds the drink Kumpo drinks (HeldDrinkView).
+        if (auto* firstPerson = a_player->Get3D(true)) {
+            ShowFirstPerson(firstPerson, false);
             state.culled = true;
         }
         // Drawing takes a moment; a block asked for meanwhile starts once the hands are out.
@@ -966,7 +987,7 @@ namespace PerkeleRim::Combat
                 player->DrawWeaponMagicHands(false);
             }
             if (auto* firstPerson = player->Get3D(true); firstPerson && state.culled) {
-                firstPerson->SetAppCulled(false);
+                ShowFirstPerson(firstPerson, true);
             }
         }
         if (state.muted && state.muteVoice) {

@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 49;
+    inline constexpr std::uint32_t kProtocolVersion = 50;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -426,6 +426,7 @@ namespace PerkeleRim::Protocol
         JunkOut = 32,          // Skyrim -> MSC
         JunkBack = 33,         // MSC -> Skyrim
         Blackout = 34,         // MSC -> Skyrim
+        HeldDrink = 35,        // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -735,7 +736,9 @@ namespace PerkeleRim::Protocol
     // does to MSC's needs, from protocol/cpp/food.h; MSC adds each to its global (PlayerHunger,
     // PlayerThirst, PlayerUrine, PlayerDrunkAdjusted), needs not below 0, drunk 0..8. With a drink
     // (v45) MSC also shows its own drinking of that kind once the menu is closed (once for any
-    // number of drinks, the strongest), its needs put back after.
+    // number of drinks, the strongest), its needs put back after. form (v50) is the drink's own
+    // item, whose model Kumpo holds while MSC shows it (HeldDrink); 0 keeps MSC's bottle (MSC's
+    // own juice and beer, food).
     inline constexpr std::uint32_t kDrinkNone = 0;    // ConsumeEvent.drink: food, water, nothing shown
     inline constexpr std::uint32_t kDrinkBeer = 1;    // DRINKBEER, the beer bottle
     inline constexpr std::uint32_t kDrinkBooze = 2;   // DRINKVIINA, the booze bottle (wine, brandy)
@@ -750,6 +753,7 @@ namespace PerkeleRim::Protocol
         float         urine;
         float         drunk;   // added to PlayerDrunkAdjusted
         std::uint32_t drink;   // kDrink*
+        std::uint32_t form;    // v50: the drink's form id, 0 = none
     };
 
     // The pocket: Skyrim's inventory holds MSC's beer, juice, empty bottles, food and cigarettes as
@@ -813,6 +817,23 @@ namespace PerkeleRim::Protocol
         std::uint32_t flags;        // kJunk*
         float         position[3];  // Skyrim world units, with kJunkLanded
         float         rotation[4];  // x, y, z, w
+    };
+
+    // HeldDrink (v50): every MSC frame of a drink shown for Skyrim (ConsumeEvent.form) while its
+    // bottle is in the hand: Skyrim draws form's own model there instead, held by its neck in MSC's
+    // fist, and MSC leaves its bottle out of the hand layer. Points in Skyrim units in the camera's
+    // own space (+X right, +Y forward, +Z up; protocol/cpp/held_drink.h): the middle of MSC's
+    // bottle's base and of its top (the way it points), a direction across it for its turn about
+    // its length, and the grip, where the fist closes on it. form 0: the bottle is down or thrown,
+    // Skyrim drops its model. Skyrim also drops it when none came for a moment.
+    struct HeldDrink
+    {
+        std::uint32_t form;       // the drink's form id, 0 = none
+        std::uint32_t reserved;
+        float         bottom[3];  // camera space, Skyrim units
+        float         top[3];
+        float         side[3];    // any length, across the bottle
+        float         grip[3];    // on the bottle's axis, where the fist is
     };
 
     // ---- Models (MSC -> Skyrim) ----
@@ -1090,8 +1111,14 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(JunkBack, flags) == 8);
     static_assert(offsetof(JunkBack, position) == 12);
     static_assert(offsetof(JunkBack, rotation) == 24);
-    static_assert(sizeof(ConsumeEvent) == 20);
+    static_assert(sizeof(ConsumeEvent) == 24);
     static_assert(offsetof(ConsumeEvent, drink) == 16);
+    static_assert(offsetof(ConsumeEvent, form) == 20);
+    static_assert(sizeof(HeldDrink) == 56);
+    static_assert(offsetof(HeldDrink, grip) == 44);
+    static_assert(offsetof(HeldDrink, bottom) == 8);
+    static_assert(offsetof(HeldDrink, top) == 20);
+    static_assert(offsetof(HeldDrink, side) == 32);
     static_assert(offsetof(PocketCounts, counts) == 8);
     static_assert(sizeof(ModelChunk) == 16);
     static_assert(offsetof(ModelChunk, offset) == 8);

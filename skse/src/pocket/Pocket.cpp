@@ -56,12 +56,13 @@ namespace PerkeleRim::Pocket
                    std::all_of(state.empties.begin() + 1, state.empties.end(), [](auto* a_item) { return a_item != nullptr; });
         }
 
-        void SendConsume(const char* a_what, const Food::Effect& a_effect)
+        // a_form: the drink whose own model Kumpo holds while MSC shows it (ConsumeEvent.form), 0 for MSC's bottle.
+        void SendConsume(const char* a_what, const Food::Effect& a_effect, RE::FormID a_form = 0)
         {
-            Protocol::ConsumeEvent message{ a_effect.hunger, a_effect.thirst, a_effect.urine, a_effect.drunk, static_cast<std::uint32_t>(a_effect.drink) };
+            Protocol::ConsumeEvent message{ a_effect.hunger, a_effect.thirst, a_effect.urine, a_effect.drunk, static_cast<std::uint32_t>(a_effect.drink), a_form };
             const bool sent = LinkService::Get().Send(Protocol::MessageType::ConsumeEvent, &message, sizeof(message));
-            SKSE::log::info("food: {} hunger {:+.0f} thirst {:+.0f} urine {:+.0f} drunk {:+.3f} drink {}{}", a_what, a_effect.hunger, a_effect.thirst,
-                a_effect.urine, a_effect.drunk, message.drink, sent ? "" : " (not sent, no link)");
+            SKSE::log::info("food: {} hunger {:+.0f} thirst {:+.0f} urine {:+.0f} drunk {:+.3f} drink {} held {:08X}{}", a_what, a_effect.hunger, a_effect.thirst,
+                a_effect.urine, a_effect.drunk, message.drink, a_form, sent ? "" : " (not sent, no link)");
         }
 
         // What an ingestible does to MSC's needs: food.h's table, else by its sound and weight for
@@ -92,7 +93,10 @@ namespace PerkeleRim::Pocket
             if (!effect) {
                 return;
             }
-            SendConsume(item->GetName(), *effect);
+            // PerkeleRim.esp's own drinks (MSC's juice) are MSC's bottle already.
+            const auto* file = item->GetFile(0);
+            const bool  ours = file && file->GetFilename() == kPlugin;
+            SendConsume(item->GetName(), *effect, ours || effect->drink == Food::Drink::None ? 0 : item->GetFormID());
             if (auto* empty = state.empties[static_cast<std::size_t>(effect->empty)]) {
                 player->AddObjectToContainer(empty, nullptr, 1, nullptr);
                 state.dirty = true;  // the beer's Empty Bottle is a pocket kind
