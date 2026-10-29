@@ -96,6 +96,7 @@ namespace PerkeleRim.Game
         bool hornHeld;  // H held while driving, read by FeedInput before it is kept from MSC
         HandLayerSender hands;
         MscMenuLink menu;  // MSC's options menu shown in Skyrim (F1)
+        LookAtProbe probe;  // logs why MSC's look-at prompt is missing, if it is
         SaveSync saves;
         RestLink rest;
         BlackoutLink blackout;
@@ -185,6 +186,7 @@ namespace PerkeleRim.Game
             chase = new ChaseCamera(log);
             debugView = new DebugView(SetIslandVisible, log);
             hands =new HandLayerSender(log);
+            probe = new LookAtProbe(log);
             menu = new MscMenuLink(log);
             crash = new CrashSensor(log);
             DeathGuard.Install(log);
@@ -364,6 +366,7 @@ namespace PerkeleRim.Game
             state.generation = island.Generation;
             link.WritePlayer(ref state);
             SendLookAt(link, playing);
+            probe.Step(playing);
             SendSubtitle(link, playing);
             SendGear(link, playing);
             foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero, viewCamera != null ? viewCamera.transform : null);
@@ -1254,6 +1257,8 @@ namespace PerkeleRim.Game
 
         static Vec3 ToVec3(Vector3 v) => new Vec3(v.x, v.y, v.z);
         static Vector3 ToVector3(Vec3 v) => new Vector3(v.x, v.y, v.z);
+
+        void OnApplicationFocus(bool focused) { if (probe != null) probe.Focus(focused); }
 
         void OnDestroy()
         {
