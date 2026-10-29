@@ -64,6 +64,12 @@ namespace PerkeleRim
             return best;
         }
 
+        // A tank's capacity in litres: its own MaxCapacity when it has one (read, NaN without), else
+        // the size known for the vehicle (the Gifu's FuelTank :: Data has only FuelLevel), else 0,
+        // which counts as no tank FuelLink can fill or show.
+        public static float Capacity(float read, float known) =>
+            !float.IsNaN(read) && read > 0f ? read : Math.Max(0f, known);
+
         public static bool Dry(float level) => level <= DryLevel;
 
         public static bool Low(float level, float capacity) => capacity > 0f && level < capacity * LowShare;

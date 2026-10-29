@@ -100,6 +100,8 @@ namespace PerkeleRim.Game
         // The moped keeps a full tank (MSC fills it only from a two-stroke jerry can); the van, the
         // Kekmet and the Gifu burn their diesel and fill up at Skyrim's pumps (FuelLink).
         public bool EndlessFuel { get; set; }
+        // Litres, for a tank whose Data has no MaxCapacity (the Gifu's); 0 reads it from the tank.
+        public float TankSize { get; set; }
         // Half width and half length (meters) of the ground that must be flat where it parks, around
         // its origin: van sized unless set (the Gifu's is longer).
         public Vector2 ParkHalfSize { get; set; } = VanHalfSize;
@@ -191,8 +193,8 @@ namespace PerkeleRim.Game
             HutongGames.PlayMaker.FsmFloat l, c;
             FuelTank(out l, out c, null);
             level = l != null ? l.Value : 0f;
-            capacity = c != null ? c.Value : 0f;
-            return l != null && c != null;
+            capacity = Fuel.Capacity(c != null ? c.Value : float.NaN, TankSize);
+            return l != null && capacity > 0f;
         }
 
         public void SetFuel(float level)
@@ -224,6 +226,15 @@ namespace PerkeleRim.Game
             var names = new System.Text.StringBuilder();
             FuelTank(out level, out capacity, names);
             if (names.Length > 0) log($"vehicle: {driverName} fuel tank floats:{names}");
+            var cap = car.Find("LOD/FuelFiller/OpenCap");
+            if (cap != null)
+                foreach (var fsm in cap.GetComponentsInChildren<PlayMakerFSM>(true))
+                {
+                    if (fsm.FsmName != "Trigger") continue;
+                    var floats = new System.Text.StringBuilder();
+                    foreach (var f in fsm.FsmVariables.FloatVariables) floats.Append($" {f.Name}={f.Value:0.##}");
+                    log($"vehicle: {driverName} fuel cap {fsm.name} :: Trigger floats:{floats}");
+                }
             if (EndlessFuel && level != null && capacity != null && capacity.Value > 0f && level.Value < capacity.Value)
             {
                 level.Value = capacity.Value;

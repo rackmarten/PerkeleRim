@@ -143,6 +143,16 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void CapacityFallsBackToTheVehiclesKnownSize()
+        {
+            Assert.That(Fuel.Capacity(40f, 0f), Is.EqualTo(40f));       // the van's MaxCapacity
+            Assert.That(Fuel.Capacity(65f, 130f), Is.EqualTo(65f));     // the tank's own wins
+            Assert.That(Fuel.Capacity(float.NaN, 130f), Is.EqualTo(130f));  // the Gifu: no MaxCapacity
+            Assert.That(Fuel.Capacity(0f, 130f), Is.EqualTo(130f));
+            Assert.That(Fuel.Capacity(float.NaN, 0f), Is.EqualTo(0f));  // unknown: no tank to fill
+        }
+
+        [Test]
         public void HudLines()
         {
             Assert.That(Fuel.PourLine(12.345f, 24.7f, 32.06f, 40f), Is.EqualTo("Dwemer oil 12.3 L, 25 gold, tank 32.1 / 40 L"));
