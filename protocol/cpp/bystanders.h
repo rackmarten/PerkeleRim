@@ -41,7 +41,7 @@ namespace PerkeleRim::Bystanders
                !a_person.huge;
     }
 
-    inline constexpr float  kFleeUnits = 2000.0f;  // a flee runs this far from the player (about 29 m)
+    inline constexpr float  kFleeUnits = 1000.0f;  // a flee runs this far from the vehicle's line (about 14 m)
     inline constexpr double kFleeLasts = 6.0;      // a flee is let go this long after the vehicle last came at them
     inline constexpr double kFleeRenew = 3.0;      // and started over at most this often while it keeps coming, from where it is now
 

@@ -753,7 +753,7 @@ namespace PerkeleRim::Combat
                 continue;
             }
             if (reaction == Damage::HornReaction::kFlee) {
-                fled += People::Flee(a_player, actor.get(), why.c_str()) ? 1 : 0;
+                fled += People::Flee(a_player, actor.get(), at, horn.direction[0], horn.direction[1], why.c_str()) ? 1 : 0;
                 continue;
             }
             // A dive already asked for (not a ragdoll yet, so still Standing) isn't asked again.

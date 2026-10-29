@@ -266,8 +266,10 @@ TEST_CASE("a vehicle is noticed further ahead the faster it goes")
     const auto meters = [](float a_units) { return a_units * static_cast<float>(Coords::kMetersPerUnit); };
     CHECK(Damage::WayReach(kmh(10.0f)) == 0.0f);  // a crawl: nobody minds
     CHECK(Damage::WayReach(Damage::kWaySpeedMin) > 0.0f);
-    CHECK(meters(Damage::WayReach(kmh(30.0f))) == doctest::Approx(20.8f).epsilon(0.01));
-    // From 50 km/h on, people have kReactSeconds (2-3 s) to get away.
+    CHECK(meters(Damage::WayReach(kmh(30.0f))) == doctest::Approx(33.3f).epsilon(0.01));
+    // People have kReactSeconds (about 4 s) to get going and away; at 70 km/h that starts about 78 m out.
+    CHECK(Damage::kReactSeconds >= 3.5f);
+    CHECK(meters(Damage::WayReach(kmh(70.0f))) > 70.0f);
     CHECK(meters(Damage::WayReach(kmh(50.0f))) / kmh(50.0f) == doctest::Approx(Damage::kReactSeconds));
     CHECK(meters(Damage::WayReach(kmh(70.0f))) / kmh(70.0f) == doctest::Approx(Damage::kReactSeconds));
     CHECK(Damage::WayReach(kmh(70.0f)) > Damage::WayReach(kmh(50.0f)));
@@ -277,21 +279,52 @@ TEST_CASE("a vehicle is noticed further ahead the faster it goes")
 
 TEST_CASE("people ahead in the lane of a moving vehicle are in its way")
 {
-    const float fast = 70.0f / 3.6f;  // reaches about 3400 units
-    CHECK(Damage::InVehicleWay(0.0f, 3000.0f, 0.0f, 1.0f, fast));         // well ahead on its line
+    const float fast = 70.0f / 3.6f;  // reaches about 5400 units, 7 m either side
+    CHECK(Damage::InVehicleWay(0.0f, 5000.0f, 0.0f, 1.0f, fast));         // well ahead on its line
     CHECK_FALSE(Damage::InVehicleWay(0.0f, 3000.0f, 0.0f, 1.0f, 30.0f / 3.6f));  // too far at 30 km/h
     CHECK(Damage::InVehicleWay(0.0f, 1200.0f, 0.0f, 1.0f, 30.0f / 3.6f));
     CHECK(Damage::InVehicleWay(250.0f, 2000.0f, 0.0f, 2.0f, fast));       // off to the side within the lane
-    CHECK_FALSE(Damage::InVehicleWay(400.0f, 2000.0f, 0.0f, 1.0f, fast));  // beside the road
+    CHECK(Damage::InVehicleWay(450.0f, 2000.0f, 0.0f, 1.0f, fast));       // the lane is wider at speed
+    CHECK_FALSE(Damage::InVehicleWay(450.0f, 1000.0f, 0.0f, 1.0f, 30.0f / 3.6f));  // but not at 30 km/h
+    CHECK_FALSE(Damage::InVehicleWay(600.0f, 2000.0f, 0.0f, 1.0f, fast));  // beside the road
     CHECK_FALSE(Damage::InVehicleWay(0.0f, -500.0f, 0.0f, 1.0f, fast));    // behind
     CHECK_FALSE(Damage::InVehicleWay(0.0f, 200.0f, 0.0f, 1.0f, 2.0f));     // at a walk
     CHECK_FALSE(Damage::InVehicleWay(0.0f, 200.0f, 0.0f, 0.0f, fast));     // no way
 }
 
+TEST_CASE("the lane widens with speed")
+{
+    CHECK(Damage::WayLane(0.0f) == Damage::kWayLaneUnits);
+    CHECK(Damage::WayLane(Damage::kWaySpeedMin) == Damage::kWayLaneUnits);
+    CHECK(Damage::WayLane(12.0f) > Damage::kWayLaneUnits);
+    CHECK(Damage::WayLane(12.0f) < Damage::kWayLaneMaxUnits);
+    CHECK(Damage::WayLane(Damage::kWayLaneFullSpeed) == doctest::Approx(Damage::kWayLaneMaxUnits));
+    CHECK(Damage::WayLane(50.0f) == doctest::Approx(Damage::kWayLaneMaxUnits));
+    CHECK(Damage::WayLane(std::nanf("")) == Damage::kWayLaneUnits);
+}
+
+TEST_CASE("people flee from the vehicle's line, out to their own side")
+{
+    float x = 0.0f, y = 0.0f;
+    Damage::FleeFrom(200.0f, 3000.0f, 0.0f, 1.0f, x, y);  // heading +Y, 200 to the right
+    CHECK(y == doctest::Approx(3000.0f));                 // level with them
+    CHECK(x == doctest::Approx(-Damage::kFleeFromBehindUnits));  // on the line, nudged left: they run right
+    Damage::FleeFrom(-200.0f, 3000.0f, 0.0f, 2.0f, x, y);  // to the left
+    CHECK(x == doctest::Approx(Damage::kFleeFromBehindUnits));
+    Damage::FleeFrom(0.0f, 1000.0f, 0.0f, 1.0f, x, y);     // right on the line: still a side
+    CHECK(std::abs(x) == doctest::Approx(Damage::kFleeFromBehindUnits));
+    Damage::FleeFrom(1000.0f, -200.0f, 1.0f, 0.0f, x, y);  // heading +X, right of it is -Y
+    CHECK(x == doctest::Approx(1000.0f));
+    CHECK(y == doctest::Approx(Damage::kFleeFromBehindUnits));
+    Damage::FleeFrom(100.0f, 100.0f, 0.0f, 0.0f, x, y);    // no way: from the vehicle
+    CHECK(x == 0.0f);
+    CHECK(y == 0.0f);
+}
+
 TEST_CASE("the horn carries further at speed, the far ones flee")
 {
     CHECK(Damage::HornReach(0.0f) == Damage::kHornUnits);
-    CHECK(Damage::HornReach(15.0f / 3.6f) == Damage::kHornUnits);  // its own reach is longer
+    CHECK(Damage::HornReach(10.0f / 3.6f) == Damage::kHornUnits);  // a crawl: its own reach
     CHECK(Damage::HornReach(70.0f / 3.6f) == doctest::Approx(Damage::WayReach(70.0f / 3.6f)));
     using R = Damage::HornReaction;
     const float fast = 70.0f / 3.6f;

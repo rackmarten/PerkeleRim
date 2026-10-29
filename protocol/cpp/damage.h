@@ -303,13 +303,15 @@ namespace PerkeleRim::Damage
     }
 
     // How far ahead a moving vehicle is noticed: what it covers in kReactSeconds, so whoever is in
-    // its way has that long to get out of it. Nothing below kWaySpeedMin (a walk, parking); capped
-    // at kWayUnitsMax, which 100 km/h reaches. 30 km/h is about 21 m, 50 km/h 35 m, 70 km/h 49 m.
-    // a_speed in m/s; 0 for no reach.
-    inline constexpr float kReactSeconds = 2.5f;
-    inline constexpr float kWaySpeedMin = 4.0f;       // m/s, about 15 km/h
-    inline constexpr float kWayUnitsMax = 5000.0f;    // about 71 m
-    inline constexpr float kWayLaneUnits = 300.0f;    // about 4 m either side of its line
+    // its way has that long to get going (standing to running takes a while) and out of it. Nothing
+    // below kWaySpeedMin (a walk, parking); capped at kWayUnitsMax, which 90 km/h reaches. 30 km/h
+    // is about 33 m, 50 km/h 56 m, 70 km/h 78 m. a_speed in m/s; 0 for no reach.
+    inline constexpr float kReactSeconds = 4.0f;
+    inline constexpr float kWaySpeedMin = 4.0f;          // m/s, about 15 km/h
+    inline constexpr float kWayUnitsMax = 7000.0f;       // 100 m
+    inline constexpr float kWayLaneUnits = 300.0f;       // about 4 m either side of its line, at kWaySpeedMin
+    inline constexpr float kWayLaneMaxUnits = 500.0f;    // 7 m, from kWayLaneFullSpeed on
+    inline constexpr float kWayLaneFullSpeed = 20.0f;    // m/s, 72 km/h
 
     inline float WayReach(float a_speed)
     {
@@ -319,8 +321,19 @@ namespace PerkeleRim::Damage
         return (std::min)(a_speed * kReactSeconds * static_cast<float>(Coords::kUnitsPerMeter), kWayUnitsMax);
     }
 
+    // How far either side of the vehicle's line its way reaches: wider at speed, where a turn of the
+    // wheel moves it further and a stray step is a bigger risk.
+    inline float WayLane(float a_speed)
+    {
+        if (!(a_speed > kWaySpeedMin)) {
+            return kWayLaneUnits;
+        }
+        const float share = (std::min)((a_speed - kWaySpeedMin) / (kWayLaneFullSpeed - kWaySpeedMin), 1.0f);
+        return kWayLaneUnits + (kWayLaneMaxUnits - kWayLaneUnits) * share;
+    }
+
     // Driving at someone: they're in the way when ahead of the vehicle (a_way, its velocity, flat)
-    // within WayReach of it and no further than kWayLaneUnits off its line. They flee (People).
+    // within WayReach of it and no further than WayLane off its line. They flee (People).
     // a_dx, a_dy: actor minus vehicle.
     inline bool InVehicleWay(float a_dx, float a_dy, float a_wayX, float a_wayY, float a_speed)
     {
@@ -331,7 +344,30 @@ namespace PerkeleRim::Damage
         }
         const float ahead = (a_dx * a_wayX + a_dy * a_wayY) / way;
         const float aside = std::abs(a_dx * a_wayY - a_dy * a_wayX) / way;
-        return ahead > 0.0f && aside <= kWayLaneUnits;
+        return ahead > 0.0f && aside <= WayLane(a_speed);
+    }
+
+    // What someone in the way flees from, so they clear the lane sideways instead of running down
+    // the road or back past the vehicle: the point on the vehicle's line level with them, moved
+    // kFleeFromBehindUnits to the far side, so someone right on the line still has a side to go to
+    // (the one HornDodge picks, by the cross product). Returns that point, flat, relative to the
+    // vehicle; a_dx, a_dy as for InVehicleWay. No way: the vehicle itself.
+    inline constexpr float kFleeFromBehindUnits = 150.0f;
+
+    inline void FleeFrom(float a_dx, float a_dy, float a_wayX, float a_wayY, float& a_outX, float& a_outY)
+    {
+        const float way = std::hypot(a_wayX, a_wayY);
+        if (way < 1e-4f) {
+            a_outX = 0.0f;
+            a_outY = 0.0f;
+            return;
+        }
+        const float ux = a_wayX / way, uy = a_wayY / way;
+        const float ahead = a_dx * ux + a_dy * uy;
+        // Right of the way is (y, -x); the actor's side by the sign of its cross product.
+        const float sign = a_dx * uy - a_dy * ux >= 0.0f ? 1.0f : -1.0f;
+        a_outX = ux * ahead - sign * uy * kFleeFromBehindUnits;
+        a_outY = uy * ahead + sign * ux * kFleeFromBehindUnits;
     }
 
     // The horn (HornEvent): actors in the vehicle's way dive aside (HornDodge), so they stop
