@@ -67,7 +67,7 @@ namespace PerkeleRim::ThrowJunk
                 if (state.onlyOne && item->GetFormID() != state.onlyOne) {
                     continue;
                 }
-                const auto count = (state.onlyOne ? (std::min)(data.first, 1) : data.first) - OutCount(item);
+                const auto count = Junk::Available(data.first, OutCount(item), state.onlyOne != 0);
                 if (count <= 0) {
                     continue;
                 }
@@ -163,6 +163,11 @@ namespace PerkeleRim::ThrowJunk
         state.out.push_back({ a_session, a_seq, item });
         SKSE::log::info("junk: {} ({:08X}, value {}, weight {:.2f}) out to MSC's hand, {} more of it", item->GetName(), item->GetFormID(), item->GetGoldValue(),
             item->GetWeight(), entries[static_cast<std::size_t>(pick)].rules.count - 1);
+    }
+
+    std::int32_t Left(RE::PlayerCharacter* a_player, RE::TESBoundObject* a_item)
+    {
+        return a_player && a_item ? Junk::Available(a_player->GetItemCount(a_item), OutCount(a_item)) : 0;
     }
 
     void OnlyOne(RE::FormID a_form)
