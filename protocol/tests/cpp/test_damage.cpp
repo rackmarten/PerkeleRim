@@ -140,6 +140,17 @@ TEST_CASE("a throw grows with Kumpo's level")
     CHECK(std::ceil(2355.0f / Damage::Thrown(punch, 15.0f, 0.0f, 3.0f, 35)) == 6.0f);
 }
 
+TEST_CASE("a throw trains Archery by its sober base hit, like a bow shot")
+{
+    const float punch = Damage::Punch(4.0f);
+    CHECK(Damage::ThrownSkillUse(punch, 15.0f) == doctest::Approx(16.0f));  // a full-charge bottle
+    CHECK(Damage::ThrownSkillUse(punch, 15.0f, 2.0f) == doctest::Approx(32.0f));  // heavier junk
+    CHECK(Damage::ThrownSkillUse(punch, 8.5f) == doctest::Approx(8.0f));
+    CHECK(Damage::ThrownSkillUse(punch, 2.0f) == 0.0f);
+    // drunk, level and armor make the hit, not the training
+    CHECK(Damage::ThrownSkillUse(punch, 15.0f) == doctest::Approx(Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 1, 0.0f)));
+}
+
 TEST_CASE("armor takes a throw down as Skyrim takes an arrow down")
 {
     CHECK(Damage::ArmorTaken(0.0f) == 1.0f);

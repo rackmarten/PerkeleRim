@@ -168,6 +168,17 @@ namespace PerkeleRim::Damage
                ArmorTaken(a_armor);
     }
 
+    // A throw that hits an actor trains Archery, Skyrim's ranged skill, so Kumpo levels while MSC has
+    // him (nothing else he does there gives skill experience): as a bow shot, by its base damage, here
+    // the throw's sober, level 1 and unarmored hit (a full-charge bottle 16, about an iron bow's shot).
+    // PlayerCharacter::AddSkillExperience takes it as skill use, Skyrim's own multipliers on top.
+    inline constexpr float kThrownSkillUseShare = 1.0f;
+
+    inline float ThrownSkillUse(float a_punch, float a_speed, float a_mass = 0.0f)
+    {
+        return Thrown(a_punch, a_speed, a_mass) * kThrownSkillUseShare;
+    }
+
     // A throw that left the player's hand while he sneaked and hits a target that does not see him
     // (Skyrim's detection level 0 or below, Actor::RequestDetectionLevel) is a sneak attack: kSneakAttack
     // times the damage, on top of the charge and speed (Thrown). Punches are spells in Skyrim, which

@@ -711,6 +711,15 @@ namespace PerkeleRim::Combat
                         "hit {} for {:.0f}, it had {:.0f} of {:.0f} max health (from sneak {}, its detection level {}, x{:.1f})",
             impact.speed, impact.mass, Damage::ThrownMass(impact.mass), level, Damage::ThrownLevel(level), a_drunk, Damage::DrunkThrow(a_drunk), worn, resist,
             Damage::ArmorTaken(armor), NameOf(target), damage, health, max, sneaking, detection, sneak);
+        // Archery experience, as a bow shot would give (Damage::ThrownSkillUse).
+        const float use = Damage::ThrownSkillUse(Damage::Punch(unarmed), impact.speed, impact.mass);
+        auto*       skills = a_player->GetInfoRuntimeData().skills;
+        auto*       archery = skills && skills->data ? &skills->data->skills[RE::PlayerCharacter::PlayerSkills::Data::Skill::kArchery] : nullptr;
+        const float before = archery ? archery->xp : 0.0f;
+        a_player->AddSkillExperience(RE::ActorValue::kArchery, use);
+        SKSE::log::info("combat: archery +{:.1f} skill use: level {:.0f}, experience {:.1f} -> {:.1f} of {:.1f}", use,
+            a_player->AsActorValueOwner()->GetBaseActorValue(RE::ActorValue::kArchery), before, archery ? archery->xp : 0.0f,
+            archery ? archery->levelThreshold : 0.0f);
     }
 
     void OnHorn(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
