@@ -58,7 +58,8 @@ namespace PerkeleRim::Combat
     void OnThrown(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
 
     // A HornEvent message: the actors in the driven vehicle's way (Damage::InHornPath, all but huge
-    // ones) dive aside out of its lane as ragdolls (Damage::HornDodge).
+    // ones) dive aside out of its lane as ragdolls (Damage::HornDodge); at speed the lane is longer
+    // (Damage::HornReach) and civilians past the dive's reach flee instead (People::Flee).
     void OnHorn(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
 
     // A MiddleFinger message: each guard or Jarl standing within a few meters in front of the player
