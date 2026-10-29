@@ -43,7 +43,9 @@ TEST_CASE("the hit test's scenarios come from the ini's list")
     CHECK(all[0].name == "punch");
     CHECK(all[1].name == "bottle");
     CHECK(all[2].name == "junk");
-    CHECK(all[3].name == "drunk");  // last: MSC's camera sways on after it
+    CHECK(all[3].name == "drunk");  // the drunk ones last: MSC's camera sways on after them
+    CHECK(all[4].name == "drunk-bottle");
+    CHECK(all[5].name == "drunker-bottle");
 
     std::vector<std::string> unknown;
     const auto picked = HitTest::Parse(" bottle , punch,,run-over\r", &unknown);
@@ -70,6 +72,44 @@ TEST_CASE("the scenarios cover sober and drunk punches and a throw")
     CHECK(HitTest::kScenarios[1].drunk == 0.0f);
     CHECK(HitTest::kScenarios[2].attack == HitTest::Attack::kJunk);
     CHECK(HitTest::kScenarios[2].drunk == 0.0f);
+    for (const std::size_t i : { 4u, 5u }) {
+        CHECK(HitTest::kScenarios[i].attack == HitTest::Attack::kThrow);
+        CHECK(HitTest::kScenarios[i].drunk > 0.0f);
+        CHECK(HitTest::kScenarios[i].drunk < 2.5f);
+    }
+}
+
+TEST_CASE("a drunk throw passes by Damage::DrunkThrow, a kill counts in full")
+{
+    const auto&  drunkBottle = HitTest::kScenarios[4];  // drunk 1
+    HitTest::Hit hit;
+    hit.landed = true;
+    hit.unarmed = 4.0f;
+    hit.speed = 20.0f;
+    hit.drunk = 1.0f;
+    hit.damage = 192.0f;  // a Nord's full-charge bottle at drunk 1
+    hit.before = 500.0f;
+    hit.after = 308.0f;
+    CHECK(HitTest::Expected(drunkBottle, hit) == doctest::Approx(192.0f));
+    CHECK(HitTest::Check(drunkBottle, hit).pass);
+
+    hit.before = 150.0f;  // a guard with less health than the hit: it stops at 0
+    hit.after = 0.0f;
+    const auto killed = HitTest::Check(drunkBottle, hit);
+    CHECK(killed.pass);
+    CHECK(killed.note == "killed it");
+
+    hit.before = 300.0f;  // but not when the hit was smaller than its health
+    hit.after = 0.0f;
+    CHECK_FALSE(HitTest::Check(drunkBottle, hit).pass);
+
+    hit.before = 500.0f;
+    hit.after = 484.0f;
+    hit.damage = 16.0f;  // the sober damage: Combat didn't apply the drunk level
+    CHECK(HitTest::Check(drunkBottle, hit).note == "cast 16.0, damage.h says 192.0");
+
+    hit.drunk = 0.2f;  // MSC never took the level
+    CHECK(HitTest::Check(drunkBottle, hit).note == "MSC's drunk level was 0.2, not 1.0");
 }
 
 TEST_CASE("a punch that landed passes when Skyrim cast and took what damage.h says")

@@ -593,7 +593,7 @@ namespace PerkeleRim::Combat
         }
     }
 
-    void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
+    void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk)
     {
         if (a_size < sizeof(Protocol::ImpactEvent)) {
             SKSE::log::warn("combat: bad impact message ({} bytes)", a_size);
@@ -688,19 +688,21 @@ namespace PerkeleRim::Combat
         const int   detection = target->RequestDetectionLevel(a_player);
         const float sneak = Damage::SneakAttack(sneaking, detection);
         const float unarmed = Unarmed(a_player, target);
-        const float damage = Damage::Thrown(Damage::Punch(unarmed), impact.speed, impact.mass) * sneak;
+        const float damage = Damage::Thrown(Damage::Punch(unarmed), impact.speed, impact.mass, a_drunk) * sneak;
         if (damage <= 0.0f) {
             SKSE::log::info("combat: a throw at {:.1f} m/s bounced off {} harmlessly", impact.speed, NameOf(target));
             return;
         }
+        const float health = values->GetActorValue(RE::ActorValue::kHealth);
         caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
-        lastHit = { lastHit.count + 1, target->GetFormID(), true, damage, unarmed, 0.0f, impact.speed, sneak, impact.mass };
+        lastHit = { lastHit.count + 1, target->GetFormID(), true, damage, unarmed, a_drunk, impact.speed, sneak, impact.mass };
         if (sneak > 1.0f) {
             RE::SendHUDMessage::ShowHUDMessage(fmt::format("Sneak attack for {:.1f}x damage", sneak).c_str());
         }
-        SKSE::log::info("combat: the player's throw at {:.1f} m/s ({:.2f} kg, x{:.2f} by weight) hit {} for {:.0f} of {:.0f} max health (from sneak {}, its detection level {}, x{:.1f})",
-            impact.speed, impact.mass, Damage::ThrownMass(impact.mass), NameOf(target), damage, max, sneaking, detection, sneak);
+        SKSE::log::info("combat: the player's throw at {:.1f} m/s ({:.2f} kg, x{:.2f} by weight, drunk {:.2f} x{:.1f}) hit {} for {:.0f}, it had {:.0f} of {:.0f} max health (from sneak {}, its detection level {}, x{:.1f})",
+            impact.speed, impact.mass, Damage::ThrownMass(impact.mass), a_drunk, Damage::DrunkThrow(a_drunk), NameOf(target), damage, health, max, sneaking,
+            detection, sneak);
     }
 
     void OnHorn(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)

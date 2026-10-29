@@ -8,7 +8,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <cstddef>
 #include <cstdint>
+#include <iterator>
 
 #include "../perkelerim_protocol.h"
 
@@ -88,7 +90,8 @@ namespace PerkeleRim::Damage
 
     // A thrown item hits by its speed: nothing at kThrownSpeedMin, twice a sober punch from kThrownSpeedFull
     // on. MSC's own throw lands in between; a bottle, thrown twice as fast (msc/src/Link/Throwing.cs),
-    // hits like two punches from range. a_punch: the player's sober Punch.
+    // hits like two punches from range. a_punch: the player's sober Punch (DrunkThrow below, not
+    // DrunkPunch, makes a drunk throw harder).
     inline constexpr float kThrownSpeedMin = 2.0f;    // meters per second
     inline constexpr float kThrownSpeedFull = 15.0f;
 
@@ -111,10 +114,38 @@ namespace PerkeleRim::Damage
         return (std::clamp)(std::sqrt(a_mass / kThrownMassBase), kThrownMassMin, kThrownMassMax);
     }
 
-    inline float Thrown(float a_punch, float a_speed, float a_mass = 0.0f)
+    // And by MSC's drunk level: a drunk Kumpo throws far harder than he punches, so a bottle is worth
+    // throwing at anything. The multiplier runs linearly between these points and stays flat past the
+    // last: one beer (0.1) triples the throw, five beers (0.4) six times, blind drunk (3) 48 times, so
+    // a Nord's full-charge bottle hits 16 sober, 48, 96, 192 at drunk 1, 400 at 2 and 768 from 3 on.
+    // A flat multiplier, not a share of the target's health, so armor and levels still count.
+    struct DrunkThrowPoint
+    {
+        float drunk;
+        float mult;
+    };
+
+    inline constexpr DrunkThrowPoint kDrunkThrow[] = { { 0.0f, 1.0f }, { 0.1f, 3.0f }, { 0.4f, 6.0f }, { 1.0f, 12.0f }, { 2.0f, 25.0f }, { 3.0f, 48.0f } };
+
+    inline float DrunkThrow(float a_drunk)
+    {
+        if (!(a_drunk > kDrunkThrow[0].drunk)) {
+            return kDrunkThrow[0].mult;
+        }
+        for (std::size_t i = 1; i < std::size(kDrunkThrow); i++) {
+            const auto& from = kDrunkThrow[i - 1];
+            const auto& to = kDrunkThrow[i];
+            if (a_drunk < to.drunk) {
+                return from.mult + (to.mult - from.mult) * (a_drunk - from.drunk) / (to.drunk - from.drunk);
+            }
+        }
+        return kDrunkThrow[std::size(kDrunkThrow) - 1].mult;
+    }
+
+    inline float Thrown(float a_punch, float a_speed, float a_mass = 0.0f, float a_drunk = 0.0f)
     {
         const float scale = (std::clamp)((a_speed - kThrownSpeedMin) / (kThrownSpeedFull - kThrownSpeedMin), 0.0f, 1.0f);
-        return (std::max)(0.0f, a_punch) * kThrownShare * scale * ThrownMass(a_mass);
+        return (std::max)(0.0f, a_punch) * kThrownShare * scale * ThrownMass(a_mass) * DrunkThrow(a_drunk);
     }
 
     // A throw that left the player's hand while he sneaked and hits a target that does not see him

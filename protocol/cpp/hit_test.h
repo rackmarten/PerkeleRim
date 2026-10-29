@@ -35,12 +35,15 @@ namespace PerkeleRim::HitTest
 
     // Drunk 2, not 3: MSC's player sways so much around 2.5 that the camera is hard to keep level.
     // Drunk goes last: MSC's camera keeps swaying for a while after the level is back at 0 (Drunk
-    // Mode eases to random targets), and a throw then misses a capsule 3 m away.
+    // Mode eases to random targets), and a throw then misses a capsule 3 m away. A drunk bottle
+    // (Damage::DrunkThrow, 192 and 400 for a Nord) may kill the guard at once: the next hit is skipped.
     inline constexpr std::array kScenarios = {
         Scenario{ "punch", Attack::kPunch, 0.0f, 3, 0.4f },
         Scenario{ "bottle", Attack::kThrow, 0.0f, 3, 3.0f },
         Scenario{ "junk", Attack::kJunk, 0.0f, 3, 3.0f },
         Scenario{ "drunk", Attack::kPunch, 2.0f, 3, 0.4f },
+        Scenario{ "drunk-bottle", Attack::kThrow, 1.0f, 2, 3.0f },
+        Scenario{ "drunker-bottle", Attack::kThrow, 2.0f, 2, 3.0f },
     };
 
     // "all", or scenario names separated by commas (spaces ignored, case matters), in the order
@@ -79,7 +82,7 @@ namespace PerkeleRim::HitTest
     struct Hit
     {
         bool  landed = false;  // a PunchEvent or ImpactEvent on the target reached Skyrim
-        float drunk = 0.0f;    // MSC's drunk level Skyrim punched with
+        float drunk = 0.0f;    // MSC's drunk level Skyrim punched or threw with
         float unarmed = 0.0f;  // the player's unarmed damage as Skyrim worked it out
         float speed = 0.0f;    // a throw's, m/s
         float mass = 0.0f;     // a throw's, kg (0: MSC didn't say)
@@ -96,7 +99,7 @@ namespace PerkeleRim::HitTest
         if (a_scenario.attack == Attack::kPunch) {
             return Damage::Punch(a_hit.unarmed, a_hit.drunk) * Needs::StressPunch(a_hit.stress);
         }
-        return Damage::Thrown(Damage::Punch(a_hit.unarmed), a_hit.speed, a_hit.mass) * a_hit.sneak;
+        return Damage::Thrown(Damage::Punch(a_hit.unarmed), a_hit.speed, a_hit.mass, a_hit.drunk) * a_hit.sneak;
     }
 
     // Damage and health are compared within 10%, at least 1 point: health regenerates a little
@@ -135,6 +138,9 @@ namespace PerkeleRim::HitTest
             return { false, "cast " + Number(a_hit.damage) + ", damage.h says " + Number(expected) };
         }
         const float drop = a_hit.before - a_hit.after;
+        if (a_hit.after <= 0.0f && a_hit.before > 0.0f && a_hit.damage >= a_hit.before) {
+            return { true, "killed it" };  // health may stop at 0, short of the damage cast
+        }
         if (!Near(drop, a_hit.damage)) {
             return { false, "health fell by " + Number(drop) + ", not the " + Number(a_hit.damage) + " cast" };
         }

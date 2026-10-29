@@ -863,7 +863,7 @@ namespace PerkeleRim::PlayerSync
                     return;
                 }
                 if (a_type == Protocol::MessageType::ImpactEvent) {
-                    Combat::OnImpact(a_player, a_data, a_size);
+                    Combat::OnImpact(a_player, a_data, a_size, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f);
                     return;
                 }
                 if (a_type == Protocol::MessageType::ThrownPath) {

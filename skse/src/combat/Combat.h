@@ -24,8 +24,9 @@ namespace PerkeleRim::Combat
 
     // An ImpactEvent message: a thrown item (hits like a punch, by its speed), the piss stream
     // (PerkeleRim.esp's poison) or the driven vehicle (knocked over, damage by speed) reached an
-    // actor, or MSC's push (staggered aside, no hit).
-    void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
+    // actor, or MSC's push (staggered aside, no hit). a_drunk: MSC's drunk level, drunk throws hit
+    // harder (Damage::DrunkThrow).
+    void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk);
 
     // The latest punch or throw Skyrim cast on an actor, for the hit test (debug/HitTest.h); count goes
     // up with each one.
