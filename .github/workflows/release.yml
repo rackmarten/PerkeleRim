@@ -55,6 +55,8 @@ jobs:
         run: |
           $tag = if ($env:INPUT_TAG) { $env:INPUT_TAG } else { gh release view --repo $env:GITHUB_REPOSITORY --json tagName --jq .tagName }
           if (-not $tag) { throw 'No tag given and no latest release.' }
+          # Only release tags: the rolling dev pre-release (scripts/publish-dev.ps1) isn't one, and "latest" never picks it.
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') { throw "$tag isn't a release tag (vX.Y.Z)." }
           "TAG=$tag" >> $env:GITHUB_ENV
           "name=$tag" >> $env:GITHUB_OUTPUT
 

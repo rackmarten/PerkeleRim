@@ -20,6 +20,7 @@ param(
 . "$PSScriptRoot/common.ps1"
 if (-not $Source) { $Source = $RepoRoot }
 $Source = (Resolve-Path -LiteralPath $Source).Path
+if ($Tag -notmatch '^v\d+\.\d+\.\d+$') { throw "$Tag isn't a release tag (vX.Y.Z); dev builds (scripts/publish-dev.ps1) aren't checked." }
 $version = $Tag -replace '^v', ''
 $top = "PerkeleRim-$version"
 $problems = @()

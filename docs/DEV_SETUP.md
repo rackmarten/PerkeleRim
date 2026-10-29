@@ -95,6 +95,7 @@ scripts/build-esp.ps1 -Deploy       # generate PerkeleRim.esp (garage, beer drin
 scripts/logs.ps1                   # tail of the plugin, SKSE and My Summer Car logs
 scripts/package.ps1                # player release zip (launcher/ + built files + launcher/saves/MSC and Skyrim if present) in tools/out/release/ (build and build-esp first)
 scripts/release-check.ps1 -Zip tools/out/release/PerkeleRim-X.Y.Z.zip -Tag vX.Y.Z  # check a release zip against its tag (see "Cutting a release")
+scripts/publish-dev.ps1 -DryRun    # build a dev build of main for testers; without -DryRun, publish it to the dev pre-release (see "Dev builds")
 scripts/nexus-package.ps1          # the release zip, screenshots and page text for the Nexus Mods upload, in tools/out/nexus/
 scripts/starter-save.ps1           # copy your current MSC save into launcher/saves/MSC with thirst, hunger, urine, fatigue, stress, drunk and dirtiness at 0
 scripts/starter-save.ps1 -Skyrim   # copy your newest Skyrim save (made before the first handover) into launcher/saves/Skyrim as PerkeleRim-Kumpo
@@ -268,6 +269,23 @@ Once, before the first release: add the repository secret `VT_API_KEY` (Settings
 
 To try the workflow without releasing anything, run it by hand with **dry run** (Actions > release > Run workflow, or `gh workflow run release.yml -f tag=v0.1.1 -f dry_run=true`): it takes the zip of any release, published ones too, only warns where the checks fail, and keeps the zip, `SHA256SUMS.txt` and the notes as the run's artifact, without VirusTotal upload or touching the release. A pull request that changes the release workflow or its scripts does a dry run against the latest release by itself.
 
+### Dev builds
+
+Testers (Discord) play what's merged into `main` between releases from one rolling GitHub pre-release, tag `dev`. The maintainer publishes it from a clean `main` that matches `origin/main`:
+
+```powershell
+scripts/publish-dev.ps1 -DryRun   # build and package only, nothing uploaded
+scripts/publish-dev.ps1
+```
+
+`scripts/publish-dev.ps1` refuses another branch, local changes or a `main` that isn't origin's (a dry run only warns), then:
+
+- builds both sides and the ESP (`build.ps1 -Version`, `build-esp.ps1`) and packages `tools/out/release/PerkeleRim-dev-<yyyymmdd>-<commit>.zip` (`package.ps1`), with a `DEV BUILD.txt` at the top. The My Summer Car mod's version (in bug reports) is a pre-release of the next version, `0.2.0-dev.20261029+<commit>`: the next minor once `main`'s version has its release tag, `main`'s own version once the release pull request has bumped it;
+- writes `SHA256SUMS.txt` and the notes (`release-notes.ps1 -DevCommit`): the commit and date, "untested dev build of main, may break saves", the `[Unreleased]` section of `CHANGELOG.md` and the zip's SHA-256;
+- the first time, creates the `dev` pre-release at the commit (never marked latest, so the README's Download link and the `release` workflow keep pointing at the real release); after that, moves the `dev` tag to the commit, uploads the zip and `SHA256SUMS.txt`, updates the notes and deletes the older dev zip.
+
+Nothing deploys into or starts the games. The `dev` tag isn't a release tag (`v*`): the release tag ruleset doesn't cover it, so it can be moved, and the `release` workflow and `release-check.ps1` refuse it. Because it moves, `git fetch --tags` can complain that it "would clobber existing tag"; `git tag -d dev` fixes that.
+
 ### A hotfix
 
 1. Branch from `production`, fix it, and set the patch version and its `CHANGELOG.md` section (`## [X.Y.Z+1] - YYYY-MM-DD`) on the same branch:
@@ -297,7 +315,7 @@ To try the workflow without releasing anything, run it by hand with **dry run** 
 
    Keep `main`'s own version and `## [Unreleased]` section in the conflict, with the hotfix's changelog section below it. A hotfix should avoid changing the shared memory's layout; if it has to, it takes a `kProtocolVersion` above `main`'s, and `main` renumbers on the merge back.
 
-Agents open feature pull requests against `main` and hotfix pull requests against `production`, and never create tags or releases: those are the maintainer's.
+Agents open feature pull requests against `main` and hotfix pull requests against `production`, and never create tags or releases: those are the maintainer's. The rolling `dev` pre-release is made only by `scripts/publish-dev.ps1`, when the maintainer runs it or explicitly tells an agent to (a `-DryRun` is always fine).
 
 ## How the builds work
 

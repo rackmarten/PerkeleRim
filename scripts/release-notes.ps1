@@ -4,7 +4,9 @@
     notes: the version's CHANGELOG.md section, then how to check the download: the zip's SHA-256,
     what the release workflow checked (-Checked, scripts/release-check.ps1) and the VirusTotal
     report (scripts/virustotal.ps1's JSON). The release workflow (.github/workflows/release.yml)
-    runs it; -Changelog points it at the tag's CHANGELOG.md.
+    runs it; -Changelog points it at the tag's CHANGELOG.md. With -DevCommit, the notes of the rolling
+    `dev` pre-release (scripts/publish-dev.ps1, zip PerkeleRim-dev-<yyyymmdd>-<commit>.zip): a warning
+    that it's an untested build of that commit of main, then the [Unreleased] section.
 .EXAMPLE
     scripts/release-notes.ps1 -Zip tools/out/release/PerkeleRim-0.2.0.zip -VirusTotal tools/out/release/virustotal.json
 #>
@@ -13,6 +15,7 @@ param(
     [string] $VirusTotal,
     [string] $Changelog,
     [switch] $Checked,
+    [string] $DevCommit,
     [string] $Out
 )
 
@@ -21,6 +24,12 @@ param(
 $zipName = Split-Path -Leaf $Zip
 if ($zipName -notmatch '^PerkeleRim-(.+)\.zip$') { throw "$zipName isn't a release zip (PerkeleRim-<version>.zip)." }
 $version = $Matches[1]
+if ($DevCommit) {
+    if ($version -notmatch '^dev-(\d{4})(\d{2})(\d{2})-') { throw "$zipName isn't a dev build zip (PerkeleRim-dev-<yyyymmdd>-<commit>.zip)." }
+    $devDate = "$($Matches[1])-$($Matches[2])-$($Matches[3])"
+} elseif ($version -like 'dev-*') {
+    throw "$zipName is a dev build: pass -DevCommit."
+}
 $dir = Split-Path -Parent (Resolve-Path -LiteralPath $Zip).Path
 if (-not $Out) { $Out = Join-Path $dir 'release-notes.md' }
 if (-not $Changelog) { $Changelog = Join-Path $RepoRoot 'CHANGELOG.md' }
@@ -39,14 +48,20 @@ try {
 } finally { $archive.Dispose() }
 [IO.File]::WriteAllLines((Join-Path $dir 'SHA256SUMS.txt'), [string[]] $sums, (New-Object Text.UTF8Encoding $false))
 
-# The version's section of CHANGELOG.md, without its heading.
+# The version's section of CHANGELOG.md (a dev build's: [Unreleased]), without its heading.
+$heading, $ref = if ($DevCommit) { 'Unreleased', $DevCommit } else { $version, "v$version" }
 $text = Get-Content -Raw -LiteralPath $Changelog
-$pattern = '(?ms)^## \[' + [regex]::Escape($version) + '\][^\n]*\n(.*?)(?=^## \[|\z)'
-$section = if ($text -match $pattern) { $Matches[1].Trim() } else { "See [CHANGELOG.md](https://github.com/$repo/blob/v$version/CHANGELOG.md)." }
+$pattern = '(?ms)^## \[' + [regex]::Escape($heading) + '\][^\n]*\n(.*?)(?=^## \[|\z)'
+$section = if ($text -match $pattern) { $Matches[1].Trim() } else { "See [CHANGELOG.md](https://github.com/$repo/blob/$ref/CHANGELOG.md)." }
 # The changelog's links are relative to the repository's root, which a release page doesn't resolve (they 404): point them at the tag.
-$section = $section -replace '\]\((?!https?://|#|mailto:)([^)\s]+)\)', "](https://github.com/$repo/blob/v$version/`$1)"
+$section = $section -replace '\]\((?!https?://|#|mailto:)([^)\s]+)\)', "](https://github.com/$repo/blob/$ref/`$1)"
 
-$lines = @($section, '', '## Check your download', '')
+$lines = @()
+if ($DevCommit) {
+    $lines += "**Untested dev build of ``main``** at [``$($DevCommit.Substring(0, 7))``](https://github.com/$repo/commit/$DevCommit), built $devDate. It isn't a release and may break saves: back up your My Summer Car and Skyrim saves before you play it. Tell us what broke on [Discord](https://discord.gg/C687NV4dCp) or with ``Report a bug.bat``. The latest release is on [Releases](https://github.com/$repo/releases/latest)."
+    $lines += '', '## Changes since the last release', ''
+}
+$lines += @($section, '', '## Check your download', '')
 $lines += "- **SHA-256** of ``$zipName``: ``$zipHash``. In PowerShell: ``Get-FileHash $zipName``. Every file in it is listed in ``SHA256SUMS.txt``."
 if ($Checked) {
     $run = if ($env:GITHUB_RUN_ID) { "[The release workflow]($env:GITHUB_SERVER_URL/$repo/actions/runs/$env:GITHUB_RUN_ID)" } else { 'The release workflow' }
