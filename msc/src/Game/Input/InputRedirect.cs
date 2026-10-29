@@ -71,13 +71,19 @@ namespace PerkeleRim.Game
             if (send == null) Log("redirect: UnityEngine.SendMouseEvents.DoSendMouseEvents not found, Unity's mouse messages read the real mouse");
             else
             {
-                try { harmony.Patch(send, null, null, transpiler); patched++; }
+                var count = new HarmonyMethod(typeof(InputRedirect).GetMethod(nameof(CountMouseEvents), BindingFlags.Static | BindingFlags.NonPublic));
+                try { harmony.Patch(send, count, null, transpiler); patched++; }
                 catch (Exception e) { failed++; Log("redirect: failed UnityEngine.SendMouseEvents.DoSendMouseEvents: " + e.Message); }
             }
 
             Log($"redirect: scanned {scanned} methods, patched {patched}, failed {failed}, call sites {callSitesReplaced}, {(DateTime.Now - start).TotalMilliseconds:0} ms");
             foreach (var kv in unshimmed) Log($"redirect: left unshimmed Input.{kv.Key} x{kv.Value}");
         }
+
+        // How often Unity sent its mouse messages (LookAtProbe logs the rate).
+        public static int MouseEventCalls;
+
+        static void CountMouseEvents() => MouseEventCalls++;
 
         // Cheap pre-filter: look for call/callvirt opcodes whose token resolves to UnityEngine.Input.
         // Stray 0x28/0x6F operand bytes only cost a failed resolve; the transpiler does the real match.
