@@ -152,6 +152,16 @@ namespace PerkeleRim.Tests
             Assert.That(Fuel.Capacity(float.NaN, 0f), Is.EqualTo(0f));  // unknown: no tank to fill
         }
 
+        static KeyValuePair<string, float> F(string name, float value) => new KeyValuePair<string, float>(name, value);
+
+        [Test]
+        public void PourLimitFromTheCapTrigger()
+        {
+            Assert.That(Fuel.PourLimit(new[] { F("FuelLevel", 52f), F("MaxFuel", 300f) }, new[] { F("FuelLevel", 130f) }), Is.EqualTo(300f));
+            Assert.That(Fuel.PourLimit(new[] { F("FuelLevel", 52f), F("Flow", 0.85f) }, new[] { F("FuelLevel", 300f), F("FuelLevel", 0.2f), F("Distance", 1000f) }), Is.EqualTo(300f));
+            Assert.That(Fuel.PourLimit(new[] { F("Flow", 0.85f) }, new[] { F("Distance", 3f) }), Is.EqualTo(0f));
+        }
+
         [Test]
         public void HudLines()
         {

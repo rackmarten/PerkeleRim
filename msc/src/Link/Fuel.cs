@@ -70,6 +70,22 @@ namespace PerkeleRim
         public static float Capacity(float read, float known) =>
             !float.IsNaN(read) && read > 0f ? read : Math.Max(0f, known);
 
+        // The capacity a tank without MaxCapacity has by its cap trigger (CapTrigger_Fuel<vehicle> ::
+        // Trigger): a float of its own named like a maximum or a capacity, else the largest constant
+        // it compares a level or fuel float against (where the pour stops), else 0. floats: its
+        // variables; compares: its FloatCompare actions as (variable, constant).
+        public static float PourLimit(IEnumerable<KeyValuePair<string, float>> floats, IEnumerable<KeyValuePair<string, float>> compares)
+        {
+            foreach (var f in floats)
+                if (f.Value > 0f && (f.Key.IndexOf("Capacity", StringComparison.OrdinalIgnoreCase) >= 0 || f.Key.StartsWith("Max", StringComparison.OrdinalIgnoreCase)))
+                    return f.Value;
+            float best = 0f;
+            foreach (var c in compares)
+                if ((c.Key.IndexOf("Level", StringComparison.OrdinalIgnoreCase) >= 0 || c.Key.IndexOf("Fuel", StringComparison.OrdinalIgnoreCase) >= 0) && c.Value > best)
+                    best = c.Value;
+            return best;
+        }
+
         public static bool Dry(float level) => level <= DryLevel;
 
         public static bool Low(float level, float capacity) => capacity > 0f && level < capacity * LowShare;

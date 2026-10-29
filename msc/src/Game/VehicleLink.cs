@@ -102,6 +102,7 @@ namespace PerkeleRim.Game
         public bool EndlessFuel { get; set; }
         // Litres, for a tank whose Data has no MaxCapacity (the Gifu's); 0 reads it from the tank.
         public float TankSize { get; set; }
+        float capLimit;  // Fuel.PourLimit read from the cap trigger, 0 = none
         // Half width and half length (meters) of the ground that must be flat where it parks, around
         // its origin: van sized unless set (the Gifu's is longer).
         public Vector2 ParkHalfSize { get; set; } = VanHalfSize;
@@ -193,7 +194,7 @@ namespace PerkeleRim.Game
             HutongGames.PlayMaker.FsmFloat l, c;
             FuelTank(out l, out c, null);
             level = l != null ? l.Value : 0f;
-            capacity = Fuel.Capacity(c != null ? c.Value : float.NaN, TankSize);
+            capacity = Fuel.Capacity(c != null ? c.Value : float.NaN, capLimit > 0f ? capLimit : TankSize);
             return l != null && capacity > 0f;
         }
 
@@ -226,20 +227,44 @@ namespace PerkeleRim.Game
             var names = new System.Text.StringBuilder();
             FuelTank(out level, out capacity, names);
             if (names.Length > 0) log($"vehicle: {driverName} fuel tank floats:{names}");
-            var cap = car.Find("LOD/FuelFiller/OpenCap");
-            if (cap != null)
-                foreach (var fsm in cap.GetComponentsInChildren<PlayMakerFSM>(true))
-                {
-                    if (fsm.FsmName != "Trigger") continue;
-                    var floats = new System.Text.StringBuilder();
-                    foreach (var f in fsm.FsmVariables.FloatVariables) floats.Append($" {f.Name}={f.Value:0.##}");
-                    log($"vehicle: {driverName} fuel cap {fsm.name} :: Trigger floats:{floats}");
-                }
+            capLimit = capacity == null ? CapLimit() : 0f;
             if (EndlessFuel && level != null && capacity != null && capacity.Value > 0f && level.Value < capacity.Value)
             {
                 level.Value = capacity.Value;
                 log($"vehicle: filled the {driverName} tank ({level.Name} = {capacity.Name} = {capacity.Value:0.##})");
             }
+        }
+
+        // A tank without MaxCapacity (the Gifu's): the level its cap trigger stops pouring at
+        // (Fuel.PourLimit), 0 when not found. Logs what it saw.
+        float CapLimit()
+        {
+            var cap = car.Find("LOD/FuelFiller/OpenCap");
+            if (cap == null) return 0f;
+            var floats = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, float>>();
+            var compares = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, float>>();
+            foreach (var fsm in cap.GetComponentsInChildren<PlayMakerFSM>(true))
+            {
+                if (fsm.FsmName != "Trigger") continue;
+                foreach (var f in fsm.FsmVariables.FloatVariables)
+                    floats.Add(new System.Collections.Generic.KeyValuePair<string, float>(f.Name, f.Value));
+                foreach (var state in fsm.FsmStates)
+                    foreach (var action in state.Actions)
+                    {
+                        if (action == null || action.GetType().Name != "FloatCompare") continue;
+                        var one = action.GetType().GetField("float1")?.GetValue(action) as HutongGames.PlayMaker.FsmFloat;
+                        var two = action.GetType().GetField("float2")?.GetValue(action) as HutongGames.PlayMaker.FsmFloat;
+                        if (one != null && two != null && one.UseVariable && !two.UseVariable)
+                            compares.Add(new System.Collections.Generic.KeyValuePair<string, float>(one.Name, two.Value));
+                    }
+            }
+            float limit = Fuel.PourLimit(floats, compares);
+            var seen = new System.Text.StringBuilder();
+            foreach (var f in floats) seen.Append($" {f.Key}={f.Value:0.##}");
+            foreach (var c in compares) seen.Append($" {c.Key}<>{c.Value:0.##}");
+            log($"vehicle: {driverName} tank has no capacity, its cap trigger has{seen}: " +
+                (limit > 0f ? $"{limit:0.#} L" : $"nothing, {TankSize:0} L assumed"));
+            return limit;
         }
 
         // The moped's fuel is endless (EndlessFuel): topped up once a second.
