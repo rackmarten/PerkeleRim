@@ -11,6 +11,7 @@
 #include "junk/ThrowJunk.h"
 #include "link/LinkService.h"
 #include "look_at.h"
+#include "model/ModelView.h"
 #include "player/PlayerSync.h"
 
 namespace PerkeleRim::HitTest
@@ -26,6 +27,8 @@ namespace PerkeleRim::HitTest
         constexpr float         kSettleSeconds = 5.0f;     // after the load, before F10
         constexpr float         kHandoverTimeout = 120.0f;  // the first handover of a save walks to the garage
         constexpr float         kOwnedSettle = 4.0f;       // MSC's island gets built under the player
+        constexpr float         kModelQuiet = 4.0f;        // seconds without a ModelChunk: MSC has read its models (one took 2.1 s)
+        constexpr float         kModelWait = 60.0f;        // and starting anyway after this long handed over
         constexpr float         kLevelTimeout = 8.0f;
         constexpr float         kLevelPitch = 0.05f;  // radians, about 3 degrees: level enough
         constexpr float         kAimPitch = 0.12f;    // and about 7 degrees to press at, as MSC's drunk camera drifts
@@ -64,6 +67,8 @@ namespace PerkeleRim::HitTest
             float                    timer = 0.0f;
             float                    step = 0.0f;  // the camera levelling's own clock
             float                    owned = 0.0f;  // seconds MSC has had the player on the ground
+            std::uint32_t            chunks = 0;    // ModelView::Chunks() when last looked at
+            float                    quiet = 0.0f;  // seconds since it last changed
             RE::FormID               targetBase = kGuard;
             RE::ObjectRefHandle      target;
             std::string              targetName;
@@ -212,12 +217,14 @@ namespace PerkeleRim::HitTest
 
         // Turns MSC's camera level with mouse moves: a throw flies where it looks, and a punch reaches
         // further. MSC's sensitivity isn't known, so the gain halves whenever it overshoots, and a move
-        // that tilted the wrong way turns the sign around. Not a_learn: the gain and sign stay as they
-        // are (between hits, where a drunk camera's own drift would fool them).
+        // (0.1 s apart) that brought it no nearer level turns the sign around (a camera that starts level never shows
+        // which way is which). Not a_learn: the gain stays as it is (between hits, where a drunk
+        // camera's own sway would make it look like overshooting).
         bool Leveled(const Protocol::PlayerState& a_pose, float a_delta, bool a_learn = true)
         {
             const float pitch = a_pose.viewPitch;
             if (std::abs(pitch) < kLevelPitch) {
+                state.lastPitch = 0.0f;  // the next move starts afresh
                 return true;
             }
             state.step += a_delta;
@@ -225,17 +232,20 @@ namespace PerkeleRim::HitTest
                 return false;
             }
             state.step = 0.0f;
-            if (a_learn && state.lastPitch != 0.0f) {
-                if (std::abs(pitch) > std::abs(state.lastPitch) + 0.01f && (pitch > 0.0f) == (state.lastPitch > 0.0f)) {
-                    state.pitchSign = -state.pitchSign;  // went the wrong way
-                } else if ((pitch > 0.0f) != (state.lastPitch > 0.0f)) {
+            if (state.lastPitch != 0.0f) {
+                if ((pitch > 0.0f) == (state.lastPitch > 0.0f)) {
+                    if (std::abs(pitch) > std::abs(state.lastPitch) - 0.005f) {
+                        state.pitchSign = -state.pitchSign;  // no nearer level: the wrong way, or pinned at MSC's limit by it
+                        SKSE::log::info("hit test: camera pitch {:.2f} after {:.2f}, the mouse turned around", pitch, state.lastPitch);
+                    }
+                } else if (a_learn) {
                     state.pitchGain = (std::max)(0.25f, state.pitchGain * 0.5f);  // overshot
                 }
             }
             state.lastPitch = pitch;
             const float degrees = pitch * 57.29578f;
             const auto  counts = static_cast<std::int32_t>(std::clamp(degrees * state.pitchGain, -80.0f, 80.0f) * state.pitchSign);
-            PlayerSync::DebugMouse(0, counts == 0 ? (pitch > 0.0f ? 1 : -1) : counts);
+            PlayerSync::DebugMouse(0, counts != 0 ? counts : (pitch > 0.0f) == (state.pitchSign > 0.0f) ? 1 : -1);
             return false;
         }
 
@@ -328,6 +338,7 @@ namespace PerkeleRim::HitTest
                 (Current().drunk > 0.0f ? state.ranDrunk : state.ranSober) = true;
             }
             if (++state.hit < Current().hits && Target() && !Target()->IsDead()) {
+                state.step = state.lastPitch = 0.0f;
                 Go(Current().attack != Attack::kPunch ? Phase::Holding : Phase::Aiming);
                 Arm(RE::PlayerCharacter::GetSingleton());
                 return;
@@ -370,6 +381,14 @@ namespace PerkeleRim::HitTest
         state.csv.open(state.csvPath, std::ios::trunc);
         state.csv << kCsvHeader << '\n';
         state.csv.flush();
+        // Skyrim stops while another window is in front (bAlwaysActive is off by default), and the hit
+        // test runs unattended while the desktop may be in use.
+        auto* ini = RE::INISettingCollection::GetSingleton();
+        if (auto* active = ini ? ini->GetSetting("bAlwaysActive:General") : nullptr) {
+            active->data.b = true;
+        } else {
+            SKSE::log::warn("hit test: no bAlwaysActive:General, keep Skyrim in front");
+        }
         state.phase = Phase::Loading;
         SKSE::log::info("hit test: on, {} scenario(s) ({}), target {:08X}, results in {}", state.scenarios.size(), list, state.targetBase,
             state.csvPath.string());
@@ -419,7 +438,16 @@ namespace PerkeleRim::HitTest
                 Finish("Kumpo sits in a vehicle, the hit test needs him on foot");
             } else if (PlayerSync::Owned() && posed && (pose.flags & Protocol::kPlayerGrounded) != 0) {
                 state.owned += a_delta;
-                if (state.owned >= kOwnedSettle) {
+                // MSC reads each model it sends in one frame, a vehicle's freezing it for a second or
+                // two, and a key held meanwhile never reaches it: the first attack waits for them.
+                if (const auto chunks = ModelView::Chunks(); chunks != state.chunks) {
+                    state.chunks = chunks;
+                    state.quiet = 0.0f;
+                } else {
+                    state.quiet += a_delta;
+                }
+                if (state.owned >= kOwnedSettle && (state.quiet >= kModelQuiet || state.owned >= kModelWait)) {
+                    SKSE::log::info("hit test: {} model chunks from MSC{}", state.chunks, state.quiet >= kModelQuiet ? ", none for a while" : ", still coming, starting anyway");
                     StartScenario();
                 }
             } else if (state.timer > kHandoverTimeout) {

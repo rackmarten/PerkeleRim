@@ -12,6 +12,10 @@ namespace PerkeleRim::ModelView
 {
     void OnChunk(const std::uint8_t* a_payload, std::uint32_t a_size);
 
+    // ModelChunk messages taken so far. The hit test waits for them to stop: MSC reads each model
+    // in one frame, a vehicle's freezing it for a second or two, and a key pressed meanwhile is lost.
+    std::uint32_t Chunks();
+
     // A new node drawing model a_model (its root at the node's origin), not attached anywhere yet;
     // null until that model has arrived. The model's own nodes (ModelNode) are child nodes by their
     // names, at their rest pose, holding their meshes; a_nodes (optional) gets them in ModelNode
