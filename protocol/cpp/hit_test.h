@@ -37,13 +37,14 @@ namespace PerkeleRim::HitTest
     // Drunk goes last: MSC's camera keeps swaying for a while after the level is back at 0 (Drunk
     // Mode eases to random targets), and a throw then misses a capsule 3 m away. A drunk bottle
     // (Damage::DrunkThrow, 192 and 400 for a Nord) may kill the guard at once: the next hit is skipped.
+    // Drunk throws go from 1.5 m: at 3 m the camera's sway during the charge missed the capsule.
     inline constexpr std::array kScenarios = {
         Scenario{ "punch", Attack::kPunch, 0.0f, 3, 0.4f },
         Scenario{ "bottle", Attack::kThrow, 0.0f, 3, 3.0f },
         Scenario{ "junk", Attack::kJunk, 0.0f, 3, 3.0f },
         Scenario{ "drunk", Attack::kPunch, 2.0f, 3, 0.4f },
-        Scenario{ "drunk-bottle", Attack::kThrow, 1.0f, 2, 3.0f },
-        Scenario{ "drunker-bottle", Attack::kThrow, 2.0f, 2, 3.0f },
+        Scenario{ "drunk-bottle", Attack::kThrow, 1.0f, 2, 1.5f },
+        Scenario{ "drunker-bottle", Attack::kThrow, 2.0f, 2, 1.5f },
     };
 
     // "all", or scenario names separated by commas (spaces ignored, case matters), in the order
