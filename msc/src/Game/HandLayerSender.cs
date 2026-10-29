@@ -29,9 +29,8 @@ namespace PerkeleRim.Game
         public static bool SaveRequested;   // spike "handlayer save"
         public static bool Tint;            // spike "handlayer tint": a see-through red background, to check Skyrim draws the layer
         public static float Ambient = 0.5f, Sun = 0.8f;  // spike "handlayer light <ambient> <sun>": the neutral lighting
-        // Drawn as see-through holes in the layer (DrinkShow: MSC's bottle while Skyrim draws its own
-        // there): they hide what's behind them, the fingers round the back, and show Skyrim's frame.
-        public static Renderer[] Holes;
+        // Left out of the layer (DrinkShow: MSC's bottle while Skyrim draws its own in the hand).
+        public static Renderer[] Hidden;
 
         readonly Action<string> log;
         readonly bool direct;
@@ -59,8 +58,8 @@ namespace PerkeleRim.Game
         readonly Dictionary<Material, Material> alphaMaterials = new Dictionary<Material, Material>();
         Shader alphaShader;
         bool alphaShaderTried;
-        Material holeMaterial;
-        bool holeTried;
+        Material hiddenMaterial;
+        bool hiddenTried;
         RenderTexture target;
         SharedTexture shared;
         uint copies;
@@ -274,7 +273,7 @@ namespace PerkeleRim.Game
             }
 
             SwapParticleMaterials();
-            SwapHoles();
+            SwapHidden();
         }
 
         internal void EndRender()
@@ -315,37 +314,37 @@ namespace PerkeleRim.Game
             }
         }
 
-        // Holes: all their materials become one that writes depth and transparent black, so whatever
-        // is behind them is cut out (in front of them it's depth tested as usual).
-        void SwapHoles()
+        // Hidden: all their materials become one that draws nothing, for the hidden render only
+        // (like the particle materials; a renderer turned off there would still be culled in).
+        void SwapHidden()
         {
-            var holes = Holes;
-            if (holes == null || holes.Length == 0) return;
-            if (!holeTried)
+            var hidden = Hidden;
+            if (hidden == null || hidden.Length == 0) return;
+            if (!hiddenTried)
             {
-                holeTried = true;
-                var m = new Material(HoleSource) { name = "PerkeleRim.Hole" };
-                holeMaterial = m.shader != null && m.shader.isSupported ? m : null;
-                log(holeMaterial != null ? "hand layer: hole shader ready" : "hand layer: hole shader NOT supported, held bottles show MSC's");
+                hiddenTried = true;
+                var m = new Material(HiddenSource) { name = "PerkeleRim.Hidden" };
+                hiddenMaterial = m.shader != null && m.shader.isSupported ? m : null;
+                log(hiddenMaterial != null ? "hand layer: hidden shader ready" : "hand layer: hidden shader NOT supported, held bottles show MSC's");
             }
-            if (holeMaterial == null) return;
-            foreach (var r in holes)
+            if (hiddenMaterial == null) return;
+            foreach (var r in hidden)
             {
                 if (r == null || !r.enabled) continue;
                 var originals = r.sharedMaterials;
                 var replaced = new Material[originals.Length];
-                for (int i = 0; i < replaced.Length; i++) replaced[i] = holeMaterial;
+                for (int i = 0; i < replaced.Length; i++) replaced[i] = hiddenMaterial;
                 swapped.Add(r);
                 swappedOriginals.Add(originals);
                 r.sharedMaterials = replaced;
             }
         }
 
-        // Transparent black with depth, drawn before the opaque things (the hand), both sides of its faces.
-        const string HoleSource = @"Shader ""PerkeleRim/Hole"" {
+        // Writes no color and no depth.
+        const string HiddenSource = @"Shader ""PerkeleRim/Hidden"" {
 SubShader {
-  Tags { ""Queue""=""Geometry-1"" ""RenderType""=""Opaque"" }
-  Pass { ZWrite On ZTest LEqual Cull Off Lighting Off Fog { Mode Off } Blend Off ColorMask RGBA Color (0,0,0,0) }
+  Tags { ""Queue""=""Geometry"" ""RenderType""=""Opaque"" }
+  Pass { ZWrite Off ColorMask 0 Lighting Off Fog { Mode Off } }
 }
 }";
 

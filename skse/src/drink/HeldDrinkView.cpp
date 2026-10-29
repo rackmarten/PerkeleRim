@@ -109,8 +109,8 @@ namespace PerkeleRim::HeldDrinkView
         }
         const auto& m = state.last;
         Held::Pose  local;
-        if (!Held::Place({ m.bottom[0], m.bottom[1], m.bottom[2] }, { m.top[0], m.top[1], m.top[2] }, { m.side[0], m.side[1], m.side[2] }, state.boundsMin,
-                state.boundsMax, local)) {
+        if (!Held::Place({ m.bottom[0], m.bottom[1], m.bottom[2] }, { m.top[0], m.top[1], m.top[2] }, { m.side[0], m.side[1], m.side[2] },
+                { m.grip[0], m.grip[1], m.grip[2] }, state.boundsMin, state.boundsMax, local)) {
             Drop("no length");
             return;
         }
@@ -158,12 +158,16 @@ namespace PerkeleRim::HeldDrinkView
         state.node->Update(update);
         if (!state.placedLogged) {
             state.placedLogged = true;
-            const auto  bottle = state.node->world.translate - eye->world.translate;
-            const auto& p = scene->world.translate;
-            SKSE::log::info("held drink: base ({:.1f}, {:.1f}, {:.1f}) top ({:.1f}, {:.1f}, {:.1f}) in the camera's space; model origin {:.1f} from the "
-                            "camera; its parent at ({:.0f}, {:.0f}, {:.0f}) scale {:.2f}, the camera at ({:.0f}, {:.0f}, {:.0f})",
-                m.bottom[0], m.bottom[1], m.bottom[2], m.top[0], m.top[1], m.top[2], bottle.Length(), p.x, p.y, p.z, scene->world.scale, eye->world.translate.x,
-                eye->world.translate.y, eye->world.translate.z);
+            // The model's neck where it ended up, against the grip MSC sent: both from the eye.
+            const auto   neckLocal = Held::Apply(local.rotate, Held::Scale(Held::NeckOf(state.boundsMin, state.boundsMax), local.scale));
+            const auto   neck = Held::Add(local.translate, neckLocal);
+            const auto&  p = scene->world.translate;
+            SKSE::log::info("held drink: base ({:.1f}, {:.1f}, {:.1f}) top ({:.1f}, {:.1f}, {:.1f}) grip ({:.1f}, {:.1f}, {:.1f}) in the camera's space, "
+                            "{:.1f} from the eye; the model's neck {:.1f} from it, its height {:.1f}; its parent at ({:.0f}, {:.0f}, {:.0f}) scale {:.2f}, "
+                            "the model's origin {:.1f} from the eye",
+                m.bottom[0], m.bottom[1], m.bottom[2], m.top[0], m.top[1], m.top[2], m.grip[0], m.grip[1], m.grip[2],
+                Held::Length({ m.grip[0], m.grip[1], m.grip[2] }), Held::Length(neck), (state.boundsMax.z - state.boundsMin.z) * local.scale, p.x, p.y, p.z,
+                scene->world.scale, (state.node->world.translate - at).Length());
             const auto& fov = camera->GetRuntimeData2();
             const auto& draw = RE::DrawWorld::GetSingleton();
             SKSE::log::info("held drink: fov {:.1f} world, {:.1f} first person (camera); {:.1f} world, {:.1f} first person (drawn)", fov.worldFOV,

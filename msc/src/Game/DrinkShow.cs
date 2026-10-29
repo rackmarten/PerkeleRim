@@ -13,9 +13,9 @@ namespace PerkeleRim.Game
     // spirit from Skyrim (Skooma) every BLIND transition is pointed at its state's other way out
     // until Restore.
     // With the drink's Skyrim item (ConsumeEvent.form) Kumpo holds that item's own model: while
-    // MSC's bottle is in the hand, Update sends Skyrim its pose every frame (HeldDrink) and the hand
-    // layer draws MSC's bottle as a see-through hole (HandLayerSender.Holes), so Skyrim's bottle
-    // shows where MSC's was and the fingers in front of it stay over it.
+    // MSC's bottle is in the hand, Update sends Skyrim its pose and where the fist closes on it every
+    // frame (HeldDrink), and the hand layer leaves MSC's bottle out (HandLayerSender.Hidden); Skyrim
+    // puts its bottle's neck in the fist.
     static unsafe class DrinkShow
     {
         const string DrinkPath = "PLAYER/Pivot/AnimPivot/Camera/FPSCamera/FPSCamera/Drink";
@@ -27,6 +27,7 @@ namespace PerkeleRim.Game
         static uint heldForm;     // the shown drink's Skyrim item, 0 = MSC's own bottle shows
         static Transform bottle;  // MSC's bottle for it, below Drink
         static Renderer[] bottleRenderers = new Renderer[0];
+        static Transform[] fingers = new Transform[0];  // the holding hand's finger joints (HeldBottle.Fingers)
         static Transform eye;     // HandCamera, the hand layer's view
         static bool held;         // Skyrim has the model in the hand (the last HeldDrink had a form)
         static readonly byte[] payload = new byte[sizeof(HeldDrink)];
@@ -70,7 +71,17 @@ namespace PerkeleRim.Game
             }
             bottle = found;
             bottleRenderers = bottle.GetComponentsInChildren<Renderer>(true);
-            log($"drink: Kumpo holds {form:X8}'s own model on {path} ({bottleRenderers.Length} renderers)");
+            fingers = FindFingers(drinkObject.Find(HeldBottle.Hand(drink) ?? ""));
+            log($"drink: Kumpo holds {form:X8}'s own model on {path} ({bottleRenderers.Length} renderers, {fingers.Length} fingers to grip it)");
+        }
+
+        static Transform[] FindFingers(Transform hand)
+        {
+            var found = new System.Collections.Generic.List<Transform>();
+            if (hand != null)
+                foreach (var t in hand.GetComponentsInChildren<Transform>(true))
+                    if (Array.IndexOf(HeldBottle.Fingers, t.name) >= 0) found.Add(t);
+            return found.ToArray();
         }
 
         // Every frame (LateUpdate, MSC's animation done) while a drink is shown, and once after
@@ -80,7 +91,7 @@ namespace PerkeleRim.Game
             bool inHand = showing && bottle != null && bottle.gameObject.activeInHierarchy && AnyEnabled() && FindEye();
             if (!inHand)
             {
-                HandLayerSender.Holes = null;
+                HandLayerSender.Hidden = null;
                 if (held)
                 {
                     held = false;
@@ -95,9 +106,16 @@ namespace PerkeleRim.Game
             var bottom = eye.InverseTransformPoint(bottle.TransformPoint(new Vector3(c.x, c.y, bounds.min.z)));
             var top = eye.InverseTransformPoint(bottle.TransformPoint(new Vector3(c.x, c.y, bounds.max.z)));
             var side = eye.InverseTransformDirection(bottle.TransformDirection(Vector3.right));
-            HandLayerSender.Holes = bottleRenderers;
-            if (!Send(link, HeldBottle.Message(heldForm, V(bottom), V(top), V(side)))) return;
-            if (!held) log($"drink: {heldForm:X8}'s model in the hand, base {bottom} top {top} (MSC camera, m)");
+            // The fist: the middle of the fingers' joints; without them, the middle of the bottle.
+            var fist = Vector3.zero;
+            int counted = 0;
+            foreach (var f in fingers)
+                if (f != null) { fist += eye.InverseTransformPoint(f.position); counted++; }
+            fist = counted > 0 ? fist / counted : (bottom + top) * 0.5f;
+            var grip = HeldBottle.Grip(V(bottom), V(top), V(fist));
+            HandLayerSender.Hidden = bottleRenderers;
+            if (!Send(link, HeldBottle.Message(heldForm, V(bottom), V(top), V(side), grip))) return;
+            if (!held) log($"drink: {heldForm:X8}'s model in the hand, base {bottom} top {top} fist {fist} grip ({grip.x:0.000}, {grip.y:0.000}, {grip.z:0.000}) (MSC camera, m)");
             held = true;
         }
 

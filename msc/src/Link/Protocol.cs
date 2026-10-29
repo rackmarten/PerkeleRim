@@ -750,6 +750,7 @@ namespace PerkeleRim.Protocol
         public fixed float bottom[3];
         public fixed float top[3];
         public fixed float side[3];
+        public fixed float grip[3];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

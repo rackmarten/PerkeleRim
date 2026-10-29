@@ -820,12 +820,12 @@ namespace PerkeleRim::Protocol
     };
 
     // HeldDrink (v50): every MSC frame of a drink shown for Skyrim (ConsumeEvent.form) while its
-    // bottle is in the hand: Skyrim draws form's own model there instead, and MSC leaves its bottle
-    // out of the hand layer. Points in Skyrim units in the camera's own space (+X right, +Y
-    // forward, +Z up; protocol/cpp/held_drink.h): the middle of the bottle's base, the middle of
-    // its top and a direction along the bottle's side for its turn about its length. form 0: the
-    // bottle is down or thrown, Skyrim drops its model. Skyrim also drops it when none came for a
-    // moment.
+    // bottle is in the hand: Skyrim draws form's own model there instead, held by its neck in MSC's
+    // fist, and MSC leaves its bottle out of the hand layer. Points in Skyrim units in the camera's
+    // own space (+X right, +Y forward, +Z up; protocol/cpp/held_drink.h): the middle of MSC's
+    // bottle's base and of its top (the way it points), a direction across it for its turn about
+    // its length, and the grip, where the fist closes on it. form 0: the bottle is down or thrown,
+    // Skyrim drops its model. Skyrim also drops it when none came for a moment.
     struct HeldDrink
     {
         std::uint32_t form;       // the drink's form id, 0 = none
@@ -833,6 +833,7 @@ namespace PerkeleRim::Protocol
         float         bottom[3];  // camera space, Skyrim units
         float         top[3];
         float         side[3];    // any length, across the bottle
+        float         grip[3];    // on the bottle's axis, where the fist is
     };
 
     // ---- Models (MSC -> Skyrim) ----
@@ -1113,7 +1114,8 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(ConsumeEvent) == 24);
     static_assert(offsetof(ConsumeEvent, drink) == 16);
     static_assert(offsetof(ConsumeEvent, form) == 20);
-    static_assert(sizeof(HeldDrink) == 44);
+    static_assert(sizeof(HeldDrink) == 56);
+    static_assert(offsetof(HeldDrink, grip) == 44);
     static_assert(offsetof(HeldDrink, bottom) == 8);
     static_assert(offsetof(HeldDrink, top) == 20);
     static_assert(offsetof(HeldDrink, side) == 32);

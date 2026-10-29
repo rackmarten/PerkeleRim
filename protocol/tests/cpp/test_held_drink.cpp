@@ -16,42 +16,45 @@ namespace
     // A model point as the placed pose has it.
     Vec Placed(const Pose& a_pose, Vec a_model) { return Add(a_pose.translate, Apply(a_pose.rotate, Scale(a_model, a_pose.scale))); }
 
-    // Skyrim's ale bottle, roughly: 0..20 units tall, 3 wide, base not quite at the origin.
+    // Skyrim's Flin, roughly: 0.5..20.5 units tall, base not quite at the origin, off center in y.
     constexpr Vec kMin{ -3.0f, -2.0f, 0.5f };
     constexpr Vec kMax{ 3.0f, 4.0f, 20.5f };
+    constexpr Vec kNeck{ 0.0f, 1.0f, 16.5f };  // 20 % of its 20 units under its top
 }
 
-TEST_CASE("held drink stands on MSC's bottle when it is upright")
+TEST_CASE("held drink is held by its neck in the fist")
 {
+    CheckNear(NeckOf(kMin, kMax), kNeck);
     Pose pose;
-    REQUIRE(Place({ 5, 30, -10 }, { 5, 30, 10 }, { 1, 0, 0 }, kMin, kMax, pose));
-    CHECK(pose.scale == doctest::Approx(1.0f));
-    CheckNear(Placed(pose, { 0, 1, 0.5f }), { 5, 30, -10 });   // the middle of the base on MSC's base
-    CheckNear(Placed(pose, { 0, 1, 20.5f }), { 5, 30, 10 });   // the top on MSC's top
-    CheckNear(Placed(pose, { 3, 1, 0.5f }), { 8, 30, -10 });   // +X along side
+    // MSC's bottle upright in front of the camera, the fist on it at (5, 30, 2).
+    REQUIRE(Place({ 5, 30, -6 }, { 5, 30, 6 }, { 1, 0, 0 }, { 5, 30, 2 }, kMin, kMax, pose));
+    CHECK(pose.scale == doctest::Approx(1.0f));  // its own size, not MSC's bottle's 12 units
+    CheckNear(Placed(pose, kNeck), { 5, 30, 2 });
+    CheckNear(Placed(pose, { 0, 1, 20.5f }), { 5, 30, 6 });   // its top out of the fist, the way MSC's points
+    CheckNear(Placed(pose, { 0, 1, 0.5f }), { 5, 30, -14 });  // the body hangs below
+    CheckNear(Placed(pose, { 3, 1, 16.5f }), { 8, 30, 2 });   // +X along side
 }
 
-TEST_CASE("held drink is scaled to MSC's bottle's length")
+TEST_CASE("held drink keeps its own size unless it is taller than a bottle")
 {
+    CHECK(SizeOf(kMin, kMax) == doctest::Approx(1.0f));
+    CHECK(SizeOf({ -10, -10, 0 }, { 10, 10, 42 }) == doctest::Approx(0.5f));  // the jug of milk, 60 cm, to 30
     Pose pose;
-    REQUIRE(Place({ 0, 0, 0 }, { 0, 0, 10 }, { 0, 1, 0 }, kMin, kMax, pose));
+    REQUIRE(Place({ 0, 0, 0 }, { 0, 0, 10 }, { 0, 1, 0 }, { 0, 0, 5 }, { -10, -10, 0 }, { 10, 10, 42 }, pose));
     CHECK(pose.scale == doctest::Approx(0.5f));
-    CheckNear(Placed(pose, { 0, 1, 20.5f }), { 0, 0, 10 });
-
-    REQUIRE(Place({ 0, 0, 0 }, { 0, 0, 1000 }, { 0, 1, 0 }, kMin, kMax, pose));
-    CHECK(pose.scale == doctest::Approx(kMaxScale));  // a broken model stays bottle-sized
+    CheckNear(Placed(pose, NeckOf({ -10, -10, 0 }, { 10, 10, 42 })), { 0, 0, 5 });
 }
 
 TEST_CASE("held drink follows a tilted bottle and its turn")
 {
     // Tipped toward the mouth: the neck points back at the camera (-Y) and a little up.
     const Vec bottom{ 4, 20, -8 };
-    const Vec top{ 4, 4, 4 };  // 20 units from the base
+    const Vec top{ 4, 4, 4 };
+    const Vec grip{ 4, 12, -2 };  // halfway
     Pose      pose;
-    REQUIRE(Place(bottom, top, { 0, 0, 1 }, kMin, kMax, pose));  // side not quite across: only its part across counts
-    CHECK(pose.scale == doctest::Approx(1.0f));
-    CheckNear(Placed(pose, { 0, 1, 0.5f }), bottom);
-    CheckNear(Placed(pose, { 0, 1, 20.5f }), top);
+    REQUIRE(Place(bottom, top, { 0, 0, 1 }, grip, kMin, kMax, pose));  // side not quite across: only its part across counts
+    CheckNear(Placed(pose, kNeck), grip);
+    CheckNear(Placed(pose, { 0, 1, 20.5f }), { 4, 12 - 0.8f * 4, -2 + 0.6f * 4 });  // 4 units on toward MSC's top
     // A rotation: lengths kept, right-handed.
     const Vec x = Apply(pose.rotate, { 1, 0, 0 }), y = Apply(pose.rotate, { 0, 1, 0 }), z = Apply(pose.rotate, { 0, 0, 1 });
     CHECK(Length(x) == doctest::Approx(1.0f));
@@ -63,19 +66,19 @@ TEST_CASE("held drink follows a tilted bottle and its turn")
 TEST_CASE("held drink without a length or a side isn't placed")
 {
     Pose pose;
-    CHECK_FALSE(Place({ 1, 2, 3 }, { 1, 2, 3 }, { 1, 0, 0 }, kMin, kMax, pose));
-    CHECK_FALSE(Place({ 0, 0, 0 }, { 0, 0, 10 }, { 0, 0, 5 }, kMin, kMax, pose));
-    CHECK_FALSE(Place({ 0, 0, 0 }, { 0, 0, 10 }, { 1, 0, 0 }, { 0, 0, 2 }, { 1, 1, 2 }, pose));
+    CHECK_FALSE(Place({ 1, 2, 3 }, { 1, 2, 3 }, { 1, 0, 0 }, { 1, 2, 3 }, kMin, kMax, pose));
+    CHECK_FALSE(Place({ 0, 0, 0 }, { 0, 0, 10 }, { 0, 0, 5 }, { 0, 0, 5 }, kMin, kMax, pose));
+    CHECK_FALSE(Place({ 0, 0, 0 }, { 0, 0, 10 }, { 1, 0, 0 }, { 0, 0, 5 }, { 0, 0, 2 }, { 1, 1, 2 }, pose));
 }
 
 TEST_CASE("held drink goes from the camera's space to its parent's")
 {
     Pose local;
-    REQUIRE(Place({ 0, 10, 0 }, { 0, 10, 20 }, { 1, 0, 0 }, kMin, kMax, local));
+    REQUIRE(Place({ 0, 10, -8 }, { 0, 10, 8 }, { 1, 0, 0 }, { 0, 10, 0 }, kMin, kMax, local));
     // A camera at (100, 200, 300) looking east: its forward (+Y) is world +X, its right (+X) world -Y.
     const Matrix camera = { { 0, 1, 0 }, { -1, 0, 0 }, { 0, 0, 1 } };
     const Pose   world = ToParent(camera, { 100, 200, 300 }, local);
-    CheckNear(Placed(world, { 0, 1, 0.5f }), { 110, 200, 300 });  // ten units ahead of the camera
-    CheckNear(Placed(world, { 0, 1, 20.5f }), { 110, 200, 320 });
+    CheckNear(Placed(world, kNeck), { 110, 200, 300 });  // the neck ten units ahead of the camera
+    CheckNear(Placed(world, { 0, 1, 20.5f }), { 110, 200, 304 });
     CheckNear(Apply(world.rotate, { 1, 0, 0 }), { 0, -1, 0 });
 }
