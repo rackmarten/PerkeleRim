@@ -3,10 +3,11 @@
     Builds the player release zip, tools/out/release/PerkeleRim-<version>.zip: the launcher
     (launcher/: the two .bat files, PerkeleRim.ps1, checks.ps1, install.ps1, wizard.ps1), the built mod files under files/, and the starter saves from
     launcher/saves/MSC and launcher/saves/Skyrim (scripts/starter-save.ps1) if they are there. Run scripts/build.ps1 and scripts/build-esp.ps1 first.
+    -Notice puts a "DEV BUILD.txt" with that text at the top (scripts/publish-dev.ps1).
 .EXAMPLE
     scripts/package.ps1
 #>
-param([string] $Version)
+param([string] $Version, [string] $Notice)
 
 . "$PSScriptRoot/common.ps1"
 
@@ -32,6 +33,7 @@ Add-File (Join-Path $RepoRoot 'skse/build/release/MscMenu.swf') 'files/Skyrim/Da
 Add-File (Join-Path $RepoRoot 'tools/out/esp/PerkeleRim.esp') 'files/Skyrim/Data'
 Add-File (Join-Path $RepoRoot 'msc/bin/Release/net35/PerkeleRim.dll') 'files/MSC/Mods'
 Add-File (Join-Path $RepoRoot 'LICENSE') '.'
+if ($Notice) { [IO.File]::WriteAllText((Join-Path $stage 'DEV BUILD.txt'), "$Notice`r`n", (New-Object Text.UTF8Encoding $false)) }
 
 foreach ($game in 'MSC', 'Skyrim') {
     $saves = Join-Path $RepoRoot "launcher/saves/$game"
