@@ -111,7 +111,7 @@ $failed = 0
 if (Test-Path $csv) {
     Write-Host "--- $csv"
     $rows = @(Import-Csv $csv)
-    $rows | Format-Table scenario, hit, target, landed, drunk, speed, expected, damage, drop, pass, note -AutoSize | Out-Host
+    $rows | Format-Table scenario, hit, target, landed, drunk, speed, level, armor, expected, damage, drop, pass, note -AutoSize | Out-Host
     $failed = @($rows | Where-Object { $_.pass -ne '1' }).Count
     Write-Host "$($rows.Count - $failed) of $($rows.Count) passed" -ForegroundColor $(if ($failed) { 'Red' } else { 'Green' })
 }

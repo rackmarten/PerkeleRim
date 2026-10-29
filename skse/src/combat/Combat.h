@@ -42,6 +42,8 @@ namespace PerkeleRim::Combat
         float         sneak = 1.0f;
         float         mass = 0.0f;  // a throw's, kg (0: MSC didn't say)
         float         stress = 0.0f;
+        int           level = 1;    // a throw's: the player's level
+        float         armor = 0.0f;  // a throw's: the target's armor rating
     };
     const Hit& LastHit();
 

@@ -91,38 +91,65 @@ TEST_CASE("a drunk throw hits harder by MSC's drunk level, flat past 3")
 {
     // the points
     CHECK(Damage::DrunkThrow(0.0f) == doctest::Approx(1.0f));
-    CHECK(Damage::DrunkThrow(0.1f) == doctest::Approx(3.0f));  // one beer
-    CHECK(Damage::DrunkThrow(0.4f) == doctest::Approx(6.0f));  // five beers
-    CHECK(Damage::DrunkThrow(1.0f) == doctest::Approx(12.0f));
-    CHECK(Damage::DrunkThrow(2.0f) == doctest::Approx(25.0f));
-    CHECK(Damage::DrunkThrow(3.0f) == doctest::Approx(48.0f));
+    CHECK(Damage::DrunkThrow(0.1f) == doctest::Approx(1.5f));  // one beer
+    CHECK(Damage::DrunkThrow(0.4f) == doctest::Approx(2.0f));  // five beers
+    CHECK(Damage::DrunkThrow(1.0f) == doctest::Approx(3.0f));
+    CHECK(Damage::DrunkThrow(2.0f) == doctest::Approx(4.5f));
+    CHECK(Damage::DrunkThrow(3.0f) == doctest::Approx(6.5f));
     // linear in between
-    CHECK(Damage::DrunkThrow(0.05f) == doctest::Approx(2.0f));
-    CHECK(Damage::DrunkThrow(0.25f) == doctest::Approx(4.5f));
-    CHECK(Damage::DrunkThrow(0.7f) == doctest::Approx(9.0f));
-    CHECK(Damage::DrunkThrow(1.5f) == doctest::Approx(18.5f));
-    CHECK(Damage::DrunkThrow(2.5f) == doctest::Approx(36.5f));
+    CHECK(Damage::DrunkThrow(0.05f) == doctest::Approx(1.25f));
+    CHECK(Damage::DrunkThrow(0.25f) == doctest::Approx(1.75f));
+    CHECK(Damage::DrunkThrow(0.7f) == doctest::Approx(2.5f));
+    CHECK(Damage::DrunkThrow(1.5f) == doctest::Approx(3.75f));
+    CHECK(Damage::DrunkThrow(2.5f) == doctest::Approx(5.5f));
     // sober below 0, flat past 3
     CHECK(Damage::DrunkThrow(-1.0f) == 1.0f);
-    CHECK(Damage::DrunkThrow(3.5f) == 48.0f);
-    CHECK(Damage::DrunkThrow(8.0f) == 48.0f);
+    CHECK(Damage::DrunkThrow(3.5f) == 6.5f);
+    CHECK(Damage::DrunkThrow(8.0f) == 6.5f);
 
-    // a Nord's full-charge bottle: 16, 48, 96, 192, 400, 768
+    // a level 1 Nord's full-charge bottle: 16, 24, 32, 48, 72, 104
     const float punch = Damage::Punch(4.0f);
     CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.0f) == doctest::Approx(16.0f));
-    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.1f) == doctest::Approx(48.0f));
-    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.4f) == doctest::Approx(96.0f));
-    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 1.0f) == doctest::Approx(192.0f));
-    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 2.0f) == doctest::Approx(400.0f));
-    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 3.0f) == doctest::Approx(768.0f));
-    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 8.0f) == doctest::Approx(768.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.1f) == doctest::Approx(24.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.4f) == doctest::Approx(32.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 1.0f) == doctest::Approx(48.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 2.0f) == doctest::Approx(72.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 3.0f) == doctest::Approx(104.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 8.0f) == doctest::Approx(104.0f));
     // weight and sneak still multiply on top, a slow throw stays harmless
-    CHECK(Damage::Thrown(punch, 15.0f, 2.0f, 1.0f) == doctest::Approx(384.0f));
-    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 1.0f) * Damage::SneakAttack(true, 0) == doctest::Approx(384.0f));
-    CHECK(Damage::Thrown(punch, 2.0f, 0.0f, 3.0f) == 0.0f);
+    CHECK(Damage::Thrown(punch, 15.0f, 2.0f, 1.0f) == doctest::Approx(96.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 1.0f) * Damage::SneakAttack(true, 0) == doctest::Approx(96.0f));
+    CHECK(Damage::Thrown(punch, 2.0f, 0.0f, 3.0f, 50) == 0.0f);
     // punches and destructibles don't change
     CHECK(Damage::Punch(4.0f, 3.0f) == doctest::Approx(16.0f));
     CHECK(Damage::ThrownObject(false, 15.0f) == doctest::Approx(Damage::kObjectDamage * Damage::kThrownShare));
+}
+
+TEST_CASE("a throw grows with Kumpo's level")
+{
+    CHECK(Damage::ThrownLevel(1) == 1.0f);
+    CHECK(Damage::ThrownLevel(0) == 1.0f);
+    CHECK(Damage::ThrownLevel(-5) == 1.0f);
+    CHECK(Damage::ThrownLevel(10) == doctest::Approx(2.8f));
+    CHECK(Damage::ThrownLevel(35) == doctest::Approx(7.8f));
+    const float punch = Damage::Punch(4.0f);
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 10) == doctest::Approx(44.8f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 35) == doctest::Approx(124.8f));
+    // Alduin (4605) at level 35: about 37 bottles sober, 6 blind drunk
+    CHECK(std::ceil(4605.0f / Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 35)) == 37.0f);
+    CHECK(std::ceil(4605.0f / Damage::Thrown(punch, 15.0f, 0.0f, 3.0f, 35)) == 6.0f);
+}
+
+TEST_CASE("armor takes a throw down as Skyrim takes an arrow down")
+{
+    CHECK(Damage::ArmorTaken(0.0f) == 1.0f);
+    CHECK(Damage::ArmorTaken(-50.0f) == 1.0f);
+    CHECK(Damage::ArmorTaken(100.0f) == doctest::Approx(0.88f));
+    CHECK(Damage::ArmorTaken(500.0f) == doctest::Approx(0.4f));
+    CHECK(Damage::ArmorTaken(667.0f) == doctest::Approx(0.2f).epsilon(0.01));  // Skyrim's cap
+    CHECK(Damage::ArmorTaken(2000.0f) == doctest::Approx(0.2f));
+    const float punch = Damage::Punch(4.0f);
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 1, 500.0f) == doctest::Approx(6.4f));
 }
 
 TEST_CASE("a throw from sneak at someone who does not see Kumpo doubles")

@@ -31,20 +31,22 @@ namespace PerkeleRim::HitTest
         float            drunk;  // MSC's drunk level (PlayerDrunk) set before the hits
         int              hits;
         float            gap;    // meters between the player's capsule and the target's
+        int              misses = 0;  // throws that may miss (the drunk camera's sway) and go again, unrecorded
     };
 
     // Drunk 2, not 3: MSC's player sways so much around 2.5 that the camera is hard to keep level.
     // Drunk goes last: MSC's camera keeps swaying for a while after the level is back at 0 (Drunk
     // Mode eases to random targets), and a throw then misses a capsule 3 m away. A drunk bottle
-    // (Damage::DrunkThrow, 192 and 400 for a Nord) may kill the guard at once: the next hit is skipped.
-    // Drunk throws go from 1.5 m: at 3 m the camera's sway during the charge missed the capsule.
+    // (Damage::DrunkThrow) may kill the guard at once: the next hit is skipped.
+    // Drunk throws sometimes pass the capsule by as the camera sways (closer, at 1 m, missed more)
+    // during the charge: such a miss goes again, up to misses times, and only the hits are rows.
     inline constexpr std::array kScenarios = {
         Scenario{ "punch", Attack::kPunch, 0.0f, 3, 0.4f },
         Scenario{ "bottle", Attack::kThrow, 0.0f, 3, 3.0f },
         Scenario{ "junk", Attack::kJunk, 0.0f, 3, 3.0f },
         Scenario{ "drunk", Attack::kPunch, 2.0f, 3, 0.4f },
-        Scenario{ "drunk-bottle", Attack::kThrow, 1.0f, 2, 1.5f },
-        Scenario{ "drunker-bottle", Attack::kThrow, 2.0f, 2, 1.5f },
+        Scenario{ "drunk-bottle", Attack::kThrow, 1.0f, 2, 3.0f, 2 },
+        Scenario{ "drunker-bottle", Attack::kThrow, 2.0f, 2, 3.0f, 2 },
     };
 
     // "all", or scenario names separated by commas (spaces ignored, case matters), in the order
@@ -88,11 +90,19 @@ namespace PerkeleRim::HitTest
         float speed = 0.0f;    // a throw's, m/s
         float mass = 0.0f;     // a throw's, kg (0: MSC didn't say)
         float sneak = 1.0f;    // a throw's sneak attack multiplier
+        int   level = 1;       // a throw's: the player's level
+        float armor = 0.0f;    // a throw's: the target's armor rating
         float stress = 0.0f;   // MSC's stress Skyrim punched with (Needs::StressPunch)
         float damage = 0.0f;   // what Skyrim cast on the target
         float before = 0.0f;   // the target's health before the attack
         float after = 0.0f;    // and once the spell had landed
     };
+
+    // A throw that reached nobody goes again instead of being a row, while the scenario allows it.
+    inline bool Again(const Scenario& a_scenario, const Hit& a_hit, int a_missed)
+    {
+        return !a_hit.landed && a_scenario.attack != Attack::kPunch && a_missed < a_scenario.misses;
+    }
 
     // What damage.h says the hit should have cost.
     inline float Expected(const Scenario& a_scenario, const Hit& a_hit)
@@ -100,7 +110,7 @@ namespace PerkeleRim::HitTest
         if (a_scenario.attack == Attack::kPunch) {
             return Damage::Punch(a_hit.unarmed, a_hit.drunk) * Needs::StressPunch(a_hit.stress);
         }
-        return Damage::Thrown(Damage::Punch(a_hit.unarmed), a_hit.speed, a_hit.mass, a_hit.drunk) * a_hit.sneak;
+        return Damage::Thrown(Damage::Punch(a_hit.unarmed), a_hit.speed, a_hit.mass, a_hit.drunk, a_hit.level, a_hit.armor) * a_hit.sneak;
     }
 
     // Damage and health are compared within 10%, at least 1 point: health regenerates a little
@@ -163,7 +173,7 @@ namespace PerkeleRim::HitTest
         return { true, "x" + Number(ratio) + " at drunk " + Number(a_drunk) };
     }
 
-    inline constexpr std::string_view kCsvHeader = "scenario,hit,target,landed,drunk,unarmed,speed,mass,sneak,expected,damage,before,after,drop,pass,note";
+    inline constexpr std::string_view kCsvHeader = "scenario,hit,target,landed,drunk,unarmed,speed,mass,sneak,level,armor,expected,damage,before,after,drop,pass,note";
 
     // A CSV field: quoted when it holds a comma, a quote or a line break.
     inline std::string Field(std::string_view a_text)
@@ -184,7 +194,7 @@ namespace PerkeleRim::HitTest
     inline std::string Row(const Scenario& a_scenario, int a_hit, std::string_view a_target, const Hit& a_result, const Verdict& a_verdict)
     {
         std::string row = Field(a_scenario.name) + ',' + std::to_string(a_hit) + ',' + Field(a_target) + ',' + (a_result.landed ? "1" : "0");
-        for (const float value : { a_result.drunk, a_result.unarmed, a_result.speed, a_result.mass, a_result.sneak, Expected(a_scenario, a_result), a_result.damage,
+        for (const float value : { a_result.drunk, a_result.unarmed, a_result.speed, a_result.mass, a_result.sneak, static_cast<float>(a_result.level), a_result.armor, Expected(a_scenario, a_result), a_result.damage,
                  a_result.before, a_result.after, a_result.before - a_result.after }) {
             row += ',' + Number(value);
         }
@@ -194,6 +204,6 @@ namespace PerkeleRim::HitTest
     // A row for a check across scenarios (CheckDrunk): only its name, pass and note.
     inline std::string SummaryRow(std::string_view a_name, const Verdict& a_verdict)
     {
-        return Field(a_name) + ",,,,,,,,,,,,,," + (a_verdict.pass ? "1" : "0") + ',' + Field(a_verdict.note);
+        return Field(a_name) + ",,,,,,,,,,,,,,,," + (a_verdict.pass ? "1" : "0") + ',' + Field(a_verdict.note);
     }
 }

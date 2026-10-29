@@ -114,18 +114,36 @@ namespace PerkeleRim::Damage
         return (std::clamp)(std::sqrt(a_mass / kThrownMassBase), kThrownMassMin, kThrownMassMax);
     }
 
-    // And by MSC's drunk level: a drunk Kumpo throws far harder than he punches, so a bottle is worth
-    // throwing at anything. The multiplier runs linearly between these points and stays flat past the
-    // last: one beer (0.1) triples the throw, five beers (0.4) six times, blind drunk (3) 48 times, so
-    // a Nord's full-charge bottle hits 16 sober, 48, 96, 192 at drunk 1, 400 at 2 and 768 from 3 on.
-    // A flat multiplier, not a share of the target's health, so armor and levels still count.
+    // And by Kumpo's level, so throws keep up with Skyrim's levelled enemies: kThrownLevelStep of the
+    // level 1 hit more per level, so a Nord's sober full-charge bottle hits 16 at level 1, 45 at 10, 125 at 35.
+    inline constexpr float kThrownLevelStep = 0.2f;
+
+    inline float ThrownLevel(int a_level)
+    {
+        return 1.0f + kThrownLevelStep * static_cast<float>((std::max)(0, a_level - 1));
+    }
+
+    // And by MSC's drunk level: drinking is Kumpo's potion. The multiplier runs linearly between these
+    // points and stays flat past the last: x1.5 after one beer (0.1), x2 tipsy (0.4, five beers), x3 at
+    // drunk 1, x6.5 blind drunk (3), so at level 35 Alduin takes about 37 bottles sober and 6 blind drunk.
     struct DrunkThrowPoint
     {
         float drunk;
         float mult;
     };
 
-    inline constexpr DrunkThrowPoint kDrunkThrow[] = { { 0.0f, 1.0f }, { 0.1f, 3.0f }, { 0.4f, 6.0f }, { 1.0f, 12.0f }, { 2.0f, 25.0f }, { 3.0f, 48.0f } };
+    inline constexpr DrunkThrowPoint kDrunkThrow[] = { { 0.0f, 1.0f }, { 0.1f, 1.5f }, { 0.4f, 2.0f }, { 1.0f, 3.0f }, { 2.0f, 4.5f }, { 3.0f, 6.5f } };
+
+    // And by the target's armor, as Skyrim takes it off an arrow: kArmorScaling percent less per point
+    // of armor rating, at most kArmorMaxShare (Skyrim.esm's fArmorScalingFactor and fMaxArmorRating).
+    // The hit is a spell in Skyrim, which armor wouldn't touch, so it's taken off here.
+    inline constexpr float kArmorScaling = 0.12f;
+    inline constexpr float kArmorMaxShare = 0.8f;
+
+    inline float ArmorTaken(float a_armor)
+    {
+        return 1.0f - (std::clamp)(a_armor * kArmorScaling / 100.0f, 0.0f, kArmorMaxShare);
+    }
 
     inline float DrunkThrow(float a_drunk)
     {
@@ -142,10 +160,12 @@ namespace PerkeleRim::Damage
         return kDrunkThrow[std::size(kDrunkThrow) - 1].mult;
     }
 
-    inline float Thrown(float a_punch, float a_speed, float a_mass = 0.0f, float a_drunk = 0.0f)
+    // a_level: Kumpo's (Skyrim's player level); a_armor: the target's armor rating.
+    inline float Thrown(float a_punch, float a_speed, float a_mass = 0.0f, float a_drunk = 0.0f, int a_level = 1, float a_armor = 0.0f)
     {
         const float scale = (std::clamp)((a_speed - kThrownSpeedMin) / (kThrownSpeedFull - kThrownSpeedMin), 0.0f, 1.0f);
-        return (std::max)(0.0f, a_punch) * kThrownShare * scale * ThrownMass(a_mass) * DrunkThrow(a_drunk);
+        return (std::max)(0.0f, a_punch) * kThrownShare * scale * ThrownMass(a_mass) * ThrownLevel(a_level) * DrunkThrow(a_drunk) *
+               ArmorTaken(a_armor);
     }
 
     // A throw that left the player's hand while he sneaked and hits a target that does not see him

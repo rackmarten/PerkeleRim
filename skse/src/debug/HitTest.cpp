@@ -64,6 +64,7 @@ namespace PerkeleRim::HitTest
             std::vector<Scenario>    scenarios;
             std::size_t              scenario = 0;
             int                      hit = 0;  // of the scenario's, from 0
+            int                      missed = 0;  // throws that went again (Again)
             float                    timer = 0.0f;
             float                    step = 0.0f;  // the camera levelling's own clock
             float                    owned = 0.0f;  // seconds MSC has had the player on the ground
@@ -208,6 +209,7 @@ namespace PerkeleRim::HitTest
                 return;
             }
             state.hit = 0;
+            state.missed = 0;
             SKSE::log::info("hit test: scenario {}", Current().name);
             char drunk[32];
             std::snprintf(drunk, sizeof(drunk), "%.2f", Current().drunk);
@@ -317,6 +319,15 @@ namespace PerkeleRim::HitTest
         {
             auto& hit = state.result;
             hit.after = Health(Target());
+            if (Again(Current(), hit, state.missed) && Target() && !Target()->IsDead()) {
+                state.missed++;
+                SKSE::log::info("hit test: {} {}: the throw reached nobody (the drunk camera swayed), again ({} of {})", Current().name, state.hit + 1,
+                    state.missed, Current().misses);
+                state.step = state.lastPitch = 0.0f;
+                Go(Phase::Holding);
+                Arm(RE::PlayerCharacter::GetSingleton());
+                return;
+            }
             const auto verdict = Check(Current(), hit);
             WriteRow(Row(Current(), state.hit + 1, state.targetName, hit, verdict));
             state.rows++;
@@ -543,6 +554,8 @@ namespace PerkeleRim::HitTest
                 hit.drunk = last.drunk;
                 hit.speed = last.speed;
                 hit.mass = last.mass;
+                hit.level = last.level;
+                hit.armor = last.armor;
                 hit.sneak = last.sneak;
                 hit.stress = last.stress;
             }
