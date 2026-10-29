@@ -103,6 +103,8 @@ namespace PerkeleRim.Game
         // Litres, for a tank whose Data has no MaxCapacity (the Gifu's); 0 reads it from the tank.
         public float TankSize { get; set; }
         float capLimit;  // Fuel.PourLimit read from the cap trigger, 0 = none
+        bool capRead;    // read, or nothing to read
+        float nextCapRead;
         // Half width and half length (meters) of the ground that must be flat where it parks, around
         // its origin: van sized unless set (the Gifu's is longer).
         public Vector2 ParkHalfSize { get; set; } = VanHalfSize;
@@ -194,6 +196,7 @@ namespace PerkeleRim.Game
             HutongGames.PlayMaker.FsmFloat l, c;
             FuelTank(out l, out c, null);
             level = l != null ? l.Value : 0f;
+            if (c == null) ReadCapLimit();
             capacity = Fuel.Capacity(c != null ? c.Value : float.NaN, capLimit > 0f ? capLimit : TankSize);
             return l != null && capacity > 0f;
         }
@@ -227,7 +230,6 @@ namespace PerkeleRim.Game
             var names = new System.Text.StringBuilder();
             FuelTank(out level, out capacity, names);
             if (names.Length > 0) log($"vehicle: {driverName} fuel tank floats:{names}");
-            capLimit = capacity == null ? CapLimit() : 0f;
             if (EndlessFuel && level != null && capacity != null && capacity.Value > 0f && level.Value < capacity.Value)
             {
                 level.Value = capacity.Value;
@@ -236,20 +238,38 @@ namespace PerkeleRim.Game
         }
 
         // A tank without MaxCapacity (the Gifu's): the level its cap trigger stops pouring at
-        // (Fuel.PourLimit), 0 when not found. Logs what it saw.
+        // (Fuel.PourLimit), read once its FSM is initialized (PlayMaker can't give a state's actions
+        // before: the Gifu's LOD is off until Kumpo is near), tried once a second until then.
+        void ReadCapLimit()
+        {
+            if (capRead || car == null || Time.realtimeSinceStartup < nextCapRead) return;
+            nextCapRead = Time.realtimeSinceStartup + 1f;
+            try { capLimit = CapLimit(); }
+            catch (Exception e)
+            {
+                capRead = true;
+                log($"vehicle: {driverName} cap trigger unreadable ({e.Message}), {TankSize:0} L assumed");
+            }
+        }
+
         float CapLimit()
         {
             var cap = car.Find("LOD/FuelFiller/OpenCap");
-            if (cap == null) return 0f;
+            if (cap == null) { capRead = true; return 0f; }
+            PlayMakerFSM trigger = null;
+            foreach (var fsm in cap.GetComponentsInChildren<PlayMakerFSM>(true))
+                if (fsm.FsmName == "Trigger") trigger = fsm;
+            if (trigger == null) { capRead = true; return 0f; }
+            if (trigger.Fsm == null || !trigger.Fsm.Initialized) return 0f;
+            capRead = true;
             var floats = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, float>>();
             var compares = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, float>>();
-            foreach (var fsm in cap.GetComponentsInChildren<PlayMakerFSM>(true))
             {
-                if (fsm.FsmName != "Trigger") continue;
+                var fsm = trigger;
                 foreach (var f in fsm.FsmVariables.FloatVariables)
                     floats.Add(new System.Collections.Generic.KeyValuePair<string, float>(f.Name, f.Value));
                 foreach (var state in fsm.FsmStates)
-                    foreach (var action in state.Actions)
+                    foreach (var action in state.Actions ?? new HutongGames.PlayMaker.FsmStateAction[0])
                     {
                         if (action == null || action.GetType().Name != "FloatCompare") continue;
                         var one = action.GetType().GetField("float1")?.GetValue(action) as HutongGames.PlayMaker.FsmFloat;
