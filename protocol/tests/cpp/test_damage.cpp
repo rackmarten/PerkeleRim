@@ -130,14 +130,14 @@ TEST_CASE("a throw grows with Kumpo's level")
     CHECK(Damage::ThrownLevel(1) == 1.0f);
     CHECK(Damage::ThrownLevel(0) == 1.0f);
     CHECK(Damage::ThrownLevel(-5) == 1.0f);
-    CHECK(Damage::ThrownLevel(10) == doctest::Approx(2.8f));
-    CHECK(Damage::ThrownLevel(35) == doctest::Approx(7.8f));
+    CHECK(Damage::ThrownLevel(10) == doctest::Approx(1.9f));
+    CHECK(Damage::ThrownLevel(35) == doctest::Approx(4.4f));
     const float punch = Damage::Punch(4.0f);
-    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 10) == doctest::Approx(44.8f));
-    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 35) == doctest::Approx(124.8f));
-    // Alduin (4605) at level 35: about 37 bottles sober, 6 blind drunk
-    CHECK(std::ceil(4605.0f / Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 35)) == 37.0f);
-    CHECK(std::ceil(4605.0f / Damage::Thrown(punch, 15.0f, 0.0f, 3.0f, 35)) == 6.0f);
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 10) == doctest::Approx(30.4f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 35) == doctest::Approx(70.4f));
+    // Alduin (2355) at level 35: about 34 bottles sober, 6 blind drunk
+    CHECK(std::ceil(2355.0f / Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 35)) == 34.0f);
+    CHECK(std::ceil(2355.0f / Damage::Thrown(punch, 15.0f, 0.0f, 3.0f, 35)) == 6.0f);
 }
 
 TEST_CASE("armor takes a throw down as Skyrim takes an arrow down")

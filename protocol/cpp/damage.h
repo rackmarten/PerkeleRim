@@ -115,8 +115,8 @@ namespace PerkeleRim::Damage
     }
 
     // And by Kumpo's level, so throws keep up with Skyrim's levelled enemies: kThrownLevelStep of the
-    // level 1 hit more per level, so a Nord's sober full-charge bottle hits 16 at level 1, 45 at 10, 125 at 35.
-    inline constexpr float kThrownLevelStep = 0.2f;
+    // level 1 hit more per level, so a Nord's sober full-charge bottle hits 16 at level 1, 30 at 10, 70 at 35.
+    inline constexpr float kThrownLevelStep = 0.1f;
 
     inline float ThrownLevel(int a_level)
     {
@@ -125,7 +125,7 @@ namespace PerkeleRim::Damage
 
     // And by MSC's drunk level: drinking is Kumpo's potion. The multiplier runs linearly between these
     // points and stays flat past the last: x1.5 after one beer (0.1), x2 tipsy (0.4, five beers), x3 at
-    // drunk 1, x6.5 blind drunk (3), so at level 35 Alduin takes about 37 bottles sober and 6 blind drunk.
+    // drunk 1, x6.5 blind drunk (3), so at level 35 Alduin (2355) takes about 34 bottles sober and 6 blind drunk.
     struct DrunkThrowPoint
     {
         float drunk;

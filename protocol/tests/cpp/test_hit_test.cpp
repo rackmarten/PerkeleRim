@@ -104,13 +104,13 @@ TEST_CASE("a drunk throw passes by Damage::DrunkThrow, the level and the armor, 
     hit.drunk = 1.0f;
     hit.level = 10;
     hit.armor = 100.0f;
-    hit.damage = 118.3f;  // a level 10 Nord's full-charge bottle at drunk 1: 16 x2.8 x3, 0.88 through the armor
+    hit.damage = 80.3f;  // a level 10 Nord's full-charge bottle at drunk 1: 16 x1.9 x3, 0.88 through the armor
     hit.before = 500.0f;
-    hit.after = 381.7f;
-    CHECK(HitTest::Expected(drunkBottle, hit) == doctest::Approx(118.272f));
+    hit.after = 419.7f;
+    CHECK(HitTest::Expected(drunkBottle, hit) == doctest::Approx(80.256f));
     CHECK(HitTest::Check(drunkBottle, hit).pass);
 
-    hit.before = 100.0f;  // a guard with less health than the hit: it stops at 0
+    hit.before = 70.0f;  // a guard with less health than the hit: it stops at 0
     hit.after = 0.0f;
     const auto killed = HitTest::Check(drunkBottle, hit);
     CHECK(killed.pass);
@@ -123,7 +123,7 @@ TEST_CASE("a drunk throw passes by Damage::DrunkThrow, the level and the armor, 
     hit.before = 500.0f;
     hit.after = 484.0f;
     hit.damage = 16.0f;  // the sober damage: Combat didn't apply the drunk level
-    CHECK(HitTest::Check(drunkBottle, hit).note == "cast 16.0, damage.h says 118.3");
+    CHECK(HitTest::Check(drunkBottle, hit).note == "cast 16.0, damage.h says 80.3");
 
     hit.drunk = 0.2f;  // MSC never took the level
     CHECK(HitTest::Check(drunkBottle, hit).note == "MSC's drunk level was 0.2, not 1.0");
