@@ -127,7 +127,7 @@ The first SKSE build takes a while (often 15 to 25 minutes): vcpkg builds the de
 1. Start Skyrim with `skse64_loader.exe`, wait for the main menu, quit.
 2. Start My Summer Car, wait for the main menu (the MSCLoader console shows `PerkeleRim loaded`), quit.
 3. Run `scripts/logs.ps1`. Expect:
-   - in `PerkeleRim.log`: `PerkeleRim loaded (plugin 0.1.1, Skyrim runtime 1.7.104.0)`
+   - in `PerkeleRim.log`: `PerkeleRim loaded (plugin 0.2.0, Skyrim runtime 1.7.104.0)`
    - in `skse64.log`: a line saying `PerkeleRim.dll` loaded correctly
    - in `output_log.txt` (My Summer Car game folder): `PerkeleRim: PerkeleRim loaded`
 
