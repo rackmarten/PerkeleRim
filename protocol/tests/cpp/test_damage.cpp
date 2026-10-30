@@ -51,6 +51,17 @@ TEST_CASE("drunk makes the player tougher, up to MSC's drunk 3")
     CHECK(Damage::Drunk(-1.0f).armor == 0.0f);
 }
 
+TEST_CASE("the drunker, the shorter the shout cooldown, down to a third")
+{
+    CHECK(Damage::DrunkShoutCooldown(45.0f, -1.0f) == doctest::Approx(45.0f));
+    // Unrelenting Force's three words: 45 s sober.
+    CHECK(Damage::DrunkShoutCooldown(45.0f, 0.0f) == doctest::Approx(45.0f));
+    CHECK(Damage::DrunkShoutCooldown(45.0f, 0.4f) == doctest::Approx(41.0f));  // five beers: a little
+    CHECK(Damage::DrunkShoutCooldown(45.0f, 1.5f) == doctest::Approx(30.0f));
+    CHECK(Damage::DrunkShoutCooldown(45.0f, 3.0f) == doctest::Approx(15.0f));
+    CHECK(Damage::DrunkShoutCooldown(45.0f, 8.0f) == doctest::Approx(15.0f));
+}
+
 TEST_CASE("a thrown item hits by its speed, up to two sober punches")
 {
     const float punch = Damage::Punch(4.0f);
@@ -60,6 +71,96 @@ TEST_CASE("a thrown item hits by its speed, up to two sober punches")
     CHECK(Damage::Thrown(punch, 15.0f) == doctest::Approx(punch * 2.0f));
     CHECK(Damage::Thrown(punch, 40.0f) == doctest::Approx(punch * 2.0f));
     CHECK(Damage::Thrown(-5.0f, 15.0f) == 0.0f);
+}
+
+TEST_CASE("a thrown item hits by its weight too, MSC's bottle as before")
+{
+    const float punch = Damage::Punch(4.0f);
+    const float bottle = Damage::Thrown(punch, 15.0f);
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f) == doctest::Approx(bottle));  // unknown: the bottle
+    CHECK(Damage::Thrown(punch, 15.0f, Damage::kThrownMassBase) == doctest::Approx(bottle));
+    CHECK(Damage::Thrown(punch, 15.0f, 2.0f) == doctest::Approx(bottle * 2.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.25f) == doctest::Approx(bottle * 0.7071f).epsilon(0.001));  // a cabbage
+    CHECK(Damage::Thrown(punch, 15.0f, 0.01f) == doctest::Approx(bottle * Damage::kThrownMassMin));
+    CHECK(Damage::Thrown(punch, 15.0f, 50.0f) == doctest::Approx(bottle * Damage::kThrownMassMax));
+    CHECK(Damage::Thrown(punch, 2.0f, 50.0f) == 0.0f);  // weight doesn't help a throw too slow to hurt
+    CHECK(Damage::ThrownMass(-1.0f) == 1.0f);
+}
+
+TEST_CASE("a drunk throw hits harder by MSC's drunk level, flat past 3")
+{
+    // the points
+    CHECK(Damage::DrunkThrow(0.0f) == doctest::Approx(1.0f));
+    CHECK(Damage::DrunkThrow(0.1f) == doctest::Approx(1.5f));  // one beer
+    CHECK(Damage::DrunkThrow(0.4f) == doctest::Approx(2.0f));  // five beers
+    CHECK(Damage::DrunkThrow(1.0f) == doctest::Approx(3.0f));
+    CHECK(Damage::DrunkThrow(2.0f) == doctest::Approx(4.5f));
+    CHECK(Damage::DrunkThrow(3.0f) == doctest::Approx(6.5f));
+    // linear in between
+    CHECK(Damage::DrunkThrow(0.05f) == doctest::Approx(1.25f));
+    CHECK(Damage::DrunkThrow(0.25f) == doctest::Approx(1.75f));
+    CHECK(Damage::DrunkThrow(0.7f) == doctest::Approx(2.5f));
+    CHECK(Damage::DrunkThrow(1.5f) == doctest::Approx(3.75f));
+    CHECK(Damage::DrunkThrow(2.5f) == doctest::Approx(5.5f));
+    // sober below 0, flat past 3
+    CHECK(Damage::DrunkThrow(-1.0f) == 1.0f);
+    CHECK(Damage::DrunkThrow(3.5f) == 6.5f);
+    CHECK(Damage::DrunkThrow(8.0f) == 6.5f);
+
+    // a level 1 Nord's full-charge bottle: 16, 24, 32, 48, 72, 104
+    const float punch = Damage::Punch(4.0f);
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.0f) == doctest::Approx(16.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.1f) == doctest::Approx(24.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.4f) == doctest::Approx(32.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 1.0f) == doctest::Approx(48.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 2.0f) == doctest::Approx(72.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 3.0f) == doctest::Approx(104.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 8.0f) == doctest::Approx(104.0f));
+    // weight and sneak still multiply on top, a slow throw stays harmless
+    CHECK(Damage::Thrown(punch, 15.0f, 2.0f, 1.0f) == doctest::Approx(96.0f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 1.0f) * Damage::SneakAttack(true, 0) == doctest::Approx(96.0f));
+    CHECK(Damage::Thrown(punch, 2.0f, 0.0f, 3.0f, 50) == 0.0f);
+    // punches and destructibles don't change
+    CHECK(Damage::Punch(4.0f, 3.0f) == doctest::Approx(16.0f));
+    CHECK(Damage::ThrownObject(false, 15.0f) == doctest::Approx(Damage::kObjectDamage * Damage::kThrownShare));
+}
+
+TEST_CASE("a throw grows with Kumpo's level")
+{
+    CHECK(Damage::ThrownLevel(1) == 1.0f);
+    CHECK(Damage::ThrownLevel(0) == 1.0f);
+    CHECK(Damage::ThrownLevel(-5) == 1.0f);
+    CHECK(Damage::ThrownLevel(10) == doctest::Approx(1.9f));
+    CHECK(Damage::ThrownLevel(35) == doctest::Approx(4.4f));
+    const float punch = Damage::Punch(4.0f);
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 10) == doctest::Approx(30.4f));
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 35) == doctest::Approx(70.4f));
+    // Alduin (2355) at level 35: about 34 bottles sober, 6 blind drunk
+    CHECK(std::ceil(2355.0f / Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 35)) == 34.0f);
+    CHECK(std::ceil(2355.0f / Damage::Thrown(punch, 15.0f, 0.0f, 3.0f, 35)) == 6.0f);
+}
+
+TEST_CASE("a throw trains Archery by its sober base hit, like a bow shot")
+{
+    const float punch = Damage::Punch(4.0f);
+    CHECK(Damage::ThrownSkillUse(punch, 15.0f) == doctest::Approx(16.0f));  // a full-charge bottle
+    CHECK(Damage::ThrownSkillUse(punch, 15.0f, 2.0f) == doctest::Approx(32.0f));  // heavier junk
+    CHECK(Damage::ThrownSkillUse(punch, 8.5f) == doctest::Approx(8.0f));
+    CHECK(Damage::ThrownSkillUse(punch, 2.0f) == 0.0f);
+    // drunk, level and armor make the hit, not the training
+    CHECK(Damage::ThrownSkillUse(punch, 15.0f) == doctest::Approx(Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 1, 0.0f)));
+}
+
+TEST_CASE("armor takes a throw down as Skyrim takes an arrow down")
+{
+    CHECK(Damage::ArmorTaken(0.0f) == 1.0f);
+    CHECK(Damage::ArmorTaken(-50.0f) == 1.0f);
+    CHECK(Damage::ArmorTaken(100.0f) == doctest::Approx(0.88f));
+    CHECK(Damage::ArmorTaken(500.0f) == doctest::Approx(0.4f));
+    CHECK(Damage::ArmorTaken(667.0f) == doctest::Approx(0.2f).epsilon(0.01));  // Skyrim's cap
+    CHECK(Damage::ArmorTaken(2000.0f) == doctest::Approx(0.2f));
+    const float punch = Damage::Punch(4.0f);
+    CHECK(Damage::Thrown(punch, 15.0f, 0.0f, 0.0f, 1, 500.0f) == doctest::Approx(6.4f));
 }
 
 TEST_CASE("a throw from sneak at someone who does not see Kumpo doubles")
@@ -159,6 +260,83 @@ TEST_CASE("the horn scatters whoever is in the vehicle's way")
     CHECK(Damage::InHornPath(0.0f, 600.0f, 0.0f, 3.0f));       // the way needn't be a unit vector
 }
 
+TEST_CASE("a vehicle is noticed further ahead the faster it goes")
+{
+    const auto kmh = [](float a_kmh) { return a_kmh / 3.6f; };
+    const auto meters = [](float a_units) { return a_units * static_cast<float>(Coords::kMetersPerUnit); };
+    CHECK(Damage::WayReach(kmh(10.0f)) == 0.0f);  // a crawl: nobody minds
+    CHECK(Damage::WayReach(Damage::kWaySpeedMin) > 0.0f);
+    CHECK(meters(Damage::WayReach(kmh(30.0f))) == doctest::Approx(33.3f).epsilon(0.01));
+    // People have kReactSeconds (about 4 s) to get going and away; at 70 km/h that starts about 78 m out.
+    CHECK(Damage::kReactSeconds >= 3.5f);
+    CHECK(meters(Damage::WayReach(kmh(70.0f))) > 70.0f);
+    CHECK(meters(Damage::WayReach(kmh(50.0f))) / kmh(50.0f) == doctest::Approx(Damage::kReactSeconds));
+    CHECK(meters(Damage::WayReach(kmh(70.0f))) / kmh(70.0f) == doctest::Approx(Damage::kReactSeconds));
+    CHECK(Damage::WayReach(kmh(70.0f)) > Damage::WayReach(kmh(50.0f)));
+    CHECK(Damage::WayReach(kmh(300.0f)) == Damage::kWayUnitsMax);  // capped
+    CHECK(Damage::WayReach(std::nanf("")) == 0.0f);
+}
+
+TEST_CASE("people ahead in the lane of a moving vehicle are in its way")
+{
+    const float fast = 70.0f / 3.6f;  // reaches about 5400 units, 7 m either side
+    CHECK(Damage::InVehicleWay(0.0f, 5000.0f, 0.0f, 1.0f, fast));         // well ahead on its line
+    CHECK_FALSE(Damage::InVehicleWay(0.0f, 3000.0f, 0.0f, 1.0f, 30.0f / 3.6f));  // too far at 30 km/h
+    CHECK(Damage::InVehicleWay(0.0f, 1200.0f, 0.0f, 1.0f, 30.0f / 3.6f));
+    CHECK(Damage::InVehicleWay(250.0f, 2000.0f, 0.0f, 2.0f, fast));       // off to the side within the lane
+    CHECK(Damage::InVehicleWay(450.0f, 2000.0f, 0.0f, 1.0f, fast));       // the lane is wider at speed
+    CHECK_FALSE(Damage::InVehicleWay(450.0f, 1000.0f, 0.0f, 1.0f, 30.0f / 3.6f));  // but not at 30 km/h
+    CHECK_FALSE(Damage::InVehicleWay(600.0f, 2000.0f, 0.0f, 1.0f, fast));  // beside the road
+    CHECK_FALSE(Damage::InVehicleWay(0.0f, -500.0f, 0.0f, 1.0f, fast));    // behind
+    CHECK_FALSE(Damage::InVehicleWay(0.0f, 200.0f, 0.0f, 1.0f, 2.0f));     // at a walk
+    CHECK_FALSE(Damage::InVehicleWay(0.0f, 200.0f, 0.0f, 0.0f, fast));     // no way
+}
+
+TEST_CASE("the lane widens with speed")
+{
+    CHECK(Damage::WayLane(0.0f) == Damage::kWayLaneUnits);
+    CHECK(Damage::WayLane(Damage::kWaySpeedMin) == Damage::kWayLaneUnits);
+    CHECK(Damage::WayLane(12.0f) > Damage::kWayLaneUnits);
+    CHECK(Damage::WayLane(12.0f) < Damage::kWayLaneMaxUnits);
+    CHECK(Damage::WayLane(Damage::kWayLaneFullSpeed) == doctest::Approx(Damage::kWayLaneMaxUnits));
+    CHECK(Damage::WayLane(50.0f) == doctest::Approx(Damage::kWayLaneMaxUnits));
+    CHECK(Damage::WayLane(std::nanf("")) == Damage::kWayLaneUnits);
+}
+
+TEST_CASE("people flee from the vehicle's line, out to their own side")
+{
+    float x = 0.0f, y = 0.0f;
+    Damage::FleeFrom(200.0f, 3000.0f, 0.0f, 1.0f, x, y);  // heading +Y, 200 to the right
+    CHECK(y == doctest::Approx(3000.0f));                 // level with them
+    CHECK(x == doctest::Approx(-Damage::kFleeFromBehindUnits));  // on the line, nudged left: they run right
+    Damage::FleeFrom(-200.0f, 3000.0f, 0.0f, 2.0f, x, y);  // to the left
+    CHECK(x == doctest::Approx(Damage::kFleeFromBehindUnits));
+    Damage::FleeFrom(0.0f, 1000.0f, 0.0f, 1.0f, x, y);     // right on the line: still a side
+    CHECK(std::abs(x) == doctest::Approx(Damage::kFleeFromBehindUnits));
+    Damage::FleeFrom(1000.0f, -200.0f, 1.0f, 0.0f, x, y);  // heading +X, right of it is -Y
+    CHECK(x == doctest::Approx(1000.0f));
+    CHECK(y == doctest::Approx(Damage::kFleeFromBehindUnits));
+    Damage::FleeFrom(100.0f, 100.0f, 0.0f, 0.0f, x, y);    // no way: from the vehicle
+    CHECK(x == 0.0f);
+    CHECK(y == 0.0f);
+}
+
+TEST_CASE("the horn carries further at speed, the far ones flee")
+{
+    CHECK(Damage::HornReach(0.0f) == Damage::kHornUnits);
+    CHECK(Damage::HornReach(10.0f / 3.6f) == Damage::kHornUnits);  // a crawl: its own reach
+    CHECK(Damage::HornReach(70.0f / 3.6f) == doctest::Approx(Damage::WayReach(70.0f / 3.6f)));
+    using R = Damage::HornReaction;
+    const float fast = 70.0f / 3.6f;
+    CHECK(Damage::HornReactionOf(0.0f, 600.0f, 0.0f, 1.0f, fast) == R::kDive);   // close: dives as before
+    CHECK(Damage::HornReactionOf(0.0f, -300.0f, 0.0f, 1.0f, fast) == R::kDive);  // right next to it
+    CHECK(Damage::HornReactionOf(0.0f, 2500.0f, 0.0f, 1.0f, fast) == R::kFlee);  // far along the lane: runs
+    CHECK(Damage::HornReactionOf(450.0f, 2500.0f, 0.0f, 1.0f, fast) == R::kFlee);
+    CHECK(Damage::HornReactionOf(0.0f, 2500.0f, 0.0f, 1.0f, 0.0f) == R::kNone);   // standing still: 11 m as before
+    CHECK(Damage::HornReactionOf(0.0f, -2500.0f, 0.0f, 1.0f, fast) == R::kNone);  // behind
+    CHECK(Damage::HornReactionOf(800.0f, 2500.0f, 0.0f, 1.0f, fast) == R::kNone);  // well clear
+}
+
 TEST_CASE("the horn's dive heads out of the lane on the actor's own side")
 {
     float x = 0.0f, y = 0.0f;
@@ -226,10 +404,11 @@ TEST_CASE("a thrown item's way passes a destructible or not")
     CHECK(Damage::SegmentDistance(from, from, beside) == doctest::Approx(std::sqrt(10.0f * 10.0f + 25.0f * 25.0f)));  // no way at all
 }
 
-TEST_CASE("the van and the Kekmet are safe seats, the moped is not")
+TEST_CASE("the van, the Kekmet and the Gifu are safe seats, the moped is not")
 {
     CHECK(Damage::SafeSeat(Protocol::kVehicleHayosiko));
     CHECK(Damage::SafeSeat(Protocol::kVehicleKekmet));
+    CHECK(Damage::SafeSeat(Protocol::kVehicleGifu));
     CHECK_FALSE(Damage::SafeSeat(Protocol::kVehicleJonnez));
     CHECK_FALSE(Damage::SafeSeat(0));  // on foot
 }
@@ -237,6 +416,7 @@ TEST_CASE("the van and the Kekmet are safe seats, the moped is not")
 TEST_CASE("enemy hits cost nothing in a safe seat, everything elsewhere")
 {
     CHECK(Damage::Incoming(Protocol::kVehicleKekmet, 80.0f) == 0.0f);
+    CHECK(Damage::Incoming(Protocol::kVehicleGifu, 80.0f) == 0.0f);
     CHECK(Damage::Incoming(Protocol::kVehicleHayosiko, 500.0f) == 0.0f);
     CHECK(Damage::Incoming(Protocol::kVehicleJonnez, 80.0f) == doctest::Approx(80.0f));
     CHECK(Damage::Incoming(0, 80.0f) == doctest::Approx(80.0f));

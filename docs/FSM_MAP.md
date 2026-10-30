@@ -243,6 +243,21 @@ Dumped 2026-10-16 with the spike's `voices` (lists every group under `MasterAudi
 
 PerkeleRim uses `swear01`..`16` and the `Human_` swears for shouts and for being hurt, `ouch1`..`10` as the hurt grunts and `Death` for Skyrim's death. Other people's voices are their own groups (`Teimo`, `Fleetari`, `Suski`, `Fighter` with `fighter_hit01`.., `Drunks`, ...).
 
+## 8. Drunk pass-out and knockout
+
+Not in the detail dump; read from the scene file (`level2`) by the strings around the FSM's states, so the action order is known but not every parameter.
+
+| Item | Value |
+|---|---|
+| GameObjects | `Systems/PassOut`, `Systems/KnockOut` |
+| FSM | `Activate` on both. PassOut idles in `Test alc`, KnockOut in `State 1` |
+| Variables | `SavePlayer` (PLAYER), `SavePlayerCam`, `WakePivot`, `PlayerPos`, `Distance` |
+| Threshold | `Test alc`: `PlayerDrunk` above 3.8 (FloatCompare, every frame) |
+
+PassOut's flow: `Test alc` -> `Check hunger` (the Finnish wedding achievement, `PassingOutTime` from hunger, a wait) -> `Still drunk check` (back to `Test alc` if sober enough) -> `Pass out` (activates the blackout screen, `Data.DrunkPassingOut` +1, `sleep_on`, `GameVolume` eased down) -> `Move` (PLAYER out of any vehicle, MouseLook off, `PlayerStop`, `PlayerCurrentVehicle = ""`) -> `State 2` (`PlayerSleeps`, global `PASSOUT`) -> `Calc rates` (needs rates for the time asleep) -> `Check time of day` / `Advance day` / `Check day` / `Monday` -> `Jail?` -> `Where?` (distance to `WakePivot`, PLAYER parented to `WakePivot`, a random pick) -> `Random pos` (a random child of `Spawn`), `Cottage` or `Pena` (Fittan's `DRUNKSPAWN`) -> `Set position` (`WakePivot` to `PlayerPos`) -> `Wake up` (`sleep_off`, `WAKEUP`, volume back) -> `AnimateWake` (turns `WakePivot` to stand up) -> `State 5` (a groan, PLAYER let go, MouseLook on, `PlayerSleeps`/`PlayerSeated`/`PlayerComputer`/`PlayerStop` false, the hangover) -> `Test alc`. KnockOut has the same states from `State 1` without the alcohol and spawn checks.
+
+PerkeleRim switches both FSMs off while the link is up and ends one that runs anyway (`msc/src/Game/PassOutGuard.cs`), and blacks the player out its own way instead: Skyrim wakes him at a random map marker (PROTOCOL.md, [Blackouts](PROTOCOL.md#blackouts)).
+
 ## Global variables of interest
 
 | Name | Type | Meaning (seen in dump) |
@@ -284,6 +299,15 @@ The hand is `PLAYER/Pivot/AnimPivot/Camera/FPSCamera/1Hand_Assemble/Hand :: Pick
 The throw (dumped 2026-10-18): in `Part picked` and `Item picked` a right click press (`GetMouseButtonDown`) goes `Drop part 2` (unparent, layer 19, joint off) -> `Throw part`: one `AddForce` (Force mode, so one physics step) of `PlayerStrenght` 80 x (mass + 1) x 2 along `PlayerDir`, i.e. a launch speed of about 3.2 x (mass + 1) / mass m/s (a 0.5 kg bottle ~9.6, a 1 kg item 6.4), then `Wait` puts the hand back at local (0, 0, 0.6). The press is the only input, so PerkeleRim's charged throw holds the click back and presses it on release (`ThrowCharge`), then scales the speed after the throw (`ActorLink`). The hand (`Hand`, owner of the FixedJoint) and `ItemPivot` (the item's parent) are siblings under `1Hand_Assemble`; both are placed once at pick-up (`Set pivot`).
 
 Item `Use` FSMs mouse-pick on layers 19 and 16, so a carried item is used with F like one on the ground (a held beer case is drunk from). `beer case(itemx) :: Use`: `Remove bottle` destroys a random child and counts `DestroyedBottles`; empty -> `State 4` renames it `empty(itemx)`. Items have a global `GARBAGE` (case: `Is garbage`, `Consumed = true`; food: `Destroy`, `Condition = 888`): renderer and collider removed, moved to `GarbageSpawnPos`, destroyed on the next load. Spoiling food renames itself `spoiled <name>`. Store items' names: `beer case(itemx)`, `sausages(itemx)`, `pizza(itemx)`, `potato chips(itemx)`, `macaron box(itemx)`, spawned by `Spawner/CreateItems` FSMs `Beer`, `Sausages`, `Pizza`, `Chips`, `MacaronBox` (`SPAWNITEM`, result in `New`). The bottle thrown after a beer is a copy of the inactive root prefab `BottleBeerFly` (0.5 kg, `PART`), renamed `empty bottle(Clone)` by its `Go` FSM, which also tosses it; it isn't saved. A cigarette pack (`cigarettes0 :: Use`) goes into `PlayerCigarettes` when used (`Check pocket` -> `Add inventory`).
+
+## Fuel and the store's pumps
+
+Dumped 2026-10-27 (`dump GasolinePump FuelNozzle FuelFiller CapTrigger FuelTank FuelUsage Pistol`), used by the gas stations (PROTOCOL.md, "Fuel").
+- Tanks: `<vehicle>/FuelTank :: Data`, floats `FuelLevel` and `MaxCapacity` (Hayosiko 40, Kekmet 65, Jonnez 3.4; the Gifu's `GIFU(750/450psi)/FuelTank :: Data` has `FuelLevel` and `FuelOil` but no `MaxCapacity`; its cap trigger, `CapTrigger_FuelGifu`, holds it as `MaxCapacity` (300) with the Kekmet's states and no hatch; the Jonnez also has a reserve tap, `LOD/Dashboard/FuelTap :: Use`). The Hayosiko and the Kekmet take diesel (their `CapTrigger_Fuel<vehicle> :: Trigger` states `Diesel`, `Nozzle diesel`, `Fuel oil`); the Jonnez only two-stroke mix from a jerry can (`CapTrigger_TwoStrokeFuel`, state `Pouring`).
+- Filling: `LOD/FuelFiller/Pivot/body_fuel_hatch/Trigger :: Use` opens the hatch, `LOD/FuelFiller/OpenCap :: Screw` unscrews the cap with the scroll wheel, the cap trigger takes the nozzle (`NOZZLE` event) or a jerry can.
+- Pumps: `STORE/LOD/Pumps/GasolinePump98|PÖ|D/Functions/Trigger98|PÖ|D :: Use`. Locals `FuelPrice` (diesel 3.999 marks a litre), `Fuel`, `Cost`, `CashRegister` = `Register`, `PistolInHand` = `Pistol D`, `FuelHand` = the hand's `Pivot`. `Wait player` -> `Wait button` (PICK NOZZLE, `MousePickEvent` 1 m, left click) -> `Check hand` (left hand busy: nothing) -> `Check lock` (`COPS` active: locked; `STORE :: OpeningHours` `OpenStore`, else `switch_pumps :: Use` `SwitchOn` true locks) -> `Activate hand` (the other pumps and the pump's own nozzle off, `Pistol D` and the hand on, `PlayerHandLeft` true) -> `Calculate` every frame: `Cost = Fuel * FuelPrice`, `Register :: Data` `DieselPurchase = Cost`; further than 3 m from `SavePlayerCam` drops it -> `Wait drop` (DROP NOZZLE) -> `Anim drop` -> `State 2` (`Statistics :: Data` `PumpDiesel += Fuel`, everything back).
+- The nozzle: `PLAYER/.../FPSCamera/FPSCamera/Fuel/Pivot/hand/.../Pistol/Pistol D/FuelNozzle :: Data`, `FuelFlow` 0.85, `FluidType` Diesel, `Pump` = `TriggerD`; states `Wait for cap`, `Begin`, `Pour`, `Wait` (actions not readable while inactive: re-dump with the nozzle in hand).
+- Parking brakes (`Dashboard/ParkingBrake`, under `LOD` on the van): the van's `Use` holds the knob in `KnobPos` (0 off to 0.1 fully on; left click pulls, right click pushes, 0.5 a second), and its `Brake` FSM reads it every frame (on above 0.01, the dash light on). The Kekmet's `Use` has a bool `Brake`; `Flip` toggles it through `Anim ON` -> `On` (enables `Add Joint`, spring joints at `BrakePoint1/2`) or `Anim OFF` -> `Off`.
 
 ## cInput bindings (primary key, no secondary binds set)
 

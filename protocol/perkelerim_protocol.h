@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 39;
+    inline constexpr std::uint32_t kProtocolVersion = 50;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -34,16 +34,16 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kOffsetInputSlot = 128;
     inline constexpr std::uint32_t kOffsetPlayerSlot = 256;
     inline constexpr std::uint32_t kOffsetVehicleSlot = 384;
-    inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 768;   // after kVehicleCount VehicleSlots
-    inline constexpr std::uint32_t kOffsetItemSlot = 25536;         // after kVehicleCount VehiclePartsSlots
-    inline constexpr std::uint32_t kOffsetHandLayerSlot = 30720;
-    inline constexpr std::uint32_t kOffsetActorSlot = 30784;
-    inline constexpr std::uint32_t kOffsetParticleSlot = 32384;
-    inline constexpr std::uint32_t kOffsetRingToMsc = 48832;        // RingHeader, data follows
+    inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 896;   // after kVehicleCount VehicleSlots
+    inline constexpr std::uint32_t kOffsetItemSlot = 33920;         // after kVehicleCount VehiclePartsSlots
+    inline constexpr std::uint32_t kOffsetHandLayerSlot = 39104;
+    inline constexpr std::uint32_t kOffsetActorSlot = 39168;
+    inline constexpr std::uint32_t kOffsetParticleSlot = 40768;
+    inline constexpr std::uint32_t kOffsetRingToMsc = 57216;        // RingHeader, data follows
     inline constexpr std::uint32_t kRingToMscCapacity = 4194304;    // 4 MiB: collision chunks
-    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4243200;   // 48832 + 64 + 4 MiB
+    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4251584;   // 57216 + 64 + 4 MiB
     inline constexpr std::uint32_t kRingToSkyrimCapacity = 262144;  // 256 KiB: events
-    inline constexpr std::uint32_t kMappingSize = 4505408;         // 4243200 + 64 + 256 KiB
+    inline constexpr std::uint32_t kMappingSize = 4513792;         // 4251584 + 64 + 256 KiB
 
     enum class Side : std::uint32_t
     {
@@ -82,6 +82,7 @@ namespace PerkeleRim::Protocol
 
     inline constexpr std::uint32_t kInputOwnsPlayer = 0x1;  // InputState.flags: MSC should apply this input
     inline constexpr std::uint32_t kInputPaused = 0x2;      // InputState.flags: a Skyrim menu pauses the game, MSC freezes its time
+    inline constexpr std::uint32_t kInputMscMenu = 0x4;     // InputState.flags (v47): Skyrim shows MSC's options menu (F1): MSC keeps it open, cursorX/Y are set
 
     // Skyrim -> MSC. Keys are Unity KeyCode values (mouse buttons are KeyCode.Mouse0..Mouse6).
     struct InputState
@@ -96,6 +97,8 @@ namespace PerkeleRim::Protocol
         double        mouseWheel;  // accumulated "Mouse ScrollWheel" axis; MSC applies the delta
         std::uint32_t screenWidth;   // Skyrim's back buffer in pixels; MSC renders its hand layer this size
         std::uint32_t screenHeight;
+        float         cursorX;  // v47, with kInputMscMenu: Skyrim's cursor, 0..1 from the screen's left edge
+        float         cursorY;  // 0..1 from the top edge
     };
 
     struct InputSlot
@@ -103,7 +106,6 @@ namespace PerkeleRim::Protocol
         std::uint32_t seq;
         std::uint32_t reserved;
         InputState    value;
-        std::uint8_t  pad[8];
     };
 
     inline constexpr std::uint32_t kPlayerValid = 0x1;   // PlayerState.flags: MSC is simulating the player
@@ -112,6 +114,9 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPlayerGrounded = 0x8;  // PlayerState.flags: MSC's player stands on something
     inline constexpr std::uint32_t kPlayerBlocking = 0x10;  // PlayerState.flags: MSC's player guards (right click), Skyrim blocks
     inline constexpr std::uint32_t kPlayerChaseCamera = 0x20;  // PlayerState.flags: MSC's chase camera (its F9, in a vehicle) is on: eye, roll and fov are that camera's, view* its direction
+    inline constexpr std::uint32_t kPlayerTools = 0x80;  // PlayerState.flags (v43): MSC's tools are out instead of the hand (its 2); Skyrim shows MSC's tools icon
+    inline constexpr std::uint32_t kPlayerMscMenu = 0x100;  // PlayerState.flags (v47): MSC's options menu is open (PlayerInMenu)
+    inline constexpr std::uint32_t kPlayerInGame = 0x40;  // PlayerState.flags (v41): MSC's player exists (its game is loaded), set whoever has the player; play mode hands over only then
 
     // PlayerState.needs order, MSC's globals: PlayerThirst, PlayerHunger, PlayerStress, PlayerUrine,
     // PlayerFatigue, PlayerDirtiness (0..100, stress can go past it) and PlayerDrunk (0..8).
@@ -134,7 +139,8 @@ namespace PerkeleRim::Protocol
         float         heading;      // radians
         float         pitch;        // radians, positive looks down
         std::uint8_t  stance;       // 0 standing, 1 crouching, 2 prone
-        std::uint8_t  reserved[3];
+        std::uint8_t  throwCharge;  // a throw being charged (v46): 0 none, 1..255 share of a full charge
+        std::uint8_t  reserved[2];
         std::uint32_t generation;   // WorldspaceChange.generation this pose belongs to
         // MSC's camera, with kPlayerCamera. Leaning, reaching, sitting and crouching move it, and
         // Skyrim puts its first-person camera there.
@@ -164,7 +170,8 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kVehicleHayosiko = 1;  // VehicleState.vehicle: the Hayosiko van
     inline constexpr std::uint32_t kVehicleJonnez = 2;    // VehicleState.vehicle: the Jonnez moped
     inline constexpr std::uint32_t kVehicleKekmet = 3;    // VehicleState.vehicle: the Kekmet tractor
-    inline constexpr std::uint32_t kVehicleCount = 3;     // vehicle ids are 1..kVehicleCount
+    inline constexpr std::uint32_t kVehicleGifu = 4;      // VehicleState.vehicle: the Gifu truck
+    inline constexpr std::uint32_t kVehicleCount = 4;     // vehicle ids are 1..kVehicleCount
 
     // MSC -> Skyrim, one slot per vehicle: vehicle id v is VehicleSlot v - 1 from kOffsetVehicleSlot
     // (its VehicleParts likewise from kOffsetVehiclePartsSlot). Skyrim world space like PlayerState;
@@ -237,13 +244,14 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kItemCapacity = 128;  // ItemState.items
     inline constexpr std::uint32_t kItemVisible = 0x1;   // ItemPose.flags: MSC draws it
     inline constexpr std::uint32_t kItemHeld = 0x2;      // ItemPose.flags: in the player's hands
+    inline constexpr std::uint32_t kItemForm = 0x4;      // ItemPose.flags: model is a Skyrim form id, drawn with that form's own model (thrown junk, v46)
 
     // One MSC physics item (or one piece of it: a bottle in a case is its own item). Skyrim world
     // space like VehicleState: the model's root sits at position, turned by rotation (Skyrim space).
     struct ItemPose
     {
         std::uint32_t id;           // MSC's, stable while the item exists, never 0
-        std::uint32_t model;        // ModelChunk.model of its look, 0 = nothing to draw
+        std::uint32_t model;        // ModelChunk.model of its look (with kItemForm a Skyrim form id), 0 = nothing to draw
         std::uint32_t flags;        // kItem*
         float         position[3];
         float         rotation[4];  // x, y, z, w
@@ -269,6 +277,7 @@ namespace PerkeleRim::Protocol
     };
 
     inline constexpr std::uint32_t kHandLayerValid = 0x1;  // HandLayer.flags: MSC draws into the texture every frame
+    inline constexpr std::uint32_t kHandLayerMenu = 0x2;   // HandLayer.flags (v47): the texture holds MSC's options menu, not its hands
 
     // MSC -> Skyrim. MSC's first-person layer (what its HandCamera draws: hands, drinks, tools in
     // hand) in a D3D11 texture both games share on the GPU: transparent where nothing is drawn,
@@ -398,7 +407,7 @@ namespace PerkeleRim::Protocol
         PocketChange = 13,     // MSC -> Skyrim
         PocketCounts = 14,     // Skyrim -> MSC
         ImpactEvent = 15,      // MSC -> Skyrim
-        // 16 was MiddleFinger (until v23): the finger no longer shouts, Z is Skyrim's own shout key.
+        MiddleFinger = 16,     // MSC -> Skyrim (v21 to v23 it shouted Fus; since v42 the law minds it)
         PlayerShout = 17,      // Skyrim -> MSC
         PlayerHurt = 18,       // Skyrim -> MSC
         StockShelves = 19,     // Skyrim -> MSC
@@ -409,6 +418,15 @@ namespace PerkeleRim::Protocol
         TimePassed = 24,       // Skyrim -> MSC
         GearText = 25,         // MSC -> Skyrim
         PlayerWashed = 26,     // Skyrim -> MSC
+        DebugCommand = 27,     // Skyrim -> MSC
+        IntroCue = 28,         // Skyrim -> MSC
+        ConsumeEvent = 29,     // Skyrim -> MSC
+        FuelStations = 30,     // Skyrim -> MSC
+        FuelText = 31,         // MSC -> Skyrim
+        JunkOut = 32,          // Skyrim -> MSC
+        JunkBack = 33,         // MSC -> Skyrim
+        Blackout = 34,         // MSC -> Skyrim
+        HeldDrink = 35,        // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -470,6 +488,10 @@ namespace PerkeleRim::Protocol
     // GearText: the gear MSC shows bottom right while the player drives (global GUIgear: "N", "R",
     // "2", "3 HIGH", "1 LOW"), sent when it changes and once more each time MSC takes the player.
     // Same payload as Subtitle; no text (on foot) clears it.
+
+    // DebugCommand (v40): a line for MSC's spike console (msc/src/Spike/SpikeHost.cs, as in
+    // <MSC>/PerkeleRim_cmd.txt: "drunk 2", "hold 1"), sent only by the hit test
+    // (skse/src/debug/HitTest.cpp, [Debug] HitTest in PerkeleRim.ini). Same payload as Subtitle.
 
     // PlayerWashed: Kumpo waded into water up to his waist (protocol/cpp/wading.h). Empty payload; MSC
     // sets PlayerDirtiness to 0. Sent once per wade in, not every frame.
@@ -534,6 +556,8 @@ namespace PerkeleRim::Protocol
         std::uint32_t kind;          // kImpact*
         float         speed;         // meters per second (kImpactThrown, kImpactVehicle)
         float         direction[3];  // the way it moved, unit vector in Skyrim space
+        float         mass;          // kilograms of a thrown item (v46; Damage::Thrown), 0 = unknown
+        std::uint32_t reserved;
     };
 
     // ThrownPath (v36): where an item MSC's player threw moved since the last frame, sent every frame
@@ -575,6 +599,9 @@ namespace PerkeleRim::Protocol
     // TimePassed (v37): the player waited or slept in Skyrim (the Wait menu, a bed) while MSC has the
     // player. MSC advances its clock and its needs by that many hours (msc/src/Link/Rest.cs).
     inline constexpr std::uint32_t kTimeBed = 0x1;  // TimePassed.flags: slept in a bed, else waited
+    // TimePassed.flags (v49): he woke up from a Blackout (sent with kTimeBed): MSC also sobers him up
+    // by its metabolism over the hours and starts its hangover (msc/src/Link/Blackout.cs).
+    inline constexpr std::uint32_t kTimeBlackout = 0x2;
 
     struct TimePassed
     {
@@ -582,17 +609,51 @@ namespace PerkeleRim::Protocol
         std::uint32_t flags;  // kTime*
     };
 
+    // Blackout (v49): MSC's player blacked out while handed over: drunk past MSC's pass-out line
+    // (msc/src/Link/Blackout.cs) or knocked out. Skyrim fades out, wakes him at a random map marker
+    // in Tamriel some hours later and sends TimePassed with kTimeBed | kTimeBlackout once he stands
+    // there (protocol/cpp/blackout_wake.h).
+    inline constexpr std::uint32_t kBlackoutDrunk = 1;     // Blackout.kind: passed out drunk
+    inline constexpr std::uint32_t kBlackoutKnockout = 2;  // Blackout.kind: knocked out
+
+    struct Blackout
+    {
+        std::uint32_t kind;  // kBlackout*
+        std::uint32_t reserved;
+    };
+
+    // IntroCue (v41): Kumpo's Helgen intro on a new game (protocol/cpp/intro_cues.h), whoever has the
+    // player. MSC plays the cue's sounds (msc/src/Link/IntroLine.cs); Skyrim captions them.
+    inline constexpr std::uint32_t kIntroBlackout = 1;  // IntroCue.cue: Kumpo, passed out drunk, snores and wakes up hungover (the new game opens)
+    inline constexpr std::uint32_t kIntroWake = 2;      // IntroCue.cue: he says Perkele after Ralof's "You're finally awake" in the cart
+    inline constexpr std::uint32_t kIntroHangover = 3;  // IntroCue.cue: he wakes up hungover in the shack (a save's first handover)
+
+    struct IntroCue
+    {
+        std::uint32_t cue;  // kIntro*
+        std::uint32_t reserved;
+    };
+
     // PlayerShout: the player shouted in Skyrim while MSC had it (Z, Skyrim's own shout with its
-    // cooldown; Skyrim's shout voice is muted meanwhile). MSC yells instead: "Perkele!" for
-    // Unrelenting Force (kind kShoutUnrelentingForce), a swear for any other shout.
+    // cooldown; Skyrim's shout voice is muted meanwhile). MSC yells instead: Unrelenting Force (kind
+    // kShoutUnrelentingForce) as its Perkele a syllable per word, other shouts by MSC's word table
+    // for the form id (msc/src/Link/ShoutLine.cs).
     inline constexpr std::uint32_t kShoutOther = 0;  // PlayerShout.kind
     inline constexpr std::uint32_t kShoutUnrelentingForce = 1;
 
     struct PlayerShout
     {
         std::uint32_t kind;   // kShout*
-        std::uint32_t shout;  // the shout's form id, for the log
+        std::uint32_t shout;  // the shout's form id (Skyrim.esm's and the DLCs' are the same in every load order)
         std::uint32_t words;  // 1..3, how many words were shouted
+        std::uint32_t reserved;
+    };
+
+    // MiddleFinger (v42): MSC's player started giving the finger (V, PlayerFunctions entering Finger).
+    // Skyrim puts a bounty on the player for each guard or Jarl that sees it (protocol/cpp/finger.h).
+    struct MiddleFinger
+    {
+        float         direction[3];  // MSC's camera forward, unit vector in Skyrim space
         std::uint32_t reserved;
     };
 
@@ -633,6 +694,28 @@ namespace PerkeleRim::Protocol
         StockSpot     spots[16];   // kStockSpotsMax
     };
 
+    // FuelStations: the dwemer oil pumps along Skyrim's main roads (PerkeleRim.esp), sent each time
+    // the link comes up. Each pump's spot is on the ground in front of it, where Kumpo stands to use
+    // it, facing the pump. MSC brings its own diesel pump trigger to the pump the player is near,
+    // and tows a dry vehicle to one (msc/src/Link/Fuel.cs).
+    inline constexpr std::uint32_t kFuelPumpsMax = 8;
+
+    struct FuelPump
+    {
+        float position[3];  // Skyrim world space, on the ground in front of the pump
+        float heading;      // radians, clockwise from north: from the spot toward the pump
+    };
+
+    struct FuelStations
+    {
+        std::uint32_t count;  // <= kFuelPumpsMax
+        std::uint32_t reserved;
+        FuelPump      pumps[8];  // kFuelPumpsMax
+    };
+
+    // FuelText: the fuel line MSC wants on the HUD (the litres poured and the gold they cost, a low
+    // tank, a dry one), empty for none. Same payload as LookAtText, sent when it changes.
+
     // Consumed: MSC's player finished an alcoholic drink, lit a cigarette or ate something. Skyrim
     // heals by kind (protocol/cpp/damage.h). Drinks without alcohol aren't sent.
     inline constexpr std::uint32_t kConsumedBeer = 1;       // Consumed.kind
@@ -649,8 +732,33 @@ namespace PerkeleRim::Protocol
         std::uint32_t reserved;
     };
 
-    // The pocket: Skyrim's inventory holds MSC's beer, empty bottles, food and cigarettes as
-    // PerkeleRim.esp items, one kind each (kPocket*). Skyrim's counts are the truth.
+    // ConsumeEvent: the player ate or drank something in Skyrim (its inventory, a hotkey). What it
+    // does to MSC's needs, from protocol/cpp/food.h; MSC adds each to its global (PlayerHunger,
+    // PlayerThirst, PlayerUrine, PlayerDrunkAdjusted), needs not below 0, drunk 0..8. With a drink
+    // (v45) MSC also shows its own drinking of that kind once the menu is closed (once for any
+    // number of drinks, the strongest), its needs put back after. form (v50) is the drink's own
+    // item, whose model Kumpo holds while MSC shows it (HeldDrink); 0 keeps MSC's bottle (MSC's
+    // own juice and beer, food).
+    inline constexpr std::uint32_t kDrinkNone = 0;    // ConsumeEvent.drink: food, water, nothing shown
+    inline constexpr std::uint32_t kDrinkBeer = 1;    // DRINKBEER, the beer bottle
+    inline constexpr std::uint32_t kDrinkBooze = 2;   // DRINKVIINA, the booze bottle (wine, brandy)
+    inline constexpr std::uint32_t kDrinkSpirit = 3;  // DRINKSPIRIT, the spirit bottle (Skooma), never blinding
+    inline constexpr std::uint32_t kDrinkMilk = 4;    // DRINKMILK
+    inline constexpr std::uint32_t kDrinkJuice = 5;   // DRINKJUICE
+
+    struct ConsumeEvent
+    {
+        float         hunger;  // < 0: less hungry
+        float         thirst;  // < 0: less thirsty
+        float         urine;
+        float         drunk;   // added to PlayerDrunkAdjusted
+        std::uint32_t drink;   // kDrink*
+        std::uint32_t form;    // v50: the drink's form id, 0 = none
+    };
+
+    // The pocket: Skyrim's inventory holds MSC's beer, juice, empty bottles, food and cigarettes as
+    // PerkeleRim.esp items, one kind each (kPocket*), and MSC's money as Skyrim's gold. Skyrim's
+    // counts are the truth.
     inline constexpr std::uint32_t kPocketBeer = 0;        // PocketChange.kind, PocketCounts.counts index
     inline constexpr std::uint32_t kPocketBottle = 1;      // an empty beer bottle
     inline constexpr std::uint32_t kPocketSausages = 2;
@@ -658,7 +766,10 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPocketChips = 4;       // potato chips
     inline constexpr std::uint32_t kPocketMacaron = 5;     // a macaron box
     inline constexpr std::uint32_t kPocketCigarettes = 6;  // MSC's PlayerCigarettes, one item per cigarette
-    inline constexpr std::uint32_t kPocketKinds = 7;
+    inline constexpr std::uint32_t kPocketGold = 7;        // MSC's PlayerMoney, one gold per mark (Skyrim.esm Gold001)
+    inline constexpr std::uint32_t kPocketJuice = 8;       // v45: MSC's juice(itemx), drunk in Skyrim
+    inline constexpr std::uint32_t kPocketJunk = 9;        // junk to throw (v46, protocol/cpp/junk.h): a count of all of it; taking one out gets a JunkOut
+    inline constexpr std::uint32_t kPocketKinds = 10;
 
     // PocketChange: MSC put delta of a kind into the pocket (> 0) or took it out (< 0). seq counts
     // up from 1 per session (MSC picks a new nonzero session each time its link comes up).
@@ -676,7 +787,53 @@ namespace PerkeleRim::Protocol
     {
         std::uint32_t session;
         std::uint32_t appliedSeq;
-        std::uint32_t counts[7];  // by kPocket*
+        std::uint32_t counts[10];  // by kPocket*
+    };
+
+    // JunkOut (v46): Skyrim took one piece of junk out of the inventory for MSC's hand, answering
+    // the PocketChange of kPocketJunk with seq (form 0: there was none after all). MSC makes a body
+    // shaped like the bounds (the form's model space, Skyrim units) that flies like an empty bottle,
+    // and sends it in ItemState with kItemForm so Skyrim draws the form's model on it. mass is what
+    // the hits count (Damage::Thrown), from the item's weight (junk.h).
+    struct JunkOut
+    {
+        std::uint32_t seq;           // PocketChange.seq of the take
+        std::uint32_t form;          // the item's form id, 0 = none
+        float         mass;          // kilograms
+        std::uint32_t reserved;
+        float         boundsMin[3];  // Skyrim units, the model's own space
+        float         boundsMax[3];
+    };
+
+    // JunkBack (v46): a piece of junk JunkOut sent left MSC: with kJunkLanded it came to rest at
+    // position, turned by rotation (Skyrim space), and Skyrim places the real item there; without,
+    // it goes back into the inventory (put away, or MSC let go of it some other way).
+    inline constexpr std::uint32_t kJunkLanded = 0x1;  // JunkBack.flags
+
+    struct JunkBack
+    {
+        std::uint32_t session;      // PocketChange.session of the take
+        std::uint32_t seq;          // and its seq
+        std::uint32_t flags;        // kJunk*
+        float         position[3];  // Skyrim world units, with kJunkLanded
+        float         rotation[4];  // x, y, z, w
+    };
+
+    // HeldDrink (v50): every MSC frame of a drink shown for Skyrim (ConsumeEvent.form) while its
+    // bottle is in the hand: Skyrim draws form's own model there instead, held by its neck in MSC's
+    // fist, and MSC leaves its bottle out of the hand layer. Points in Skyrim units in the camera's
+    // own space (+X right, +Y forward, +Z up; protocol/cpp/held_drink.h): the middle of MSC's
+    // bottle's base and of its top (the way it points), a direction across it for its turn about
+    // its length, and the grip, where the fist closes on it. form 0: the bottle is down or thrown,
+    // Skyrim drops its model. Skyrim also drops it when none came for a moment.
+    struct HeldDrink
+    {
+        std::uint32_t form;       // the drink's form id, 0 = none
+        std::uint32_t reserved;
+        float         bottom[3];  // camera space, Skyrim units
+        float         top[3];
+        float         side[3];    // any length, across the bottle
+        float         grip[3];    // on the bottle's axis, where the fist is
     };
 
     // ---- Models (MSC -> Skyrim) ----
@@ -696,6 +853,8 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kLightBrake = 4;            // brake light
     inline constexpr std::uint32_t kLightReverse = 5;          // reversing light
     inline constexpr std::uint32_t kLightInterior = 6;         // cabin light
+    inline constexpr std::uint32_t kLightWork = 7;             // work light (the Gifu's, over its tail)
+    inline constexpr std::uint32_t kLightBeacon = 8;           // rotating beacon (the Gifu's, on its roof)
     inline constexpr std::uint32_t kModelNodeNameMax = 64;     // ModelNode.name bytes, UTF-8, zero padded
     inline constexpr std::uint32_t kModelTextureRgba8 = 1;     // ModelTexture.format
     inline constexpr std::uint32_t kModelTextureSizeMax = 2048;  // width and height limit
@@ -796,7 +955,6 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(LinkHeader) == 128);
     static_assert(offsetof(LinkHeader, creatorVersion) == 12);
     static_assert(offsetof(LinkHeader, peers) == 16);
-    static_assert(sizeof(InputState) == 112);
     static_assert(offsetof(InputState, mouseX) == 8);
     static_assert(offsetof(InputState, mouseY) == 16);
     static_assert(offsetof(InputState, horizontal) == 24);
@@ -804,6 +962,9 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(InputState, keys) == 32);
     static_assert(offsetof(InputState, mouseWheel) == 96);
     static_assert(offsetof(InputState, screenWidth) == 104);
+    static_assert(offsetof(InputState, cursorX) == 112);
+    static_assert(offsetof(InputState, cursorY) == 116);
+    static_assert(sizeof(InputState) == 120);
     static_assert(sizeof(InputSlot) == 128);
     static_assert(offsetof(InputSlot, value) == 8);
     static_assert(sizeof(PlayerState) == 104);
@@ -812,6 +973,7 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(PlayerState, heading) == 32);
     static_assert(offsetof(PlayerState, pitch) == 36);
     static_assert(offsetof(PlayerState, stance) == 40);
+    static_assert(offsetof(PlayerState, throwCharge) == 41);
     static_assert(offsetof(PlayerState, generation) == 44);
     static_assert(offsetof(PlayerState, eye) == 48);
     static_assert(offsetof(PlayerState, roll) == 60);
@@ -897,6 +1059,10 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(WorldspaceChange, vehicleSpot) == 32);
     static_assert(offsetof(WorldspaceChange, vehicleHeading) == 44);
     static_assert(sizeof(LookAtText) == 8);
+    static_assert(sizeof(FuelPump) == 16);
+    static_assert(offsetof(FuelPump, heading) == 12);
+    static_assert(sizeof(FuelStations) == 136);
+    static_assert(offsetof(FuelStations, pumps) == 8);
     static_assert(sizeof(PlayerDamage) == 8);
     static_assert(offsetof(PlayerDamage, severity) == 4);
     static_assert(sizeof(PlayerDeath) == 8);
@@ -914,11 +1080,18 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(TimePassed, flags) == 4);
     static_assert(sizeof(ScreenshotEvent) == 8);
     static_assert(offsetof(ScreenshotEvent, reserved) == 4);
-    static_assert(sizeof(ImpactEvent) == 24);
+    static_assert(sizeof(ImpactEvent) == 32);
+    static_assert(offsetof(ImpactEvent, mass) == 24);
     static_assert(offsetof(ImpactEvent, speed) == 8);
     static_assert(offsetof(ImpactEvent, direction) == 12);
+    static_assert(sizeof(Blackout) == 8);
+    static_assert(offsetof(Blackout, reserved) == 4);
+    static_assert(sizeof(IntroCue) == 8);
+    static_assert(offsetof(IntroCue, reserved) == 4);
     static_assert(sizeof(PlayerShout) == 16);
     static_assert(offsetof(PlayerShout, words) == 8);
+    static_assert(sizeof(MiddleFinger) == 16);
+    static_assert(offsetof(MiddleFinger, reserved) == 12);
     static_assert(sizeof(PlayerHurt) == 16);
     static_assert(offsetof(PlayerHurt, health) == 8);
     static_assert(sizeof(StockSpot) == 16);
@@ -929,7 +1102,23 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(Consumed) == 8);
     static_assert(sizeof(PocketChange) == 16);
     static_assert(offsetof(PocketChange, delta) == 12);
-    static_assert(sizeof(PocketCounts) == 36);
+    static_assert(sizeof(PocketCounts) == 48);
+    static_assert(sizeof(JunkOut) == 40);
+    static_assert(offsetof(JunkOut, mass) == 8);
+    static_assert(offsetof(JunkOut, boundsMin) == 16);
+    static_assert(offsetof(JunkOut, boundsMax) == 28);
+    static_assert(sizeof(JunkBack) == 40);
+    static_assert(offsetof(JunkBack, flags) == 8);
+    static_assert(offsetof(JunkBack, position) == 12);
+    static_assert(offsetof(JunkBack, rotation) == 24);
+    static_assert(sizeof(ConsumeEvent) == 24);
+    static_assert(offsetof(ConsumeEvent, drink) == 16);
+    static_assert(offsetof(ConsumeEvent, form) == 20);
+    static_assert(sizeof(HeldDrink) == 56);
+    static_assert(offsetof(HeldDrink, grip) == 44);
+    static_assert(offsetof(HeldDrink, bottom) == 8);
+    static_assert(offsetof(HeldDrink, top) == 20);
+    static_assert(offsetof(HeldDrink, side) == 32);
     static_assert(offsetof(PocketCounts, counts) == 8);
     static_assert(sizeof(ModelChunk) == 16);
     static_assert(offsetof(ModelChunk, offset) == 8);

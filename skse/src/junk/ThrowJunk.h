@@ -1,0 +1,31 @@
+#pragma once
+
+// Junk thrown from Skyrim's inventory (docs/PROTOCOL.md "Throwing junk", rules in protocol/cpp/junk.h).
+// When key 3 rolls junk rather than one of MSC's empty bottles, MSC takes a PocketChange of
+// kPocketJunk: Skyrim picks a random piece (Junk::Pick) and sends MSC a JunkOut with its form, bounds
+// and mass. The item stays in the inventory while it is out, set aside so it isn't picked or
+// counted twice: a JunkBack that landed drops the real item where MSC's body came to rest, one that
+// didn't (put away), the link going down, the handback or a load just make it available again.
+// Main thread only.
+namespace PerkeleRim::ThrowJunk
+{
+    void OnDataLoaded();  // VendorItemClutter, the produce, PerkeleRim.esp's pocket items to skip
+
+    // Junk in the inventory that isn't out in MSC's hand (PocketCounts.counts[kPocketJunk]).
+    std::uint32_t Count(RE::PlayerCharacter* a_player);
+
+    // MSC took one out (PocketChange kPocketJunk, delta -1): the next piece goes to MSC as a JunkOut.
+    void Take(RE::PlayerCharacter* a_player, std::uint32_t a_session, std::uint32_t a_seq);
+
+    void OnBack(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);  // JunkBack
+
+    // Everything out is the inventory's again: the link went down, MSC let go of the player, a load.
+    void Release();
+
+    // Pieces of a_item in the inventory that aren't out (thrown ones stay in it until they land).
+    std::int32_t Left(RE::PlayerCharacter* a_player, RE::TESBoundObject* a_item);
+
+    // The hit test (debug/HitTest.cpp): only one piece of a_form counts as junk, so every throw is
+    // that item and none comes out after it by itself; 0 is all junk again.
+    void OnlyOne(RE::FormID a_form);
+}

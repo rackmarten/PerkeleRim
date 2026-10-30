@@ -8,9 +8,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <cstddef>
 #include <cstdint>
+#include <iterator>
 
 #include "../perkelerim_protocol.h"
+#include "coords.h"
 
 namespace PerkeleRim::Damage
 {
@@ -56,10 +59,12 @@ namespace PerkeleRim::Damage
 
     // The drunker, the tougher, while MSC has the player: temporary bonuses to armor rating (Skyrim's
     // DamageResist, so it stacks with worn armor under Skyrim's cap), max stamina and stamina regen
-    // (StaminaRateMult, percent), rising with DrunkShare up to these.
+    // (StaminaRateMult, percent), rising with DrunkShare up to these. The shout cooldown shortens the
+    // same way, by up to kDrunkShoutRecoveryCut, so a fully drunk Finn shouts three times as often.
     inline constexpr float kDrunkArmorMax = 200.0f;        // about a quarter less physical damage
     inline constexpr float kDrunkStaminaMax = 100.0f;
     inline constexpr float kDrunkStaminaRateMax = 100.0f;  // twice the regen
+    inline constexpr float kDrunkShoutRecoveryCut = 2.0f / 3.0f;
 
     struct DrunkBuffs
     {
@@ -74,21 +79,105 @@ namespace PerkeleRim::Damage
         return { kDrunkArmorMax * share, kDrunkStaminaMax * share, kDrunkStaminaRateMax * share };
     }
 
+    // A shout's cooldown in seconds at a_drunk: Skyrim's own (a_cooldown, the shout's recovery time
+    // times the player's ShoutRecoveryMult) shortened.
+    inline float DrunkShoutCooldown(float a_cooldown, float a_drunk)
+    {
+        return a_cooldown * (1.0f - kDrunkShoutRecoveryCut * DrunkShare(a_drunk));
+    }
+
     // Recast once the drunk level moves this much from what the bonuses were cast for.
     inline constexpr float kDrunkBuffStep = 0.1f;  // drunk levels
 
     // A thrown item hits by its speed: nothing at kThrownSpeedMin, twice a sober punch from kThrownSpeedFull
     // on. MSC's own throw lands in between; a bottle, thrown twice as fast (msc/src/Link/Throwing.cs),
-    // hits like two punches from range. a_punch: the player's sober Punch.
+    // hits like two punches from range. a_punch: the player's sober Punch (DrunkThrow below, not
+    // DrunkPunch, makes a drunk throw harder).
     inline constexpr float kThrownSpeedMin = 2.0f;    // meters per second
     inline constexpr float kThrownSpeedFull = 15.0f;
 
     inline constexpr float kThrownShare = 2.0f;  // of the punch at full speed: aiming a throw is hard enough
 
-    inline float Thrown(float a_punch, float a_speed)
+    // And by its weight (v46): MSC's empty beer bottle (kThrownMassBase) hits as above, a lighter or
+    // heavier item by the square root of its mass against the bottle's, kept within kThrownMassMin to
+    // kThrownMassMax times: Skyrim's junk weighs its weight in kilograms (junk.h), so a cabbage (0.25)
+    // hits 0.7 times as hard, an item of weight 2 twice, a beer case (MSC's, about 10 kg) three times.
+    // a_mass 0 (unknown) counts as the bottle.
+    inline constexpr float kThrownMassBase = 0.5f;  // kilograms, MSC's BottleBeerFly
+    inline constexpr float kThrownMassMin = 0.5f;
+    inline constexpr float kThrownMassMax = 3.0f;
+
+    inline float ThrownMass(float a_mass)
+    {
+        if (!(a_mass > 0.0f)) {
+            return 1.0f;
+        }
+        return (std::clamp)(std::sqrt(a_mass / kThrownMassBase), kThrownMassMin, kThrownMassMax);
+    }
+
+    // And by Kumpo's level, so throws keep up with Skyrim's levelled enemies: kThrownLevelStep of the
+    // level 1 hit more per level, so a Nord's sober full-charge bottle hits 16 at level 1, 30 at 10, 70 at 35.
+    inline constexpr float kThrownLevelStep = 0.1f;
+
+    inline float ThrownLevel(int a_level)
+    {
+        return 1.0f + kThrownLevelStep * static_cast<float>((std::max)(0, a_level - 1));
+    }
+
+    // And by MSC's drunk level: drinking is Kumpo's potion. The multiplier runs linearly between these
+    // points and stays flat past the last: x1.5 after one beer (0.1), x2 tipsy (0.4, five beers), x3 at
+    // drunk 1, x6.5 blind drunk (3), so at level 35 Alduin (2355) takes about 34 bottles sober and 6 blind drunk.
+    struct DrunkThrowPoint
+    {
+        float drunk;
+        float mult;
+    };
+
+    inline constexpr DrunkThrowPoint kDrunkThrow[] = { { 0.0f, 1.0f }, { 0.1f, 1.5f }, { 0.4f, 2.0f }, { 1.0f, 3.0f }, { 2.0f, 4.5f }, { 3.0f, 6.5f } };
+
+    // And by the target's armor, as Skyrim takes it off an arrow: kArmorScaling percent less per point
+    // of armor rating, at most kArmorMaxShare (Skyrim.esm's fArmorScalingFactor and fMaxArmorRating).
+    // The hit is a spell in Skyrim, which armor wouldn't touch, so it's taken off here.
+    inline constexpr float kArmorScaling = 0.12f;
+    inline constexpr float kArmorMaxShare = 0.8f;
+
+    inline float ArmorTaken(float a_armor)
+    {
+        return 1.0f - (std::clamp)(a_armor * kArmorScaling / 100.0f, 0.0f, kArmorMaxShare);
+    }
+
+    inline float DrunkThrow(float a_drunk)
+    {
+        if (!(a_drunk > kDrunkThrow[0].drunk)) {
+            return kDrunkThrow[0].mult;
+        }
+        for (std::size_t i = 1; i < std::size(kDrunkThrow); i++) {
+            const auto& from = kDrunkThrow[i - 1];
+            const auto& to = kDrunkThrow[i];
+            if (a_drunk < to.drunk) {
+                return from.mult + (to.mult - from.mult) * (a_drunk - from.drunk) / (to.drunk - from.drunk);
+            }
+        }
+        return kDrunkThrow[std::size(kDrunkThrow) - 1].mult;
+    }
+
+    // a_level: Kumpo's (Skyrim's player level); a_armor: the target's armor rating.
+    inline float Thrown(float a_punch, float a_speed, float a_mass = 0.0f, float a_drunk = 0.0f, int a_level = 1, float a_armor = 0.0f)
     {
         const float scale = (std::clamp)((a_speed - kThrownSpeedMin) / (kThrownSpeedFull - kThrownSpeedMin), 0.0f, 1.0f);
-        return (std::max)(0.0f, a_punch) * kThrownShare * scale;
+        return (std::max)(0.0f, a_punch) * kThrownShare * scale * ThrownMass(a_mass) * ThrownLevel(a_level) * DrunkThrow(a_drunk) *
+               ArmorTaken(a_armor);
+    }
+
+    // A throw that hits an actor trains Archery, Skyrim's ranged skill, so Kumpo levels while MSC has
+    // him (nothing else he does there gives skill experience): as a bow shot, by its base damage, here
+    // the throw's sober, level 1 and unarmored hit (a full-charge bottle 16, about an iron bow's shot).
+    // PlayerCharacter::AddSkillExperience takes it as skill use, Skyrim's own multipliers on top.
+    inline constexpr float kThrownSkillUseShare = 1.0f;
+
+    inline float ThrownSkillUse(float a_punch, float a_speed, float a_mass = 0.0f)
+    {
+        return Thrown(a_punch, a_speed, a_mass) * kThrownSkillUseShare;
     }
 
     // A throw that left the player's hand while he sneaked and hits a target that does not see him
@@ -213,17 +302,86 @@ namespace PerkeleRim::Damage
         return (std::clamp)(a_speed * kKnockPerSpeed, 1.0f, kKnockMax);
     }
 
+    // How far ahead a moving vehicle is noticed: what it covers in kReactSeconds, so whoever is in
+    // its way has that long to get going (standing to running takes a while) and out of it. Nothing
+    // below kWaySpeedMin (a walk, parking); capped at kWayUnitsMax, which 90 km/h reaches. 30 km/h
+    // is about 33 m, 50 km/h 56 m, 70 km/h 78 m. a_speed in m/s; 0 for no reach.
+    inline constexpr float kReactSeconds = 4.0f;
+    inline constexpr float kWaySpeedMin = 4.0f;          // m/s, about 15 km/h
+    inline constexpr float kWayUnitsMax = 7000.0f;       // 100 m
+    inline constexpr float kWayLaneUnits = 300.0f;       // about 4 m either side of its line, at kWaySpeedMin
+    inline constexpr float kWayLaneMaxUnits = 500.0f;    // 7 m, from kWayLaneFullSpeed on
+    inline constexpr float kWayLaneFullSpeed = 20.0f;    // m/s, 72 km/h
+
+    inline float WayReach(float a_speed)
+    {
+        if (!(a_speed >= kWaySpeedMin)) {
+            return 0.0f;
+        }
+        return (std::min)(a_speed * kReactSeconds * static_cast<float>(Coords::kUnitsPerMeter), kWayUnitsMax);
+    }
+
+    // How far either side of the vehicle's line its way reaches: wider at speed, where a turn of the
+    // wheel moves it further and a stray step is a bigger risk.
+    inline float WayLane(float a_speed)
+    {
+        if (!(a_speed > kWaySpeedMin)) {
+            return kWayLaneUnits;
+        }
+        const float share = (std::min)((a_speed - kWaySpeedMin) / (kWayLaneFullSpeed - kWaySpeedMin), 1.0f);
+        return kWayLaneUnits + (kWayLaneMaxUnits - kWayLaneUnits) * share;
+    }
+
+    // Driving at someone: they're in the way when ahead of the vehicle (a_way, its velocity, flat)
+    // within WayReach of it and no further than WayLane off its line. They flee (People).
+    // a_dx, a_dy: actor minus vehicle.
+    inline bool InVehicleWay(float a_dx, float a_dy, float a_wayX, float a_wayY, float a_speed)
+    {
+        const float reach = WayReach(a_speed);
+        const float way = std::hypot(a_wayX, a_wayY);
+        if (reach <= 0.0f || way < 1e-4f || std::hypot(a_dx, a_dy) > reach) {
+            return false;
+        }
+        const float ahead = (a_dx * a_wayX + a_dy * a_wayY) / way;
+        const float aside = std::abs(a_dx * a_wayY - a_dy * a_wayX) / way;
+        return ahead > 0.0f && aside <= WayLane(a_speed);
+    }
+
+    // What someone in the way flees from, so they clear the lane sideways instead of running down
+    // the road or back past the vehicle: the point on the vehicle's line level with them, moved
+    // kFleeFromBehindUnits to the far side, so someone right on the line still has a side to go to
+    // (the one HornDodge picks, by the cross product). Returns that point, flat, relative to the
+    // vehicle; a_dx, a_dy as for InVehicleWay. No way: the vehicle itself.
+    inline constexpr float kFleeFromBehindUnits = 150.0f;
+
+    inline void FleeFrom(float a_dx, float a_dy, float a_wayX, float a_wayY, float& a_outX, float& a_outY)
+    {
+        const float way = std::hypot(a_wayX, a_wayY);
+        if (way < 1e-4f) {
+            a_outX = 0.0f;
+            a_outY = 0.0f;
+            return;
+        }
+        const float ux = a_wayX / way, uy = a_wayY / way;
+        const float ahead = a_dx * ux + a_dy * uy;
+        // Right of the way is (y, -x); the actor's side by the sign of its cross product.
+        const float sign = a_dx * uy - a_dy * ux >= 0.0f ? 1.0f : -1.0f;
+        a_outX = ux * ahead - sign * uy * kFleeFromBehindUnits;
+        a_outY = uy * ahead + sign * ux * kFleeFromBehindUnits;
+    }
+
     // The horn (HornEvent): actors in the vehicle's way dive aside (HornDodge), so they stop
-    // strolling under its wheels. In its way: within kHornUnits and either closer than kHornNearUnits or ahead of
+    // strolling under its wheels. In its way: within a_reach and either closer than kHornNearUnits or ahead of
     // it (a_way, flat) no further than kHornLaneUnits off its line. a_dx, a_dy: actor minus vehicle.
+    // At speed the horn carries further (HornReach): the ones past kHornUnits flee instead (HornReactionOf).
     inline constexpr float kHornUnits = 800.0f;      // about 11 m
     inline constexpr float kHornNearUnits = 350.0f;  // 5 m
     inline constexpr float kHornLaneUnits = 500.0f;  // 7 m either side
 
-    inline bool InHornPath(float a_dx, float a_dy, float a_wayX, float a_wayY)
+    inline bool InHornPath(float a_dx, float a_dy, float a_wayX, float a_wayY, float a_reach = kHornUnits)
     {
         const float distance = std::hypot(a_dx, a_dy);
-        if (distance > kHornUnits) {
+        if (distance > a_reach) {
             return false;
         }
         const float way = std::hypot(a_wayX, a_wayY);
@@ -233,6 +391,28 @@ namespace PerkeleRim::Damage
         const float ahead = (a_dx * a_wayX + a_dy * a_wayY) / way;
         const float aside = std::abs(a_dx * a_wayY - a_dy * a_wayX) / way;
         return ahead > 0.0f && aside <= kHornLaneUnits;
+    }
+
+    // The horn's lane is kHornUnits long, or as far as the vehicle gets in kReactSeconds at a_speed
+    // (m/s), whichever is longer.
+    inline float HornReach(float a_speed)
+    {
+        return (std::max)(kHornUnits, WayReach(a_speed));
+    }
+
+    enum class HornReaction : std::uint8_t
+    {
+        kNone,  // not in the way, or out of earshot
+        kDive,  // within kHornUnits: dives aside (HornDodge)
+        kFlee,  // further along the lane, which speed lengthens: runs (People)
+    };
+
+    inline HornReaction HornReactionOf(float a_dx, float a_dy, float a_wayX, float a_wayY, float a_speed)
+    {
+        if (!InHornPath(a_dx, a_dy, a_wayX, a_wayY, HornReach(a_speed))) {
+            return HornReaction::kNone;
+        }
+        return std::hypot(a_dx, a_dy) <= kHornUnits ? HornReaction::kDive : HornReaction::kFlee;
     }
 
     // An actor the horn reaches dives aside (a Skyrim fear spell moved nobody and was the likely
@@ -327,12 +507,12 @@ namespace PerkeleRim::Damage
         return std::pow((a_height - a_settings.min) * a_settings.mult, a_settings.exponent);
     }
 
-    // Seated in the Hayosiko van or the Kekmet the player is safe from enemies (a stopgap until the
+    // Seated in the Hayosiko van, the Kekmet or the Gifu the player is safe from enemies (a stopgap until the
     // vehicles get a real hitbox in Skyrim): dragon fire, bites, arrows, spells, melee do nothing.
     // The moped doesn't protect, and MSC's own crash damage still lands (Death::Hurt).
     inline bool SafeSeat(std::uint32_t a_vehicle)
     {
-        return a_vehicle == Protocol::kVehicleHayosiko || a_vehicle == Protocol::kVehicleKekmet;
+        return a_vehicle == Protocol::kVehicleHayosiko || a_vehicle == Protocol::kVehicleKekmet || a_vehicle == Protocol::kVehicleGifu;
     }
 
     // What a hit that Skyrim deals the player costs while it sits in a_vehicle (0 = on foot).

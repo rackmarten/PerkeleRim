@@ -3,7 +3,11 @@
 #include "coords.h"
 #include "damage.h"
 #include "death/Death.h"
+#include "drink/HeldDrinkView.h"
+#include "finger.h"
 #include "link/LinkService.h"
+#include "needs.h"
+#include "people/People.h"
 #include "player/PlayerSync.h"
 #include "shout.h"
 
@@ -22,6 +26,8 @@ namespace PerkeleRim::Combat
         constexpr RE::FormID    kMuteVoice = 0x90F;     // PerkeleRimMuteVoice: 1 keeps the player quiet on shout and grunt lines
         // PerkeleRimDrunkArmor, PerkeleRimDrunkStamina, PerkeleRimDrunkStaminaRate: fortify, magnitude set per cast, kDrunkSeconds.
         constexpr RE::FormID    kDrunkSpells[] = { 0x914, 0x915, 0x916 };
+        constexpr std::size_t   kDrunkSpellCount = std::size(kDrunkSpells);
+        constexpr RE::FormID    kJarls = 0x50920;       // Skyrim.esm's JobJarlFaction
         constexpr float         kDrunkSeconds = 10.0f;  // their duration (esp-gen): a save taken meanwhile loses them soon after
         constexpr float         kDrunkRecast = 5.0f;    // recast before they run out
         static_assert(kDrunkRecast < kDrunkSeconds);
@@ -57,10 +63,11 @@ namespace PerkeleRim::Combat
             RE::SpellItem*                punch = nullptr;
             RE::SpellItem*                stagger = nullptr;
             RE::SpellItem*                piss = nullptr;
-            RE::SpellItem*                drunkSpells[3] = {};
+            RE::SpellItem*                drunkSpells[kDrunkSpellCount] = {};
             float                         drunkApplied = 0.0f;   // drunk level the spells were cast for, 0 = none on
             int                           drunkLogged = -1;      // tenth of full drunk last logged
             float                         drunkAge = 0.0f;       // seconds since they were cast
+            float                         drunk = 0.0f;          // MSC's drunk level this frame, for the shout cooldown
             float                         refusedAt = -100.0f;   // when the last "fists only" showed
             float                         clock = 0.0f;
             bool                          unarmedLogged = false;
@@ -68,6 +75,10 @@ namespace PerkeleRim::Combat
             bool                          muted = false;         // muteVoice is 1
             Shout::Watch                  shouts;
             bool                          watching = false;      // shouts has this handover's first value
+            int                           charged = -1;          // the variation the shout being charged reached, -1 none
+            RE::TESShout*                 charging = nullptr;    // and that shout
+            RE::TESFaction*               jarls = nullptr;
+            Finger::Bounties              fingered;
             std::uint32_t                 frame = 0;
             bool                          sent = false;  // a non-empty list went out
             float                         statTime = 0.0f;
@@ -77,6 +88,8 @@ namespace PerkeleRim::Combat
             int                           drawWait = 0;      // frames until drawing is tried again
             bool                          culled = false;    // Guard hid the first-person model
         } state;
+
+        Hit lastHit;
 
         const char* NameOf(RE::TESObjectREFR* a_ref)
         {
@@ -88,6 +101,25 @@ namespace PerkeleRim::Combat
         {
             auto* race = a_actor->GetRace();
             return race && race->HasKeywordString("ActorTypeDragon"sv);
+        }
+
+        // Skyrim's first-person body on or off, all but the held drink. Its root stays shown (an
+        // older build culled it).
+        void ShowFirstPerson(RE::NiAVObject* a_firstPerson, bool a_show)
+        {
+            if (a_firstPerson->GetAppCulled()) {
+                a_firstPerson->SetAppCulled(false);
+            }
+            auto* node = a_firstPerson->AsNode();
+            if (!node) {
+                a_firstPerson->SetAppCulled(!a_show);
+                return;
+            }
+            for (auto& child : node->GetChildren()) {
+                if (child && !HeldDrinkView::IsHeldDrink(child.get()) && child->GetAppCulled() == a_show) {
+                    child->SetAppCulled(!a_show);
+                }
+            }
         }
 
         float Setting(const char* a_name, float a_default)
@@ -298,6 +330,7 @@ namespace PerkeleRim::Combat
         {
             DispelDrunk(a_player);
             state.drunkApplied = 0.0f;
+            state.drunk = 0.0f;
             state.drunkLogged = -1;
         }
 
@@ -383,11 +416,13 @@ namespace PerkeleRim::Combat
         state.piss = data ? data->LookupForm<RE::SpellItem>(kPissSpell, kPlugin) : nullptr;
         state.muteVoice = data ? data->LookupForm<RE::TESGlobal>(kMuteVoice, kPlugin) : nullptr;
         bool drunkSpells = true;
-        for (int i = 0; i < 3; i++) {
+        for (std::size_t i = 0; i < kDrunkSpellCount; i++) {
             state.drunkSpells[i] = data ? data->LookupForm<RE::SpellItem>(kDrunkSpells[i], kPlugin) : nullptr;
             drunkSpells = drunkSpells && state.drunkSpells[i];
         }
         SKSE::log::info("combat: drunk spells {}", drunkSpells ? "found" : "missing (PerkeleRim.esp not loaded or too old), drinking doesn't toughen the player");
+        state.jarls = RE::TESForm::LookupByID<RE::TESFaction>(kJarls);
+        SKSE::log::info("combat: Jarl faction {}", state.jarls ? "found" : "missing, only guards mind the finger");
         if (state.muteVoice) {
             state.muteVoice->value = 0.0f;  // a save from back then may have kept 1
         }
@@ -449,7 +484,7 @@ namespace PerkeleRim::Combat
         }
     }
 
-    void OnPunch(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk)
+    void OnPunch(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk, float a_stress)
     {
         if (a_size < sizeof(Protocol::PunchEvent)) {
             SKSE::log::warn("combat: bad punch message ({} bytes)", a_size);
@@ -469,12 +504,18 @@ namespace PerkeleRim::Combat
         auto*       values = target->AsActorValueOwner();
         const float max = values ? values->GetPermanentActorValue(RE::ActorValue::kHealth) : 0.0f;
         const float unarmed = Unarmed(a_player, target);
-        const float damage = Damage::Punch(unarmed, a_drunk);
+        const float damage = Damage::Punch(unarmed, a_drunk) * Needs::StressPunch(a_stress);
         const float health = values ? values->GetActorValue(RE::ActorValue::kHealth) : 0.0f;  // the spell lands next frame
         caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
-        SKSE::log::info("combat: the player punched {} for {:.0f} (unarmed {:.1f}, drunk {:.1f}), it had {:.0f} of {:.0f} max health", NameOf(target),
-            damage, unarmed, a_drunk, health, max);
+        lastHit = { lastHit.count + 1, target->GetFormID(), false, damage, unarmed, a_drunk, 0.0f, 1.0f, 0.0f, a_stress };
+        SKSE::log::info("combat: the player punched {} for {:.0f} (unarmed {:.1f}, drunk {:.1f}, stress {:.0f}), it had {:.0f} of {:.0f} max health",
+            NameOf(target), damage, unarmed, a_drunk, a_stress, health, max);
+    }
+
+    const Hit& LastHit()
+    {
+        return lastHit;
     }
 
     void OnSwing(RE::PlayerCharacter* a_player)
@@ -553,7 +594,7 @@ namespace PerkeleRim::Combat
         }
     }
 
-    void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
+    void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk)
     {
         if (a_size < sizeof(Protocol::ImpactEvent)) {
             SKSE::log::warn("combat: bad impact message ({} bytes)", a_size);
@@ -647,18 +688,39 @@ namespace PerkeleRim::Combat
         const bool  sneaking = state.clock - flights.sneakAt < kFlightSneakSeconds ? flights.sneaking : a_player->IsSneaking();
         const int   detection = target->RequestDetectionLevel(a_player);
         const float sneak = Damage::SneakAttack(sneaking, detection);
-        const float damage = Damage::Thrown(Damage::Punch(Unarmed(a_player, target)), impact.speed) * sneak;
+        const float unarmed = Unarmed(a_player, target);
+        // Armor as Skyrim weighs it against an arrow: what it wears (CalcArmorRating) or its DamageResist,
+        // the larger. A Whiterun guard reads 86 for both, so one already holds the other and adding them
+        // would count the armor twice.
+        const int   level = a_player->GetLevel();
+        const float worn = target->CalcArmorRating();
+        const float resist = values->GetActorValue(RE::ActorValue::kDamageResist);
+        const float armor = (std::max)({ 0.0f, worn, resist });
+        const float damage = Damage::Thrown(Damage::Punch(unarmed), impact.speed, impact.mass, a_drunk, level, armor) * sneak;
         if (damage <= 0.0f) {
             SKSE::log::info("combat: a throw at {:.1f} m/s bounced off {} harmlessly", impact.speed, NameOf(target));
             return;
         }
+        const float health = values->GetActorValue(RE::ActorValue::kHealth);
         caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
+        lastHit = { lastHit.count + 1, target->GetFormID(), true, damage, unarmed, a_drunk, impact.speed, sneak, impact.mass, 0.0f, level, armor };
         if (sneak > 1.0f) {
             RE::SendHUDMessage::ShowHUDMessage(fmt::format("Sneak attack for {:.1f}x damage", sneak).c_str());
         }
-        SKSE::log::info("combat: the player's throw at {:.1f} m/s hit {} for {:.0f} of {:.0f} max health (from sneak {}, its detection level {}, x{:.1f})", impact.speed,
-            NameOf(target), damage, max, sneaking, detection, sneak);
+        SKSE::log::info("combat: the player's throw at {:.1f} m/s ({:.2f} kg, x{:.2f} by weight, level {} x{:.1f}, drunk {:.2f} x{:.2f}, armor {:.0f} worn, {:.0f} resist x{:.2f}) "
+                        "hit {} for {:.0f}, it had {:.0f} of {:.0f} max health (from sneak {}, its detection level {}, x{:.1f})",
+            impact.speed, impact.mass, Damage::ThrownMass(impact.mass), level, Damage::ThrownLevel(level), a_drunk, Damage::DrunkThrow(a_drunk), worn, resist,
+            Damage::ArmorTaken(armor), NameOf(target), damage, health, max, sneaking, detection, sneak);
+        // Archery experience, as a bow shot would give (Damage::ThrownSkillUse).
+        const float use = Damage::ThrownSkillUse(Damage::Punch(unarmed), impact.speed, impact.mass);
+        auto*       skills = a_player->GetInfoRuntimeData().skills;
+        auto*       archery = skills && skills->data ? &skills->data->skills[RE::PlayerCharacter::PlayerSkills::Data::Skill::kArchery] : nullptr;
+        const float before = archery ? archery->xp : 0.0f;
+        a_player->AddSkillExperience(RE::ActorValue::kArchery, use);
+        SKSE::log::info("combat: archery +{:.1f} skill use: level {:.0f}, experience {:.1f} -> {:.1f} of {:.1f}", use,
+            a_player->AsActorValueOwner()->GetBaseActorValue(RE::ActorValue::kArchery), before, archery ? archery->xp : 0.0f,
+            archery ? archery->levelThreshold : 0.0f);
     }
 
     void OnHorn(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
@@ -674,9 +736,11 @@ namespace PerkeleRim::Combat
             return;
         }
         // The player sits in the vehicle, so everything is measured from it. Each actor in the way
-        // dives aside out of the lane (Damage::HornDodge, its ragdoll thrown by Throws).
+        // close by dives aside out of the lane (Damage::HornDodge, its ragdoll thrown by Throws); at
+        // speed the lane is longer (Damage::HornReach) and civilians further along it flee (People).
         const auto at = a_player->GetPosition();
-        int        scared = 0;
+        int        scared = 0, fled = 0;
+        const auto why = fmt::format("the horn at {:.0f} km/h", horn.speed * 3.6f);
         for (auto& handle : lists->highActorHandles) {
             auto actor = handle.get();
             if (!Standing(actor.get())) {
@@ -684,8 +748,12 @@ namespace PerkeleRim::Combat
             }
             const auto pos = actor->GetPosition();
             const float dx = pos.x - at.x, dy = pos.y - at.y;
-            if (!Damage::InHornPath(dx, dy, horn.direction[0], horn.direction[1]) ||
-                Damage::BulkOf(MassOf(actor.get()), IsDragon(actor.get())) == Damage::Bulk::kHuge) {
+            const auto  reaction = Damage::HornReactionOf(dx, dy, horn.direction[0], horn.direction[1], horn.speed);
+            if (reaction == Damage::HornReaction::kNone || Damage::BulkOf(MassOf(actor.get()), IsDragon(actor.get())) == Damage::Bulk::kHuge) {
+                continue;
+            }
+            if (reaction == Damage::HornReaction::kFlee) {
+                fled += People::Flee(a_player, actor.get(), at, horn.direction[0], horn.direction[1], why.c_str()) ? 1 : 0;
                 continue;
             }
             // A dive already asked for (not a ragdoll yet, so still Standing) isn't asked again.
@@ -710,7 +778,55 @@ namespace PerkeleRim::Combat
                     diving ? " (already diving)" : "");
             }
         }
-        SKSE::log::info("combat: the player honked at {:.0f} km/h, {} actors in the way", horn.speed * 3.6f, scared);
+        SKSE::log::info("combat: the player honked at {:.0f} km/h, {} actors in the way dive aside, {} further along its {:.0f} unit lane flee",
+            horn.speed * 3.6f, scared, fled, Damage::HornReach(horn.speed));
+    }
+
+    void OnMiddleFinger(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
+    {
+        if (a_size < sizeof(Protocol::MiddleFinger)) {
+            SKSE::log::warn("combat: bad middle finger message ({} bytes)", a_size);
+            return;
+        }
+        Protocol::MiddleFinger finger;
+        std::memcpy(&finger, a_data, sizeof(finger));
+        auto* lists = RE::ProcessLists::GetSingleton();
+        if (!lists) {
+            return;
+        }
+        const auto at = a_player->GetPosition();
+        int        seen = 0;
+        for (auto& handle : lists->highActorHandles) {
+            auto  actor = handle.get();
+            auto* person = actor.get();
+            if (!Standing(person) || !(person->IsGuard() || (state.jarls && person->IsInFaction(state.jarls)))) {
+                continue;
+            }
+            const auto pos = person->GetPosition();
+            if (!Finger::InView(pos.x - at.x, pos.y - at.y, finger.direction[0], finger.direction[1])) {
+                continue;
+            }
+            bool unused = false;
+            if (!person->HasLineOfSight(a_player, unused)) {
+                SKSE::log::info("combat: {} ({:08X}) is in front but doesn't see the finger", NameOf(person), person->GetFormID());
+                continue;
+            }
+            seen++;
+            auto* hold = person->GetCrimeFaction();
+            if (!hold) {
+                SKSE::log::info("combat: {} ({:08X}) saw the finger but answers to no hold", NameOf(person), person->GetFormID());
+                continue;
+            }
+            if (!state.fingered.Take(person->GetFormID(), state.clock)) {
+                SKSE::log::info("combat: {} ({:08X}) saw the finger again within a minute, no bounty", NameOf(person), person->GetFormID());
+                continue;
+            }
+            a_player->ModCrimeGoldValue(hold, false, Finger::kBounty);
+            RE::SendHUDMessage::ShowHUDMessage(fmt::format("{} didn't like the finger: {} gold bounty", NameOf(person), Finger::kBounty).c_str());
+            SKSE::log::info("combat: {} ({:08X}) saw the finger: {} gold bounty in {:08X}, now {}", NameOf(person), person->GetFormID(), Finger::kBounty,
+                hold->GetFormID(), a_player->GetCrimeGoldValue(hold));
+        }
+        SKSE::log::info("combat: the player gave the finger, {} guards or Jarls saw it", seen);
     }
 
     void Shouts(RE::PlayerCharacter* a_player)
@@ -725,19 +841,45 @@ namespace PerkeleRim::Combat
             state.shouts.Reset();
             state.watching = true;
         }
-        if (!state.shouts.Step(a_player->GetVoiceRecoveryTime())) {
+        // How far the shout got while charging: by the release frame Skyrim may have cleared it (as
+        // AhShitRim found), and a tap can be released before any frame sees it.
+        auto* process = a_player->GetActorRuntimeData().currentProcess;
+        auto* high = process ? process->high : nullptr;
+        if (high && high->currentShout) {
+            state.charging = high->currentShout;
+            if (high->currentShoutVariation < RE::TESShout::VariationID::kTotal) {
+                state.charged = static_cast<int>(high->currentShoutVariation);
+            }
+        }
+        const float recovery = a_player->GetVoiceRecoveryTime();
+        if (!state.shouts.Step(recovery)) {
             return;
         }
-        auto*                 shout = a_player->GetCurrentShout();
-        auto*                 process = a_player->GetActorRuntimeData().currentProcess;
-        const auto            variation = process && process->high ? process->high->currentShoutVariation : RE::TESShout::VariationID::kNone;
+        auto* shout = state.charging ? state.charging : a_player->GetCurrentShout();
+        float cooldowns[3] = {};
+        for (int i = 0; shout && i < 3; i++) {
+            cooldowns[i] = shout->variations[i].recoveryTime;
+        }
+        auto*                 values = a_player->AsActorValueOwner();
+        const float           mult = values ? values->GetActorValue(RE::ActorValue::kShoutRecoveryMult) : 1.0f;
         Protocol::PlayerShout message{};
         message.shout = shout ? shout->GetFormID() : 0;
         message.kind = Shout::KindOf(message.shout);
-        message.words = variation < RE::TESShout::VariationID::kTotal ? variation + 1 : 0;
+        message.words = Shout::Words(state.charged, cooldowns, mult, recovery);
+        // Drunk, the cooldown Skyrim just started is cut short (Damage::DrunkShoutCooldown), written
+        // straight to the recovery time: a PerkeleRim.esp spell on ShoutRecoveryMult lengthened it in
+        // game whichever sign it was cast with.
+        float cooldown = recovery;
+        if (state.drunk > 0.0f && high) {
+            cooldown = Damage::DrunkShoutCooldown(recovery, state.drunk);
+            high->voiceRecoveryTime = cooldown;
+        }
         const bool sent = LinkService::Get().Send(Protocol::MessageType::PlayerShout, &message, sizeof(message));
-        SKSE::log::info("combat: the player shouted {} ({:08X}, {} words){}", shout ? shout->GetFullName() : "?", message.shout,
-            message.words, sent ? "" : ", but the ring to MSC is full");
+        SKSE::log::info("combat: the player shouted {} ({:08X}, {} words{}), cooldown {:.1f} s (shout recovery x{:.2f}), drunk {:.2f}: {:.1f} s{}",
+            shout ? shout->GetFullName() : "?", message.shout, message.words, state.charged < 0 ? " by the cooldown" : "", recovery, mult, state.drunk, cooldown,
+            sent ? "" : ", but the ring to MSC is full");
+        state.charged = -1;
+        state.charging = nullptr;
     }
 
     void Guard(RE::PlayerCharacter* a_player, bool a_block, bool a_draw)
@@ -747,9 +889,10 @@ namespace PerkeleRim::Combat
             return;
         }
         // The drawn hands (fists, a weapon) would show in Skyrim's first person over MSC's own hands.
-        // Checked every frame: the model is rebuilt on equipment changes.
-        if (auto* firstPerson = a_player->Get3D(true); firstPerson && !firstPerson->GetAppCulled()) {
-            firstPerson->SetAppCulled(true);
+        // Checked every frame: the model is rebuilt on equipment changes. Its children are hidden,
+        // not the first-person 3D itself, which holds the drink Kumpo drinks (HeldDrinkView).
+        if (auto* firstPerson = a_player->Get3D(true)) {
+            ShowFirstPerson(firstPerson, false);
             state.culled = true;
         }
         // Drawing takes a moment; a block asked for meanwhile starts once the hands are out.
@@ -780,6 +923,7 @@ namespace PerkeleRim::Combat
         state.clock += a_delta;
         state.drunkAge += a_delta;
         const float level = (std::clamp)(a_drunk, 0.0f, Damage::kDrunkLevels);
+        state.drunk = level;
         const bool  on = state.drunkApplied > 0.0f;
         if (level <= 0.0f && !on) {
             return;
@@ -788,7 +932,7 @@ namespace PerkeleRim::Combat
             return;
         }
         auto* caster = a_player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
-        if (!caster || !state.drunkSpells[0] || !state.drunkSpells[1] || !state.drunkSpells[2]) {
+        if (!caster || std::ranges::any_of(state.drunkSpells, [](const RE::SpellItem* a_spell) { return a_spell == nullptr; })) {
             return;
         }
         if (level <= 0.0f) {
@@ -803,7 +947,8 @@ namespace PerkeleRim::Combat
         }
         const auto  buffs = Damage::Drunk(level);
         const float magnitudes[] = { buffs.armor, buffs.stamina, buffs.staminaRate };
-        for (int i = 0; i < 3; i++) {
+        static_assert(std::size(magnitudes) == kDrunkSpellCount);
+        for (std::size_t i = 0; i < kDrunkSpellCount; i++) {
             caster->CastSpellImmediate(state.drunkSpells[i], false, a_player, 1.0f, false, magnitudes[i], a_player);
         }
         // Logged per tenth of the way to full drunk. The values read are the player's before this
@@ -869,7 +1014,7 @@ namespace PerkeleRim::Combat
                 player->DrawWeaponMagicHands(false);
             }
             if (auto* firstPerson = player->Get3D(true); firstPerson && state.culled) {
-                firstPerson->SetAppCulled(false);
+                ShowFirstPerson(firstPerson, true);
             }
         }
         if (state.muted && state.muteVoice) {
@@ -878,6 +1023,8 @@ namespace PerkeleRim::Combat
         }
         state.muted = false;
         state.watching = false;
+        state.charged = -1;
+        state.charging = nullptr;
         state.culled = false;
         state.blocking = false;
         state.drew = false;

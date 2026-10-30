@@ -38,6 +38,7 @@ namespace PerkeleRim::ModelView
         struct State
         {
             Model::Assembler                                   assembler;
+            std::uint32_t                                      chunks = 0;  // taken so far (Chunks)
             bool                                               dropLogged = false;
             RE::NiPointer<RE::NiNode>                          templateModel;
             RE::BSTriShape*                                    templateShape = nullptr;
@@ -472,8 +473,14 @@ namespace PerkeleRim::ModelView
         return source;
     }
 
+    std::uint32_t Chunks()
+    {
+        return state.chunks;
+    }
+
     void OnChunk(const std::uint8_t* a_payload, std::uint32_t a_size)
     {
+        state.chunks++;
         switch (state.assembler.Add(a_payload, a_size)) {
         case Model::Assembler::Result::Partial:
             state.dropLogged = false;
@@ -550,6 +557,12 @@ namespace PerkeleRim::ModelView
     {
         const auto found = state.models.find(a_model);
         return found != state.models.end() ? &found->second->model.lights : nullptr;
+    }
+
+    const Model::Model* Get(std::uint32_t a_model)
+    {
+        const auto found = state.models.find(a_model);
+        return found != state.models.end() ? &found->second->model : nullptr;
     }
 
     void Tick(float a_delta)

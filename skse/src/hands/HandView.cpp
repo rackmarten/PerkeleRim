@@ -20,6 +20,7 @@ namespace PerkeleRim::HandView
             std::uint32_t width = 0, height = 0;
             int           serial = 0;
             bool          shown = false;
+            bool          menu = false;  // the texture holds MSC's options menu (kHandLayerMenu)
             std::uint32_t lastFrame = 0;
             float         sinceCopy = 0.0f;
 
@@ -108,9 +109,11 @@ namespace PerkeleRim::HandView
             state.sinceCopy += a_delta;
         }
         state.shown = !state.image.empty() && state.sinceCopy < kStaleSeconds;
+        state.menu = (a_layer->flags & Protocol::kHandLayerMenu) != 0;
     }
 
-    const std::string& Image() { return state.shown ? state.image : kNone; }
+    const std::string& Image() { return state.shown && !state.menu ? state.image : kNone; }
+    const std::string& MenuImage() { return state.shown && state.menu ? state.image : kNone; }
     std::uint32_t      Width() { return state.width; }
     std::uint32_t      Height() { return state.height; }
 

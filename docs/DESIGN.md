@@ -71,6 +71,7 @@ Alternatives considered: Motor Town (best trucks/drift, but early access and har
 | Player movement, crouch, vehicle physics, physics items | MSC |
 | Player health | Skyrim (MSC's player never dies while handed over; its deaths cost Skyrim health) |
 | Drunkenness, hunger, thirst, urine, fatigue | MSC |
+| Money | Skyrim (its gold; MSC's `PlayerMoney` follows both ways) |
 | Crime / bounty | Skyrim (native crime system) |
 | Rendering | Skyrim |
 
@@ -106,16 +107,20 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 | Feature | Implementation |
 |---|---|
 | Garage near Whiterun | Generated ESP (`tools/esp-gen`, Mutagen) with an open shed and plank walls from vanilla pieces, a pit on a low plinth the van parks on (stone walls, plank ramps), shelves at the back, spawn point in front, van marker on the pit. |
-| Finn's home | A plank shack with a usable bed next to the garage, in the exterior worldspace (no load screen). The first handover of a save wakes Finn up by the bed with Skyrim's fade up from black; the van waits on the pit. The first handover near the garage has MSC stock the shelves once per save (beer cases and food from MSC's store spawner, `StockShelves`); the SKSE cosave remembers both. |
+| Play mode | Loading a save hands the player to MSC by itself once the game has settled and MSC is in its game; without MSC Skyrim says so and waits for it. F10 is a debug toggle. See PROTOCOL.md, Handing over the player. |
+| Helgen intro | A new game is the intro: Kumpo drank one beer too many in MSC and wakes up in Skyrim's own Helgen cart. On the black opening MSC plays him snoring, then his hangover line (`hangover05`); after Ralof's "Hey, you. You're finally awake." he says Perkele (`swear09`). Skyrim fades up from black again and captions each line. A few seconds after the Perkele Skyrim fades to black and skips Helgen (`protocol/cpp/helgen_skip.h`, `skse/src/intro/HelgenSkip.cpp`): Kumpo, the default Nord named Kumpo, is let off the cart, Unbound completes and Helgen is left in ruins (MQ101DragonAttack's last stage), Before the Storm starts through vanilla's own skip stage of MQ102 (1, Hadvar, or 2, Ralof, by `HelgenSide` in the launcher's ini, copied to the plugin's), and he fades back in at the garage's spawn marker, where play mode hands over with the van on the pit. The shack's wake-up on a save's first handover plays the same hangover line. |
+| Finn's home | A plank shack with a usable bed next to the garage, in the exterior worldspace (no load screen). The first handover of a save (not a new game, which already woke him at the garage's spawn marker) wakes Finn up by the bed with Skyrim's fade up from black; the van waits on the pit. The first handover near the garage has MSC stock the shelves once per save (beer cases and food from MSC's store spawner, `StockShelves`); the SKSE cosave remembers both. |
 | Pre-built car | Save with a finished Satsuma, or start with Hayosiko van / Gifu / Kekmet, which are drivable from the start. |
 | Beer and emotes | MSC simulates; Skyrim draws arms/particles; drunk level drives Skyrim image-space effects (Skooma-style blur). |
+| Needs | MSC's needs count in Skyrim from MSC's red line (100) to its death line (200): starving drains health and can kill, fatigue slows stamina regen, stress punches harder, a full bladder slows the walk, dirt makes traders dearer. Kumpo's hands shake the longer he's been dry, a beer steadies them. See PROTOCOL.md, Needs. |
 | Crouch = sneak | MSC crouch → Skyrim player sneak state. |
 | Piss on Jarl → bounty | Skyrim traces the urine arc; on NPC hit, send an assault alarm credited to the player. |
 | Talking / quests | Activate key → Skyrim; dialogue, doors and quest pickups work natively. Quest items go into Skyrim's inventory through the activate pass-through. |
 | Damage to player | Skyrim health is authoritative. MSC's player can't die while handed over: a crash MSC would die of costs half of Skyrim's max health, falls cost Skyrim's vanilla fall damage. At 0, MSC's blood over the view and its death sound, then Skyrim's own death and reload. MSC's alcohol, cigarettes and food heal a share of it. |
 | Punching | MSC's own punch (Hit key, or left click with free hands) on a capsule of a Skyrim actor; Skyrim hits it as the player (Skyrim's unarmed damage scaled up, more when drunk, stagger). See PROTOCOL.md, Combat. |
-| Thrown bottles | An item MSC's player throws passes through an actor's capsule → `ImpactEvent` → Skyrim hits it like a punch, by speed. Bottles fly twice as fast, as a ranged attack. Holding the right button charges the throw like a bow: the item is pulled back, a tap throws half MSC's distance and a second twice (speed x sqrt of that). Piss is poison: the stream on a capsule → `ImpactEvent` → a damage over time. The driven vehicle passes through capsules and runs them over: `ImpactEvent` → knocked over, damage by speed, lethal from 50 km/h. See PROTOCOL.md, Combat. |
+| Thrown bottles and junk | An item MSC's player throws passes through an actor's capsule → `ImpactEvent` → Skyrim hits it like a punch, by speed and weight. Key 3 takes a random piece out of Skyrim's inventory, empty bottles and junk (clutter, fruit and vegetables) alike: MSC throws a bottle-like body for it, Skyrim draws the item's own model on it and drops the real item where it lands. Bottles fly twice as fast, as a ranged attack. Holding the right button charges the throw like a bow: the item is pulled back, a tap throws half MSC's distance and a second twice (speed x sqrt of that). Piss is poison: the stream on a capsule → `ImpactEvent` → a damage over time. The driven vehicle passes through capsules and runs them over: `ImpactEvent` → knocked over, damage by speed, lethal from 50 km/h. See PROTOCOL.md, Combat. |
 | Running people over | Capsule hit → impulse + damage on the real NPC; Skyrim ragdoll does the rest. |
+| Cover behind vehicles | Each drawn vehicle gets keyframed Havok capsules in Skyrim's world, sized from MSC's model of it, that stop projectiles, line of sight and actors but not the player; out of the world at run-over speed. See PROTOCOL.md, Vehicle hitbox. |
 | Finnish summer | Force clear weather, long bright evenings; maybe a sauna in the garage. |
 
 ## 8. Target quests
@@ -131,7 +136,8 @@ One shared memory section: a versioned, packed layout in a C++ header, mirrored 
 
 - Vehicles can't go through load doors: park at city gates; the player walks in on foot.
 - The island has the land as a heightfield (0.9 m apart) and statics as their real collision; spheres and transform wrappers that don't read as a rotation are left out (counted in the log as skipped), and tree trunks are 8-sided prisms. Doors, gates and trapdoors are read again only once they have stopped moving (about 0.5 s after), so you can't slip through a double door while it is still opening as you can in Skyrim.
-- Skyrim inventory, barter and magic menus are unavailable while MSC controls the player.
+- While MSC controls the player, Skyrim's inventory (Tab) works for armor, food and drink, but weapons and spells can't be equipped, and the Favorites menu opens with R on foot (Q is MSC's lean).
+- MSC's own options menu opens in Skyrim with F1 (Skyrim pauses, MSC's world runs on as under its own menu); its quit buttons do nothing there, quit MSC from its window after Skyrim.
 - MSC is first-person only; third-person would need a body model and animation.
 - MSC vehicles are fragile and can kill the player in crashes; may need patching for Skyrim terrain.
 - Two games running at once: expect high CPU/GPU load.
@@ -187,7 +193,6 @@ PerkeleRim/
 - Best way to draw MSC arms and items in Skyrim's first-person view.
 - How to trigger MSC emotes from a cleaner input layer instead of raw keys.
 - Garage spot: (15170, -14516), flat tundra south-west of the Whiterun stables, open toward 31.7 degrees east of north; picked in game (the first pick at the carriage stop sat on the road). See tools/README.md to move it.
-- Whether to sync MSC money with Skyrim gold.
 
 ## 15. References
 

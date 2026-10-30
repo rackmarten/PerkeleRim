@@ -3,21 +3,29 @@
     Starts My Summer Car windowed at its lowest resolution and quality (640x480, "Fastest") with single-threaded
     rendering (-force-gfx-direct, which the hand layer needs) and clicks "Play!" on Unity's
     configuration dialog if it appears, then presses Space past the news screen, so a test run needs no clicks. Combine with the spike's auto-load
-    (<MSC>/PerkeleRim_autoload.txt) to go straight into the saved game.
+    (<MSC>/PerkeleRim_autoload.txt) to go straight into the saved game. MSC's own screen settings
+    are saved first and put back once it closes, as the player launcher does (launcher/install.ps1).
 .EXAMPLE
     scripts/launch-msc.ps1
     scripts/launch-msc.ps1 -Width 1280 -Height 720
     scripts/launch-msc.ps1 -Width 2560 -Height 1440 -Fullscreen -Quality Fantastic   # for filming MSC itself
+    scripts/launch-msc.ps1 -NoPlace   # leave the window where Windows puts it
+.NOTES
+    Windowed MSC is moved to the left of Skyrim's spot in the top right corner of the primary screen,
+    top edges aligned (see Set-GameWindowLayout in common.ps1). Fullscreen is never moved.
 #>
 param(
     [int] $Width = 640,
     [int] $Height = 480,
     [string] $Quality = 'Fastest',
     [switch] $Fullscreen,
+    [switch] $NoPlace,
     [int] $TimeoutSeconds = 60
 )
 
 . "$PSScriptRoot/common.ps1"
+. "$RepoRoot/launcher/checks.ps1"
+. "$RepoRoot/launcher/install.ps1"
 $msc = Get-RequiredSetting (Get-LocalConfig) 'MscPath'
 
 if (Get-Process mysummercar -ErrorAction SilentlyContinue) { throw 'My Summer Car is already running.' }
@@ -31,10 +39,14 @@ Add-Type -Namespace PerkeleRim -Name Win32 -MemberDefinition @'
 [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
 '@
 
+# Unity keeps the screen mode MSC ran in as its own settings when it quits: the player launcher's
+# hidden watcher puts the ones from before back once MSC has closed.
+[void] (Save-MscScreenSettings $MscRegistryKey $MscScreenBackup)
 $log = Join-Path $msc 'PerkeleRim_spike.log'
 $launched = Get-Date
 Start-Process -WorkingDirectory $msc (Join-Path $msc 'mysummercar.exe') `
-    -ArgumentList '-force-gfx-direct', '-screen-fullscreen', [int]$Fullscreen.IsPresent, '-screen-width', $Width, '-screen-height', $Height, '-screen-quality', $Quality
+    -ArgumentList '-force-gfx-direct', '-screen-fullscreen', ([int] $Fullscreen.IsPresent), '-screen-width', $Width, '-screen-height', $Height, '-screen-quality', $Quality
+Start-MscScreenWatcher (Join-Path $RepoRoot 'launcher/PerkeleRim.ps1')
 
 # Until the spike log says the mod has started (main menu reached):
 #  - click "Play!" on Unity's configuration dialog. The -screen-* arguments don't skip it in MSC's
@@ -44,10 +56,13 @@ Start-Process -WorkingDirectory $msc (Join-Path $msc 'mysummercar.exe') `
 #    the Amistech news screen waits for "press any key" before the menu (and MSCLoader) loads. A real
 #    key press on the focused window: with -force-gfx-direct, Unity ignores posted key messages.
 $clicked = $false
+$place = -not $NoPlace -and -not $Fullscreen
+$placed = $false
 $deadline = $launched.AddSeconds($TimeoutSeconds * 3)
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Milliseconds 500
     if ((Test-Path $log) -and (Get-Item $log).LastWriteTime -gt $launched) {
+        if ($place) { Set-GameWindowLayout }
         Write-Host 'Mod started (main menu reached).'
         return
     }
@@ -65,6 +80,7 @@ while ((Get-Date) -lt $deadline) {
     }
     $game = [PerkeleRim.Win32]::FindWindowEx([IntPtr]::Zero, [IntPtr]::Zero, 'UnityWndClass', 'My Summer Car')
     if ($game -ne [IntPtr]::Zero -and [PerkeleRim.Win32]::IsWindowVisible($game)) {
+        if ($place -and -not $placed) { Set-GameWindowLayout; $placed = $true }
         [PerkeleRim.Win32]::SetForegroundWindow($game) | Out-Null
         Start-Sleep -Milliseconds 200
         [PerkeleRim.Win32]::keybd_event(0x20, 0x39, 0, [UIntPtr]::Zero)  # Space down

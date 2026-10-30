@@ -20,12 +20,32 @@ namespace PerkeleRim::Combat
     void Update(RE::PlayerCharacter* a_player, std::uint32_t a_generation, float a_delta);
 
     // A PunchEvent message. a_drunk: MSC's drunk level (0..8), drunk punches hit harder.
-    void OnPunch(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk);
+    void OnPunch(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk, float a_stress);
 
     // An ImpactEvent message: a thrown item (hits like a punch, by its speed), the piss stream
     // (PerkeleRim.esp's poison) or the driven vehicle (knocked over, damage by speed) reached an
-    // actor, or MSC's push (staggered aside, no hit).
-    void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
+    // actor, or MSC's push (staggered aside, no hit). a_drunk: MSC's drunk level, drunk throws hit
+    // harder (Damage::DrunkThrow).
+    void OnImpact(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size, float a_drunk);
+
+    // The latest punch or throw Skyrim cast on an actor, for the hit test (debug/HitTest.h); count goes
+    // up with each one.
+    struct Hit
+    {
+        std::uint32_t count = 0;
+        RE::FormID    actor = 0;
+        bool          thrown = false;
+        float         damage = 0.0f;
+        float         unarmed = 0.0f;
+        float         drunk = 0.0f;
+        float         speed = 0.0f;
+        float         sneak = 1.0f;
+        float         mass = 0.0f;  // a throw's, kg (0: MSC didn't say)
+        float         stress = 0.0f;
+        int           level = 1;    // a throw's: the player's level
+        float         armor = 0.0f;  // a throw's: the target's armor rating
+    };
+    const Hit& LastHit();
 
     // MSC's player swung (left click or H while MSC has it): a destructible within reach in front
     // takes a hit, a spider web enough to cut it (Arvel's in Bleak Falls Barrow has to be), an oil pot
@@ -38,13 +58,20 @@ namespace PerkeleRim::Combat
     void OnThrown(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
 
     // A HornEvent message: the actors in the driven vehicle's way (Damage::InHornPath, all but huge
-    // ones) dive aside out of its lane as ragdolls (Damage::HornDodge).
+    // ones) dive aside out of its lane as ragdolls (Damage::HornDodge); at speed the lane is longer
+    // (Damage::HornReach) and civilians past the dive's reach flee instead (People::Flee).
     void OnHorn(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
+
+    // A MiddleFinger message: each guard or Jarl standing within a few meters in front of the player
+    // (Finger::InView) with it in sight adds a 5 gold bounty in its own hold (its crime faction),
+    // once per person per minute.
+    void OnMiddleFinger(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
 
     // Every frame MSC has the player: Skyrim's shouting (Z) works as in vanilla, aimed along MSC's
     // camera, but PerkeleRim.esp's shout and grunt lines aren't the player's while its
-    // PerkeleRimMuteVoice global is 1, so Skyrim's shout voice and grunts are muted; each shout released goes to MSC (PlayerShout),
-    // which yells instead.
+    // PerkeleRimMuteVoice global is 1, so Skyrim's shout voice and grunts are muted; each shout released goes to MSC (PlayerShout)
+    // with its words (seen while it charged, else by its cooldown), and MSC yells instead. Drunk, the
+    // cooldown it started is shortened (Damage::DrunkShoutCooldown).
     void Shouts(RE::PlayerCharacter* a_player);
 
     // Every frame MSC has the player: keeps its hands drawn (Skyrim only blocks with them out; fists
@@ -56,7 +83,8 @@ namespace PerkeleRim::Combat
 
     // Every frame MSC has the player: the drunker (a_drunk, MSC's level 0..8), the tougher. PerkeleRim.esp's
     // drunk spells on the player, armor, max stamina and stamina regen by Damage::Drunk, recast as the
-    // level moves and before they run out (10 s, so a save taken meanwhile doesn't keep them).
+    // level moves and before they run out (10 s, so a save taken meanwhile doesn't keep them). Shouts
+    // reads the level for the shout cooldown.
     void Drunk(RE::PlayerCharacter* a_player, float a_drunk, float a_delta);
 
     // Every frame MSC has the player: Finn fights with his fists. A weapon, spell or scroll in either

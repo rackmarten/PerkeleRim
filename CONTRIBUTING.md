@@ -34,7 +34,9 @@ Then `scripts/build.ps1`, `scripts/deploy-local.ps1` and `scripts/logs.ps1` cove
 1. Fork the repo and create a branch from `main`.
 2. Make your change, with tests where the code is testable outside the games (protocol layout, coordinate conversion, and so on).
 3. Make sure the CI build passes.
-4. Open a pull request using the template and describe how you tested it in-game.
+4. Open a pull request against `main` using the template and describe how you tested it in-game.
+
+`main` is the development version and `production` is what players get: releases are `main` merged into `production` and tagged there. A fix for the released version can branch from `production` and go back into it instead (a hotfix). Tags and releases are the maintainer's, and so is the rolling `dev` pre-release testers play between releases (`scripts/publish-dev.ps1`). The details are in [docs/DEV_SETUP.md](docs/DEV_SETUP.md#branches-and-releases).
 
 ## Commit messages
 

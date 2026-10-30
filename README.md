@@ -17,7 +17,7 @@
 
 **My Summer Car** and **Skyrim (Special or Anniversary Edition)** run at the same time. Skyrim owns the world and draws everything; My Summer Car runs hidden and simulates Kumpo, the vehicles, the beer and the piss. Drive the Hayosiko van across the Whiterun tundra, get drunk, punch a Thalmor, and take the Kekmet tractor up the Throat of the World.
 
-**v0.1.1.** It's playable start to finish, but it's young: expect bugs, and please [report them](#reporting-bugs).
+**v0.2.0.** It's playable start to finish, but it's young: expect bugs, and please [report them](#reporting-bugs).
 
 ## Install and play
 
@@ -30,20 +30,25 @@ You need:
 Then:
 
 1. Download `PerkeleRim-<version>.zip` from [Releases](https://github.com/rackmarten/PerkeleRim/releases/latest) and extract it anywhere (not inside a game folder).
-2. Double-click **Start PerkeleRim.bat**. It finds both games, checks for SKSE, Address Library and MSCLoader, installs or updates the mod, and starts both games (My Summer Car minimizes itself).
-3. Play in Skyrim only. Load the **PerkeleRim-Kumpo** save (Anniversary Edition only; on Special Edition start a new game or load your own) and press **F10** to hand over to My Summer Car. Leave MSC minimized.
+
+   Want to test what's coming before it's released? The [`dev` pre-release](https://github.com/rackmarten/PerkeleRim/releases/tag/dev) has a build of the development version, `PerkeleRim-dev-<date>-<commit>.zip`, updated now and then. It's untested and may break saves, so back up your My Summer Car and Skyrim saves first, and tell us what broke on [Discord](https://discord.gg/C687NV4dCp).
+2. Double-click **Start PerkeleRim.bat**. The first time, a short setup finds both games (or lets you pick their folders), checks for MSCLoader, SKSE and Address Library and opens the download pages of anything missing, and waits while you install it. Then, and every time after, it installs or updates the mod and starts both games (My Summer Car minimizes itself). No mod manager needed.
+3. Play in Skyrim only. Load the **PerkeleRim-Kumpo** save (Anniversary Edition only) or one of your own, and Kumpo goes over to My Summer Car by himself once it has loaded. Or start a new game: Kumpo drinks one beer too many in My Summer Car, wakes up in the Helgen cart, swears, and then wakes up at the garage instead of going through Helgen (Before the Storm sends him to Hadvar's side; `HelgenSide=Stormcloak` in the launcher's `PerkeleRim.ini`, next to `Start PerkeleRim.bat`, picks Ralof's). Leave MSC minimized.
 
 <details>
 <summary>What Start PerkeleRim.bat does, in detail</summary>
 
 Every time you run it, it:
 
-- finds both games in your Steam libraries, or asks for their folders once (saved in `PerkeleRim.ini` next to it; delete that file to look again),
-- tells you if SKSE, Address Library or MSCLoader is missing,
+- the first time, finds both games in your Steam libraries (a library on a drive that's gone is skipped) and asks you to confirm them, or to pick their folders (saved in `PerkeleRim.ini` next to it; delete that file to run setup again),
+- tells you if SKSE, Address Library or MSCLoader is missing (or is for another Skyrim version) and offers to open their download pages,
 - installs or updates the mod (the SKSE plugin and `PerkeleRim.esp` in Skyrim, enabled in `plugins.txt`; the MSCLoader mod where MSCLoader keeps mods),
 - gives My Summer Car a starter save (needs reset to fresh) when you have none, never over yours,
-- adds a starter Skyrim save, **PerkeleRim-Kumpo** (a male Nord just out of Helgen, before his first F10), next to your own saves, never over one (Anniversary Edition only: Special Edition 1.5.97 can't load it),
-- starts My Summer Car in a small window that minimizes itself and continues your MSC save, then starts Skyrim through SKSE.
+- adds a starter Skyrim save, **PerkeleRim-Kumpo** (a male Nord just out of Helgen, never handed over yet), next to your own saves, never over one (Anniversary Edition only: Special Edition 1.5.97 can't load it),
+- starts My Summer Car in a small window that minimizes itself and continues your MSC save, then starts Skyrim through SKSE,
+- puts My Summer Car's own resolution and quality back once MSC closes, so MSC started from Steam afterwards looks as you set it up.
+
+With **Mod Organizer 2** managing your Skyrim, setup asks once whether to start Skyrim through MO2 (`ModManager=MO2` in `PerkeleRim.ini`). Then your MO2 mods load too, Address Library may be an MO2 mod, PerkeleRim's Skyrim files still go in Skyrim's own Data folder (MO2 shows them to Skyrim) and `PerkeleRim.esp` is ticked in MO2's selected profile (while MO2 is open, the launcher asks you to tick it there). If an older PerkeleRim is an MO2 mod as well, the launcher tells you to untick it, since MO2 would load that one instead. Vortex needs nothing special.
 
 </details>
 
@@ -64,13 +69,13 @@ Tip: playing your own character? Make him a male Nord, like the starter save's K
 
 ## Keys
 
-F10 hands the player to My Summer Car and back. While MSC has the player you never need its window: WASD and the mouse are MSC's, Skyrim keeps Escape (pauses both games), Tab, M (map), F5/F9 and the console, and MSC's hand actions sit next to WASD:
+Loading a save hands the player to My Summer Car by itself; if MSC isn't running, Skyrim says so and Kumpo goes over once it is. F10 takes him back to Skyrim and hands him over again (handy for debugging). While MSC has the player you never need its window: WASD and the mouse are MSC's, Skyrim keeps Escape (pauses both games), Tab, M (map), F5/F9 and the console, and MSC's hand actions sit next to WASD:
 
 | Key | Action |
 |---|---|
 | Left / right click (free hands) | punch / guard (Skyrim blocks) |
-| V | middle finger |
-| Z | Skyrim's shout or power, as usual, but Kumpo yells it (Unrelenting Force: "Perkele!") |
+| V | middle finger (a guard or Jarl close by in front adds a 5 gold bounty) |
+| Z | Skyrim's shout or power, as usual, but Kumpo yells it (Unrelenting Force: "PER", "PER-KE", "PER-KE-LE!" by words; other shouts a Finnish word) |
 | Alt (tap) | piss: a quick tap starts it and Kumpo goes until he is empty (Alt+Tab doesn't start it) |
 | Middle click | swear |
 | C / B | smoke / zoom |
@@ -81,10 +86,15 @@ F10 hands the player to My Summer Car and back. While MSC has the player you nev
 | H (driving) | horn: people in the way run off |
 | F8 (driving) | chase camera for filming, on / off (hides the HUD) |
 | F11 | screenshot of both games, to Screenshots next to Start PerkeleRim.bat |
-| [ / ] / ; (on foot) | call the Jonnez moped / the Hayosiko van / the Kekmet tractor: it's parked in front of you, wherever it was |
-| Y, 3 to 8 | pocket (Skyrim's inventory, never runs out of beer, bottles, food or cigarettes); driving, 4 to 8 drink and eat |
+| [ / ] / ; / ' (on foot) | call the Jonnez moped / the Hayosiko van / the Kekmet tractor / the Gifu truck: it's parked in front of you, wherever it was |
+| Y | puts what Kumpo carries (or looks at) into Skyrim's inventory |
+| 1 to 8 | Skyrim's favorites hotkeys: at first 1 hands, 2 tools, 3 an empty bottle to throw, 4 MSC Beer, 5 to 8 MSC's food; rebind them, or any Skyrim food and drink, in Skyrim's Favorites menu (R on foot) |
 
 Driving, G and T are MSC's shift up and boost, X its clutch. MSC's own keys (N, P, O, J, I, ...) still work. Full table for both games: [docs/PROTOCOL.md, Input](docs/PROTOCOL.md#input).
+
+Kumpo eats and drinks Skyrim's food: it feeds his MSC hunger and thirst, and Skyrim's ale, mead, wine and Skooma get him drunk (a bottle leaves an empty one to throw). Skyrim's gold is his MSC money, both ways.
+
+His needs count past the red mark: starving or thirsty past 150 drains health and kills, tired slows stamina regen, stressed punches harder, a full bladder slows him down and dirty Kumpo pays more at traders. His hands shake the longer he's been dry; a beer or two steadies them.
 
 Kumpo fights with his fists: weapons and spells can't be equipped while MSC has the player, armor works as usual, and the drunker he is, the harder he hits and the more he can take. A punch also cuts spider webs and breaks destructibles in front of him (oil pots, barricades), and so does a thrown bottle that hits one. A throw from sneak at someone who hasn't noticed Kumpo is a sneak attack for double damage. Sitting in the Hayosiko van or the Kekmet is safe: nothing in Skyrim can hurt Kumpo there (the moped is no shelter, and a crash still hurts).
 
@@ -93,7 +103,7 @@ Kumpo fights with his fists: weapons and spells can't be equipped while MSC has 
 - Followers get in the way and are easy to run over. We don't recommend taking one along in v0.1.
 - Horses don't work properly, so don't ride them. Kumpo is a drunk, not a horse rider.
 - Water is mostly ignored: Kumpo walks on the bottom, Skyrim can drown him and vehicles drive through water. Wading in up to the waist washes him (dirtiness to 0), but there is no thirst from water.
-- Vehicles have no hitbox in Skyrim, so arrows and dragons pass through the van. Kumpo is safe inside the van and the Kekmet anyway.
+- Vehicles are solid in Skyrim only while they stand or crawl: parked, they stop arrows and spells and people walk around them, but from about 7 km/h they leave Skyrim's world so MSC can run people over, and arrows fly through them again. Melee and blasts can still reach Kumpo over the van's roof: Skyrim's body of him stands at full height in the seat. Kumpo is safe inside the van and the Kekmet anyway.
 
 ## Roadmap
 
@@ -101,14 +111,13 @@ No dates, just intentions. What comes next depends a lot on what people enjoy, s
 
 **Next**
 
-- **The Satsuma** on the Whiterun tundra, next to the van, moped and Kekmet.
+- **The Satsuma** on the Whiterun tundra, next to the van, moped, Kekmet and Gifu.
 - **Water and swimming**: swim instead of walking on the bottom, drink from lakes and rivers for thirst, and vehicles that don't just drive through water.
 
 **Later, maybe**
 
-- The Gifu truck, delivery jobs and traffic.
+- Delivery jobs for the Gifu, and traffic.
 - More Finnish summer: clear weather, long bright evenings, a sauna by the garage.
-- MSC money and Skyrim gold as one wallet.
 
 **Not planned**
 

@@ -6,9 +6,9 @@ namespace PerkeleRim.Game
 {
     // One MSC vehicle on the collision island, driven by PlayerLink (one instance per vehicle):
     //  - when the player is put down on a new anchor on foot, the vehicle is parked next to it, or
-    //    at the spot the anchor names for it (ParkAt); a vehicle on call (the moped, the Kekmet) is
-    //    instead put away until the player calls it (Summon), which parks it in front of the player
-    //    wherever it was;
+    //    at the spot the anchor names for it (ParkAt); a vehicle on call (the moped, the Kekmet, the
+    //    Gifu) is instead put away until the player calls it (Summon), which parks it in front of the
+    //    player wherever it was;
     //  - when the player sits in it, the vehicle carries the player to the new anchor instead;
     //  - while there is no island ground under it, it is held (kinematic) and keeps its speed for
     //    when the ground arrives, so it never falls off the edge of the streamed area;
@@ -23,7 +23,7 @@ namespace PerkeleRim.Game
         const float GroundCheckEvery = 0.25f;
         // Half width and half length (meters) of the ground that must be flat where a vehicle parks
         // (van sized; generous for the moped), and how uneven it may be.
-        static readonly Vector2 ParkHalfSize = new Vector2(1f, 2.3f);
+        static readonly Vector2 VanHalfSize = new Vector2(1f, 2.3f);
         // The parts MSC turns and spins per wheel, in VehicleState.wheelSpin order (the van's names).
         static readonly string[] WheelModels = { "wheelFL/tire", "wheelFR/tire", "wheelRL/tire", "wheelRR/tire" };
 
@@ -97,6 +97,17 @@ namespace PerkeleRim.Game
         public string ObjectName => objectName;
         public Vector3 Position => car != null ? car.position : Vector3.zero;
         public int Moves { get; private set; }
+        // The moped keeps a full tank (MSC fills it only from a two-stroke jerry can); the van, the
+        // Kekmet and the Gifu burn their diesel and fill up at Skyrim's pumps (FuelLink).
+        public bool EndlessFuel { get; set; }
+        // Litres, for a tank whose Data has no MaxCapacity (the Gifu's); 0 reads it from the tank.
+        public float TankSize { get; set; }
+        float capLimit;  // Fuel.PourLimit read from the cap trigger, 0 = none
+        bool capRead;    // read, or nothing to read
+        float nextCapRead;
+        // Half width and half length (meters) of the ground that must be flat where it parks, around
+        // its origin: van sized unless set (the Gifu's is longer).
+        public Vector2 ParkHalfSize { get; set; } = VanHalfSize;
         public string Contact(float within) => tune.Contact(within);
         // The driven vehicle's impacts this physics step (CrashSensor), for the engine's stall guard.
         public void Impacts(bool inImpact, float impact) => tune.Impacts(inImpact, impact);
@@ -110,11 +121,21 @@ namespace PerkeleRim.Game
             }
         }
 
+        // The active root object named name. GameObject.Find reads a '/' as a path, and the Gifu's
+        // name has one (GIFU(750/450psi)), so such a name is looked up among the rigidbodies instead.
+        static GameObject FindRoot(string name)
+        {
+            if (name.IndexOf('/') < 0) return GameObject.Find(name);
+            foreach (var body in UnityEngine.Object.FindObjectsOfType<Rigidbody>())
+                if (body.transform.parent == null && body.name == name) return body.gameObject;
+            return null;
+        }
+
         public void Find()
         {
             if (car != null || Time.realtimeSinceStartup < nextFind) return;
             nextFind = Time.realtimeSinceStartup + 1f;
-            var go = GameObject.Find(objectName);
+            var go = FindRoot(objectName);
             if (go == null) return;
             car = go.transform;
             body = go.GetComponent<Rigidbody>();
@@ -169,23 +190,104 @@ namespace PerkeleRim.Game
             }
         }
 
-        // Fills the tank to its capacity, so a vehicle from a fresh save runs. Logs the tank's
-        // floats, since their names were never dumped.
+        // The tank's level and capacity in litres; false when the vehicle or its tank isn't found.
+        public bool Tank(out float level, out float capacity)
+        {
+            HutongGames.PlayMaker.FsmFloat l, c;
+            FuelTank(out l, out c, null);
+            level = l != null ? l.Value : 0f;
+            if (c == null) ReadCapLimit();
+            capacity = Fuel.Capacity(c != null ? c.Value : float.NaN, capLimit > 0f ? capLimit : TankSize);
+            return l != null && capacity > 0f;
+        }
+
+        public void SetFuel(float level)
+        {
+            HutongGames.PlayMaker.FsmFloat l, c;
+            FuelTank(out l, out c, null);
+            if (l != null) l.Value = level;
+        }
+
+        // Which side the fuel filler is on (+1 right, -1 left) and how far ahead of the vehicle's
+        // middle (Skyrim units, negative behind); false without one.
+        public bool Filler(out int side, out float forward)
+        {
+            side = -1;
+            forward = 0f;
+            var filler = car != null ? car.Find("LOD/FuelFiller") : null;
+            if (filler == null) return false;
+            var local = car.InverseTransformPoint(filler.position);
+            side = local.x >= 0f ? 1 : -1;
+            forward = (float)(local.z * Coords.UnitsPerMeter);
+            return true;
+        }
+
+        // Logs the tank's floats, since their names were never dumped, and fills an endless tank to
+        // its capacity, so the moped from a fresh save runs.
         void Refuel()
         {
             HutongGames.PlayMaker.FsmFloat level, capacity;
             var names = new System.Text.StringBuilder();
             FuelTank(out level, out capacity, names);
             if (names.Length > 0) log($"vehicle: {driverName} fuel tank floats:{names}");
-            if (level != null && capacity != null && capacity.Value > 0f && level.Value < capacity.Value)
+            if (EndlessFuel && level != null && capacity != null && capacity.Value > 0f && level.Value < capacity.Value)
             {
                 level.Value = capacity.Value;
                 log($"vehicle: filled the {driverName} tank ({level.Name} = {capacity.Name} = {capacity.Value:0.##})");
             }
         }
 
-        // Fuel is endless: Skyrim has no fuel stations yet and MSC's gauge isn't drawn there, so the
-        // tank ran dry unseen. Topped up once a second.
+        // A tank without MaxCapacity (the Gifu's): the level its cap trigger stops pouring at
+        // (Fuel.PourLimit), read once its FSM is initialized (PlayMaker can't give a state's actions
+        // before: the Gifu's LOD is off until Kumpo is near), tried once a second until then.
+        void ReadCapLimit()
+        {
+            if (capRead || car == null || Time.realtimeSinceStartup < nextCapRead) return;
+            nextCapRead = Time.realtimeSinceStartup + 1f;
+            try { capLimit = CapLimit(); }
+            catch (Exception e)
+            {
+                capRead = true;
+                log($"vehicle: {driverName} cap trigger unreadable ({e.Message}), {TankSize:0} L assumed");
+            }
+        }
+
+        float CapLimit()
+        {
+            var cap = car.Find("LOD/FuelFiller/OpenCap");
+            if (cap == null) { capRead = true; return 0f; }
+            PlayMakerFSM trigger = null;
+            foreach (var fsm in cap.GetComponentsInChildren<PlayMakerFSM>(true))
+                if (fsm.FsmName == "Trigger") trigger = fsm;
+            if (trigger == null) { capRead = true; return 0f; }
+            if (trigger.Fsm == null || !trigger.Fsm.Initialized) return 0f;
+            capRead = true;
+            var floats = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, float>>();
+            var compares = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, float>>();
+            {
+                var fsm = trigger;
+                foreach (var f in fsm.FsmVariables.FloatVariables)
+                    floats.Add(new System.Collections.Generic.KeyValuePair<string, float>(f.Name, f.Value));
+                foreach (var state in fsm.FsmStates)
+                    foreach (var action in state.Actions ?? new HutongGames.PlayMaker.FsmStateAction[0])
+                    {
+                        if (action == null || action.GetType().Name != "FloatCompare") continue;
+                        var one = action.GetType().GetField("float1")?.GetValue(action) as HutongGames.PlayMaker.FsmFloat;
+                        var two = action.GetType().GetField("float2")?.GetValue(action) as HutongGames.PlayMaker.FsmFloat;
+                        if (one != null && two != null && one.UseVariable && !two.UseVariable)
+                            compares.Add(new System.Collections.Generic.KeyValuePair<string, float>(one.Name, two.Value));
+                    }
+            }
+            float limit = Fuel.PourLimit(floats, compares);
+            var seen = new System.Text.StringBuilder();
+            foreach (var f in floats) seen.Append($" {f.Key}={f.Value:0.##}");
+            foreach (var c in compares) seen.Append($" {c.Key}<>{c.Value:0.##}");
+            log($"vehicle: {driverName} tank has no capacity, its cap trigger has{seen}: " +
+                (limit > 0f ? $"{limit:0.#} L" : $"nothing, {TankSize:0} L assumed"));
+            return limit;
+        }
+
+        // The moped's fuel is endless (EndlessFuel): topped up once a second.
         void KeepFull()
         {
             HutongGames.PlayMaker.FsmFloat level, capacity;
@@ -297,6 +399,46 @@ namespace PerkeleRim.Game
         }
 
         const float AwayHeight = -5000f;
+
+        // Tows the vehicle onto spot (Skyrim world space, on the ground) facing heading, wherever it
+        // was: a dry tank called at a pump (FuelLink). Not while the player sits in it.
+        public void TowTo(Transform player, Vec3 spot, float heading)
+        {
+            if (car == null || player == null || Carries(player)) return;
+            away = false;
+            spotGeneration = island.Generation;
+            this.spot = spot;
+            spotHeading = heading;
+            Park(player, Vector3.zero);
+            nextGroundCheck = 0f;
+            log($"vehicle: towed the {driverName} to ({spot.x:0},{spot.y:0},{spot.z:0}) heading {heading:0.00}, parking brake {ParkingBrake()}");
+        }
+
+        // Pulls the parking brake the way its lever does (Dashboard/ParkingBrake :: Use, docs/FSM_MAP.md):
+        // the van's knob all the way out (KnobPos 0.1, which its Brake FSM reads every frame), the
+        // Kekmet's lever flipped by MSC's own Flip state when it is off. Says what it did, for the log.
+        string ParkingBrake()
+        {
+            var lever = car != null ? (car.Find("LOD/Dashboard/ParkingBrake") ?? car.Find("Dashboard/ParkingBrake")) : null;
+            PlayMakerFSM use = null;
+            if (lever != null)
+                foreach (var f in lever.GetComponents<PlayMakerFSM>())
+                    if (f.FsmName == "Use") use = f;
+            if (use == null) return "missing";
+            var knob = use.FsmVariables.FindFsmFloat("KnobPos");
+            if (knob != null)
+            {
+                knob.Value = 0.1f;
+                return "pulled";
+            }
+            var on = use.FsmVariables.FindFsmBool("Brake");
+            if (on == null) return "unknown";
+            if (on.Value) return "already on";
+            var flip = use.Fsm.GetState("Flip");
+            if (flip == null || SaveSync.SwitchState == null) return "no Flip state";
+            SaveSync.SwitchState.Invoke(use.Fsm, new object[] { flip });
+            return "flipped on";
+        }
 
         // Where the vehicle is and how it moves, for a snapshot (SaveSync); null when not found.
         // Put away, it is where it was left.
@@ -593,7 +735,7 @@ namespace PerkeleRim.Game
             }
             Remember();
             tune.Update(driven);
-            if (Time.realtimeSinceStartup >= nextTopUp)
+            if (EndlessFuel && Time.realtimeSinceStartup >= nextTopUp)
             {
                 nextTopUp = Time.realtimeSinceStartup + 1f;
                 KeepFull();

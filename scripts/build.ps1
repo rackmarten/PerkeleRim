@@ -5,12 +5,14 @@
     scripts/build.ps1                       # both, Release
     scripts/build.ps1 -Target skse -Configuration Debug
     scripts/build.ps1 -Target msc -UseStubs # C# mod against stub DLLs, no game install needed
+    scripts/build.ps1 -Version 0.2.0-dev.20261029  # the MSC mod's version (scripts/publish-dev.ps1); default its csproj's
     powershell.exe -File scripts/build.ps1  # from WSL
 #>
 param(
     [ValidateSet('all', 'skse', 'msc')] [string] $Target = 'all',
     [ValidateSet('Release', 'Debug')] [string] $Configuration = 'Release',
-    [switch] $UseStubs
+    [switch] $UseStubs,
+    [string] $Version
 )
 
 . "$PSScriptRoot/common.ps1"
@@ -41,6 +43,7 @@ if ($Target -in 'all', 'skse') {
 if ($Target -in 'all', 'msc') {
     $dotnetArgs = @('build', (Join-Path $RepoRoot 'msc/PerkeleRim.csproj'), '-c', $Configuration, '-nologo')
     if ($UseStubs) { $dotnetArgs += '-p:UseStubs=true' }
+    if ($Version) { $dotnetArgs += "-p:Version=$Version" }
     Invoke-Checked dotnet $dotnetArgs
     $outDir = if ($UseStubs) { "msc/bin/stubs/$Configuration" } else { "msc/bin/$Configuration" }
     Write-Host "MSCLoader mod: $outDir/net35/PerkeleRim.dll"

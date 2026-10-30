@@ -46,3 +46,124 @@ function Enter-DevShell {
     Import-Module (Join-Path $vsPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
     Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
 }
+
+# --- Game window placement ---------------------------------------------------------------------
+# Dev layout on the primary screen: Skyrim in the top right corner, My Summer Car directly left of it
+# with the top edges aligned. Positions come from the screen's working area (taskbar excluded) and
+# the windows' actual outer sizes, so borders, title bars and other resolutions all work.
+
+function Initialize-WindowPlacement {
+    if (-not ('PerkeleRim.WinPlace' -as [type])) {
+        Add-Type -Namespace PerkeleRim -Name WinPlace -MemberDefinition @'
+[StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+[DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+[DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+[DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+[DllImport("user32.dll")] static extern bool SystemParametersInfo(uint action, uint param, out RECT r, uint flags);
+[DllImport("user32.dll")] static extern bool AdjustWindowRectEx(ref RECT r, uint style, bool menu, uint exStyle);
+[DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+[DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT r, int size);
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);
+
+public static void MakeDpiAware() { SetProcessDPIAware(); }
+public static bool Visible(IntPtr h) { return h != IntPtr.Zero && IsWindowVisible(h); }
+
+// Working area of the primary screen (taskbar excluded): left, top, right, bottom.
+public static int[] WorkArea() {
+    RECT r; SystemParametersInfo(0x30, 0, out r, 0);   // SPI_GETWORKAREA
+    return new[] { r.L, r.T, r.R, r.B };
+}
+
+// The window's visible bounds: left, top, right, bottom. Win10+ adds invisible resize borders to the
+// window rect, which would leave a gap between windows placed edge to edge.
+public static int[] VisibleRect(IntPtr h) {
+    RECT r;
+    if (DwmGetWindowAttribute(h, 9, out r, 16) != 0) GetWindowRect(h, out r);   // DWMWA_EXTENDED_FRAME_BOUNDS
+    return new[] { r.L, r.T, r.R, r.B };
+}
+
+// Outer size of a captioned window with the given client size (used before the window exists).
+public static int[] OuterSize(int w, int h) {
+    RECT r = new RECT { L = 0, T = 0, R = w, B = h };
+    AdjustWindowRectEx(ref r, 0x00C80000, false, 0);   // WS_CAPTION | WS_SYSMENU
+    return new[] { r.R - r.L, r.B - r.T };
+}
+
+// Moves the window so its visible top left lands on (x, y). No resize, no z-order or focus change.
+public static void MoveVisible(IntPtr h, int x, int y) {
+    RECT win; GetWindowRect(h, out win);
+    int[] vis = VisibleRect(h);
+    SetWindowPos(h, IntPtr.Zero, x - (vis[0] - win.L), y - (vis[1] - win.T), 0, 0, 0x0001 | 0x0004 | 0x0010);   // NOSIZE | NOZORDER | NOACTIVATE
+}
+'@
+    }
+    [PerkeleRim.WinPlace]::MakeDpiAware()
+}
+
+function Get-MscWindow {
+    Initialize-WindowPlacement
+    $h = [PerkeleRim.WinPlace]::FindWindowEx([IntPtr]::Zero, [IntPtr]::Zero, 'UnityWndClass', 'My Summer Car')
+    if ([PerkeleRim.WinPlace]::Visible($h)) { return $h }
+    return [IntPtr]::Zero
+}
+
+function Get-SkyrimWindow {
+    Initialize-WindowPlacement
+    foreach ($p in Get-Process SkyrimSE -ErrorAction SilentlyContinue) {
+        if ([PerkeleRim.WinPlace]::Visible($p.MainWindowHandle)) { return $p.MainWindowHandle }
+    }
+    return [IntPtr]::Zero
+}
+
+# Waits until the window exists, is visible and has stopped changing size (games resize it while starting).
+# Returns $null on timeout.
+function Wait-GameWindow([scriptblock] $Find, [int] $TimeoutSeconds = 60) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $last = ''
+    while ((Get-Date) -lt $deadline) {
+        $h = & $Find
+        if ($h -ne [IntPtr]::Zero) {
+            $now = [PerkeleRim.WinPlace]::VisibleRect($h) -join ','
+            if ($now -eq $last) { return $h }
+            $last = $now
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    return $null
+}
+
+# Skyrim's windowed size from SkyrimPrefs.ini, as a guess for where to put MSC before Skyrim is up.
+function Get-SkyrimPrefsSize {
+    $ini = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\Skyrim Special Edition\SkyrimPrefs.ini'
+    $w = 1920; $h = 1080
+    if (Test-Path $ini) {
+        $text = Get-Content -Raw $ini
+        if ($text -match '(?m)^iSize W=(\d+)') { $w = [int]$Matches[1] }
+        if ($text -match '(?m)^iSize H=(\d+)') { $h = [int]$Matches[1] }
+    }
+    return [PerkeleRim.WinPlace]::OuterSize($w, $h)
+}
+
+# Puts whichever of the two game windows are up in the dev layout. Safe to call again as windows appear:
+# with Skyrim not up yet, MSC goes where it will be once Skyrim opens (its width comes from SkyrimPrefs.ini).
+function Set-GameWindowLayout {
+    Initialize-WindowPlacement
+    $work = [PerkeleRim.WinPlace]::WorkArea()
+    $skyrim = Get-SkyrimWindow
+    if ($skyrim -ne [IntPtr]::Zero) {
+        $r = [PerkeleRim.WinPlace]::VisibleRect($skyrim)
+        $sw = $r[2] - $r[0]
+    } else {
+        $sw = (Get-SkyrimPrefsSize)[0]
+    }
+    $skyLeft = $work[2] - $sw
+    $skyTop = $work[1]
+    if ($skyrim -ne [IntPtr]::Zero) { [PerkeleRim.WinPlace]::MoveVisible($skyrim, $skyLeft, $skyTop) }
+
+    $msc = Get-MscWindow
+    if ($msc -ne [IntPtr]::Zero) {
+        $r = [PerkeleRim.WinPlace]::VisibleRect($msc)
+        $x = [Math]::Max($work[0], $skyLeft - ($r[2] - $r[0]))
+        [PerkeleRim.WinPlace]::MoveVisible($msc, $x, $skyTop)
+    }
+}

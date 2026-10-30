@@ -31,6 +31,8 @@ namespace PerkeleRim.Spike
     //   island steps [m]     log the island triangles over 30 degrees within m (8) of the player whose top is within 1 m of the feet
     //   island why [m]       what the ramp pass made of the steep triangles within m (2) of where MSC's camera looks
     //   global <name> <v>    set a global PlayMaker float or int (global PlayerUrine 100, global PlayerCigarettes 20)
+    //   drunk <level>        MSC's drunk level (0..8), set at its source PlayerDrunkAdjusted (by PlayerWeight),
+    //                        since a global PlayerDrunk is overwritten from it the next frame
     //   fsmvar <object> <fsm> <var> <v>  set a float, int or bool of every FSM of that name on objects of
     //                        that name (fsmvar FPSCamera Hangover TimeLeft 0 ends MSC's hangover shaking)
     //   spawn <product> [n]  a shop product in front of the player, from its Spawner/CreateItems FSM
@@ -317,6 +319,18 @@ namespace PerkeleRim.Spike
             string[] lines;
             try { lines = File.ReadAllLines(cmdPath); File.Delete(cmdPath); }
             catch (Exception e) { SpikeLog.Write("cmd: read failed " + e.Message); return; }
+            Execute(lines);
+        }
+
+        // A command line from Skyrim's hit test (the DebugCommand message), as if it came in the file.
+        public static void Run(string line)
+        {
+            if (instance != null) instance.Execute(new[] { line });
+            else SpikeLog.Write("cmd: no spike host for '" + line + "'");
+        }
+
+        void Execute(string[] lines)
+        {
             if (lines.Length == 0) return;
 
             var words = lines[0].Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
@@ -403,6 +417,19 @@ namespace PerkeleRim.Spike
                         if (globalInt != null) globalInt.Value = int.Parse(words[2], CultureInfo.InvariantCulture);
                         SpikeLog.Write(global != null ? $"cmd: {words[1]} = {global.Value}"
                             : globalInt != null ? $"cmd: {words[1]} = {globalInt.Value}" : "cmd: no such global float or int");
+                        break;
+                    case "drunk":  // "drunk 2": MSC's drunk level 2, set at its source (PlayerDrunkAdjusted, by PlayerWeight; docs/FSM_MAP.md)
+                        var drunkGlobals = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
+                        var adjusted = drunkGlobals.FindFsmFloat("PlayerDrunkAdjusted");
+                        var weight = drunkGlobals.FindFsmFloat("PlayerWeight");
+                        var level = drunkGlobals.FindFsmFloat("PlayerDrunk");
+                        float wanted;
+                        if (words.Length < 2 || adjusted == null || level == null || !float.TryParse(words[1], NumberStyles.Float, CultureInfo.InvariantCulture, out wanted))
+                        { SpikeLog.Write("cmd: drunk <level 0..8>, in game"); break; }
+                        wanted = Mathf.Clamp(wanted, 0f, 8f);
+                        adjusted.Value = Mathf.Clamp(wanted * (weight != null && weight.Value > 0f ? weight.Value / 83f : 1f), 0f, 8f);
+                        level.Value = wanted;
+                        SpikeLog.Write($"cmd: drunk {wanted}, PlayerDrunkAdjusted = {adjusted.Value}");
                         break;
                     case "spawn":
                         if (words.Length < 2) { SpikeLog.Write("cmd: spawn <product> [count]"); break; }
@@ -502,10 +529,16 @@ namespace PerkeleRim.Spike
                     case "grunt":  // what Skyrim's PlayerDeath plays
                         PerkeleRim.Game.DeathGuard.PlayDeathSound();
                         break;
-                    case "shout":  // "shout 1": what Skyrim's PlayerShout plays for Unrelenting Force, "shout 0" for any other
+                    case "shout":  // "shout 13E07 2": what Skyrim's PlayerShout plays for that shout (form id, hex) and word count
                         var shoutLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
                         if (shoutLink == null) SpikeLog.Write("cmd: no PlayerLink");
-                        else shoutLink.Yell(words.Length > 1 ? uint.Parse(words[1]) : 1u);
+                        else shoutLink.Yell(words.Length > 1 ? uint.Parse(words[1], System.Globalization.NumberStyles.HexNumber) : 0x13E07u,
+                            words.Length > 2 ? uint.Parse(words[2]) : 3u);
+                        break;
+                    case "intro":  // "intro 1": what Skyrim's IntroCue plays as a new game opens, "intro 2" after Ralof's line, "intro 3" the shack
+                        var introLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (introLink == null) SpikeLog.Write("cmd: no PlayerLink");
+                        else introLink.Intro(words.Length > 1 ? uint.Parse(words[1]) : 1u);
                         break;
                     case "hurt":  // "hurt 0": what Skyrim's PlayerHurt plays for a hit (1 blocked, 2 fall, 3 crash, 4 low health), "hurt 2 0.3" a bad fall
                         var hurtLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();

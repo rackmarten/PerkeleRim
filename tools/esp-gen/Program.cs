@@ -291,17 +291,120 @@ foreach (var p in markers.Concat(pieces))
     Console.WriteLine($"  {p.FormKey.ID:X3} {name,-16} ({at.Position.X:0},{at.Position.Y:0},{at.Position.Z:0}) rot {at.Rotation.Z:0.000}");
 }
 
+// ---- Gas stations ----
+//
+// Dwemer oil pumps beside Skyrim's main roads (docs/PROTOCOL.md, "Fuel"): a dwemer boiler as the
+// pump, open to the sky so any vehicle fits beside it, its pipes running out both sides and bending
+// down into the ground. Each station's frame: origin in front of the boiler, +Y toward the road, +X
+// along it. Sites picked from Skyrim.esm's road meshes, terrain and
+// references (flat ground about 10 m off a road, nothing standing there). From 0xA00, clear of the
+// garage's ids. The SKSE plugin reads the pump spots (where Kumpo stands, facing the boiler) in
+// order from the PerkeleRimFuelPumps list (skse/src/fuel/Fuel.cpp).
+var stations = new (string Name, float X, float Y, float ToRoad)[]
+{
+    ("Whiterun", 13177f, -13572f, 6f),          // the road west of the garage
+    ("Dragon Bridge", -97272f, 76515f, -121f),  // south-east of the village
+    ("Windhelm", 138738f, 26398f, 150.7f),      // east of the bridge below the city, the boiler where the user stood in game (0.7 m on, clear of the fish racks)
+    ("Ivarstead", 82640f, -74393f, -121f),      // on the road on to Riften
+};
+const float pumpY = -150f;        // the boiler's middle (DwePipeBoiler02: 96 around, 383 tall)
+const float pumpSpotY = 30f;      // where Kumpo stands to use it, 84 in front of the boiler
+const float pipeY = pumpY - 60f;  // the pipes along the boiler's back
+const float pipeRun = 192f;       // DwePipe1way01's middle off the boiler's (it is 382 long, its end inside the boiler)
+const float elbowAt = 574f;       // DwePipe2way01's corner: its arms reach 191 to the pipe's end and 192 down
+const float markerY = 300f;       // the map marker, toward the road
+var mapMarker = new FormKey(skyrim.ModKey, 0x000010);
+
+nextId = 0xA00;
+var pumpSpots = new List<PlacedObject>();
+var stationMarkers = new List<PlacedObject>();
+var stationPieces = new List<PlacedObject>();
+foreach (var st in stations)
+{
+    float syaw = st.ToRoad * MathF.PI / 180f;
+    (float X, float Y) At(float x, float y)
+    {
+        float c = MathF.Cos(syaw), s = MathF.Sin(syaw);
+        return (st.X + x * c + y * s, st.Y - x * s + y * c);
+    }
+    float Ground(float x, float y) { var w = At(x, y); return terrain.HeightAt(w.X, w.Y); }
+    PlacedObject Put(FormKey baseObject, float x, float y, float z, float rot, bool persistent = false)
+    {
+        var w = At(x, y);
+        var placed = new PlacedObject(new FormKey(mod.ModKey, nextId++), SkyrimRelease.SkyrimSE)
+        {
+            Base = new FormLinkNullable<IPlaceableObjectGetter>(baseObject),
+            Placement = new Placement { Position = new P3Float(w.X, w.Y, z), Rotation = new P3Float(0f, 0f, Normalize(rot + syaw)) },
+        };
+        if (persistent) placed.MajorRecordFlagsRaw |= (int)PlacedObject.StaticMajorFlag.Persistent;
+        return placed;
+    }
+
+    // A tilted piece: e maps the mesh's axes into the station's frame (columns X, Y, Z). Its axes in
+    // the world are read back into angles the way Angles above does (Z first, then Y, then X; vanilla
+    // dwemer pipe joints only meet under that order).
+    PlacedObject PutTurned(FormKey baseObject, float x, float y, float z, float[,] e)
+    {
+        float c = MathF.Cos(-syaw), s = MathF.Sin(-syaw);
+        var m = new float[3, 3];
+        for (int j = 0; j < 3; j++)
+        {
+            m[0, j] = c * e[0, j] - s * e[1, j];
+            m[1, j] = s * e[0, j] + c * e[1, j];
+            m[2, j] = e[2, j];
+        }
+        float ry = MathF.Asin(Math.Clamp(m[0, 2], -1f, 1f)), rx = MathF.Atan2(-m[1, 2], m[2, 2]), rz = MathF.Atan2(-m[0, 1], m[0, 0]);
+        var placed = Put(baseObject, x, y, z, 0f);
+        placed.Placement!.Rotation = new P3Float(Normalize(-rx), Normalize(-ry), Normalize(-rz));
+        return placed;
+    }
+
+    // Persistent: the pump spot (MSC needs it wherever the player is) and the map marker.
+    var spot = Put(marker, 0f, pumpSpotY, Ground(0f, pumpSpotY), MathF.PI, persistent: true);  // facing -Y, the boiler
+    spot.EditorID = $"PerkeleRimFuelPump{pumpSpots.Count}";
+    pumpSpots.Add(spot);
+    stationMarkers.Add(spot);
+    var onMap = Put(mapMarker, 0f, markerY, Ground(0f, markerY), 0f, persistent: true);
+    onMap.MapMarker = new MapMarker { Flags = MapMarker.Flag.Visible, Name = $"{st.Name} Dwemer Oil", Type = MapMarker.MarkerType.Smelter };
+    stationMarkers.Add(onMap);
+
+    float pumpGround = Ground(0f, pumpY);
+    stationPieces.Add(Put(Base(skyrim.Statics, "DwePipeBoiler02"), 0f, pumpY, pumpGround - 10f, 0f));
+    // A gear box on the boiler's front at hand height.
+    stationPieces.Add(Put(Base(skyrim.Statics, "DwePipeGearAssembly02"), 0f, pumpY + 116f, pumpGround + 100f, 0f));
+    // A pipe out of each side, level, into an elbow whose other arm (the mesh's +Y) goes down into the
+    // ground; its +X arm points back along the pipe.
+    foreach (int side in new[] { 1, -1 })
+    {
+        float runTop = float.MinValue;
+        for (float x = 75f; x <= elbowAt + 52f; x += 32f)
+            for (float y = pipeY - 52f; y <= pipeY + 52f; y += 52f) runTop = Math.Max(runTop, Ground(side * x, y));
+        float elbowGround = Ground(side * elbowAt, pipeY);
+        float pipeZ = Math.Max(runTop + 70f, elbowGround + 110f);
+        if (pipeZ - 192f > elbowGround - 10f)
+            Console.WriteLine($"  warning: the {st.Name} pipe's elbow ({(side > 0 ? "+X" : "-X")}) ends {pipeZ - 192f - elbowGround:0} above the ground");
+        stationPieces.Add(Put(Base(skyrim.Statics, "DwePipe1way01"), side * pipeRun, pipeY, pipeZ, side > 0 ? 0f : MathF.PI));
+        var elbow = new float[,] { { -side, 0f, 0f }, { 0f, 0f, -side }, { 0f, -1f, 0f } };
+        stationPieces.Add(PutTurned(Base(skyrim.Statics, "DwePipe2way01"), side * elbowAt, pipeY, pipeZ, elbow));
+    }
+}
+
+foreach (var p in stationMarkers) persistentCell.Persistent.Add(p);
+foreach (var p in stationPieces)
+    Override(ExteriorAt(p.Placement!.Position.X, p.Placement.Position.Y)).Temporary.Add(p);
+foreach (var p in stationMarkers.Concat(stationPieces))
+{
+    var at = p.Placement!;
+    var name = cache.Resolve<IPlaceableObjectGetter>(p.Base.FormKey).EditorID;
+    Console.WriteLine($"  {p.FormKey.ID:X3} {name,-16} ({at.Position.X:0},{at.Position.Y:0},{at.Position.Z:0}) rot {at.Rotation.Z:0.000}");
+}
+uint stationsNextId = nextId;
+
 // ---- Drinks ----
 //
-// Fixed ids the SKSE plugin looks up (skse/src/drink/Drink.cpp, skse/src/pocket/Pocket.cpp), clear of
-// the garage's.
-//
-// The mead and ale that turn into MSC beer (the pocket's PerkeleRimBeer) when the player picks them up. Quest drinks
-// (MQ101JuniperMead, FreeformDragonBridgeMead) stay out: taking them away would break their quests.
-var drinks = new FormList(new FormKey(mod.ModKey, 0x900), SkyrimRelease.SkyrimSE) { EditorID = "PerkeleRimBeerDrinks" };
-foreach (var id in new[] { "FoodMead", "Ale", "FoodHonningbrewMead", "FoodBlackBriarMead", "FoodBlackBriarMeadPrivateReserve" })
-    drinks.Items.Add(new FormLink<ISkyrimMajorRecordGetter>(Base(skyrim.Ingestibles, id)));
-mod.FormLists.Add(drinks);
+// Fixed ids the SKSE plugin looks up (skse/src/drink/Drink.cpp), clear of the garage's. 0x900 was
+// PerkeleRimBeerDrinks (until protocol v43), the mead and ale that became MSC beer when picked up:
+// mead stays mead now and Kumpo drinks it in Skyrim (protocol/cpp/food.h).
 
 // MSC's drunk level as a blur with wobbling double vision. A 4 s loop the plugin retriggers, its
 // strength the drunk level; copied from a vanilla static blur so every other track stays neutral.
@@ -317,7 +420,6 @@ drunk.DoubleVisionStrength = Track((0f, 0.01f), (0.25f, 0.025f), (0.5f, 0.008f),
 var clear = System.Drawing.Color.FromArgb(0, 255, 255, 255);
 drunk.FadeColor = new ExtendedList<ColorFrame> { new ColorFrame { Time = 0f, Color = clear }, new ColorFrame { Time = 1f, Color = clear } };
 mod.ImageSpaceAdapters.Add(drunk);
-Console.WriteLine($"  900 {drinks.EditorID} ({drinks.Items.Count} drinks)");
 Console.WriteLine($"  901 {drunk.EditorID}");
 
 // ---- Combat ----
@@ -399,12 +501,26 @@ foreach (var (effect, spell) in new[] {
     DrunkBuff(0x913, "PerkeleRimDrunkStaminaRate", ActorValue.StaminaRateMult, "Drunk: Second Wind", "Stamina regenerates <mag>% faster.") })
     Console.WriteLine($"  {effect.FormKey.ID:X3} {effect.EditorID}, {spell.FormKey.ID:X3} {spell.EditorID}");
 
+// Tired: MSC's fatigue slows stamina regen (Needs::FatigueRegenCut in protocol/cpp/needs.h), cast and
+// recast like the drunk bonuses (skse/src/needs/NeedEffects.cpp). Detrimental, so the magnitude is
+// taken off.
+{
+    var (effect, spell) = DrunkBuff(0x91D, "PerkeleRimTiredStaminaRate", ActorValue.StaminaRateMult, "Tired", "Stamina regenerates <mag>% slower.");
+    effect.Flags |= MagicEffect.Flag.Detrimental;
+    Console.WriteLine($"  {effect.FormKey.ID:X3} {effect.EditorID}, {spell.FormKey.ID:X3} {spell.EditorID}");
+}
+
 // ---- Pocket ----
 //
 // Fixed ids the SKSE plugin looks up (skse/src/pocket/Pocket.cpp): 0x906 + the protocol's kPocket*
-// kind. MSC's beer, empty bottles, food and cigarettes as plain misc items in Skyrim's inventory, so
-// nothing can be eaten or drunk on Skyrim's side; they come out into MSC's hand. Each looks like the
-// vanilla item named (model, bounds and sounds copied).
+// kind up to cigarettes, then MSC's juice (0x940) and the empty bottles other drinks leave (0x941 to
+// 0x943, protocol/cpp/food.h kEmptyIds). MSC's beer, juice, empty bottles, food and cigarettes in
+// Skyrim's inventory. Beer and food are food
+// items Kumpo eats and drinks in Skyrim like any other (protocol/cpp/food.h lists what they do to
+// MSC's needs; a hotkey on them plays MSC's own drinking and eating instead), with the vanilla
+// look-alike's effects, keywords and use sound. The empty bottle and cigarettes are misc items: the
+// bottle comes out into MSC's hand, cigarettes are smoked in MSC. Each looks like the vanilla item
+// named (model, bounds and sounds copied).
 (IModelGetter? Model, IObjectBoundsGetter? Bounds, FormKey? Up, FormKey? Down) Look(string editorId)
 {
     var food = skyrim.Ingestibles.FirstOrDefault(r => r.EditorID == editorId);
@@ -413,21 +529,53 @@ foreach (var (effect, spell) in new[] {
         ?? throw new InvalidOperationException($"{editorId} not in Skyrim.esm as food or misc item");
     return (misc.Model, misc.ObjectBounds, misc.PickUpSound.FormKeyNullable, misc.PutDownSound.FormKeyNullable);
 }
-var pocket = new (string EditorId, string Name, string LooksLike, float Weight, uint Value)[]
+// Juice is a drink in a small jug: its effects and keywords from an apple, the use sound a bottle's.
+var pocket = new (uint Id, string EditorId, string Name, string LooksLike, float Weight, uint Value, bool Food, string? FoodLike)[]
 {
-    ("PerkeleRimBeer", "MSC Beer", "Ale", 0.5f, 3),
-    ("PerkeleRimEmptyBottle", "Empty Bottle", "WineBottle01AEmpty", 0.3f, 0),
-    ("PerkeleRimSausages", "Sausages", "FoodBeefCooked", 0.8f, 4),
-    ("PerkeleRimPizza", "Pizza", "FoodPie", 0.5f, 5),
-    ("PerkeleRimPotatoChips", "Potato Chips", "FoodPotatoesBaked", 0.3f, 2),
-    ("PerkeleRimMacaronBox", "Macaron Box", "FoodSweetroll", 0.5f, 3),
-    ("PerkeleRimCigarette", "Cigarette", "Quill01", 0f, 1),
+    (0x906, "PerkeleRimBeer", "MSC Beer", "Ale", 0.5f, 3, true, null),
+    (0x907, "PerkeleRimEmptyBottle", "Empty Bottle", "WineBottle01AEmpty", 0.3f, 0, false, null),
+    (0x908, "PerkeleRimSausages", "Sausages", "FoodBeefCooked", 0.8f, 4, true, null),
+    (0x909, "PerkeleRimPizza", "Pizza", "FoodPie", 0.5f, 5, true, null),
+    (0x90A, "PerkeleRimPotatoChips", "Potato Chips", "FoodPotatoesBaked", 0.3f, 2, true, null),
+    (0x90B, "PerkeleRimMacaronBox", "Macaron Box", "FoodSweetroll", 0.5f, 3, true, null),
+    (0x90C, "PerkeleRimCigarette", "Cigarette", "Quill01", 0f, 1, false, null),
+    (0x940, "PerkeleRimJuice", "Juice", "GlazedJugSmall01", 0.5f, 2, true, "FoodApple02"),
+    (0x941, "PerkeleRimEmptyWineBottle", "Empty Wine Bottle", "WineBottle02AEmpty", 0.3f, 0, false, null),
+    (0x942, "PerkeleRimEmptyLiquorBottle", "Empty Liquor Bottle", "WineBottle01BEmpty", 0.3f, 0, false, null),
+    (0x943, "PerkeleRimEmptySkoomaBottle", "Empty Skooma Bottle", "dunAlftandEmptySkoomaBottle", 0.2f, 0, false, null),
 };
-for (uint i = 0; i < pocket.Length; i++)
+var drinkSound = skyrim.Ingestibles.First(r => r.EditorID == "Ale").ConsumeSound.FormKeyNullable;
+// The other drinks' empties are clutter, so throwing junk (#774) takes them like any bottle; the
+// beer's Empty Bottle has its own way into MSC's hand (key 3).
+var clutterBottles = new HashSet<uint> { 0x941, 0x942, 0x943 };
+var clutter = skyrim.Keywords.First(k => k.EditorID == "VendorItemClutter").ToLink();
+foreach (var p in pocket)
 {
-    var p = pocket[i];
     var look = Look(p.LooksLike);
-    var item = new MiscItem(new FormKey(mod.ModKey, 0x906 + i), SkyrimRelease.SkyrimSE)
+    var key = new FormKey(mod.ModKey, p.Id);
+    if (p.Food)
+    {
+        var vanilla = skyrim.Ingestibles.First(r => r.EditorID == (p.FoodLike ?? p.LooksLike));
+        var food = new Ingestible(key, SkyrimRelease.SkyrimSE)
+        {
+            EditorID = p.EditorId,
+            Name = p.Name,
+            Model = look.Model?.DeepCopy(),
+            ObjectBounds = look.Bounds?.DeepCopy() ?? new ObjectBounds(),
+            Weight = p.Weight,
+            Value = p.Value,
+            Flags = Ingestible.Flag.FoodItem,
+            Effects = new ExtendedList<Effect>(vanilla.Effects.Select(e => e.DeepCopy())),
+        };
+        if (vanilla.Keywords != null) food.Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>>(vanilla.Keywords);
+        if ((p.FoodLike != null ? drinkSound : vanilla.ConsumeSound.FormKeyNullable) is { } sound) food.ConsumeSound.SetTo(sound);
+        if (look.Up != null) food.PickUpSound.SetTo(look.Up.Value);
+        if (look.Down != null) food.PutDownSound.SetTo(look.Down.Value);
+        mod.Ingestibles.Add(food);
+        Console.WriteLine($"  {key.ID:X3} {p.EditorId} (food, looks like {p.LooksLike})");
+        continue;
+    }
+    var item = new MiscItem(key, SkyrimRelease.SkyrimSE)
     {
         EditorID = p.EditorId,
         Name = p.Name,
@@ -438,8 +586,53 @@ for (uint i = 0; i < pocket.Length; i++)
     };
     if (look.Up != null) item.PickUpSound.SetTo(look.Up.Value);
     if (look.Down != null) item.PutDownSound.SetTo(look.Down.Value);
+    if (clutterBottles.Contains(p.Id)) item.Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>> { clutter };
     mod.MiscItems.Add(item);
     Console.WriteLine($"  {item.FormKey.ID:X3} {item.EditorID} (looks like {p.LooksLike})");
+}
+
+// ---- Hotbar ----
+//
+// Fixed ids the SKSE plugin looks up (skse/src/pocket/Pocket.cpp, protocol/cpp/hotbar.h): three lesser
+// powers the plugin gives the player, so Skyrim's Favorites menu can bind MSC's own keys to numbers.
+// While MSC has the player a number bound to one does that power's MSC key; casting one does nothing
+// (a script effect without a script).
+var hotbarEffect = new MagicEffect(new FormKey(mod.ModKey, 0x919), SkyrimRelease.SkyrimSE)
+{
+    EditorID = "PerkeleRimHotbarEffect",
+    Name = "Kumpo's Hotbar",
+    Flags = MagicEffect.Flag.NoDuration | MagicEffect.Flag.NoArea | MagicEffect.Flag.NoMagnitude | MagicEffect.Flag.HideInUI,
+    Archetype = new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Script),
+    CastType = CastType.FireAndForget,
+    TargetType = TargetType.Self,
+    MagicSkill = ActorValue.None,
+    ResistValue = ActorValue.None,
+};
+mod.MagicEffects.Add(hotbarEffect);
+Console.WriteLine($"  {hotbarEffect.FormKey.ID:X3} {hotbarEffect.EditorID}");
+// The equip slot vanilla lesser powers use (the voice).
+var voiceSlot = skyrim.Spells.First(s => s.Type == SpellType.LesserPower && !s.EquipmentType.IsNull).EquipmentType.FormKey;
+foreach (var (id, editorId, name, description) in new[] {
+    (0x91Au, "PerkeleRimHotbarHands", "Empty Hands", "Kumpo puts his hands to use (My Summer Car's key 1). Favorite it and bind a number key."),
+    (0x91Bu, "PerkeleRimHotbarTools", "Tools", "Kumpo takes his tools out (My Summer Car's key 2). Favorite it and bind a number key."),
+    (0x91Cu, "PerkeleRimHotbarBottle", "Throw Junk", "Kumpo takes an Empty Bottle into his hand to throw, or once those are gone a piece of junk: clutter, then fruit and vegetables, cheapest first. Favorite it and bind a number key.") })
+{
+    var power = new Spell(new FormKey(mod.ModKey, id), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = editorId,
+        Name = name,
+        Description = description,
+        Type = SpellType.LesserPower,
+        CastType = CastType.FireAndForget,
+        TargetType = TargetType.Self,
+        Flags = SpellDataFlag.ManualCostCalc,
+        BaseCost = 0,
+    };
+    // The voice slot, like vanilla powers: a hand spell would be taken off at once (fists only).
+    power.EquipmentType.SetTo(voiceSlot);
+    power.Effects.Add(new Effect { BaseEffect = hotbarEffect.ToNullableLink(), Data = new EffectData() });
+    mod.Spells.Add(power);
+    Console.WriteLine($"  {power.FormKey.ID:X3} {power.EditorID}");
 }
 
 // ---- Finn's voice ----
@@ -510,7 +703,14 @@ foreach (var spot in stockSpots)
 mod.FormLists.Add(spotList);
 Console.WriteLine($"  910 {spotList.EditorID} ({spotList.Items.Count} spots)");
 
-mod.ModHeader.Stats.NextFormID = 0x917;  // after PerkeleRimDrunkStaminaRate (0x916)
+// Fixed id the SKSE plugin looks up (skse/src/fuel/Fuel.cpp): the gas stations' pump spots in order.
+var pumpList = new FormList(new FormKey(mod.ModKey, 0x980), SkyrimRelease.SkyrimSE) { EditorID = "PerkeleRimFuelPumps" };
+foreach (var spot in pumpSpots)
+    pumpList.Items.Add(new FormLink<ISkyrimMajorRecordGetter>(spot.FormKey));
+mod.FormLists.Add(pumpList);
+Console.WriteLine($"  980 {pumpList.EditorID} ({pumpList.Items.Count} pumps)");
+
+mod.ModHeader.Stats.NextFormID = stationsNextId;  // after the gas stations (0xA00 on), past every record id
 // Header 1.70, not Mutagen's 1.71: Skyrim SE 1.5.97 skips 1.71 plugins, AE loads both.
 mod.ModHeader.Stats.Version = 1.7f;
 

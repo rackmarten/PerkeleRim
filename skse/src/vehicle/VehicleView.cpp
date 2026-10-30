@@ -2,6 +2,7 @@
 
 #include "coords.h"
 #include "model/ModelView.h"
+#include "vehicle/Hitbox.h"
 
 namespace PerkeleRim::VehicleView
 {
@@ -10,7 +11,7 @@ namespace PerkeleRim::VehicleView
         // Each vehicle's model as MSC sends it (ModelChunk, msc/src/Game/VehicleModel.cs), read from
         // MSC's running vehicle and named like PlayerCurrentVehicle: one node per MSC object, posed
         // from VehicleParts. Nothing is drawn until it has arrived. By vehicle id - 1.
-        constexpr std::array<std::string_view, Protocol::kVehicleCount> kModelNames{ "Hayosiko", "Jonnez", "Kekmet" };
+        constexpr std::array<std::string_view, Protocol::kVehicleCount> kModelNames{ "Hayosiko", "Jonnez", "Kekmet", "Gifu" };
 
         struct Lamp
         {
@@ -25,16 +26,17 @@ namespace PerkeleRim::VehicleView
             std::vector<RE::NiNode*>  nodes;      // its ModelNodes, VehicleParts.parts order
             bool                      mismatchLogged = false;
             bool                      shown = false;
-            Lamp                      lamps[14];  // by kLight* role x 2 (the second for the right headlight), see UpdateLamps
+            Lamp                      lamps[(Protocol::kLightBeacon + 1) * 2];  // by kLight* role x 2 (the second for the right headlight), see UpdateLamps
         };
         std::array<View, Protocol::kVehicleCount> views;
 
         // Skyrim's lights for the vehicle's lamps (MSC's Unity Lights arrive with the model, which of
         // them are on with VehicleParts.lights). Few on purpose: Skyrim lets only 4 lights cast
         // shadows at once, torches and campfires nearby included. So one shadow spotlight for the
-        // headlights (the beam changes with low and high) and plain point lights for the rear (tail,
-        // larger and brighter while braking), reversing and the cabin. Color, reach and brightness
-        // are tuned here, not taken from MSC (its own are for Unity's units and exposure).
+        // headlights (the beam changes with low and high) and one for the Gifu's work lights, plain
+        // point lights for the rear (tail, larger and brighter while braking), reversing, the cabin
+        // and the Gifu's beacons (one amber light for both, flashing as they turn). Color, reach and
+        // brightness are tuned here, not taken from MSC (its own are for Unity's units and exposure).
 
         struct Look
         {
@@ -52,6 +54,19 @@ namespace PerkeleRim::VehicleView
         constexpr Look kBrake{ { 1.0f, 0.08f, 0.05f }, 150.0f, 9.0f, 0.0f };
         constexpr Look kReverse{ { 1.0f, 1.0f, 1.0f }, 100.0f, 2.0f, 0.0f };
         constexpr Look kInterior{ { 1.0f, 0.96f, 0.88f }, 120.0f, 1.2f, 0.0f };
+        constexpr Look kWork{ { 1.0f, 0.95f, 0.85f }, 1500.0f, 8.0f, 90.0f };
+        constexpr Look kBeacon{ { 1.0f, 0.5f, 0.05f }, 600.0f, 5.0f, 0.0f };
+
+        constexpr float kBeaconHz = 1.5f;  // flashes per second of the beacons' light
+
+        // How bright the beacons' light is right now: a turning beacon sweeps past, dim between sweeps.
+        float BeaconLevel()
+        {
+            static const auto start = std::chrono::steady_clock::now();
+            const float       t = std::chrono::duration<float>(std::chrono::steady_clock::now() - start).count();
+            const float       s = std::sin(3.14159265f * kBeaconHz * t);
+            return 0.15f + 0.85f * s * s * s * s;
+        }
 
         // The lights of a role that are on, where they shine from and along on average.
         struct Group
@@ -181,7 +196,8 @@ namespace PerkeleRim::VehicleView
             };
             const Role roles[] = { { Protocol::kLightLow, kLow, true }, { Protocol::kLightHigh, kHigh, true },
                 { Protocol::kLightTail, kTail, false }, { Protocol::kLightBrake, kBrake, false },
-                { Protocol::kLightReverse, kReverse, false }, { Protocol::kLightInterior, kInterior, false } };
+                { Protocol::kLightReverse, kReverse, false }, { Protocol::kLightInterior, kInterior, false },
+                { Protocol::kLightWork, kWork, true }, { Protocol::kLightBeacon, kBeacon, false } };
             for (const auto& r : roles) {
                 // Headlights set wide apart (the van's) are two lights, one per side; close together
                 // (the Kekmet's) or single (the moped's) they stay one.
@@ -196,7 +212,7 @@ namespace PerkeleRim::VehicleView
                 const bool  split = head && hi - lo > kHeadlightSplit;
                 for (int side = split ? 0 : -1; side < (split ? 2 : 0); side++) {
                     auto  group = Collect(*lights, a_parts.lights, r.role, side, (lo + hi) * 0.5f);
-                    float level = 1.0f;
+                    float level = r.role == Protocol::kLightBeacon ? BeaconLevel() : 1.0f;
                     if (head) {
                         level = r.role == Protocol::kLightLow ? a_parts.lowLevel : a_parts.highLevel;
                         // The moped's lamp turns with its handlebar.
@@ -321,10 +337,12 @@ namespace PerkeleRim::VehicleView
         const bool valid = a_state && a_state->vehicle == a_vehicle && (a_state->flags & Protocol::kVehicleValid) != 0 &&
                            a_state->generation == a_generation;
         if (!valid) {
+            Hitbox::Hide(a_vehicle);
             Hide(view, name);
             return;
         }
         if (!Load(view, name)) {
+            Hitbox::Hide(a_vehicle);
             return;
         }
         Attach(view, name);
@@ -341,6 +359,7 @@ namespace PerkeleRim::VehicleView
         node.SetAppCulled(false);
         RE::NiUpdateData update{};
         node.Update(update);
+        Hitbox::Show(a_vehicle, name, view.model, *a_state);
 
         if (!view.shown) {
             view.shown = true;
@@ -352,6 +371,7 @@ namespace PerkeleRim::VehicleView
     void Hide()
     {
         for (std::uint32_t i = 0; i < Protocol::kVehicleCount; i++) {
+            Hitbox::Hide(i + 1);
             Hide(views[i], kModelNames[i]);
         }
     }

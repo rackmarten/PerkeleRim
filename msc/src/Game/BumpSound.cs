@@ -28,7 +28,7 @@ namespace PerkeleRim.Game
             {
                 var harmony = HarmonyInstance.Create("PerkeleRim.BumpSound");
                 harmony.Patch(target, new HarmonyMethod(typeof(BumpSound).GetMethod(nameof(Prefix), BindingFlags.Static | BindingFlags.NonPublic)), null);
-                log("bumps: collisions under " + Bumps.QuietBelow + " m/s play no crash sound on the moped");
+                log("bumps: collisions under " + Bumps.QuietBelow + " m/s play no crash sound on the moped and the Gifu");
             }
             catch (Exception e) { log("bumps: patching SoundController FAILED: " + e.Message); }
         }

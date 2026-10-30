@@ -7,7 +7,7 @@ namespace PerkeleRim
         public override string ID => "PerkeleRim";
         public override string Name => "PerkeleRim";
         public override string Author => "Marek Uncik";
-        public override string Version => "0.1.1";
+        public override string Version => "0.2.0";
         public override string Description => "Couples My Summer Car with Skyrim.";
 
         public override void ModSetup()

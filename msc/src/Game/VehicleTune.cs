@@ -63,6 +63,12 @@ namespace PerkeleRim.Game
         // twentieth of what such a spring needs. Too much rebound damping (6.5) made it slow to
         // settle after a turn, now 4.5. Past half its travel the progressive springs take over.
         public static readonly Settings Kekmet = new Settings { Mass = 1.2f, CenterDrop = 0.1f, Spring = 0.8f, Travel = 6f, Bump = 3.5f, Rebound = 4.5f, CushionFrom = 0.5f, Cushion = 0.7f, Power = 2f, Grip = 1.3f, LeaveTipUpY = Upright.MaxTiltCos };
+        // The Gifu as MSC has it at first, with more forward grip for Skyrim's hills like the others
+        // and its center of mass a bit lower (a tall cab-over with its tank up high); it gets off at
+        // the van's tilt. Its engine stalled on nearly every landing (a 3700 kg truck's wheels
+        // stopped by the ground), so it has the moped's soft bumps: a landing doesn't stall it, a
+        // crash still does.
+        public static readonly Settings Gifu = new Settings { Mass = 1f, CenterDrop = 0.2f, Spring = 1f, Travel = 1f, Grip = 1.3f, SoftBumps = true, LeaveTipUpY = Upright.MaxTiltCos };
         static readonly string[] BodyColliders = { "CarCollider", "TrafficTrigger" };
 
         // MSC sets things up in its own Start; tune after it.
@@ -156,7 +162,7 @@ namespace PerkeleRim.Game
         // Every frame: the engine can't stall while a bump, a hop or a slide is going on.
         void KeepEngine(bool riding)
         {
-            bool hopping = air != null && air.Airborne > 0f;
+            bool hopping = air != null ? air.Airborne > 0f : WheelsOff();
             bool sliding = body != null && !body.isKinematic && Bumps.Sliding(Vector3.Dot(body.velocity, car.right));
             Guard(riding && (hopping || sliding || stallGuard.Protects(Time.realtimeSinceStartup)));
             if (!riding) stallGuard.Reset();
@@ -194,10 +200,22 @@ namespace PerkeleRim.Game
             for (int i = 0; i < stallLimits.Length; i++) stallLimits[i].Value = on ? NeverStalls : stallLimitValues[i];
         }
 
+        // The moped's and the van's Starter is on the root, the Kekmet's and the Gifu's under Simulation.
         PlayMakerFSM Starter()
         {
-            if (starter == null && car != null) starter = FindFsm("Starter", "Starter");
+            if (starter == null && car != null) starter = FindFsm("Starter", "Starter") ?? FindFsm("Simulation/Starter", "Starter");
             return starter;
+        }
+
+        // All wheels off the ground, for a vehicle without AirAssist.
+        bool WheelsOff()
+        {
+            var axles = car != null ? car.GetComponent<Axles>() : null;
+            var wheels = axles != null ? axles.allWheels : null;
+            if (wheels == null || wheels.Length == 0) return false;
+            foreach (var w in wheels)
+                if (w != null && w.onGroundDown) return false;
+            return true;
         }
 
         // A rider on a tipped or slow moped may step off: MSC's DriveTrigger lets the player out when
@@ -261,6 +279,9 @@ namespace PerkeleRim.Game
                 SetPower(drivetrain, power0 * settings.Power);
                 sb.Append($", engine power x{power0:0.##} -> x{tunedPower:0.##}, clutch {drivetrain.clutchMaxTorque:0} Nm");
             }
+            var controller = car.GetComponent<CarController>();
+            if (axles != null && axles.frontAxle != null && controller != null)
+                log($"vehicle tune: {name} steering as MSC has it: front lock {axles.frontAxle.maxSteeringAngle:0.#} deg, steer time {controller.steerTime:0.##}/{controller.steerReleaseTime:0.##} s, at speed {controller.veloSteerTime:0.##}/{controller.veloSteerReleaseTime:0.##} s, assistance {controller.steerAssistance} from {controller.SteerAssistanceMinVelocity:0.#}");
             log($"vehicle tune: {name} mass {mass0:0} -> {tunedMass:0} kg, center of mass {center0} -> {tunedCenter}" +
                 (dynamics == null ? ", no CarDynamics (suspension left alone)" : $", suspension x{settings.Mass * settings.Spring:0.##} rate x{settings.Travel:0.##} travel{(settings.FrontSpring > 0f ? $", front rate x{settings.FrontSpring:0.##} on top" : "")}, was{sb}"));
         }

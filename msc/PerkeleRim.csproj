@@ -4,7 +4,7 @@
     <TargetFramework>net35</TargetFramework>
     <AssemblyName>PerkeleRim</AssemblyName>
     <RootNamespace>PerkeleRim</RootNamespace>
-    <Version>0.1.1</Version>
+    <Version>0.2.0</Version>
     <Authors>Marek Uncik</Authors>
     <Copyright>Copyright (c) Marek Uncik</Copyright>
     <LangVersion>latest</LangVersion>

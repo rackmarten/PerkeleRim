@@ -4,15 +4,19 @@ using PerkeleRim.Protocol;
 
 namespace PerkeleRim
 {
-    // The pocket's rules (docs/PROTOCOL.md "The pocket"): Skyrim's inventory holds MSC's beer, empty
-    // bottles, food and cigarettes. Y puts what MSC's player carries (or, hands empty, what the
-    // crosshair is on) in it; keys 3 to 8 drink a beer or eat food from it, or take an empty bottle
-    // out into MSC's hand. 1 and 2 stay MSC's (hands, tools). Unity-free.
+    // The pocket's rules (docs/PROTOCOL.md "The pocket"): Skyrim's inventory holds MSC's beer, juice, empty
+    // bottles, food and cigarettes, and its gold is MSC's money. Y puts what MSC's player carries
+    // (or, hands empty, what the crosshair is on) in it; keys 3 to 8 drink a beer or eat food from
+    // it, or take something to throw out into MSC's hand: an empty bottle, or once those are gone
+    // Skyrim's junk (protocol/cpp/junk.h). 1 and 2 stay MSC's (hands, tools). Skyrim's
+    // hotbar can put these on other numbers (protocol/cpp/hotbar.h): MSC gets the key they stand
+    // for. Unity-free.
     public static class Pocket
     {
         public const int None = -1;
         public const int PocketKey = 121;  // KeyCode.Y: free in MSC and in Skyrim
         public const int FirstSlotKey = 51;  // KeyCode.Alpha3
+        public const string JunkName = "junk(Clone)";  // MSC's body for a piece of Skyrim's junk (JunkLink)
 
         // Slot n (key 3 + n) holds this kind. Cigarettes have none: MSC
         // smokes them from its own count (I).
@@ -30,10 +34,12 @@ namespace PerkeleRim
             {
                 case "beer case(itemx)": return (int)Wire.PocketBeer;  // one bottle out of it
                 case "empty bottle(Clone)": return (int)Wire.PocketBottle;
+                case JunkName: return (int)Wire.PocketJunk;
                 case "sausages(itemx)": return (int)Wire.PocketSausages;
                 case "pizza(itemx)": return (int)Wire.PocketPizza;
                 case "potato chips(itemx)": return (int)Wire.PocketChips;
                 case "macaron box(itemx)": return (int)Wire.PocketMacaron;
+                case "juice(itemx)": return (int)Wire.PocketJuice;  // no key: drunk from Skyrim's inventory
                 default: return None;
             }
         }
@@ -42,8 +48,20 @@ namespace PerkeleRim
         public static int SlotOfKey(int keyCode) =>
             keyCode >= FirstSlotKey && keyCode < FirstSlotKey + SlotKinds.Length ? keyCode - FirstSlotKey : None;
 
-        // Beer and food are used at once (drunk, eaten); an empty bottle comes out into the hand.
-        public static bool Consumable(int kind) => kind != None && kind != (int)Wire.PocketBottle && kind != (int)Wire.PocketCigarettes;
+        // Beer and food are used at once (drunk, eaten); an empty bottle or junk comes out into the hand.
+        public static bool Consumable(int kind) => kind != None && !Thrown(kind) && kind != (int)Wire.PocketCigarettes && kind != (int)Wire.PocketGold;
+
+        // Taken out to be thrown (key 3): an empty bottle or junk.
+        public static bool Thrown(int kind) => kind == (int)Wire.PocketBottle || kind == (int)Wire.PocketJunk;
+
+        // What key 3 takes out: an empty bottle or junk at random, every piece as likely (junk.h picks
+        // which piece of junk). roll: a random number in [0, 1). Nothing left: the bottle slot, which then has none.
+        public static int ThrowKind(long bottles, long junk, double roll)
+        {
+            if (junk <= 0) return (int)Wire.PocketBottle;
+            if (bottles <= 0) return (int)Wire.PocketJunk;
+            return roll * (bottles + junk) < bottles ? (int)Wire.PocketBottle : (int)Wire.PocketJunk;
+        }
 
         // Seated in a vehicle only beer and food are used (4, 5 to 8); nothing goes in or out of the hand.
         public static bool WorksInVehicle(int keyCode) => Consumable(KindOfSlot(SlotOfKey(keyCode)));
@@ -56,14 +74,13 @@ namespace PerkeleRim
             return None;
         }
 
-        // Endless supplies (v0.1, until Skyrim's own food and drink are the source): the pocket always
-        // holds at least this much of each kind. Using or throwing one tops the stack back up.
-        public static int Stock(int kind) =>
-            kind == (int)Wire.PocketBeer ? 6 : kind == (int)Wire.PocketBottle ? 10 : kind == (int)Wire.PocketCigarettes ? 20
-            : kind >= 0 && kind < Wire.PocketKinds ? 2 : 0;
+        // MSC's money (PlayerMoney, marks with pennies) as Skyrim's gold: whole marks.
+        public static long Gold(float money) => money <= 0f ? 0 : (long)Math.Floor(money);
 
-        // How many of a kind to add so the pocket holds its stock again (0: it does).
-        public static long Missing(int kind, long available) => Math.Max(0, Stock(kind) - available);
+        // MSC's money for Skyrim's gold, keeping the pennies MSC had (below 0.99, so float rounding
+        // never makes them a whole mark and Gold gives back gold + 1).
+        public static float Money(long gold, float money) =>
+            gold + (money > 0f ? Math.Min(0.99f, money - (float)Math.Floor(money)) : 0f);
 
         public static bool IsKey(int keyCode) => keyCode == PocketKey || SlotOfKey(keyCode) != None;
 
@@ -75,20 +92,22 @@ namespace PerkeleRim
             Consume,         // a beer is drunk or food eaten from the pocket
             Take,            // the slot's kind comes out into the free hand
             PocketAndTake,   // the held item goes in, then the slot's kind comes out
+            PocketAndConsume, // the empty bottle in the hand goes in, then a beer is drunk or food eaten
             DropAndTake,     // the held item isn't pocketable: it's dropped, then the slot's kind comes out
         }
 
         // What a key press does. held: kind of what MSC's hand carries (None for nothing or something
         // not pocketable), holding: the hand carries anything, aimed: kind of the item the crosshair
-        // is on, available: how many of the slot's kind the pocket has.
+        // is on, available: how many of the slot's kind the pocket has (for 3, bottles and junk).
         public static Action Decide(int keyCode, int held, bool holding, int aimed, long available)
         {
             if (keyCode == PocketKey)
                 return held != None ? Action.Pocket : !holding && aimed != None ? Action.PocketAimed : Action.Nothing;
             int kind = KindOfSlot(SlotOfKey(keyCode));
             if (kind == None) return Action.Nothing;
-            if (Consumable(kind)) return available > 0 ? Action.Consume : Action.Nothing;
-            if (held == kind) return Action.Pocket;  // the same number again puts it back
+            if (Consumable(kind))
+                return available <= 0 ? Action.Nothing : Thrown(held) ? Action.PocketAndConsume : Action.Consume;
+            if (held == kind || (Thrown(kind) && Thrown(held))) return Action.Pocket;  // the same number again puts it back
             if (available <= 0) return Action.Nothing;
             if (!holding) return Action.Take;
             return held != None ? Action.PocketAndTake : Action.DropAndTake;
@@ -149,18 +168,23 @@ namespace PerkeleRim
         }
     }
 
-    // Keeps MSC's cigarette count (global PlayerCigarettes) and Skyrim's Cigarette items equal. When
-    // the link comes up MSC's count wins (Skyrim has none of MSC's cigarettes the first time);
-    // after that a change on either side is copied to the other.
-    public class CigaretteMirror
+    // Keeps one of MSC's counts and a pocket kind equal: cigarettes (global PlayerCigarettes and
+    // Skyrim's Cigarette items) and money (PlayerMoney in whole marks and Skyrim's gold). When the
+    // link comes up one side wins: MSC's cigarettes (Skyrim has none of MSC's the first time),
+    // Skyrim's gold (the Skyrim save is the truth). After that a change on either side is copied to
+    // the other.
+    public class CountMirror
     {
+        readonly bool skyrimFirst;
         bool synced;
         long last;  // the count both sides agreed on
 
+        public CountMirror(bool skyrimFirst) { this.skyrimFirst = skyrimFirst; }
+
         public void Reset() { synced = false; }
 
-        // msc: PlayerCigarettes now, skyrim: the pocket's count (PocketLedger.Available). Returns the
-        // change to send to Skyrim (0: none) and sets setMsc when MSC's count must become newMsc.
+        // msc: MSC's count now, skyrim: the pocket's (PocketLedger.Available). Returns the change to
+        // send to Skyrim (0: none) and sets setMsc when MSC's count must become newMsc.
         public int Step(long msc, long skyrim, out bool setMsc, out long newMsc)
         {
             setMsc = false;
@@ -169,6 +193,13 @@ namespace PerkeleRim
             if (!synced)
             {
                 synced = true;
+                if (skyrimFirst)
+                {
+                    last = skyrim;
+                    setMsc = msc != skyrim;
+                    newMsc = skyrim;
+                    return 0;
+                }
                 last = msc;
                 return (int)(msc - skyrim);
             }
@@ -180,7 +211,7 @@ namespace PerkeleRim
                 return 0;
             }
             if (msc == last) return 0;
-            int delta = (int)(msc - last);  // smoked, or a pack bought or picked up in MSC
+            int delta = (int)(msc - last);  // smoked or paid, or bought or picked up in MSC
             last = msc;
             return delta;
         }

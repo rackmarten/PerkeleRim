@@ -1,27 +1,42 @@
 #include "player/PlayerSync.h"
 
+#include "blackout/Blackout.h"
 #include "camera.h"
 #include "collision/CollisionSampler.h"
 #include "combat/Combat.h"
 #include "coords.h"
 #include "death/Death.h"
+#include "debug/HitTest.h"
 #include "drink/Drink.h"
+#include "drink/HeldDrinkView.h"
+#include "fuel/Fuel.h"
 #include "garage/Garage.h"
 #include "hud/Hud.h"
+#include "Ini.h"
 #include "input.h"
+#include "intro/HelgenSkip.h"
+#include "intro/Intro.h"
 #include "hands/HandView.h"
 #include "item/ItemView.h"
+#include "junk/ThrowJunk.h"
 #include "link/LinkService.h"
 #include "look_at.h"
+#include "menu/MscMenuView.h"
 #include "model/ModelView.h"
+#include "needs/NeedEffects.h"
 #include "particle/ParticleView.h"
+#include "people/People.h"
 #include "piss_tap.h"
+#include "play_mode.h"
 #include "pocket/Pocket.h"
 #include "rest/Rest.h"
+#include "safe/MetalHit.h"
 #include "safe/Safe.h"
 #include "shot/Shot.h"
 #include "stamina.h"
 #include "wading.h"
+#include "vehicle/Hitbox.h"
+#include "vehicle/HitboxTest.h"
 #include "vehicle/VehicleView.h"
 
 namespace PerkeleRim::PlayerSync
@@ -50,9 +65,6 @@ namespace PerkeleRim::PlayerSync
         constexpr float kGarageArrivedUnits = 256.0f;
         constexpr int   kGarageSettleFrames = 30;
         constexpr float kGarageTimeout = 60.0f;
-        // Resuming the handover after loading a save taken while MSC had the player: once the
-        // player's cell is attached, the same settle frames, given up after the timeout (seconds).
-        constexpr float kResumeTimeout = 30.0f;
 
         // Main thread only: the input and menu sinks and the Update hook all run there.
         struct State
@@ -61,29 +73,36 @@ namespace PerkeleRim::PlayerSync
             RE::TESObjectREFR* garage = nullptr;  // spawn marker while the player travels there for the first handover
             float              garageTime = 0.0f;
             int                garageFrames = 0;
-            bool               resume = false;  // hand over again once the loaded save's player is in its cell
-            float              resumeTime = 0.0f;
-            int                resumeFrames = 0;
+            PlayMode::Machine  play;  // hands over by itself after a load (protocol/cpp/play_mode.h)
+            bool               mscInGame = false;  // MSC's player exists (PlayerState kPlayerInGame)
+            const char*        notReady = nullptr;  // why play mode last waited, for the log
             std::uint32_t  generation = 0;
             std::uint32_t  anchorWorldspace = 0;
             std::uint32_t  anchorCell = 0;
             RE::NiPoint3   lastPlaced;  // where the player was last put (anchor or MSC pose)
+            float          seatDrop = 0.0f;  // how far under MSC's pose it was put, seated (Hitbox::SeatDrop)
             bool           sneak = false;  // what we last told Skyrim; its own flag can drop on its own
             int            sneakResend = 0;  // frames until a sneak event the graph ignored is sent again
             std::uint32_t  inputFrame = 0;
             Input::Builder input;
+            std::uint64_t  debugKeys[8]{};  // held by the hit test (DebugHold), on top of the devices'
             Stamina::Sprint sprint;  // MSC's run costs stamina; an empty bar stops it
             PissTap::Tap    pissTap;  // Alt reaches MSC only after a clean tap
             Wading::Edge    wading;   // waist-deep water washes Kumpo once per wade in
+            std::array<std::uint16_t, 8> hotbar{ 49, 50, 51, 52, 53, 54, 55, 56 };  // MSC's key for each number held (Pocket::Hotkey)
             bool           seated = false;
+            bool           standing = false;  // this frame's pose was MSC's valid one for the current anchor
             float          waterLevel = 0.0f;  // fraction of Kumpo under water, for the log
             RE::NiPoint3   eye;              // Skyrim's camera relative to the placed feet (MSC's eye), 0 when not posed
             float          savedFov = 0.0f;   // Skyrim's worldFOV before MSC's took over, 0 = untouched
+            float          savedFirstPersonFov = 0.0f;  // and its firstPersonFOV
+            float          savedDrawFirstPersonFov = 0.0f;  // and DrawWorld's, which the first-person pass draws with
             bool           wasThirdPerson = false;  // Skyrim's camera was third person at the handover
             std::string    lookAt;            // MSC's interaction text
             bool           lookAtUse = false; // MSC shows its hand icon
             std::string    subtitle;          // MSC's subtitle line
             std::string    gear;              // MSC's gear indicator while driving
+            std::string    fuel;              // MSC's fuel line (FuelText)
             bool           hasNeeds = false;  // needs below came from MSC since the handover
             std::array<float, 7> needs{};     // PlayerState.needs
             bool           cameraParentLogged = false;
@@ -130,12 +149,24 @@ namespace PerkeleRim::PlayerSync
             if (!link.IsUp()) {
                 return;
             }
-            auto       input = state.input.Build(++state.inputFrame, state.owned, !a_menu, a_paused);
+            Protocol::InputState input{};
+            if (state.owned && MscMenuView::Requested()) {  // MSC's menu, F1: every key and the cursor
+                float x, y;
+                MscMenuView::Cursor(x, y);
+                input = state.input.BuildMenu(++state.inputFrame, x, y, a_paused);  // frozen like Skyrim's own menus
+            } else {
+                input = state.input.Build(++state.inputFrame, state.owned, !a_menu, a_paused);
+            }
+            for (int i = 0; i < 8 && !a_menu; i++) {
+                input.keys[i] |= state.debugKeys[i];
+            }
             const auto screen = RE::BSGraphics::Renderer::GetScreenSize();
             input.screenWidth = screen.width;  // MSC renders its hand layer this size
             input.screenHeight = screen.height;
             link.WriteInput(input);
         }
+
+        constexpr std::uint32_t kDik1 = 0x02;  // number keys 1 to 8: 0x02..0x09, Skyrim's hotbar
 
         // Releases keys the devices no longer hold. A release event can get lost (a crash or menu at
         // the wrong moment), and MSC would then see the key held forever and never a new press, so
@@ -148,12 +179,22 @@ namespace PerkeleRim::PlayerSync
             }
             if (auto* keyboard = devices->GetKeyboard()) {
                 const auto& down = keyboard->GetRuntimeData().curState;
+                // A number key held holds the MSC key its hotbar slot resolved to, not its own.
+                const auto viaHotbar = [&](std::uint16_t a_key) {
+                    for (std::uint32_t slot = 0; slot < state.hotbar.size(); slot++) {
+                        if ((down[kDik1 + slot] & 0x80) != 0 && state.hotbar[slot] == a_key) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
                 for (std::uint32_t dik = 0; dik < 0x100; dik++) {
                     if (dik == Input::kDikLeftAlt) {
                         continue;  // held by the piss tap's pulse, not by the keyboard
                     }
-                    const auto key = Input::KeyFromScanCode(dik);
-                    if ((down[dik] & 0x80) == 0 && state.input.IsKeyDown(key)) {
+                    const bool number = dik >= kDik1 && dik < kDik1 + state.hotbar.size();
+                    const auto key = number ? state.hotbar[dik - kDik1] : Input::KeyFromScanCode(dik);
+                    if ((down[dik] & 0x80) == 0 && state.input.IsKeyDown(key) && !viaHotbar(key)) {
                         state.input.SetKey(key, false);
                         SKSE::log::info("player sync: released stuck key {} (scan code {:02X})", key, dik);
                     }
@@ -194,7 +235,9 @@ namespace PerkeleRim::PlayerSync
                 return;
             }
             state.owned = false;
+            state.standing = false;
             state.input.ReleaseAll();
+            std::fill(std::begin(state.debugKeys), std::end(state.debugKeys), 0);
             state.input.Block(Input::KeyFromScanCode(Input::kDikLeftShift), false);
             state.sprint.Reset();
             state.pissTap.Reset();
@@ -215,7 +258,9 @@ namespace PerkeleRim::PlayerSync
             if (state.savedFov > 0.0f) {
                 if (auto* camera = RE::PlayerCamera::GetSingleton()) {
                     camera->GetRuntimeData2().worldFOV = state.savedFov;
+                    camera->GetRuntimeData2().firstPersonFOV = state.savedFirstPersonFov;
                 }
+                RE::DrawWorld::GetSingleton().firstPersonFOV = state.savedDrawFirstPersonFov;
                 state.savedFov = 0.0f;
             }
             if (state.wasThirdPerson) {
@@ -228,13 +273,17 @@ namespace PerkeleRim::PlayerSync
             state.lookAtUse = false;
             state.subtitle.clear();
             state.gear.clear();
+            state.fuel.clear();
             state.hasNeeds = false;
             Hud::Set({});
             Drink::SetDrunk(0.0f, 0.0f);
             CollisionSampler::Stop();
             Combat::Stop();
+            People::Stop();
+            NeedEffects::Stop();
             VehicleView::Hide();
             ItemView::Clear();
+            HeldDrinkView::Clear();
             ParticleView::Hide();
             HandView::Hide();
             Publish();
@@ -319,13 +368,22 @@ namespace PerkeleRim::PlayerSync
             SKSE::log::info("player sync: {} shelf spots to MSC for gen {}", stock.count, stock.generation);
         }
 
+        void SayNoMsc()
+        {
+            RE::SendHUDMessage::ShowHUDMessage("My Summer Car isn't running: Kumpo stays in Skyrim until it is.");
+        }
+
         void TakeOver(RE::PlayerCharacter* a_player, const Garage::Spot* a_van = nullptr)
         {
             if (!LinkService::Get().IsUp()) {
                 SKSE::log::info("player sync: link is down, can't hand the player to MSC");
+                SayNoMsc();
+                state.play.Lost();  // hands over once MSC is there
                 return;
             }
             if (!SendAnchor(a_player, a_van ? "garage" : "handover", a_van)) {
+                SKSE::log::warn("player sync: the handover's anchor didn't go out, trying again once the game has settled");
+                state.play.Load();
                 return;
             }
 
@@ -356,6 +414,8 @@ namespace PerkeleRim::PlayerSync
             }
             if (!LinkService::Get().IsUp()) {
                 SKSE::log::info("player sync: link is down, can't hand the player to MSC");
+                SayNoMsc();
+                state.play.Lost();
                 return;
             }
             state.garage = marker;
@@ -371,13 +431,19 @@ namespace PerkeleRim::PlayerSync
             if (!LinkService::Get().IsUp() || state.garageTime > kGarageTimeout) {
                 SKSE::log::warn("player sync: gave up on the garage ({})", LinkService::Get().IsUp() ? "timed out" : "link down");
                 state.garage = nullptr;
+                if (!LinkService::Get().IsUp()) {
+                    state.play.Lost();  // hands over where the player stands once MSC is back
+                } else {
+                    Garage::Visited();  // the shack didn't work out: the next handover starts where he stands
+                    state.play.Load();
+                }
                 return;
             }
             auto*      cell = a_player->GetParentCell();
             const bool there = cell && cell->IsAttached() && a_player->Is3DLoaded() &&
                                a_player->GetPosition().GetDistance(state.garage->GetPosition()) < kGarageArrivedUnits;
-            if (there && state.garageFrames == 0) {
-                Garage::WakeUp(state.garage);  // fades up from black while the handover settles
+            if (there && state.garageFrames == 0 && Garage::WakeUp(state.garage)) {  // fades up from black while the handover settles
+                Intro::WakeUp();  // with Kumpo's hangover line, as in the Helgen cart
             }
             if (!there || ++state.garageFrames < kGarageSettleFrames) {
                 return;
@@ -392,21 +458,88 @@ namespace PerkeleRim::PlayerSync
             }
         }
 
-        void Resume(RE::PlayerCharacter* a_player, float a_delta)
+        const char* PhaseName(PlayMode::Phase a_phase)
         {
-            state.resumeTime += a_delta;
-            if (!LinkService::Get().IsUp() || state.resumeTime > kResumeTimeout) {
-                SKSE::log::warn("player sync: gave up handing the loaded save's player back to MSC ({})", LinkService::Get().IsUp() ? "timed out" : "link down");
-                state.resume = false;
+            switch (a_phase) {
+            case PlayMode::Phase::Settling:
+                return "waits for the game to settle and let the player move";
+            case PlayMode::Phase::Intro:
+                return "waits for Kumpo to get out of Helgen";
+            case PlayMode::Phase::Msc:
+                return "waits for MSC";
+            default:
+                return "is off";
+            }
+        }
+
+        // Play mode (protocol/cpp/play_mode.h): after a load Skyrim hands the player to MSC by
+        // itself, once the game has settled, Helgen is behind it and MSC is in its game.
+        void Play(RE::PlayerCharacter* a_player, float a_delta)
+        {
+            const bool intro = Intro::Running();
+            if (intro) {
+                Garage::CartStart();  // no trip to the shack for a save that started in the cart
+            }
+            if (!state.play.Waiting()) {
                 return;
             }
-            auto*      cell = a_player->GetParentCell();
-            const bool there = cell && cell->IsAttached() && a_player->Is3DLoaded();
-            if (!there || ++state.resumeFrames < kGarageSettleFrames) {
-                return;
+            auto*           ui = RE::UI::GetSingleton();
+            auto*           cell = a_player->GetParentCell();
+            auto*           controls = RE::ControlMap::GetSingleton();
+            PlayMode::Frame frame;
+            frame.linkUp = LinkService::Get().IsUp();
+            frame.mscInGame = state.mscInGame;
+            frame.loading = ui && ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME);
+            frame.paused = GamePaused();
+            frame.player3D = a_player->Is3DLoaded();
+            frame.cellAttached = cell && cell->IsAttached();
+            frame.controls = controls && controls->IsMovementControlsEnabled();
+            auto* actorState = a_player->AsActorState();
+            frame.combat = a_player->IsInCombat();
+            frame.mounted = a_player->IsOnMount();
+            frame.swimming = actorState && actorState->IsSwimming();
+            frame.knocked = a_player->IsInRagdollState() ||
+                            (actorState && actorState->GetKnockState() != RE::KNOCK_STATE_ENUM::kNormal);
+            frame.sitting = actorState && actorState->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal;
+            frame.talking = ui && ui->IsMenuOpen(RE::DialogueMenu::MENU_NAME);
+            frame.intro = intro || HelgenSkip::Skipping();  // the fade to the garage counts as Helgen too
+            frame.delta = a_delta;
+            const auto  before = state.play.Current();
+            const auto  say = state.play.Tick(frame);
+            const char* reason = state.play.Current() == PlayMode::Phase::Settling ? PlayMode::NotReady(frame) : nullptr;
+            if ((state.play.Current() != before || reason != state.notReady) && state.play.Waiting()) {
+                SKSE::log::info("player sync: play mode {}{}{} ({}, {})", PhaseName(state.play.Current()), reason ? ": " : "", reason ? reason : "",
+                    Intro::Describe(), HelgenSkip::Describe());
             }
-            state.resume = false;
-            TakeOver(a_player);
+            state.notReady = reason;
+            switch (say) {
+            case PlayMode::Say::HandOver:
+                SKSE::log::info("player sync: play mode hands the player to MSC");
+                HandOver(a_player);
+                break;
+            case PlayMode::Say::NoMsc:
+                SKSE::log::info("player sync: play mode: MSC isn't linked, waiting for it");
+                SayNoMsc();
+                break;
+            case PlayMode::Say::MscLoading:
+                SKSE::log::info("player sync: play mode: MSC is linked but not in its game yet, waiting for it");
+                RE::SendHUDMessage::ShowHUDMessage("My Summer Car is still loading: Kumpo goes over once it's in.");
+                break;
+            default:
+                break;
+            }
+        }
+
+        // MSC's player exists (its game is loaded). A torn read keeps the last answer.
+        void ReadMscInGame()
+        {
+            auto&                link = LinkService::Get();
+            Protocol::PlayerState pose{};
+            if (!link.IsUp()) {
+                state.mscInGame = false;
+            } else if (link.ReadPlayer(pose)) {
+                state.mscInGame = (pose.flags & Protocol::kPlayerInGame) != 0;
+            }
         }
 
         // A load door, fast travel or a script moved the player somewhere MSC's island doesn't cover.
@@ -439,9 +572,25 @@ namespace PerkeleRim::PlayerSync
             }
         }
 
-        void Place(RE::PlayerCharacter* a_player, const Protocol::PlayerState& a_pose)
+        // How far to lower the player seated in vehicle a_vehicle, so Skyrim's body standing on MSC's
+        // seat keeps its head under the roof (Hitbox::SeatDrop): enemies' arrows hit the van, not the
+        // head (the Gifu's: under its cab's roof, Hitbox::Roof). [Debug] SeatDrop=0 in PerkeleRim.ini
+        // keeps it on the seat. The camera stays at MSC's eye.
+        float SeatDrop(RE::PlayerCharacter* a_player, const Protocol::PlayerState& a_pose, const Protocol::VehicleState& a_vehicle)
         {
-            state.lastPlaced = RE::NiPoint3(a_pose.position[0], a_pose.position[1], a_pose.position[2]);
+            static const bool off = Ini::Value("SeatDrop") == "0";
+            Hitbox::Box       box{};
+            if (off || !Hitbox::Shape(a_vehicle.vehicle, box)) {
+                return 0.0f;
+            }
+            box.hi[2] = Hitbox::Roof(a_vehicle.vehicle, box);
+            return Hitbox::SeatDrop(a_vehicle.position, a_vehicle.rotation, box, a_pose.position, a_player->GetHeight());
+        }
+
+        void Place(RE::PlayerCharacter* a_player, const Protocol::PlayerState& a_pose, float a_drop)
+        {
+            state.seatDrop = a_drop;
+            state.lastPlaced = RE::NiPoint3(a_pose.position[0], a_pose.position[1], a_pose.position[2] - a_drop);
             a_player->SetPosition(state.lastPlaced, true);
             a_player->SetHeading(a_pose.heading);
             a_player->data.angle.x = a_pose.pitch;
@@ -509,7 +658,7 @@ namespace PerkeleRim::PlayerSync
                 }
             }
             state.eye = RE::NiPoint3(a_pose.eye[0], a_pose.eye[1], a_pose.eye[2]);
-            const auto at = state.lastPlaced + state.eye;
+            const auto at = state.lastPlaced + state.eye + RE::NiPoint3(0.0f, 0.0f, state.seatDrop);
 
             // Update keeps the node's local transform, so give it the wanted world one in its
             // parent's frame (scale 1).
@@ -530,10 +679,20 @@ namespace PerkeleRim::PlayerSync
 
             if (a_pose.fov > 1.0f) {
                 auto& data = camera->GetRuntimeData2();
+                auto& draw = RE::DrawWorld::GetSingleton();
                 if (state.savedFov <= 0.0f) {
                     state.savedFov = data.worldFOV;
+                    state.savedFirstPersonFov = data.firstPersonFOV;
+                    state.savedDrawFirstPersonFov = draw.firstPersonFOV;
+                    SKSE::log::info("player sync: Skyrim's fov was {:.1f} world, {:.1f} first person (camera), {:.1f} world, {:.1f} first person (drawn)",
+                        data.worldFOV, data.firstPersonFOV, draw.worldFOV, draw.firstPersonFOV);
                 }
                 data.worldFOV = Camera::SkyrimFov(a_pose.fov);
+                // The held drink (HeldDrinkView) is drawn in the first-person pass: at the world's fov
+                // it lines up with MSC's hand. DrawWorld's pair is what the passes draw with (copied in
+                // its own units, a frame behind at most).
+                data.firstPersonFOV = data.worldFOV;
+                draw.firstPersonFOV = draw.worldFOV;
             }
             return true;
         }
@@ -585,6 +744,23 @@ namespace PerkeleRim::PlayerSync
             }
         }
 
+        // The safe vehicle the player has climbed into without driving it: MSC lowers the camera and
+        // lets him move between the seats, while Skyrim's body still stands, its head out of the
+        // roof. Its feet in the vehicle's cabin (Hitbox::InCabin); 0 for none.
+        std::uint32_t ClimbedInto(RE::PlayerCharacter* a_player)
+        {
+            const auto  at = a_player->GetPosition();
+            const float feet[3] = { at.x, at.y, at.z };
+            for (std::uint32_t id = 1; id <= Protocol::kVehicleCount; id++) {
+                Protocol::VehicleState pose{};
+                Hitbox::Box            box{};
+                if (Damage::SafeSeat(id) && Hitbox::Where(id, pose, box) && Hitbox::InCabin(id, pose.position, pose.rotation, box, feet)) {
+                    return id;
+                }
+            }
+            return 0;
+        }
+
         // MSC's run (LeftShift) costs Skyrim stamina; with the bar empty the key is held back from MSC
         // (from the next Publish on) until a fifth of the stamina is back.
         void Sprint(RE::PlayerCharacter* a_player, const Protocol::PlayerState* a_pose, bool a_seated, bool a_menu, float a_delta)
@@ -632,6 +808,8 @@ namespace PerkeleRim::PlayerSync
             auto& link = LinkService::Get();
             if (!link.IsUp()) {
                 Release("link down");
+                state.play.Lost();  // hands over again once MSC is back
+                RE::SendHUDMessage::ShowHUDMessage("My Summer Car is gone: Kumpo is back in Skyrim until it returns.");
                 return;
             }
             if (a_player->IsDead()) {
@@ -663,8 +841,11 @@ namespace PerkeleRim::PlayerSync
                     driven = &vehicles[i];
                 }
             }
+            state.standing = valid;
             const bool seated = valid && driven != nullptr;
-            Safe::Set(a_player, seated ? driven->vehicle : 0);
+            const std::uint32_t inVehicle = seated ? driven->vehicle : valid ? ClimbedInto(a_player) : 0;
+            Safe::Set(a_player, inVehicle);
+            People::SetInVehicle(inVehicle);  // nobody talks to Kumpo in a vehicle (Bystanders::MayTalk)
             if (seated != state.seated) {
                 state.seated = seated;
                 SetSimulated(a_player, !seated);
@@ -681,11 +862,12 @@ namespace PerkeleRim::PlayerSync
                     return;
                 }
                 if (a_type == Protocol::MessageType::PunchEvent) {
-                    Combat::OnPunch(a_player, a_data, a_size, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f);
+                    Combat::OnPunch(a_player, a_data, a_size, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f,
+                        state.hasNeeds ? state.needs[Protocol::kNeedStress] : 0.0f);
                     return;
                 }
                 if (a_type == Protocol::MessageType::ImpactEvent) {
-                    Combat::OnImpact(a_player, a_data, a_size);
+                    Combat::OnImpact(a_player, a_data, a_size, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f);
                     return;
                 }
                 if (a_type == Protocol::MessageType::ThrownPath) {
@@ -696,6 +878,10 @@ namespace PerkeleRim::PlayerSync
                     Combat::OnHorn(a_player, a_data, a_size);
                     return;
                 }
+                if (a_type == Protocol::MessageType::MiddleFinger) {
+                    Combat::OnMiddleFinger(a_player, a_data, a_size);
+                    return;
+                }
                 if (a_type == Protocol::MessageType::Consumed) {
                     Death::OnConsumed(a_player, a_data, a_size);
                     return;
@@ -704,8 +890,20 @@ namespace PerkeleRim::PlayerSync
                     Pocket::OnChange(a_player, a_data, a_size);
                     return;
                 }
+                if (a_type == Protocol::MessageType::JunkBack) {
+                    ThrowJunk::OnBack(a_player, a_data, a_size);
+                    return;
+                }
+                if (a_type == Protocol::MessageType::Blackout) {
+                    Blackout::OnMessage(a_data, a_size);
+                    return;
+                }
+                if (a_type == Protocol::MessageType::HeldDrink) {
+                    HeldDrinkView::OnMessage(a_data, a_size);
+                    return;
+                }
                 if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle &&
-                    a_type != Protocol::MessageType::GearText) {
+                    a_type != Protocol::MessageType::GearText && a_type != Protocol::MessageType::FuelText) {
                     return;
                 }
                 const auto text = LookAt::Decode(a_data, a_size);  // a Subtitle has the same payload
@@ -715,6 +913,8 @@ namespace PerkeleRim::PlayerSync
                     state.subtitle.assign(text->text);
                 } else if (a_type == Protocol::MessageType::GearText) {
                     state.gear.assign(text->text);
+                } else if (a_type == Protocol::MessageType::FuelText) {
+                    state.fuel.assign(text->text);
                 } else {
                     state.lookAt.assign(text->text);
                     state.lookAtUse = (text->flags & Protocol::kLookAtUse) != 0;
@@ -725,7 +925,7 @@ namespace PerkeleRim::PlayerSync
                 // The angles Skyrim built this frame's camera for, before Place changes them.
                 const float fromHeading = a_player->GetAngleZ();
                 const float fromPitch = a_player->data.angle.x;
-                Place(a_player, pose);
+                Place(a_player, pose, seated ? SeatDrop(a_player, pose, *driven) : 0.0f);
                 if ((pose.flags & Protocol::kPlayerNeeds) != 0) {
                     std::copy(std::begin(pose.needs), std::end(pose.needs), state.needs.begin());
                     state.hasNeeds = true;
@@ -760,6 +960,7 @@ namespace PerkeleRim::PlayerSync
                 const bool hasParts = hasVehicle[i] && link.ReadVehicleParts(i + 1, parts);
                 VehicleView::Update(i + 1, hasVehicle[i] ? &vehicles[i] : nullptr, hasParts ? &parts : nullptr, state.generation);
             }
+            HitboxTest::Update(a_player, a_delta);
             Protocol::ItemState items{};
             if (link.ReadItems(items)) {  // a torn read keeps last frame's items; link down releases
                 ItemView::Update(&items, state.generation);
@@ -771,9 +972,12 @@ namespace PerkeleRim::PlayerSync
             Protocol::HandLayer hands{};
             HandView::Update(link.ReadHandLayer(hands) ? &hands : nullptr, a_delta);
             Combat::Update(a_player, state.generation, a_delta);
+            People::Update(a_player, seated ? driven : nullptr);
             const bool menu = MenuHasInput();
+            HeldDrinkView::Update(a_player, posed && !chase, a_delta);
             Combat::Disarm(a_player);
             Combat::Drunk(a_player, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, a_delta);
+            NeedEffects::Update(a_player, state.hasNeeds ? &state.needs : nullptr, a_delta);
             Combat::Guard(a_player, valid && !seated && !menu && (pose.flags & Protocol::kPlayerBlocking) != 0, !menu);
             Combat::Shouts(a_player);
             Sprint(a_player, valid ? &pose : nullptr, seated, menu, a_delta);
@@ -789,8 +993,12 @@ namespace PerkeleRim::PlayerSync
             hud.hideStealth = !state.sneak;  // Skyrim's sneak eye stayed up after standing
             hud.label = state.lookAt;
             hud.hand = state.lookAtUse;
-            hud.subtitle = state.subtitle;
+            hud.subtitle = state.subtitle.empty() ? std::string(Intro::Caption()) : state.subtitle;  // the shack's wake-up caption carries over the handover
             hud.gear = state.gear;
+            hud.fuel = state.fuel;
+            hud.tools = valid && (pose.flags & Protocol::kPlayerTools) != 0;
+            hud.charge = valid && pose.throwCharge > 0 ? (pose.throwCharge - 1) / 254.0f : -1.0f;
+            hud.money = Pocket::Money(a_player);
             hud.hasNeeds = state.hasNeeds;
             hud.needs = state.needs;
             hud.handsImage = HandView::Image();
@@ -801,10 +1009,10 @@ namespace PerkeleRim::PlayerSync
             Drink::SetDrunk(state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, a_delta);
             if (second) {
                 SKSE::log::info(
-                    "player sync: frames={} placed={} new poses={} pos=({:.0f},{:.0f},{:.0f}) speed={:.1f} m/s heading={:.2f} pitch={:.2f} stance={} seated={} water={:.2f} van shift={:.1f} eye=({:.0f},{:.0f},{:.0f}) roll={:.2f} fov={:.0f}",
+                    "player sync: frames={} placed={} new poses={} pos=({:.0f},{:.0f},{:.0f}) speed={:.1f} m/s heading={:.2f} pitch={:.2f} stance={} seated={} drop={:.0f} water={:.2f} van shift={:.1f} eye=({:.0f},{:.0f},{:.0f}) roll={:.2f} fov={:.0f}",
                     state.frames, state.placed, state.newPoses, pose.position[0], pose.position[1], pose.position[2],
                     std::hypot(pose.velocity[0], pose.velocity[1]) * Coords::kMetersPerUnit, pose.heading, pose.pitch, pose.stance,
-                    state.seated, state.waterLevel, state.vanShift, pose.eye[0], pose.eye[1], pose.eye[2], pose.roll, pose.fov);
+                    state.seated, state.seatDrop, state.waterLevel, state.vanShift, pose.eye[0], pose.eye[1], pose.eye[2], pose.roll, pose.fov);
                 state.vanShift = 0.0f;
                 state.statTime = 0.0f;
                 state.frames = state.placed = state.newPoses = 0;
@@ -819,24 +1027,33 @@ namespace PerkeleRim::PlayerSync
                 original(a_player, a_delta);
                 Death::Tick();
                 Pocket::Update(a_player, a_delta);
+                Fuel::Update();
                 if (!state.owned) {
                     Safe::Set(a_player, 0);  // keeps clearing god mode if it was slow to go off
                 }
+                if (a_delta > 0.0f) {
+                    MscMenuView::Tick(a_delta);  // while paused the menu ticks itself
+                    ReadMscInGame();
+                    Intro::Tick(a_delta, LinkService::Get().IsUp() && state.mscInGame, state.owned);
+                    Blackout::Tick(a_player, a_delta);
+                }
                 if (state.garage && a_delta > 0.0f) {
                     TravelToGarage(a_player, a_delta);
-                } else if (state.resume && !state.owned && a_delta > 0.0f) {
-                    Resume(a_player, a_delta);
                 } else if (state.owned && a_delta > 0.0f) {
                     Drive(a_player, a_delta);
                     Rest::OnFrame(a_player, a_delta);
+                } else if (!state.owned && a_delta > 0.0f) {
+                    Play(a_player, a_delta);
                 }
+                HitTest::Update(a_player, a_delta);
             }
             static inline REL::Relocation<decltype(thunk)> original;
         };
 
         // E is Skyrim's activate and MSC's lean right (and MSC's use key on some things). While MSC's
         // crosshair is on something of its own (its prompt or hand icon is up), E is MSC's alone;
-        // otherwise it activates in Skyrim: doors, people, quest items.
+        // otherwise it activates in Skyrim: doors, people, quest items. With nothing under Skyrim's
+        // crosshair either, crouched in water it's a sip (Pocket::SipWater).
         struct ActivateHook
         {
             static bool thunk(RE::ActivateHandler* a_handler, RE::InputEvent* a_event)
@@ -844,7 +1061,24 @@ namespace PerkeleRim::PlayerSync
                 if (state.owned && (!state.lookAt.empty() || state.lookAtUse)) {
                     return false;
                 }
+                if (state.owned && ActivatePressed(a_event) && !CrosshairTarget() &&
+                    Pocket::SipWater(state.waterLevel, state.sneak, !state.seated)) {
+                    return false;
+                }
                 return original(a_handler, a_event);
+            }
+
+            static bool ActivatePressed(RE::InputEvent* a_event)
+            {
+                auto* button = a_event ? a_event->AsButtonEvent() : nullptr;
+                auto* events = RE::UserEvents::GetSingleton();
+                return button && events && button->IsDown() && button->QUserEvent() == events->activate;
+            }
+
+            static bool CrosshairTarget()
+            {
+                auto* pick = RE::CrosshairPickData::GetSingleton();
+                return pick && static_cast<bool>(pick->GetActiveTarget());
             }
             static inline REL::Relocation<decltype(thunk)> original;
         };
@@ -891,6 +1125,9 @@ namespace PerkeleRim::PlayerSync
                 if (state.owned && a_event && a_event->GetDevice() == RE::INPUT_DEVICE::kKeyboard) {
                     if (auto* button = a_event->AsButtonEvent()) {
                         const auto key = button->GetIDCode();
+                        if (MscMenuView::HoldsKey(key)) {
+                            return false;  // MSC's menu (F1) is up or just closed
+                        }
                         // T is Skyrim's Wait menu on foot; driving it is MSC's boost.
                         if (key == Input::kDikT && !state.seated) {
                             return original(a_handler, a_event);
@@ -905,6 +1142,28 @@ namespace PerkeleRim::PlayerSync
             static inline REL::Relocation<decltype(thunk)> original;
         };
 
+        // F10, a debug toggle since play mode: takes the player back, cancels a handover play mode
+        // waits for, or hands the player to MSC. Never in Helgen.
+        void Toggle()
+        {
+            if (state.owned) {
+                Release("F10");
+            } else if (auto* controls = RE::ControlMap::GetSingleton();
+                       PlayMode::F10Refused(Intro::Running(), controls && controls->IsMovementControlsEnabled(), HelgenSkip::Skipping())) {
+                SKSE::log::info("player sync: F10 in the Helgen intro's scene, not handing over ({})", Intro::Describe());
+                RE::SendHUDMessage::ShowHUDMessage("Kumpo can't go over to My Summer Car until he's out of Helgen.");
+            } else if (state.play.Waiting()) {
+                state.play.Cancel();
+                SKSE::log::info("player sync: F10 while play mode waited to hand over, the player stays in Skyrim");
+                RE::SendHUDMessage::ShowHUDMessage("Kumpo stays in Skyrim (F10 hands him over).");
+            } else if (state.garage) {
+                state.garage = nullptr;
+                SKSE::log::info("player sync: F10 again on the way to the garage, not handing over");
+            } else if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+                HandOver(player);
+            }
+        }
+
         class InputSink : public RE::BSTEventSink<RE::InputEvent*>
         {
         public:
@@ -913,6 +1172,11 @@ namespace PerkeleRim::PlayerSync
                 bool changed = false;
                 for (auto* e = a_event ? *a_event : nullptr; e; e = e->next) {
                     if (auto* move = e->AsMouseMoveEvent()) {
+                        if (MscMenuView::Shown()) {
+                            state.input.AddMouse(move->mouseInputX, move->mouseInputY);  // MSC's sliders drag with Mouse X
+                            changed = true;  // and its menu follows the cursor
+                            continue;
+                        }
                         if (MenuHasInput()) {
                             continue;  // moves the menu's cursor, not MSC's camera
                         }
@@ -927,6 +1191,10 @@ namespace PerkeleRim::PlayerSync
                     const auto code = button->GetIDCode();
                     switch (button->GetDevice()) {
                     case RE::INPUT_DEVICE::kKeyboard:
+                        if (MscMenuView::Key(code, button->IsDown(), button->IsUp())) {
+                            changed = true;  // F1 or Escape for MSC's menu
+                            continue;
+                        }
                         if (code == Input::kDikF10) {
                             if (button->IsDown()) {
                                 Toggle();
@@ -953,6 +1221,26 @@ namespace PerkeleRim::PlayerSync
                         }
                         if (button->IsDown()) {
                             state.pissTap.OtherKey();  // Alt+Tab and other combinations aren't a tap
+                        }
+                        if (code >= kDik1 && code < kDik1 + state.hotbar.size()) {
+                            // Skyrim's hotbar: what the number's hotkey holds, decided when it goes down
+                            // (protocol/cpp/hotbar.h); a menu's own use of numbers (binding hotkeys) is left alone.
+                            auto& key = state.hotbar[code - kDik1];
+                            if (button->IsDown()) {
+                                key = state.owned && !MenuHasInput() ? Pocket::Hotkey(RE::PlayerCharacter::GetSingleton(), static_cast<int>(code - kDik1))
+                                                                     : Input::KeyFromScanCode(code);
+                            }
+                            state.input.SetKey(key, button->IsPressed());
+                            changed = true;
+                            break;
+                        }
+                        if (code == Input::kDikR && button->IsDown() && state.owned && !state.seated && !MenuHasInput()) {
+                            // On foot R opens Skyrim's Favorites, where the hotbar is bound (Q is MSC's lean);
+                            // MSC's R is its gearbox range, which only matters driving.
+                            if (auto* queue = RE::UIMessageQueue::GetSingleton()) {
+                                queue->AddMessage(RE::FavoritesMenu::MENU_NAME, RE::UI_MESSAGE_TYPE::kShow, nullptr);
+                                SKSE::log::info("player sync: R on foot, Skyrim's Favorites menu");
+                            }
                         }
                         if (code == Input::kDikH && button->IsDown() && state.owned) {
                             Combat::OnSwing(RE::PlayerCharacter::GetSingleton());  // MSC's hit key: webs too
@@ -985,31 +1273,44 @@ namespace PerkeleRim::PlayerSync
                 }
                 return RE::BSEventNotifyControl::kContinue;
             }
-
-        private:
-            static void Toggle()
-            {
-                if (state.owned) {
-                    Release("F10");
-                } else if (state.resume) {
-                    state.resume = false;
-                    SKSE::log::info("player sync: F10 before the loaded save's handover resumed, not handing over");
-                } else if (state.garage) {
-                    state.garage = nullptr;
-                    SKSE::log::info("player sync: F10 again on the way to the garage, not handing over");
-                } else if (auto* player = RE::PlayerCharacter::GetSingleton()) {
-                    HandOver(player);
-                }
-            }
         };
 
+        // Menus that are always there or only decorate (the HUD, fades, the cursor): they cover nothing.
+        bool CoversView(std::string_view a_menu)
+        {
+            static constexpr std::string_view kOverlays[] = { "HUD Menu", "Fader Menu", "Cursor Menu", "Mist Menu", "Kinect Menu", "LoadWaitSpinner",
+                "Overlay Menu", "Overlay Interaction Menu" };
+            return std::ranges::find(kOverlays, a_menu) == std::end(kOverlays);
+        }
+
         // A menu that pauses the game stops the Update hook, so publish the cleared input right away
-        // instead of leaving MSC walking with whatever was held.
+        // instead of leaving MSC walking with whatever was held. Any Skyrim menu (Esc, Tab, M,
+        // Favorites, dialogue, the console) also covers MSC's overlay right here, paused or not: the
+        // hands, the look-at prompt, the held drink and items hide until the last one closes.
         class MenuSink : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
         {
         public:
             RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
             {
+                if (a_event && CoversView(a_event->menuName.c_str())) {
+                    const std::string name(a_event->menuName.c_str());
+                    const auto        found = std::ranges::find(open, name);
+                    if (a_event->opening && found == open.end()) {
+                        open.push_back(name);
+                    } else if (!a_event->opening && found != open.end()) {
+                        open.erase(found);
+                    }
+                    const bool covered = !open.empty();
+                    if (covered != shownCovered) {
+                        shownCovered = covered;
+                        SKSE::log::info("player sync: MSC's overlay {} ({} {})", covered ? "hidden" : "shown again", name, a_event->opening ? "opened" : "closed");
+                        Hud::Cover(covered);
+                        SKSE::GetTaskInterface()->AddTask([covered]() {
+                            HeldDrinkView::Cover(covered);
+                            ItemView::Cover(covered);
+                        });
+                    }
+                }
                 if (state.owned && a_event) {
                     // The game may not count as paused yet while the menu is still opening.
                     bool pauses = false;
@@ -1022,6 +1323,10 @@ namespace PerkeleRim::PlayerSync
                 }
                 return RE::BSEventNotifyControl::kContinue;
             }
+
+        private:
+            std::vector<std::string> open;  // menus over the view, by name
+            bool                     shownCovered = false;
         };
     }
 
@@ -1030,6 +1335,8 @@ namespace PerkeleRim::PlayerSync
         REL::Relocation<std::uintptr_t> vtable{ RE::VTABLE_PlayerCharacter[0] };
         UpdateHook::original = vtable.write_vfunc(0xAD, UpdateHook::thunk);
         Safe::Install();
+        MetalHit::Install();
+        People::Install();
         REL::Relocation<std::uintptr_t> favorites{ RE::VTABLE_FavoritesHandler[0] };
         FavoritesHook::original = favorites.write_vfunc(0x1, FavoritesHook::thunk);
         REL::Relocation<std::uintptr_t> menuOpen{ RE::VTABLE_MenuOpenHandler[0] };
@@ -1049,7 +1356,7 @@ namespace PerkeleRim::PlayerSync
         BlockHook<RE::PlayerInputHandler, 10>::Install(RE::VTABLE_ReadyWeaponHandler[0]);
         BlockHook<RE::PlayerInputHandler, 11>::Install(RE::VTABLE_FirstPersonState[1]);  // its zoom and POV keys
         BlockHook<RE::PlayerInputHandler, 12>::Install(RE::VTABLE_ThirdPersonState[1]);
-        SKSE::log::info("player sync: PlayerCharacter::Update and the CanProcess of the activate, favorites, menu, movement, look, jump, sneak, POV, attack and camera input handlers hooked (shouting stays Skyrim's, Z), F10 hands the player to MSC");
+        SKSE::log::info("player sync: PlayerCharacter::Update and the CanProcess of the activate, favorites, menu, movement, look, jump, sneak, POV, attack and camera input handlers hooked (shouting stays Skyrim's, Z), play mode hands the player to MSC after a load, F10 toggles it");
     }
 
     void OnDataLoaded()
@@ -1069,12 +1376,61 @@ namespace PerkeleRim::PlayerSync
         state.wasThirdPerson = false;  // the loaded save has its own camera
         Release("game loading");
         state.garage = nullptr;
-        state.resume = false;
+        state.play.Cancel();
+    }
+
+    void OnGameLoaded()
+    {
+        state.play.Load();
+        SKSE::log::info("player sync: play mode hands the player to MSC once the game has settled");
     }
 
     bool Owned()
     {
         return state.owned;
+    }
+
+    bool Seated()
+    {
+        return state.owned && state.seated;
+    }
+
+    bool Standing()
+    {
+        return state.owned && state.standing;
+    }
+
+    std::uint32_t Generation()
+    {
+        return state.generation;
+    }
+
+    void DebugHandOver()
+    {
+        if (!state.owned && !state.play.Waiting() && !state.garage) {  // play mode hands over by itself after a load
+            Toggle();
+        }
+    }
+
+    void DebugHold(std::uint16_t a_keyCode, bool a_held)
+    {
+        if (a_keyCode >= 512) {
+            return;
+        }
+        const auto bit = 1ull << (a_keyCode & 63);
+        if (a_held) {
+            state.debugKeys[a_keyCode >> 6] |= bit;
+        } else {
+            state.debugKeys[a_keyCode >> 6] &= ~bit;
+        }
+        if (state.owned) {
+            Publish();
+        }
+    }
+
+    void DebugMouse(std::int32_t a_dx, std::int32_t a_dy)
+    {
+        state.input.AddMouse(a_dx, a_dy);
     }
 
     void RestoreControls()
@@ -1083,16 +1439,5 @@ namespace PerkeleRim::PlayerSync
             SetControls(true);
             SKSE::log::info("player sync: the save was taken while MSC had the player, Skyrim's controls are back");
         }
-    }
-
-    void ResumeHandover()
-    {
-        if (state.owned) {
-            return;
-        }
-        state.resume = true;
-        state.resumeTime = 0.0f;
-        state.resumeFrames = 0;
-        SKSE::log::info("player sync: the save was taken while MSC had the player, handing it back once it's in");
     }
 }

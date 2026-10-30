@@ -17,9 +17,11 @@ namespace PerkeleRim.Game
     //  - used: a beer is MSC's own beer drinking (DRINKBEER: the animation, then the empty bottle
     //    MSC throws goes back into the pocket instead, to be thrown at someone), food a new one from the store's spawner eaten at once (its Use FSM put in Eat);
     //  - taken out: an empty bottle, a copy of the one MSC throws after a beer (BottleBeerFly), put
-    //    in the hand the way a click on it would.
-    // Also keeps MSC's cigarette count (PlayerCigarettes) and Skyrim's Cigarette items the same
-    // (CigaretteMirror), while the link is up.
+    //    in the hand the way a click on it would; with none left, a piece of Skyrim's junk (JunkLink
+    //    makes its body once Skyrim says which).
+    // Also keeps MSC's cigarette count (PlayerCigarettes) and Skyrim's Cigarette items the same, and
+    // MSC's money (PlayerMoney) and Skyrim's gold (CountMirror), while the link is up, and puts what
+    // Kumpo ate or drank in Skyrim on MSC's needs (ConsumeEvent).
     public unsafe class PocketLink
     {
         const string HandPath = "PLAYER/Pivot/AnimPivot/Camera/FPSCamera/1Hand_Assemble/Hand";
@@ -33,15 +35,21 @@ namespace PerkeleRim.Game
         const float HoldAhead = 0.75f, HoldBelow = 0.15f;  // where a new item waits, from the camera (MSC picks up within 1 m)
 
         readonly Action<string> log;
+        readonly JunkLink junk;
         readonly PocketLedger ledger = new PocketLedger(NewSession());
-        readonly CigaretteMirror cigarettes = new CigaretteMirror();
+        readonly CountMirror cigarettes = new CountMirror(false);
+        readonly CountMirror gold = new CountMirror(true);
         readonly Queue<int> presses = new Queue<int>();
         readonly HashSet<int> keysDown = new HashSet<int>();
+        readonly System.Random random = new System.Random();  // key 3: a bottle or junk
         bool wasUp;
         static PlayMakerFSM pickUp;
         PlayMakerFSM functions;  // off while a beer from the pocket is drunk
         float functionsBackAt;
         FsmInt cigaretteGlobal;
+        FsmFloat moneyGlobal;
+        const float MoneySettle = 3f;  // seconds after MSC's PLAYER shows up (SaveSync's GameSettle)
+        float inGameSince = -1f;
 
         // The item being taken out, until it is in the hand.
         GameObject taking;
@@ -49,15 +57,49 @@ namespace PerkeleRim.Game
         PlayMakerFSM takingUse;  // its Use FSM (null for an empty bottle)
         bool trimmed;            // a new beer case is down to one bottle (spike "hold 0")
         bool eating;             // eaten as soon as it has loaded, never held
+        bool holdOnly;           // spike "hold": into the hand without the throwing stance
         float takingSince;
+        uint junkSeq;            // junk being taken out: the PocketChange Skyrim answers with a JunkOut
 
         // A beer from the pocket is being drunk: the empty bottle MSC throws after it (a new copy of
         // BottleBeerFly) goes back into the pocket, until emptyUntil (-1 = none).
         const float EmptyWait = DrinkTime + 3f;
         float emptyUntil = -1f, nextEmptyLook;
+        bool emptyToPocket = true;  // false: a shown drink's bottle, Skyrim has it already
+
+        // A drink waiting for the hand to come out (1 pocket beer, 2 shown), the tools to take back
+        // out after (MSC's 2 at toolsBackAt), and a shown drink's needs to put back.
+        const string ToolsPath = "PLAYER/Pivot/AnimPivot/Camera/FPSCamera/2Spanner";
+        const float HandWait = 1f;
+        int drinkQueued;
+        int handFor;  // a key waiting for the hand to come out (3, Y), 0 for none
+        // The throwing stance (3): the bottle or junk out now (and which), when it left the hand, and 1
+        // or 2 pressed meanwhile.
+        const float ThrowLook = 0.15f, ThrowSpeed = 2f;
+        bool throwStance, stanceAway;
+        GameObject thrown;
+        int thrownKind = Pocket.None;
+        float leftAt = -1f;
+        float handForAt;
+        float drinkQueuedAt;
+        bool toolsBack;
+        float toolsBackAt;
+        static readonly string[] ShowNeeds = { "PlayerHunger", "PlayerThirst", "PlayerUrine", "PlayerDrunkAdjusted", "PlayerWeight", "PlayerStress" };
+        readonly float[] shownNeeds = new float[ShowNeeds.Length];
+        bool showing, showPending;
+        uint showDrink;  // the strongest drink since the last one shown (Wire.Drink*)
+        uint showForm;   // its Skyrim item (ConsumeEvent.form), whose model Kumpo holds
+        float showUntil;
+
+        // Skyrim paused by a menu (PlayerLink sets it): a shown drink waits until the menu is closed.
+        public bool Paused;
         readonly HashSet<int> bottlesBefore = new HashSet<int>();
 
-        public PocketLink(Action<string> log) { this.log = log; }
+        public PocketLink(JunkLink junk, Action<string> log)
+        {
+            this.junk = junk;
+            this.log = log;
+        }
 
         static uint NewSession() => (uint)UnityEngine.Random.Range(1, int.MaxValue);
 
@@ -66,15 +108,27 @@ namespace PerkeleRim.Game
         public void Keys(List<int> held)
         {
             foreach (var k in held)
+            {
                 if (Pocket.IsKey(k) && keysDown.Add(k)) presses.Enqueue(k);
+                // MSC's own 1 and 2 (the hand, the tools) end the throwing stance: the bottle goes in first.
+                if ((k == (int)KeyCode.Alpha1 || k == (int)KeyCode.Alpha2) && keysDown.Add(k) && throwStance) stanceAway = true;
+            }
             keysDown.RemoveWhere(k => !held.Contains(k));
         }
 
         // Spike command "pocket <key>": as if Skyrim's key went down.
         public void Press(int keyCode) => presses.Enqueue(keyCode);
 
-        // Spike command "hold <kind>": a new item of a kind into the hand, the pocket untouched.
-        public void Hold(int kind) { if (taking == null && takingKind == Pocket.None) StartTake(null, kind, false); }
+        // Spike command "hold <kind>": a new item of a kind into the hand, the pocket untouched. No
+        // throwing stance either: the hit test's next throw would otherwise be whatever key 3 rolled
+        // out of Skyrim's pocket after this one, and a bottle left over in the hand.
+        public void Hold(int kind)
+        {
+            if (taking != null || takingKind != Pocket.None) return;
+            throwStance = false;
+            StartTake(null, kind, false);
+            if (takingKind != Pocket.None) holdOnly = true;
+        }
 
         public void OnCounts(byte[] payload, int size)
         {
@@ -85,7 +139,7 @@ namespace PerkeleRim.Game
             for (int i = 0; i < counts.Length; i++) counts[i] = c.counts[i];
             bool first = !ledger.Known;
             ledger.OnCounts(c.session, c.appliedSeq, counts);
-            if (first) log($"pocket: Skyrim has {string.Join(", ", Array.ConvertAll(counts, n => n.ToString()))} (beer, bottles, sausages, pizza, chips, macaron boxes, cigarettes)");
+            if (first) log($"pocket: Skyrim has {string.Join(", ", Array.ConvertAll(counts, n => n.ToString()))} (beer, bottles, sausages, pizza, chips, macaron boxes, cigarettes, gold, juice, junk)");
         }
 
         // Once a frame. playing: MSC has the player on the current island; inGame: MSC's PLAYER exists.
@@ -103,36 +157,58 @@ namespace PerkeleRim.Game
                 {
                     ledger.Reset(NewSession());
                     cigarettes.Reset();
+                    // Not gold: Skyrim's gold wins once per MSC run. After a link flap (a long load)
+                    // the last agreed count still holds, and a change on either side is copied.
                 }
             }
             if (!link.IsUp) { presses.Clear(); return; }
+            if (!inGame) inGameSince = -1f;
+            else if (inGameSince < 0f) inGameSince = Time.realtimeSinceStartup;
             if (inGame) MirrorCigarettes(link);
+            // Money only once MSC's own save has surely been applied, so its loaded PlayerMoney
+            // isn't taken for money spent or earned.
+            if (inGame && Time.realtimeSinceStartup - inGameSince >= MoneySettle) MirrorMoney(link);
             if (emptyUntil >= 0f) CatchEmpty(link);
+            if (drinkQueued != 0) AdvanceQueuedDrink(link);
+            if (showing) HoldShownNeeds();
+            EndShow();
+            DrinkShow.Update(link, showing, log);
+            if (toolsBack && drinkQueued == 0 && Time.realtimeSinceStartup >= toolsBackAt && !Global("PlayerDrinkOn"))
+            {
+                toolsBack = false;
+                if (!ToolsOut()) { InputShim.Pulse(KeyCode.Alpha2); log("pocket: the tools back out"); }
+            }
+            if (showPending && !Paused && playing) { showPending = false; QueueDrink(link, true); }
             if (taking != null || takingKind != Pocket.None) { AdvanceTake(); presses.Clear(); return; }
             if (!playing) { presses.Clear(); return; }
-            if (ledger.Known) TopUp(link);
+            if (throwStance) WatchThrow(link);
+            if (handFor != 0)
+            {
+                // A key that needs the hand, pressed with the tools out: once MSC's 1 has it out.
+                if (ToolsOut() && Time.realtimeSinceStartup - handForAt < HandWait) return;
+                int key = handFor;
+                handFor = 0;
+                Press(link, key);
+                return;
+            }
             if (presses.Count > 0) Press(link, presses.Dequeue());
         }
 
         bool Send(Link link, int kind, int delta)
         {
+            uint seq;
+            return Send(link, kind, delta, out seq);
+        }
+
+        bool Send(Link link, int kind, int delta, out uint seq)
+        {
             var change = ledger.Next(kind, delta);
+            seq = change.seq;
             var payload = new byte[sizeof(PocketChange)];
             fixed (byte* p = payload) *(PocketChange*)p = change;
             if (!link.Send(MessageType.PocketChange, payload, payload.Length)) return false;
             ledger.Sent(change);
             return true;
-        }
-
-        // Endless supplies: what was used, thrown or put away comes back. Available counts the changes
-        // Skyrim hasn't applied yet, so nothing is sent twice; a full ring retries next frame.
-        void TopUp(Link link)
-        {
-            for (int kind = 0; kind < Wire.PocketKinds; kind++)
-            {
-                long add = Pocket.Missing(kind, ledger.Available(kind));
-                if (add > 0 && Send(link, kind, (int)add)) log($"pocket: topped up, +{add} of kind {kind}");
-            }
         }
 
         void MirrorCigarettes(Link link)
@@ -151,6 +227,60 @@ namespace PerkeleRim.Game
             if (delta == 0) return;
             if (Send(link, (int)Wire.PocketCigarettes, delta)) log($"pocket: cigarettes {delta:+0;-0} to Skyrim (MSC has {cigaretteGlobal.Value})");
             else cigarettes.Unsent(delta);
+        }
+
+        void MirrorMoney(Link link)
+        {
+            if (!ledger.Known) return;
+            if (moneyGlobal == null) moneyGlobal = FsmVariables.GlobalVariables.FindFsmFloat("PlayerMoney");
+            if (moneyGlobal == null) return;
+            bool set;
+            long value;
+            int delta = gold.Step(Pocket.Gold(moneyGlobal.Value), ledger.Available((int)Wire.PocketGold), out set, out value);
+            if (set)
+            {
+                float money = Pocket.Money(value, moneyGlobal.Value);
+                log($"pocket: money {moneyGlobal.Value:0.##} -> {money:0.##} from Skyrim's gold");
+                moneyGlobal.Value = money;
+            }
+            if (delta == 0) return;
+            if (Send(link, (int)Wire.PocketGold, delta)) log($"pocket: money {delta:+0;-0} to Skyrim's gold (MSC has {moneyGlobal.Value:0.##})");
+            else gold.Unsent(delta);
+        }
+
+        // Kumpo ate or drank something in Skyrim: its numbers (protocol/cpp/food.h) on MSC's needs.
+        public void OnConsume(byte[] payload, int size)
+        {
+            if (size < sizeof(ConsumeEvent)) return;
+            ConsumeEvent e;
+            fixed (byte* p = payload) e = *(ConsumeEvent*)p;
+            var globals = FsmVariables.GlobalVariables;
+            var hunger = globals.FindFsmFloat("PlayerHunger");
+            var thirst = globals.FindFsmFloat("PlayerThirst");
+            var urine = globals.FindFsmFloat("PlayerUrine");
+            var drunk = globals.FindFsmFloat("PlayerDrunkAdjusted");
+            if (hunger == null || thirst == null || urine == null || drunk == null) { log("food: MSC's need globals aren't there"); return; }
+            float hungerWas = hunger.Value, thirstWas = thirst.Value, drunkWas = drunk.Value;
+            hunger.Value = Consumption.AddNeed(hunger.Value, e.hunger);
+            thirst.Value = Consumption.AddNeed(thirst.Value, e.thirst);
+            urine.Value = Consumption.AddNeed(urine.Value, e.urine);
+            drunk.Value = Consumption.AddDrunk(drunk.Value, e.drunk);
+            log($"food: from Skyrim, hunger {hungerWas:0.#} -> {hunger.Value:0.#}, thirst {thirstWas:0.#} -> {thirst.Value:0.#}, drunk {drunkWas:0.###} -> {drunk.Value:0.###}");
+            if (showing)  // the needs going back after the shown drink include this one
+            {
+                shownNeeds[0] = Consumption.AddNeed(shownNeeds[0], e.hunger);
+                shownNeeds[1] = Consumption.AddNeed(shownNeeds[1], e.thirst);
+                shownNeeds[2] = Consumption.AddNeed(shownNeeds[2], e.urine);
+                shownNeeds[3] = Consumption.AddDrunk(shownNeeds[3], e.drunk);
+            }
+            // One drinking for however many drinks, the strongest bottle, once the inventory is closed.
+            if (Consumption.DrinkEvent(e.drink) != null)
+            {
+                var shown = Consumption.Shown(showDrink, e.drink);
+                if (shown != showDrink) showForm = e.form;
+                showDrink = shown;
+                showPending = true;
+            }
         }
 
         // ---- Keys ----
@@ -213,9 +343,20 @@ namespace PerkeleRim.Game
             string state = hand.ActiveStateName;
             bool holding = Holding(state);
             // As MSC's own checks: a tool, ax or flashlight out keeps the pick-up hand busy; smoking
-            // doesn't. Seated, the hand doesn't matter: only beer and food work there.
+            // doesn't. Beer and food don't need it (drunk with the left hand, eaten unseen), so they work
+            // with tools out too; seated, only they work.
             bool inVehicle = InVehicle();
-            if (inVehicle ? !Pocket.WorksInVehicle(key) : !holding && state != "Look for object")
+            bool consume = Pocket.WorksInVehicle(key);
+            if (!inVehicle && !consume && ToolsOut())
+            {
+                // 3 (an empty bottle) and Y need the hand: put the tools away first, as MSC's 1 does.
+                InputShim.Pulse(KeyCode.Alpha1);
+                handFor = key;
+                handForAt = Time.realtimeSinceStartup;
+                log($"pocket: tools out, the hand first for {(KeyCode)key}");
+                return;
+            }
+            if (inVehicle ? !consume : !consume && !holding && state != "Look for object")
             {
                 log($"pocket: {(inVehicle ? "in a vehicle" : "hands busy (" + state + ")")}, key {(KeyCode)key} ignored");
                 return;
@@ -225,11 +366,25 @@ namespace PerkeleRim.Game
             var aimed = holding ? null : Aimed();
             int aimedKind = KindOfItem(aimed);
             int kind = Pocket.KindOfSlot(Pocket.SlotOfKey(key));
-            var action = Pocket.Decide(key, heldKind, holding, aimedKind, kind != Pocket.None ? ledger.Available(kind) : 0);
+            long available = kind != Pocket.None ? ledger.Available(kind) : 0;
+            if (kind == (int)Wire.PocketBottle)  // 3: an empty bottle or junk, at random
+            {
+                long junkLeft = ledger.Available((int)Wire.PocketJunk);
+                kind = Pocket.ThrowKind(available, junkLeft, random.NextDouble());
+                available += junkLeft;
+            }
+            var action = Pocket.Decide(key, heldKind, holding, aimedKind, available);
             switch (action)
             {
                 case Pocket.Action.Pocket:
+                    throwStance = false;  // 3 again (or Y): the bottle back, the stance over
                     PocketItem(link, held, heldKind, true);
+                    break;
+                case Pocket.Action.PocketAndConsume:
+                    throwStance = false;
+                    if (!PocketItem(link, held, heldKind, true)) return;
+                    if (kind == (int)Wire.PocketBeer) DrinkBeer(link);
+                    else StartTake(link, kind, true);
                     break;
                 case Pocket.Action.PocketAimed:
                     PocketItem(link, aimed, aimedKind, false);
@@ -242,6 +397,7 @@ namespace PerkeleRim.Game
                     StartTake(link, kind, false);
                     break;
                 case Pocket.Action.PocketAndTake:
+                    throwStance = false;
                     // A case with more than the one bottle taken out is put down, not emptied bottle by bottle.
                     if (heldKind == (int)Wire.PocketBeer && Bottles(held) > 1) Drop(held);
                     else if (!PocketItem(link, held, heldKind, true)) return;
@@ -256,6 +412,54 @@ namespace PerkeleRim.Game
                         log($"pocket: key {(KeyCode)key} does nothing (holding {(held != null ? held.name : "nothing")}, {(kind != Pocket.None ? ledger.Available(kind) : 0)} in slot)");
                     break;
             }
+        }
+
+        // ---- The throwing stance ----
+
+        // 3 is a stance, not one bottle: after a throw the next empty bottle comes out by itself, while
+        // there are any. A drop (it lies still), something else picked up, 3 again, Y or another key
+        // ends it; another key puts the bottle in the hand away first, so switching never loses one.
+        void WatchThrow(Link link)
+        {
+            if (stanceAway)
+            {
+                stanceAway = false;
+                throwStance = false;
+                if (thrown == null) return;
+                var hand = PickUp();
+                bool inHand = hand != null && Holding(hand.ActiveStateName) && hand.FsmVariables.FindFsmGameObject("PickedObject").Value == thrown;
+                if (inHand) PocketItem(link, thrown, thrownKind, true);
+                else
+                {
+                    // MSC's 2 dropped it as it took the tools out; one already thrown flies on.
+                    var flyer = thrown.GetComponent<Rigidbody>();
+                    bool inFlight = flyer != null && flyer.velocity.magnitude > ThrowSpeed;
+                    if (!inFlight && thrownKind == (int)Wire.PocketJunk) junk.Back(thrown);
+                    else if (!inFlight && Send(link, (int)Wire.PocketBottle, 1)) { UnityEngine.Object.Destroy(thrown); log("pocket: the dropped bottle back into the pocket"); }
+                }
+                thrown = null;
+                return;
+            }
+            if (taking != null) return;  // the next one is on its way
+            if (thrown == null) { throwStance = false; return; }
+            var pick = PickUp();
+            if (pick != null && Holding(pick.ActiveStateName) && pick.FsmVariables.FindFsmGameObject("PickedObject").Value == thrown) { leftAt = -1f; return; }
+            float now = Time.realtimeSinceStartup;
+            if (leftAt < 0f) { leftAt = now; return; }
+            if (now - leftAt < ThrowLook) return;
+            var body = thrown.GetComponent<Rigidbody>();
+            bool flying = body != null && body.velocity.magnitude > ThrowSpeed;
+            thrown = null;
+            long bottles = ledger.Available((int)Wire.PocketBottle), junkLeft = ledger.Available((int)Wire.PocketJunk);
+            if (flying && bottles + junkLeft > 0)
+            {
+                int next = Pocket.ThrowKind(bottles, junkLeft, random.NextDouble());
+                log(next == (int)Wire.PocketBottle ? "pocket: thrown, the next empty bottle" : "pocket: thrown, the next piece of junk");
+                StartTake(link, next, false);
+                return;
+            }
+            throwStance = false;
+            log(flying ? "pocket: thrown, nothing left to throw" : "pocket: put down, nothing more comes out");
         }
 
         // ---- Into the pocket ----
@@ -278,6 +482,12 @@ namespace PerkeleRim.Game
         // An item in the hand (inHand) or the one the crosshair is on into the pocket.
         bool PocketItem(Link link, GameObject held, int kind, bool inHand)
         {
+            if (kind == (int)Wire.PocketJunk)  // Skyrim still has it: it just isn't out any more
+            {
+                if (inHand) Drop(held);
+                junk.Back(held);
+                return true;
+            }
             if (!Send(link, kind, 1)) { log("pocket: the link is full, nothing pocketed"); return false; }
             if (kind == (int)Wire.PocketBeer)
             {
@@ -299,7 +509,7 @@ namespace PerkeleRim.Game
             }
             if (inHand) Drop(held);
             var itemUse = UseFsm(held);
-            if (itemUse != null) itemUse.SendEvent("GARBAGE");  // food: gone, and never loaded again
+            if (itemUse != null && HasEvent(itemUse, "GARBAGE")) itemUse.SendEvent("GARBAGE");  // food: gone, and never loaded again
             else UnityEngine.Object.Destroy(held);              // an empty bottle isn't saved
             log($"pocket: {held.name} pocketed");
             return true;
@@ -309,33 +519,126 @@ namespace PerkeleRim.Game
 
         // MSC's own beer drinking, as from a case (beer case :: Use sends DRINKBEER): the animation,
         // the needs, then the empty bottle thrown. Not while a drink is going (it would cut it short).
-        void DrinkBeer(Link link)
+        void DrinkBeer(Link link) => QueueDrink(link, false);
+
+        // A drink: a pocket beer, or (show) just MSC's drinking of the strongest drink Kumpo had in
+        // Skyrim's inventory (DrinkShow), its needs already counted. With the tools out MSC's 1 takes the hand
+        // out first and MSC's 2 brings the tools back after.
+        void QueueDrink(Link link, bool show)
         {
             // A beer case checks the left hand (busy drinking, pushing, giving the finger) and the helmet.
-            if (Global("PlayerDrinkOn") || Global("PlayerHandLeft") || Global("PlayerHelmet")) { log("pocket: can't drink now (left hand busy or helmet on)"); return; }
-            if (!Send(link, (int)Wire.PocketBeer, -1)) { log("pocket: the link is full, no beer"); return; }
+            if (Global("PlayerDrinkOn") || Global("PlayerHandLeft") || Global("PlayerHelmet") || drinkQueued != 0 || showing)
+            {
+                if (!show) log("pocket: can't drink now (left hand busy or helmet on)");
+                return;
+            }
+            if (ToolsOut())
+            {
+                InputShim.Pulse(KeyCode.Alpha1);
+                toolsBack = true;
+                drinkQueued = show ? 2 : 1;
+                drinkQueuedAt = Time.realtimeSinceStartup;
+                log("pocket: tools out, the hand first");
+                return;
+            }
+            StartDrink(link, show);
+        }
+
+        // Once the hand is out (or after a second, whatever MSC made of the 1).
+        void AdvanceQueuedDrink(Link link)
+        {
+            if (ToolsOut() && Time.realtimeSinceStartup - drinkQueuedAt < HandWait) return;
+            bool show = drinkQueued == 2;
+            drinkQueued = 0;
+            StartDrink(link, show);
+        }
+
+        // MSC's tools (2Spanner) are out instead of the hand.
+        public static bool ToolsOut()
+        {
+            var tools = GameObject.Find(ToolsPath);
+            return tools != null && tools.activeInHierarchy;
+        }
+
+        void StartDrink(Link link, bool show)
+        {
+            if (!show && !Send(link, (int)Wire.PocketBeer, -1)) { log("pocket: the link is full, no beer"); toolsBackAt = 0f; return; }
+            uint drink = show ? showDrink : Wire.DrinkBeer;
+            uint form = show ? showForm : 0u;
+            if (show)
+            {
+                showDrink = Wire.DrinkNone;
+                showForm = 0;
+                // MSC's drink counts its own needs: put them back as they were once it's down.
+                var globals = FsmVariables.GlobalVariables;
+                for (int i = 0; i < ShowNeeds.Length; i++)
+                {
+                    var g = globals.FindFsmFloat(ShowNeeds[i]);
+                    shownNeeds[i] = g != null ? g.Value : float.NaN;
+                }
+                showing = true;
+                showUntil = Time.realtimeSinceStartup + DrinkTime;
+            }
+            emptyToPocket = !show;
             bottlesBefore.Clear();
-            foreach (var go in EmptyBottles()) bottlesBefore.Add(go.GetInstanceID());
-            emptyUntil = Time.realtimeSinceStartup + EmptyWait;
-            PlayMakerFSM.BroadcastEvent("DRINKBEER");
+            foreach (var go in EmptyBottles(show)) bottlesBefore.Add(go.GetInstanceID());
+            if (!show) PlayMakerFSM.BroadcastEvent("DRINKBEER");
+            else if (!DrinkShow.Start(drink, form, log)) { showing = false; return; }
+            if (toolsBack) toolsBackAt = Time.realtimeSinceStartup + DrinkTime;
+            emptyUntil = Consumption.Throws(drink) ? Time.realtimeSinceStartup + EmptyWait : -1f;
             // As the case does: no smoking or gestures until the beer is down.
             var camera = GameObject.Find(FunctionsPath);
             if (camera != null)
                 foreach (var f in camera.GetComponents<PlayMakerFSM>())
                     if (f.FsmName == "PlayerFunctions") { functions = f; f.enabled = false; functionsBackAt = Time.realtimeSinceStartup + DrinkTime; }
-            log($"pocket: drinking a beer ({ledger.Available((int)Wire.PocketBeer)} left)");
+            log(show ? $"pocket: MSC's drinking for the drinks from Skyrim's inventory (drink {drink})" : $"pocket: drinking a beer ({ledger.Available((int)Wire.PocketBeer)} left)");
         }
 
-        // MSC's empty beer bottles in the world: copies of BottleBeerFly, renamed by their Go FSM.
-        static List<GameObject> EmptyBottles()
+        // The shown drink is down: MSC's needs back to before it, plus what Skyrim sent meanwhile.
+        void EndShow()
+        {
+            if (!showing || Time.realtimeSinceStartup < showUntil || Global("PlayerDrinkOn")) return;
+            showing = false;
+            DrinkShow.Restore(log);
+            HoldShownNeeds();
+            log("pocket: the shown drink is down, MSC's needs as Skyrim's drinks left them");
+        }
+
+        // Every frame of a shown drink, not just at its end: MSC's booze adds +0.45 drunk a second
+        // while it's drunk (the spirit +1.1), enough to black Kumpo out before it's down.
+        void HoldShownNeeds()
+        {
+            var globals = FsmVariables.GlobalVariables;
+            for (int i = 0; i < ShowNeeds.Length; i++)
+            {
+                var g = globals.FindFsmFloat(ShowNeeds[i]);
+                if (g != null && !float.IsNaN(shownNeeds[i])) g.Value = shownNeeds[i];
+            }
+        }
+
+        // MSC's empty beer bottles in the world: copies of BottleBeerFly, renamed by their Go FSM. Any
+        // drink's leftover too (shown: the booze or spirit bottle, the milk carton), near the player.
+        static List<GameObject> EmptyBottles(bool anyDrink = false)
         {
             var list = new List<GameObject>();
+            var cam = Camera.main;
             foreach (Rigidbody body in UnityEngine.Object.FindObjectsOfType(typeof(Rigidbody)))
             {
                 var go = body.gameObject;
-                if (go.activeInHierarchy && (go.name == "empty bottle(Clone)" || go.name == BottleTemplate + "(Clone)")) list.Add(go);
+                if (!go.activeInHierarchy) continue;
+                if (go.name == "empty bottle(Clone)" || go.name == BottleTemplate + "(Clone)") list.Add(go);
+                else if (anyDrink && cam != null && Consumption.IsDrinkLeftover(go.name) &&
+                         (go.transform.position - cam.transform.position).sqrMagnitude < LeftoverReach * LeftoverReach) list.Add(go);
             }
             return list;
+        }
+
+        const float LeftoverReach = 6f;  // a shown drink's thrown bottle is looked for this close (m)
+
+        static bool HasEvent(PlayMakerFSM fsm, string name)
+        {
+            foreach (var e in fsm.FsmEvents) if (e.Name == name) return true;
+            return false;
         }
 
         // The pocket beer's empty bottle, once MSC has thrown it: into the pocket instead of the
@@ -343,12 +646,19 @@ namespace PerkeleRim.Game
         void CatchEmpty(Link link)
         {
             float now = Time.realtimeSinceStartup;
-            if (now > emptyUntil) { emptyUntil = -1f; log("pocket: no empty bottle after the beer (the drink was cut short?)"); return; }
+            if (now > emptyUntil) { emptyUntil = -1f; log("pocket: no empty bottle after the drink (cut short?)"); return; }
             if (now < nextEmptyLook) return;
             nextEmptyLook = now + 0.1f;
-            foreach (var go in EmptyBottles())
+            foreach (var go in EmptyBottles(!emptyToPocket))
             {
                 if (bottlesBefore.Contains(go.GetInstanceID())) continue;
+                if (!emptyToPocket)  // Skyrim already has its bottle
+                {
+                    log($"pocket: the shown drink's {go.name} destroyed");
+                    UnityEngine.Object.Destroy(go);
+                    emptyUntil = -1f;
+                    return;
+                }
                 if (!Send(link, (int)Wire.PocketBottle, 1)) return;  // the link is full: next look
                 UnityEngine.Object.Destroy(go);
                 emptyUntil = -1f;
@@ -362,6 +672,19 @@ namespace PerkeleRim.Game
             var cam = Camera.main;
             if (cam == null) return;
             if (eat && Global("PlayerHelmet")) { log("pocket: can't eat with the helmet on"); return; }  // Eat would refuse
+            if (kind == (int)Wire.PocketJunk)
+            {
+                // Skyrim picks which and answers (JunkLink); AdvanceTake waits for the body.
+                if (link == null || !Send(link, kind, -1, out junkSeq)) { log("pocket: the link is full, no junk taken out"); return; }
+                taking = null;
+                takingKind = kind;
+                takingUse = null;
+                trimmed = true;
+                eating = false;
+                takingSince = Time.realtimeSinceStartup;
+                log("pocket: asking Skyrim for junk");
+                return;
+            }
             if (link != null && !Send(link, kind, -1)) { log("pocket: the link is full, nothing taken out"); return; }
             var made = Make(kind);
             if (made == null)
@@ -382,21 +705,25 @@ namespace PerkeleRim.Game
             log($"pocket: {(eating ? "eating" : "taking out")} {made.name}");
         }
 
+        // A new copy of MSC's empty beer bottle (BottleBeerFly), active, its toss off; null when MSC
+        // has no template for it. Also JunkLink's body for junk.
+        internal static GameObject NewBottle()
+        {
+            GameObject template = null;
+            foreach (GameObject go in Resources.FindObjectsOfTypeAll(typeof(GameObject)))
+                if (go.name == BottleTemplate && go.transform.parent == null && go.GetComponent<Rigidbody>() != null) { template = go; break; }
+            if (template == null) return null;
+            var bottle = (GameObject)UnityEngine.Object.Instantiate(template);
+            // Its Go FSM would throw it (the drinking animation's toss); in the hand it just stays.
+            foreach (var f in bottle.GetComponents<PlayMakerFSM>()) f.enabled = false;
+            bottle.name = "empty bottle(Clone)";
+            bottle.SetActive(true);
+            return bottle;
+        }
+
         GameObject Make(int kind)
         {
-            if (kind == (int)Wire.PocketBottle)
-            {
-                GameObject template = null;
-                foreach (GameObject go in Resources.FindObjectsOfTypeAll(typeof(GameObject)))
-                    if (go.name == BottleTemplate && go.transform.parent == null && go.GetComponent<Rigidbody>() != null) { template = go; break; }
-                if (template == null) return null;
-                var bottle = (GameObject)UnityEngine.Object.Instantiate(template);
-                // Its Go FSM would throw it (the drinking animation's toss); in the hand it just stays.
-                foreach (var f in bottle.GetComponents<PlayMakerFSM>()) f.enabled = false;
-                bottle.name = "empty bottle(Clone)";
-                bottle.SetActive(true);
-                return bottle;
-            }
+            if (kind == (int)Wire.PocketBottle) return NewBottle();
             string product = kind == (int)Wire.PocketBeer ? "Beer"
                 : kind == (int)Wire.PocketSausages ? "Sausages"
                 : kind == (int)Wire.PocketPizza ? "Pizza"
@@ -424,10 +751,27 @@ namespace PerkeleRim.Game
         void AdvanceTake()
         {
             float age = Time.realtimeSinceStartup - takingSince;
+            if (taking == null && takingKind == (int)Wire.PocketJunk)
+            {
+                GameObject made;
+                if (!junk.TryMake(ledger.Session, junkSeq, out made))
+                {
+                    if (age > JunkBody.AnswerTimeout) { log("pocket: Skyrim didn't answer with junk"); junk.Abandon(ledger.Session, junkSeq); EndTake(); }
+                    return;
+                }
+                if (made == null) { EndTake(); return; }
+                taking = made;
+                takingSince = Time.realtimeSinceStartup;
+                var view = Camera.main;
+                if (view != null) PlaceAhead(made, view.transform);
+                return;
+            }
             if (taking == null) { log("pocket: the item taken out is gone"); EndTake(); return; }
             if (age > TakeTimeout)
             {
-                log($"pocket: {taking.name} didn't get into the hand in {TakeTimeout} s (hand {(pickUp != null ? pickUp.ActiveStateName : "none")}), left where it is");
+                bool isJunk = takingKind == (int)Wire.PocketJunk;
+                log($"pocket: {taking.name} didn't get into the hand in {TakeTimeout} s (hand {(pickUp != null ? pickUp.ActiveStateName : "none")}), {(isJunk ? "back to Skyrim" : "left where it is")}");
+                if (isJunk) junk.Back(taking);
                 EndTake();
                 return;
             }
@@ -467,6 +811,7 @@ namespace PerkeleRim.Game
             if (Holding(hand.ActiveStateName) && hand.FsmVariables.FindFsmGameObject("PickedObject").Value == taking)
             {
                 log($"pocket: {taking.name} in the hand ({ledger.Available(takingKind)} left in the pocket)");
+                if (Pocket.Thrown(takingKind) && !holdOnly) { throwStance = true; thrown = taking; thrownKind = takingKind; leftAt = -1f; }
                 EndTake();
                 return;
             }
@@ -482,6 +827,7 @@ namespace PerkeleRim.Game
             takingKind = Pocket.None;
             takingUse = null;
             eating = false;
+            holdOnly = false;
         }
     }
 }

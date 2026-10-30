@@ -63,9 +63,27 @@ namespace PerkeleRim.Game
                 }
             }
 
+            // Unity's own OnMouseEnter/Over/Down messages (PlayMaker's MOUSE system events) come from
+            // SendMouseEvents in UnityEngine, which reads the real mouse; through the shim they follow
+            // Skyrim's cursor in MSC's menu (F1) and the screen center otherwise, where MSC locks it.
+            var mouseEvents = typeof(Input).Assembly.GetType("UnityEngine.SendMouseEvents");
+            var send = mouseEvents != null ? mouseEvents.GetMethod("DoSendMouseEvents", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic) : null;
+            if (send == null) Log("redirect: UnityEngine.SendMouseEvents.DoSendMouseEvents not found, Unity's mouse messages read the real mouse");
+            else
+            {
+                var count = new HarmonyMethod(typeof(InputRedirect).GetMethod(nameof(CountMouseEvents), BindingFlags.Static | BindingFlags.NonPublic));
+                try { harmony.Patch(send, count, null, transpiler); patched++; }
+                catch (Exception e) { failed++; Log("redirect: failed UnityEngine.SendMouseEvents.DoSendMouseEvents: " + e.Message); }
+            }
+
             Log($"redirect: scanned {scanned} methods, patched {patched}, failed {failed}, call sites {callSitesReplaced}, {(DateTime.Now - start).TotalMilliseconds:0} ms");
             foreach (var kv in unshimmed) Log($"redirect: left unshimmed Input.{kv.Key} x{kv.Value}");
         }
+
+        // How often Unity sent its mouse messages (LookAtProbe logs the rate).
+        public static int MouseEventCalls;
+
+        static void CountMouseEvents() => MouseEventCalls++;
 
         // Cheap pre-filter: look for call/callvirt opcodes whose token resolves to UnityEngine.Input.
         // Stray 0x28/0x6F operand bytes only cost a failed resolve; the transpiler does the real match.

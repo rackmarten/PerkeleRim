@@ -17,9 +17,11 @@ namespace PerkeleRim.Game
     //  - sends MSC's interaction text (LookAtText) and subtitle line (Subtitle) to Skyrim when they
     //    change, and its needs with every pose;
     //  - runs the vehicles (VehicleLink) on the same island, all drawn in Skyrim: the van on the
-    //    player's right, or at the spot the anchor names (the garage); the Jonnez moped ([) and the
-    //    Kekmet tractor (;) only once called, parked in front of the player, then left where they are
-    //    (] calls the van the same way, to wherever the player stands);
+    //    player's right, or at the spot the anchor names (the garage); the Jonnez moped ([), the
+    //    Kekmet tractor (;) and the Gifu truck (') only once called, parked in front of the player,
+    //    then left where they are (] calls the van the same way, to wherever the player stands); the
+    //    van, the Kekmet and the Gifu burn diesel, fill up at Skyrim's dwemer oil pumps for gold and,
+    //    called dry, are towed onto one (FuelLink);
     //  - puts what the player carries into Skyrim's inventory and uses it from there (Y, keys 3 to 8),
     //    and keeps MSC's cigarettes and Skyrim's the same (PocketLink);
     //  - reports the physics items around the player (ItemLink), whose models ModelSender sends;
@@ -27,6 +29,8 @@ namespace PerkeleRim.Game
     //  - puts Skyrim's actors near the player on the island as capsules and sends MSC's punches
     //    that land on them (ActorLink); H honks the driven vehicle, scattering them (VehicleHorn);
     //  - shares MSC's first-person layer (hands, drinks, tools in hand) with Skyrim (HandLayerSender);
+    //  - keeps MSC's own blackouts (drunk pass-out, knockout) from moving its player while the link is
+    //    up (PassOutGuard) and blacks him out its own way, for Skyrim to wake him somewhere (BlackoutLink);
     //  - keeps MSC's player alive while handed over and sends what it would have died of as
     //    PlayerDamage (DeathGuard), plays MSC's death sound on PlayerDeath, and sends MSC's blood
     //    overlay for Skyrim's death ahead of time;
@@ -75,21 +79,27 @@ namespace PerkeleRim.Game
         int hitKey = (int)KeyCode.H;  // MSC's Hit binding, read once the player is found
         int watchKey = (int)KeyCode.U;  // MSC's Watch binding, likewise
         Action<string> log;
-        VehicleLink van, moped, kekmet;
+        VehicleLink van, moped, kekmet, gifu;
         VehicleLink[] vehicles;
         BeerGift beer;  // spike "beer" only
         ShelfStocker shelves;
+        FuelLink fuel;
         PocketLink pocket;
+        JunkLink junk;
         ModelSender models;
         ItemLink items;
         ParticleLink particles;
         ActorLink actors;
+        FingerLink finger;
         PlayerVoice voice;
         VehicleHorn horn;
         bool hornHeld;  // H held while driving, read by FeedInput before it is kept from MSC
         HandLayerSender hands;
+        MscMenuLink menu;  // MSC's options menu shown in Skyrim (F1)
+        LookAtProbe probe;  // logs why MSC's look-at prompt is missing, if it is
         SaveSync saves;
         RestLink rest;
+        BlackoutLink blackout;
         Collider asphalt;  // MSC's road (tag Concrete), found by LogSurfaces
         Collider groundTemplate;  // MSC ground the island chunks copy layer, tag and material from
 
@@ -156,24 +166,35 @@ namespace PerkeleRim.Game
             van = new VehicleLink("HAYOSIKO(1500kg, 250)", "Hayosiko", new Vector3(3.5f, 0f, 2f), Wire.VehicleHayosiko, false, "PlayerKeyHayosiko", VehicleTune.Van, island, ground, log, new Vector3(0f, 0f, 6f));
             moped = new VehicleLink("JONNEZ ES(Clone)", "Jonnez", new Vector3(0f, 0f, 2.5f), Wire.VehicleJonnez, true, null, VehicleTune.Moped, island, ground, log);
             kekmet = new VehicleLink("KEKMET(350-400psi)", "Kekmet", new Vector3(0f, 0f, 4.5f), Wire.VehicleKekmet, true, null, VehicleTune.Kekmet, island, ground, log);
-            vehicles = new[] { van, moped, kekmet };
+            // The Gifu is 8.6 m long, 4.8 m of it behind its origin: parked well ahead, on flat ground under all of it.
+            gifu = new VehicleLink("GIFU(750/450psi)", "Gifu", new Vector3(0f, 0f, 8f), Wire.VehicleGifu, true, "PlayerKeyGifu", VehicleTune.Gifu, island, ground, log);
+            gifu.ParkHalfSize = new Vector2(1.3f, 4.6f);
+            gifu.TankSize = 300f;  // its tank has no MaxCapacity; its cap trigger reads MaxCapacity=300 once its FSM is up
+            vehicles = new[] { van, moped, kekmet, gifu };
             beer = new BeerGift(log);
             shelves = new ShelfStocker(island, ground, log);
-            pocket = new PocketLink(log);
+            moped.EndlessFuel = true;
+            fuel = new FuelLink(island, log);
+            junk = new JunkLink(island, log);
+            pocket = new PocketLink(junk, log);
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
             particles = new ParticleLink(island, models, () => Array.ConvertAll(vehicles, v => v.Car), log);
             actors = new ActorLink(island, charge, log, what => voice.Swear(what));
+            finger = new FingerLink(log);
             voice = new PlayerVoice(log);
             horn = new VehicleHorn(log);
             chase = new ChaseCamera(log);
             debugView = new DebugView(SetIslandVisible, log);
             hands =new HandLayerSender(log);
+            probe = new LookAtProbe(log);
+            menu = new MscMenuLink(log);
             crash = new CrashSensor(log);
             DeathGuard.Install(log);
             ConsumeWatch.Install(log);
             saves = new SaveSync(island, vehicles, items, () => playing, () => player, log);
             rest = new RestLink(log);
+            blackout = new BlackoutLink(log);
         }
 
         // A beer case next to the player (spike command "beer").
@@ -184,10 +205,14 @@ namespace PerkeleRim.Game
         public void HoldPocketKind(int kind) => pocket.Hold(kind);
 
         // Spike "shout 0|1": what PlayerShout plays (1 = Unrelenting Force).
-        public void Yell(uint kind) => voice.Shout(kind, "spike");
+        public void Yell(uint shout, uint words) =>
+            voice.Shout(shout == 0x13E07 ? Wire.ShoutUnrelentingForce : Wire.ShoutOther, shout, words, "spike");
 
         // Spike "hurt <cause> [damage]": what PlayerHurt plays (Wire.Hurt*: 0 hit, 1 blocked, 2 fall, 3 crash, 4 low).
         public void Hurt(uint cause, float damage) => voice.Hurt(cause, damage, "spike");
+
+        // Spike "intro <cue>": what IntroCue plays (Wire.Intro*: 1 blackout, 2 wake).
+        public void Intro(uint cue) => voice.Intro(cue, "spike");
 
         // Spike commands "textures" (read an object's model and log it) and "items" (what Skyrim gets).
         public void InspectModel(string name) => models.Inspect(name);
@@ -213,9 +238,26 @@ namespace PerkeleRim.Game
             // doesn't start with a jump.
             input.Update(ref s);
             // Not in the main menu: MSC loads its game there with its own time, which a Skyrim menu would stop for good.
-            Freeze(input.Paused && Application.loadedLevelName == "GAME");
+            Freeze(OptionsMenu.Freezes(input.Paused, input.MscMenu) && Application.loadedLevelName == "GAME");
             InputShim.Active = input.OwnsPlayer;
+            InputShim.HasCursor = input.MscMenu;
             if (!input.OwnsPlayer) { punch.Reset(); block.Reset(); charge.Reset(); return; }
+            if (input.MscMenu)
+            {
+                // MSC's menu shown in Skyrim (F1): Skyrim's cursor, and every key and button as they are
+                // (clicks, key rebinding), none of the combat, remap or pocket keys.
+                float x, y;
+                InputFrame.CursorPixels(input.CursorX, input.CursorY, Screen.width, Screen.height, out x, out y);
+                InputShim.CursorX = x;
+                InputShim.CursorY = y;
+                punch.Reset(); block.Reset(); charge.Reset();
+                InputShim.Keys.Clear();
+                foreach (var k in input.Keys) InputShim.Keys.Add((KeyCode)k);
+                InputShim.Axes.Clear();
+                InputShim.Axes["Mouse X"] = input.MouseX;  // the sliders drag with it
+                InputShim.Axes["Mouse Y"] = input.MouseY;
+                return;
+            }
             var state = functions != null ? functions.ActiveStateName : null;
             bool free = HandsFree(BlockButton.Watching(state));
             block.Apply(input.Keys, free, watchKey, hitKey, state, Time.realtimeSinceStartup);
@@ -283,6 +325,7 @@ namespace PerkeleRim.Game
             link.Receive(OnMessage);
             voice.Update();
             FindPlayer();
+            PassOutGuard.Update(link.IsUp, player, log);
             foreach (var v in vehicles) v.Find();
             UseGround();
 
@@ -298,7 +341,8 @@ namespace PerkeleRim.Game
             PruneChunks();
 
             var state = new PlayerState { frame = fixedFrame };
-            if (owned) CloseMenu();
+            menu.Update(owned && input.MscMenu);
+            if (owned && !menu.Holding) CloseMenu();  // Skyrim shows it (F1): left open
             chase.Update(owned);
             debugView.Update(owned);
 
@@ -306,6 +350,9 @@ namespace PerkeleRim.Game
             if (playing) CatchFall();
             StepWalk();
             MotorBoost.Active = playing;
+            var urine = needs != null && needs[(int)Wire.NeedUrine] != null ? needs[(int)Wire.NeedUrine].Value : 0f;
+            MotorBoost.NeedScale = Needs.UrineSpeed(urine);  // a full bladder slows Kumpo
+            blackout.Update(link, owned, player != null);
             DeathGuard.Active = owned;
             DeathGuard.Update();
             SendDamage(link);
@@ -315,9 +362,12 @@ namespace PerkeleRim.Game
             // Skyrim has the blood ready before it is needed (shown when the player dies there).
             if (playing) models.IdForBuilt(BloodModel, () => ModelSender.Overlay(BloodModel, BloodTexture, log));
             if (playing) FillPose(ref state);
+            if (player != null) state.flags |= Wire.PlayerInGame;  // Skyrim's play mode hands over only then
+            if (menu.Open) state.flags |= Wire.PlayerMscMenu;  // Skyrim closes its side when Resume closes it
             state.generation = island.Generation;
             link.WritePlayer(ref state);
             SendLookAt(link, playing);
+            probe.Step(playing);
             SendSubtitle(link, playing);
             SendGear(link, playing);
             foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero, viewCamera != null ? viewCamera.transform : null);
@@ -326,12 +376,16 @@ namespace PerkeleRim.Game
                 foreach (var v in vehicles) if (v.RightIfRolled(player)) break;
             if (playing && Driven() == null)
             {
-                if (InputShim.GetKeyDown(KeyCode.LeftBracket)) moped.Summon(player, Feet());
-                if (InputShim.GetKeyDown(KeyCode.RightBracket)) van.Summon(player, Feet());
-                if (InputShim.GetKeyDown(KeyCode.Semicolon)) kekmet.Summon(player, Feet());
+                if (InputShim.GetKeyDown(KeyCode.LeftBracket)) fuel.Call(moped, player, Feet());
+                if (InputShim.GetKeyDown(KeyCode.RightBracket)) fuel.Call(van, player, Feet());
+                if (InputShim.GetKeyDown(KeyCode.Semicolon)) fuel.Call(kekmet, player, Feet());
+                if (InputShim.GetKeyDown(KeyCode.Quote)) fuel.Call(gifu, player, Feet());
             }
+            fuel.Update(link, playing, player != null ? Feet() : Vector3.zero, playing ? Driven() : null, vehicles);
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             shelves.Update(playing);
+            pocket.Paused = input.Paused;
+            junk.Update(link, playing, player);
             pocket.Update(link, playing, player != null);
             windUp.Update(charge, Time.realtimeSinceStartup);
             items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
@@ -341,9 +395,10 @@ namespace PerkeleRim.Game
             bool pushing = functions != null && functions.ActiveStateName == "On";
             actors.Update(link, playing, player, driven != null, driven != null ? driven.Body : null, viewCamera != null ? viewCamera.transform : null,
                 pushing, player != null ? Feet() : Vector3.zero);
+            finger.Update(link, playing, functions, viewCamera != null ? viewCamera.transform : null);
             horn.Update(link, driven, hornHeld);
             models.Update(link);
-            hands.Update(link, playing, input.ScreenWidth, input.ScreenHeight);
+            hands.Update(link, playing, input.ScreenWidth, input.ScreenHeight, owned ? menu.Camera : null);
             saves.Update();
             if (shotPath != null)
             {
@@ -430,22 +485,44 @@ namespace PerkeleRim.Game
                 OnChunk(payload, size);
             else if (type == MessageType.PocketCounts)
                 pocket.OnCounts(payload, size);
+            else if (type == MessageType.ConsumeEvent)
+                pocket.OnConsume(payload, size);
+            else if (type == MessageType.JunkOut)
+                junk.OnOut(payload, size);
             else if (type == MessageType.PlayerDeath)
                 DeathGuard.PlayDeathSound();
             else if (type == MessageType.PlayerShout)
                 voice.OnShout(payload, size);
             else if (type == MessageType.PlayerHurt)
                 voice.OnHurt(payload, size);
+            else if (type == MessageType.IntroCue)
+                voice.OnIntro(payload, size);
             else if (type == MessageType.StockShelves)
                 shelves.OnMessage(payload, size);
+            else if (type == MessageType.FuelStations)
+                fuel.OnStations(payload, size);
             else if (type == MessageType.LoadReset)
+            {
                 rest.OnLoadReset();
+                blackout.Reset();
+            }
             else if (type == MessageType.PlayerWashed)
                 rest.OnWashed();
             else if (type == MessageType.TimePassed)
+            {
                 rest.OnTimePassed(payload, size);
+                blackout.OnTimePassed(payload, size);
+            }
             else if (type == MessageType.MscSave || type == MessageType.MscLoad)
                 saves.OnMessage(type, payload, size);
+            else if (type == MessageType.DebugCommand)
+            {
+                var line = LookAt.Decode(payload, size);
+                if (line == null) log($"debug: malformed DebugCommand ({size} bytes)");
+#if PERKELERIM_SPIKE
+                else Spike.SpikeHost.Run(line);
+#endif
+            }
             else if (type == MessageType.ScreenshotEvent)
             {
                 if (!Screenshot.Decode(payload, size, out shotPath)) log($"shot: malformed ScreenshotEvent ({size} bytes)");
@@ -1077,6 +1154,7 @@ namespace PerkeleRim.Game
             s.flags = Wire.PlayerValid;
             if (controller != null && controller.enabled && controller.isGrounded) s.flags |= Wire.PlayerGrounded;  // Skyrim's fall damage
             if (block.Blocking) s.flags |= Wire.PlayerBlocking;  // Skyrim's block
+            if (PocketLink.ToolsOut()) s.flags |= Wire.PlayerTools;  // Skyrim shows MSC's tools icon
             var pos = island.IslandToSkyrim(ToVec3(Feet()));
             s.position[0] = pos.x;
             s.position[1] = pos.y;
@@ -1092,6 +1170,7 @@ namespace PerkeleRim.Game
                 s.pitch = pitch * Mathf.Deg2Rad;
             }
             s.stance = Stance.FromCrouchState(crouch != null ? crouch.ActiveStateName : null);
+            s.throwCharge = charge.WireCharge(Time.realtimeSinceStartup);  // Skyrim's HUD shows it
             var tv = chase.Active;
             var view = tv != null ? tv : viewCamera;
             if (view != null)
@@ -1179,6 +1258,8 @@ namespace PerkeleRim.Game
 
         static Vec3 ToVec3(Vector3 v) => new Vec3(v.x, v.y, v.z);
         static Vector3 ToVector3(Vec3 v) => new Vector3(v.x, v.y, v.z);
+
+        void OnApplicationFocus(bool focused) { if (probe != null) probe.Focus(focused); }
 
         void OnDestroy()
         {

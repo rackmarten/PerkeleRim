@@ -122,6 +122,10 @@ namespace PerkeleRim.Tests
             parts.Set((int)Wire.VehiclePartCapacity - 1, part);
             p.Msc.WriteVehicleParts(ref parts);
             Assert.That(p.Skyrim.ReadVehicleParts(Wire.VehicleJonnez, out _), Is.False);
+            var gifu = new VehicleParts { frame = 10, vehicle = Wire.VehicleGifu, count = 1 };
+            p.Msc.WriteVehicleParts(ref gifu);  // the last slot, just before the items
+            Assert.That(p.Skyrim.ReadVehicleParts(Wire.VehicleGifu, out var gback), Is.True);
+            Assert.That(gback.frame, Is.EqualTo(10));
             Assert.That(p.Skyrim.ReadVehicleParts(Wire.VehicleHayosiko, out var pback), Is.True);
             Assert.That(pback.count, Is.EqualTo(Wire.VehiclePartCapacity));
             Assert.That(pback.model, Is.EqualTo(0x373B0001u));

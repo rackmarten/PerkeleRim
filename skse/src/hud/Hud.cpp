@@ -1,5 +1,9 @@
 #include "hud/Hud.h"
 
+#include <mutex>
+
+#include "needs.h"
+
 namespace PerkeleRim::Hud
 {
     namespace
@@ -14,14 +18,18 @@ namespace PerkeleRim::Hud
         // Needs bars, top left under Skyrim's own HUD messages (about 3 lines), clear of the inventory and map.
         constexpr double kNeedsLeft = 40.0;     // from the visible frame's left edge
         constexpr double kNeedsTop = 110.0;     // first row's top, down from the visible frame's top edge
+        constexpr double kToolsRight = 60.0;    // MSC's tools icon center, from the visible frame's right edge
+        constexpr double kToolsTop = 70.0;      // and down from its top edge, where MSC shows it
         constexpr double kNeedSize = 14.0;      // label font size
         constexpr double kNeedRow = 18.0;
         constexpr double kNeedLabelWidth = 80.0;
         constexpr double kNeedBarWidth = 120.0, kNeedBarHeight = 8.0;
-        constexpr double kNeedHigh = 0.8;       // a bar this full turns red
         constexpr const char* kNeedNames[] = { "Thirst", "Hunger", "Stress", "Urine", "Fatigue", "Dirtiness", "Drunk" };
-        // A full bar: needs run 0..100; MSC's drunk level 0..8, but 2.5 is already deadly in water.
-        constexpr float kNeedFull[] = { 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 4.0f };
+        // A full bar: needs run up to 200, where MSC's player dies of them (its own HUD stops at 100, so
+        // 100 and 180 looked the same); MSC's drunk level 0..8, but 2.5 is already deadly in water.
+        constexpr float kNeedFull[] = { 200.0f, 200.0f, 200.0f, 200.0f, 200.0f, 200.0f, 4.0f };
+        // From here a bar is red (MSC's own HUD turns red above 100), marked on the bar.
+        constexpr float kNeedWarn[] = { 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 2.5f };
         constexpr std::size_t   kRows = 7;
         constexpr std::size_t kUrine = 3;
         constexpr std::uint32_t kUrineColor = 0xF2D21B, kUrineHighColor = 0xFF7A00;
@@ -36,6 +44,15 @@ namespace PerkeleRim::Hud
         constexpr double kGearWidth = 200.0;
         constexpr double kGearRight = 30.0;   // from the visible frame's right edge to the box's right edge
         constexpr double kGearAbove = 70.0;   // text top, up from the frame's bottom edge
+        // MSC's fuel line (litres poured and their gold, a low or dry tank), above the gear.
+        constexpr double kFuelAbove = 104.0;
+        constexpr double kFuelWidth = 900.0;  // its text field; the box fits the text
+
+        // A throw's charge: a bar just above the dot, gold once full.
+        constexpr double        kChargeHalfWidth = 24.0;
+        constexpr double        kChargeBottom = -9.0, kChargeTop = -13.0;  // from the screen center
+        constexpr int           kChargeSteps = 48;  // redrawn per step
+        constexpr std::uint32_t kChargeColor = 0xFFFFFF, kChargeFullColor = 0xFFD24A;
 
         // MSC's hands: their own clip on the movie's root, below every vanilla HUD element (those
         // sit at the timeline's negative depths) and below our layer.
@@ -43,6 +60,10 @@ namespace PerkeleRim::Hud
         constexpr std::int32_t kHandsDepth = -16384;
 
         View                       current;
+        std::atomic<bool>          covered{ false };  // Cover
+        std::mutex                 appliedLock;
+        View                       applied;           // the last view queued to Apply, for Cover's own
+        int                        drawnCharge = -1;  // current.charge in kChargeSteps, -1 none
         std::array<int, kRows>     drawnNeeds{};  // current.needs in 0.5 % steps of a full bar
         std::array<int, 3>         drawnLight{};  // current.handsLight in Color.setTransform percent
 
@@ -131,6 +152,21 @@ namespace PerkeleRim::Hud
             Rect(a_clip, -10.0, -3.0, -7.4, 0.5);
         }
 
+        // MSC's tools icon: a wrench and a screwdriver side by side, white, as MSC shows them top right.
+        void DrawTools(RE::GFxValue& a_clip)
+        {
+            Circle(a_clip, 0x000000, 40.0, 17.0);
+            // Wrench: open jaw on top (two prongs), then the shaft.
+            Rect(a_clip, -10.0, -11.0, -7.5, -5.0);
+            Rect(a_clip, -4.5, -11.0, -2.0, -5.0);
+            Rect(a_clip, -10.0, -6.0, -2.0, -3.0);
+            Rect(a_clip, -7.5, -3.0, -4.5, 11.0);
+            // Screwdriver: handle, then the thin blade.
+            Rect(a_clip, 2.0, -11.0, 10.0, -8.0);
+            Rect(a_clip, 4.0, -8.0, 8.0, 1.0);
+            Rect(a_clip, 5.0, 1.0, 7.0, 11.0);
+        }
+
         // A single-line text field in Skyrim's HUD font, false if Scaleform refused it.
         bool MakeText(RE::GFxMovieView* a_movie, RE::GFxValue& a_parent, const char* a_name, double a_depth, double a_x, double a_y,
             double a_width, double a_size, const char* a_align, std::uint32_t a_color, RE::GFxValue& a_text)
@@ -189,6 +225,19 @@ namespace PerkeleRim::Hud
             a_clip.CreateEmptyMovieClip(&gearBox, "gearBox", 8);
             MakeText(a_movie, a_clip, "gear", 9.0, -kGearWidth * 0.5, 0.0, kGearWidth, kGearSize, "center", 0xFFFFFF, gear);
 
+            RE::GFxValue fuelBox, fuel;
+            a_clip.CreateEmptyMovieClip(&fuelBox, "fuelBox", 11);
+            MakeText(a_movie, a_clip, "fuel", 12.0, -kFuelWidth * 0.5, 0.0, kFuelWidth, kGearSize, "center", 0xFFFFFF, fuel);
+
+            RE::GFxValue toolsClip;
+            if (a_clip.CreateEmptyMovieClip(&toolsClip, "tools", 10)) {
+                DrawTools(toolsClip);
+                toolsClip.SetMember("_visible", RE::GFxValue(false));
+            }
+
+            RE::GFxValue chargeClip;
+            a_clip.CreateEmptyMovieClip(&chargeClip, "charge", 13);
+
             RE::GFxValue needs;
             if (a_clip.CreateEmptyMovieClip(&needs, "needs", 7)) {
                 for (std::size_t i = 0; i < std::size(kNeedNames); i++) {
@@ -201,6 +250,14 @@ namespace PerkeleRim::Hud
                     }
                     needs.CreateEmptyMovieClip(&bar, barName.c_str(), 30 + static_cast<std::int32_t>(i));
                 }
+                // Money, as MSC shows it under its bars: the label, then the number on a dark box.
+                const double y = static_cast<double>(kRows) * kNeedRow;
+                RE::GFxValue name, value, box;
+                if (MakeText(a_movie, needs, "moneyName", 50.0, 0.0, y - 3.0, kNeedLabelWidth, kNeedSize, "left", kNeedColor, name)) {
+                    name.SetText("Money");
+                }
+                needs.CreateEmptyMovieClip(&box, "moneyBox", 51);
+                MakeText(a_movie, needs, "money", 52.0, kNeedLabelWidth + 3.0, y - 3.0, kNeedBarWidth, kNeedSize, "left", kNeedColor, value);
             }
             SKSE::log::info("hud: layer created in the HUD movie");
             return true;
@@ -225,7 +282,7 @@ namespace PerkeleRim::Hud
                     continue;
                 }
                 const double fraction = Fraction(a_view, i);
-                const bool   high = fraction >= kNeedHigh;
+                const bool   high = a_view.needs[i] >= kNeedWarn[i];
                 const auto   color = i == kUrine ? (high ? kUrineHighColor : kUrineColor) : (high ? kNeedHighColor : kNeedColor);
                 const double x0 = kNeedLabelWidth, y0 = static_cast<double>(i) * kNeedRow + 4.0;
                 Call(bar, "clear", {});
@@ -233,6 +290,8 @@ namespace PerkeleRim::Hud
                 if (fraction > 0.0) {
                     Fill(bar, color, 90.0, x0, y0, x0 + kNeedBarWidth * fraction, y0 + kNeedBarHeight);
                 }
+                const double warn = x0 + kNeedBarWidth * (kNeedWarn[i] / kNeedFull[i]);
+                Fill(bar, 0x808080, 80.0, warn - 0.5, y0 - 1.0, warn + 0.5, y0 + kNeedBarHeight + 1.0);
             }
         }
 
@@ -241,9 +300,41 @@ namespace PerkeleRim::Hud
         // which takes a frame: until then Set keeps coming back here (handsSized).
         std::atomic<bool> handsSized{ false };
 
+        // Kumpo's shake, as ShakeHands last queued it.
+        struct Shake
+        {
+            float amount = 0.0f, x = 0.0f, y = 0.0f;
+        };
+        Shake shakeDrawn;  // UI thread
+
+        // The hands clip over the visible frame, shaken: grown by twice the shake around the center and
+        // moved by the offset.
+        void PlaceHands(RE::GFxValue& a_hands, const RE::GRectF& a_rect, const Shake& a_shake)
+        {
+            const double w = a_rect.right - a_rect.left, h = a_rect.bottom - a_rect.top;
+            const double grow = 2.0 * Needs::kShakeMax * a_shake.amount;
+            a_hands.SetMember("_xscale", RE::GFxValue(100.0 * (1.0 + grow)));
+            a_hands.SetMember("_yscale", RE::GFxValue(100.0 * (1.0 + grow)));
+            a_hands.SetMember("_x", RE::GFxValue(a_rect.left - grow * w / 2.0 + a_shake.x * h));
+            a_hands.SetMember("_y", RE::GFxValue(a_rect.top - grow * h / 2.0 + a_shake.y * h));
+        }
+
+        void ApplyShake(const Shake& a_shake)
+        {
+            shakeDrawn = a_shake;
+            auto* ui = RE::UI::GetSingleton();
+            auto  menu = ui ? ui->GetMenu(RE::HUDMenu::MENU_NAME) : nullptr;
+            auto* movie = menu ? menu->uiMovie.get() : nullptr;
+            RE::GFxValue hands;
+            if (!movie || !movie->GetVariable(&hands, (std::string("_root.") + kHandsClipName).c_str()) || !hands.IsDisplayObject()) {
+                return;
+            }
+            PlaceHands(hands, movie->GetVisibleFrameRect(), a_shake);
+        }
+
         void ApplyHands(RE::GFxMovieView* a_movie, RE::GFxValue& a_root, const View& a_view)
         {
-            const bool   show = a_view.show && !a_view.handsImage.empty() && a_view.handsWidth > 0 && a_view.handsHeight > 0;
+            const bool   show = a_view.show && !a_view.handsImage.empty() && a_view.handsWidth > 0 && a_view.handsHeight > 0 && !covered;
             RE::GFxValue hands;
             a_root.GetMember(kHandsClipName, &hands);
             if (!hands.IsDisplayObject()) {
@@ -279,8 +370,7 @@ namespace PerkeleRim::Hud
                 SKSE::log::info("hud: hands image {}", url);
             }
             const auto rect = a_movie->GetVisibleFrameRect();
-            hands.SetMember("_x", RE::GFxValue(static_cast<double>(rect.left)));
-            hands.SetMember("_y", RE::GFxValue(static_cast<double>(rect.top)));
+            PlaceHands(hands, rect, shakeDrawn);
             RE::GFxValue width, height, xscale, yscale;
             if (!hands.GetMember("img", &image) || !image.IsDisplayObject() || !image.GetMember("_width", &width) ||
                 !image.GetMember("_height", &height) || !image.GetMember("_xscale", &xscale) || !image.GetMember("_yscale", &yscale) ||
@@ -346,15 +436,19 @@ namespace PerkeleRim::Hud
             clip.SetMember("_x", RE::GFxValue(cx));
             clip.SetMember("_y", RE::GFxValue(cy));
 
-            RE::GFxValue text, box, handClip;
+            const bool   open = !covered;  // no menu over the view
+            RE::GFxValue dot, text, box, handClip;
+            if (clip.GetMember("dot", &dot) && dot.IsDisplayObject()) {
+                dot.SetMember("_visible", RE::GFxValue(a_view.dot && open));
+            }
             clip.GetMember("text", &text);
             clip.GetMember("box", &box);
             if (clip.GetMember("hand", &handClip) && handClip.IsDisplayObject()) {
-                handClip.SetMember("_visible", RE::GFxValue(a_view.hand));
+                handClip.SetMember("_visible", RE::GFxValue(a_view.hand && open));
             }
             if (text.IsDisplayObject() && box.IsDisplayObject()) {
                 const double top = kLabelBelow + (a_view.hand ? kHandSpace : 0.0);
-                const bool   hasLabel = !a_view.label.empty();
+                const bool   hasLabel = !a_view.label.empty() && open;
                 text.SetText(a_view.label.c_str());
                 text.SetMember("_visible", RE::GFxValue(hasLabel));
                 text.SetMember("_y", RE::GFxValue(top));
@@ -379,35 +473,75 @@ namespace PerkeleRim::Hud
                 }
             }
 
-            RE::GFxValue gearText, gearBox;
-            clip.GetMember("gear", &gearText);
-            clip.GetMember("gearBox", &gearBox);
-            if (gearText.IsDisplayObject() && gearBox.IsDisplayObject()) {
-                const double top = static_cast<double>(rect.bottom) - kGearAbove - cy;
-                const bool   has = !a_view.gear.empty();
-                gearText.SetText(a_view.gear.c_str());
-                RE::GFxValue width;
-                gearText.GetMember("textWidth", &width);
-                const double boxWidth = (width.IsNumber() ? width.GetNumber() : 0.0) + 2.0 * kBoxPadX;
-                // The text is centered on the box, the box's right edge kGearRight from the frame's.
-                const double middle = static_cast<double>(rect.right) - kGearRight - boxWidth * 0.5 - cx;
-                gearText.SetMember("_visible", RE::GFxValue(has));
-                gearText.SetMember("_x", RE::GFxValue(middle - kGearWidth * 0.5));
-                gearText.SetMember("_y", RE::GFxValue(top));
-                gearBox.SetMember("_x", RE::GFxValue(middle));
-                Call(gearBox, "clear", {});
-                if (has) {
-                    DrawBox(gearBox, gearText, top, kGearSize);
+            // Bottom right on a dark box, its right edge kGearRight from the frame's.
+            const auto rightBox = [&](const char* a_text, const char* a_box, const std::string& a_value, double a_above, double a_field) {
+                RE::GFxValue text, box;
+                clip.GetMember(a_text, &text);
+                clip.GetMember(a_box, &box);
+                if (!text.IsDisplayObject() || !box.IsDisplayObject()) {
+                    return;
                 }
+                const double top = static_cast<double>(rect.bottom) - a_above - cy;
+                const bool   has = !a_value.empty();
+                text.SetText(a_value.c_str());
+                RE::GFxValue width;
+                text.GetMember("textWidth", &width);
+                const double boxWidth = (width.IsNumber() ? width.GetNumber() : 0.0) + 2.0 * kBoxPadX;
+                const double middle = static_cast<double>(rect.right) - kGearRight - boxWidth * 0.5 - cx;
+                text.SetMember("_visible", RE::GFxValue(has));
+                text.SetMember("_x", RE::GFxValue(middle - a_field * 0.5));
+                text.SetMember("_y", RE::GFxValue(top));
+                box.SetMember("_x", RE::GFxValue(middle));
+                Call(box, "clear", {});
+                if (has) {
+                    DrawBox(box, text, top, kGearSize);
+                }
+            };
+            rightBox("gear", "gearBox", a_view.gear, kGearAbove, kGearWidth);
+            rightBox("fuel", "fuelBox", a_view.fuel, kFuelAbove, kFuelWidth);
+
+            RE::GFxValue chargeClip;
+            if (clip.GetMember("charge", &chargeClip) && chargeClip.IsDisplayObject()) {
+                Call(chargeClip, "clear", {});
+                if (a_view.charge >= 0.0f && open) {
+                    const float  share = std::clamp(a_view.charge, 0.0f, 1.0f);
+                    const double right = -kChargeHalfWidth + 2.0 * kChargeHalfWidth * share;
+                    Fill(chargeClip, 0x000000, 55.0, -kChargeHalfWidth - 1.0, kChargeTop - 1.0, kChargeHalfWidth + 1.0, kChargeBottom + 1.0);
+                    if (share > 0.0f) {
+                        Fill(chargeClip, share >= 1.0f ? kChargeFullColor : kChargeColor, 100.0, -kChargeHalfWidth, kChargeTop, right, kChargeBottom);
+                    }
+                }
+            }
+
+            RE::GFxValue toolsClip;
+            if (clip.GetMember("tools", &toolsClip) && toolsClip.IsDisplayObject()) {
+                toolsClip.SetMember("_visible", RE::GFxValue(a_view.tools && open));
+                toolsClip.SetMember("_x", RE::GFxValue(static_cast<double>(rect.right) - kToolsRight - cx));
+                toolsClip.SetMember("_y", RE::GFxValue(static_cast<double>(rect.top) + kToolsTop - cy));
             }
 
             RE::GFxValue needs;
             if (clip.GetMember("needs", &needs) && needs.IsDisplayObject()) {
-                needs.SetMember("_visible", RE::GFxValue(a_view.hasNeeds));
+                needs.SetMember("_visible", RE::GFxValue(a_view.hasNeeds || a_view.money >= 0));
                 needs.SetMember("_x", RE::GFxValue(static_cast<double>(rect.left) + kNeedsLeft - cx));
                 needs.SetMember("_y", RE::GFxValue(static_cast<double>(rect.top) + kNeedsTop - cy));
                 if (a_view.hasNeeds) {
                     DrawNeeds(needs, a_view);
+                }
+                RE::GFxValue moneyName, money, moneyBox;
+                needs.GetMember("moneyName", &moneyName);
+                needs.GetMember("money", &money);
+                needs.GetMember("moneyBox", &moneyBox);
+                const bool hasMoney = a_view.money >= 0;
+                if (moneyName.IsDisplayObject() && money.IsDisplayObject() && moneyBox.IsDisplayObject()) {
+                    moneyName.SetMember("_visible", RE::GFxValue(hasMoney));
+                    money.SetMember("_visible", RE::GFxValue(hasMoney));
+                    money.SetText(std::to_string(hasMoney ? a_view.money : 0).c_str());
+                    Call(moneyBox, "clear", {});
+                    if (hasMoney) {
+                        const double x0 = kNeedLabelWidth, y0 = static_cast<double>(kRows) * kNeedRow + 1.0;
+                        Fill(moneyBox, 0x000000, 55.0, x0 - 1.0, y0 - 1.0, x0 + kNeedBarWidth + 1.0, y0 + kNeedSize + 1.0);
+                    }
                 }
             }
         }
@@ -436,14 +570,16 @@ namespace PerkeleRim::Hud
             view = View{};
         }
         const auto needs = Quantize(view);
-        const bool textChanged = view.show != current.show || view.label != current.label || view.hand != current.hand ||
-                                 view.subtitle != current.subtitle || view.gear != current.gear;
+        const int  charge = view.charge < 0.0f ? -1 : static_cast<int>(std::lround(std::clamp(view.charge, 0.0f, 1.0f) * kChargeSteps));
+        const bool textChanged = view.show != current.show || view.dot != current.dot || view.label != current.label || view.hand != current.hand ||
+                                 view.subtitle != current.subtitle || view.gear != current.gear || view.fuel != current.fuel || view.tools != current.tools ||
+                                 view.money != current.money;
         const bool handsChanged = view.handsImage != current.handsImage || view.handsWidth != current.handsWidth ||
                                   view.handsHeight != current.handsHeight;
         const bool handsLoading = !view.handsImage.empty() && !handsSized;
         const auto light = LightPercent(view);
         const bool lightChanged = !view.handsImage.empty() && light != drawnLight;
-        const bool changed = textChanged || handsChanged || handsLoading || lightChanged || view.hasNeeds != current.hasNeeds ||
+        const bool changed = textChanged || handsChanged || handsLoading || lightChanged || charge != drawnCharge || view.hasNeeds != current.hasNeeds ||
                              (view.hasNeeds && needs != drawnNeeds);
         if (!a_refresh && !changed) {
             return;
@@ -458,8 +594,39 @@ namespace PerkeleRim::Hud
             loggedLight = light;
         }
         current = view;
+        drawnCharge = charge;
         drawnNeeds = needs;
         drawnLight = light;
+        {
+            std::lock_guard lock(appliedLock);
+            applied = view;
+        }
         SKSE::GetTaskInterface()->AddUITask([view]() { Apply(view); });
+    }
+
+    void Cover(bool a_covered)
+    {
+        if (covered.exchange(a_covered) == a_covered) {
+            return;
+        }
+        SKSE::GetTaskInterface()->AddUITask([]() {
+            View view;
+            {
+                std::lock_guard lock(appliedLock);
+                view = applied;
+            }
+            Apply(view);
+        });
+    }
+
+    void ShakeHands(float a_shake, float a_x, float a_y)
+    {
+        static Shake queued;
+        const Shake  shake{ a_shake, a_x, a_y };
+        if (shake.amount == queued.amount && shake.x == queued.x && shake.y == queued.y) {
+            return;
+        }
+        queued = shake;
+        SKSE::GetTaskInterface()->AddUITask([shake]() { ApplyShake(shake); });
     }
 }

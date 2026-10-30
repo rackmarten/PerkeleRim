@@ -37,6 +37,9 @@ winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--pass
 
 # .NET 8 SDK for the C# mod (it targets .NET Framework 3.5 through reference-assembly packages)
 winget install --id Microsoft.DotNet.SDK.8 -e
+
+# Pester 5 for the launcher's tests (Windows PowerShell ships only 3.4; scripts/test.ps1 skips them without it)
+pwsh -NoProfile -Command "Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck"
 ```
 
 Already have Build Tools? Open **Visual Studio Installer** > Build Tools 2022 > Modify, tick **Desktop development with C++**, and make sure "C++ CMake tools for Windows" and "vcpkg package manager" are ticked on the right.
@@ -85,22 +88,30 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 scripts/build.ps1                  # both halves, Release
 scripts/build.ps1 -Target skse     # SKSE plugin only (-Configuration Debug for a debug build)
 scripts/build.ps1 -Target msc      # MSCLoader mod only
-scripts/test.ps1                   # unit tests: C++ protocol (doctest) and C# link (NUnit), no games needed
+scripts/test.ps1                   # unit tests: C++ protocol (doctest), C# link (NUnit), launcher (Pester 5, on pwsh and Windows PowerShell 5.1), no games needed
 scripts/test.sh                    # the same on Linux, minus the shared memory link tests (see below)
-scripts/deploy-local.ps1           # copy both DLLs (and PerkeleRim.esp once built) into the games (close the games first)
+scripts/deploy-local.ps1           # copy both DLLs, MscMenu.swf (and PerkeleRim.esp once built) into the games (close the games first)
 scripts/build-esp.ps1 -Deploy       # generate PerkeleRim.esp (garage, beer drinks, drunk blur) from your Skyrim.esm, copy and enable it (close Skyrim first)
 scripts/logs.ps1                   # tail of the plugin, SKSE and My Summer Car logs
 scripts/package.ps1                # player release zip (launcher/ + built files + launcher/saves/MSC and Skyrim if present) in tools/out/release/ (build and build-esp first)
+scripts/release-check.ps1 -Zip tools/out/release/PerkeleRim-X.Y.Z.zip -Tag vX.Y.Z  # check a release zip against its tag (see "Cutting a release")
+scripts/publish-dev.ps1 -DryRun    # build a dev build of main for testers; without -DryRun, publish it to the dev pre-release (see "Dev builds")
+scripts/nexus-package.ps1          # the release zip, screenshots and page text for the Nexus Mods upload, in tools/out/nexus/
 scripts/starter-save.ps1           # copy your current MSC save into launcher/saves/MSC with thirst, hunger, urine, fatigue, stress, drunk and dirtiness at 0
-scripts/starter-save.ps1 -Skyrim   # copy your newest Skyrim save (made before the first F10) into launcher/saves/Skyrim as PerkeleRim-Kumpo
-scripts/launch-msc.ps1             # start MSC windowed at 640x480, lowest quality, single-threaded rendering, with no clicks (clicks Play! on the config dialog, presses past the news screen)
-scripts/restart-games.ps1 -Build    # close both games, build, deploy, start MSC and Skyrim (SKSE), wait for "link up"
+scripts/starter-save.ps1 -Skyrim   # copy your newest Skyrim save (made before the first handover) into launcher/saves/Skyrim as PerkeleRim-Kumpo
+scripts/launch-msc.ps1             # start MSC windowed at 640x480, lowest quality, single-threaded rendering, with no clicks (clicks Play! on the config dialog, presses past the news screen); MSC's own screen settings go back once it closes
+scripts/restart-games.ps1 -Build    # close both games, build, deploy, start MSC and Skyrim (SKSE), wait for "link up"; -NoPlace skips the window layout
 scripts/msc-save.ps1 snapshot NAME  # save MSC save data outside the repo; "restore NAME" puts it back
 scripts/spike.ps1 -Command dump    # hidden-MSC spike tools, see docs/SPIKE_HIDDEN_MSC.md
 scripts/skyrim-key.ps1 -Key F10    # press a key in Skyrim (brings it to the front); -Screenshot FILE saves its window
+scripts/skyrim-key.ps1 -Console 'load PerkeleRim-Kumpo'   # type a console command (letters, digits, space, - _ .)
+scripts/hit-test.ps1               # unattended combat check in game (closes both games), results in a CSV; see below
+scripts/voice-picker.ps1           # page for listening to MSC's voice lines by group and copying which one you mean (offline); see section 5
 ```
 
 For a test loop with no clicks at all, create an empty `PerkeleRim_autoload.txt` in both game folders: MSC then continues its save, and Skyrim continues its most recent save from the main menu (the SKSE plugin does it once per start). Delete the files to get the main menus back.
+
+`restart-games.ps1` and `launch-msc.ps1` also lay the two windows out so you can watch both: Skyrim in the top right corner of the primary screen, My Summer Car directly left of it with the top edges aligned. The positions are worked out from the screen's working area (taskbar excluded) and the real window sizes. Pass `-NoPlace` to leave the windows where Windows puts them; `launch-msc.ps1 -Fullscreen` is never moved.
 
 From WSL, call the same scripts through Windows PowerShell, e.g. `powershell.exe -File scripts/build.ps1`.
 
@@ -116,9 +127,27 @@ The first SKSE build takes a while (often 15 to 25 minutes): vcpkg builds the de
 1. Start Skyrim with `skse64_loader.exe`, wait for the main menu, quit.
 2. Start My Summer Car, wait for the main menu (the MSCLoader console shows `PerkeleRim loaded`), quit.
 3. Run `scripts/logs.ps1`. Expect:
-   - in `PerkeleRim.log`: `PerkeleRim loaded (plugin 0.1.1, Skyrim runtime 1.7.104.0)`
+   - in `PerkeleRim.log`: `PerkeleRim loaded (plugin 0.2.0, Skyrim runtime 1.7.104.0)`
    - in `skse64.log`: a line saying `PerkeleRim.dll` loaded correctly
    - in `output_log.txt` (My Summer Car game folder): `PerkeleRim: PerkeleRim loaded`
+
+### Hit test (combat, unattended)
+
+`scripts/hit-test.ps1` checks PerkeleRim's attacks in game with nobody at the keys. It closes both games (anything unsaved is lost), so don't run it while you play. It:
+
+1. adds `[Debug] HitTest=<scenarios>` to `<SkyrimPath>\Data\SKSE\Plugins\PerkeleRim.ini` and creates `PerkeleRim_autoload.txt` in both game folders if missing, so both load their newest save;
+2. runs `scripts/restart-games.ps1` (`-Build` builds first), which deploys and starts both games;
+3. waits while the SKSE plugin's driver (`skse/src/debug/HitTest.cpp`) hands Kumpo to MSC as F10 would, waits for MSC to finish sending its models (it reads each in one frame, and a key pressed during that freeze never reaches it) and runs each scenario: it sets MSC's drunk level and what Kumpo holds over the link (the `DebugCommand` message, a line for MSC's spike commands: `drunk 2`, `hold 1`, an empty bottle into the hand without key 3's throwing stance, so nothing else comes out after the throw), turns MSC's camera level with mouse moves (again before every attack: drunk, it drifts), places a target just ahead and keeps it there until the attack goes out (Skyrim.esm's Whiterun guard, `tai` so it doesn't fight back) and presses MSC's keys (H to punch, the right button held for a full charge to throw);
+4. watches for a crash (a new `crash-*.log`), either game gone, a hang (`PerkeleRim.log` still for 120 s) and a 10 minute timeout;
+5. prints the driver's log lines and the CSV, closes both games, takes the `[Debug]` lines out of the ini and deletes the flag files it created. It exits 1 if a row failed or the test didn't finish. While it runs, the driver sets Skyrim's `bAlwaysActive` in memory (never in an ini), so Skyrim keeps going with another window in front and the desktop can be used meanwhile.
+
+The scenarios (`protocol/cpp/hit_test.h`, unit tested): `punch` (sober, three punches), `bottle` (an empty bottle from the pocket thrown three times from 3 m), `junk` (the Empty Bottles taken out of Skyrim's inventory and a cabbage added, and while it runs ThrowJunk counts one cabbage as the only junk (`ThrowJunk::OnlyOne`), so key 3's random pick always takes it and nothing comes out after the throw by itself; thrown three times from 3 m, the damage by its weight) `drunk` (punches at MSC's drunk level 2) and `drunk-bottle` and `drunker-bottle` (a bottle at drunk 1 and 2 from 3 m, by `Damage::DrunkThrow`; up to two throws, as the first may kill the guard, and a kill passes when the damage cast was at least the health it had; a throw the swaying camera sends past the guard goes again, up to twice, logged but not a row). The drunk ones go last, since MSC's camera sways on for a while after and sober throws then miss. Plus a `drunk vs punch` row checking the drunk punches against the sober ones by `Damage::DrunkPunch`. Each row says whether the hit reached Skyrim, what Combat cast against what `protocol/cpp/damage.h` says, and how far the target's health fell. `-Save <file name>` loads that Skyrim save instead of the newest (`AutoloadSave=` in the ini, which Autoload follows), for when other tests have saved since. Pick some with `-Scenarios punch,bottle`; `-Target <hex form id>` uses another actor base (a giant, `0003053F`, takes only two thirds of a hit, so its rows fail the health check); `-KeepOpen` leaves the games running at the end to look around.
+
+Results go to `Documents\My Games\PerkeleRim\hittest.csv` (`HitTestCsv=<path>` in the ini moves it), one row per attack, with MSC's logs of the run next to it (`hittest-msc.log`, `hittest-msc-spike.log`):
+
+`scenario,hit,target,landed,drunk,unarmed,speed,mass,sneak,level,armor,expected,damage,before,after,drop,pass,note`
+
+Start from a save where Kumpo stands on foot outdoors with a few metres of open ground ahead. Not in the shed or the garage: the island has their walls, and thrown bottles hit the planks (the starter save wakes him in the shed). A save where he sits in a vehicle stops the test; one taken while MSC had him is fine, the handover resumes by itself. Nothing is saved in either game. The driver is off unless the ini asks for it, and the release never ships the `[Debug]` lines. What it doesn't cover (stagger, ragdolls, how a hit looks and sounds) stays a manual check.
 
 ### Testing on Skyrim Special Edition 1.5.97
 
@@ -137,7 +166,7 @@ Then check, in this order:
 - [ ] `PerkeleRim.log` says `Skyrim runtime 1.5.97.0`, and `skse64.log` says `PerkeleRim.dll` loaded correctly.
 - [ ] Main menu reached without a crash, and `PerkeleRim.log` doesn't say `PerkeleRim.esp isn't loaded` (its header must stay 1.70: 1.5.97 skips 1.71 plugins).
 - [ ] A save made on SE (or a new game: `coc WhiterunStables` from the main menu console) loads. The AE-made **PerkeleRim-Kumpo** starter save is reported corrupt on 1.5.97, so the launcher doesn't add it on SE. AE saves made later in a playthrough may load, with a warning about missing Creation Club content.
-- [ ] F10 hands over to MSC and back; walking, looking and the camera follow MSC (PlayerCharacter update hook, vfunc `0xAD`).
+- [ ] Loading a save hands over to MSC by itself, and F10 takes the player back and hands over again; walking, looking and the camera follow MSC (PlayerCharacter update hook, vfunc `0xAD`).
 - [ ] Favorites, menus and activating things still behave while MSC has the player (handler hooks, vfunc `0x1`).
 - [ ] Damage protection while driving: take a hit in the van (Actor `HandleHealthDamage` hook, vfunc `0x104`).
 - [ ] Drive the van, drink, punch, piss; HUD bars and subtitles show; the van's lights work.
@@ -149,10 +178,144 @@ Anything that fails here is an SE vs AE difference in CommonLib (a vfunc index o
 
 - **Van NIF conversion** (`tools/convert-vehicle.ps1`, Blender, PyNifly, AssetStudioModCLI, texconv; see [tools/README.md](../tools/README.md)) writes the van as a NIF for NifSkope or Blender. Playing doesn't need it: the van comes from MSC's own model at runtime.
 
+- **Voice picker** (`scripts/voice-picker.ps1`, see below) for choosing which of MSC's voice lines a feature plays.
+
 - **VS Code** (`winget install --id Microsoft.VisualStudioCode -e`) with the **C/C++** extension (`ms-vscode.cpptools`). Debug the SKSE plugin by attaching to `SkyrimSE.exe` with the `cppvsdbg` debugger type and a Debug build (`scripts/build.ps1 -Target skse -Configuration Debug`, then deploy it). The `.pdb` is deployed next to the DLL.
 - **Visual Studio Community 2022** is a reasonable upgrade later if you want a full IDE debugger. It isn't needed for anything here.
 - **dnSpyEx** (<https://github.com/dnSpyEx/dnSpy/releases>) to read My Summer Car's `Assembly-CSharp.dll` and MSCLoader. Use it for reading only: never commit decompiled game code.
 - **Developer Toolset** (an MSCLoader mod on Nexus Mods) is the in-game object inspector for My Summer Car. It browses the scene hierarchy and components, and views and edits **PlayMaker FSM** states, variables and events, which is where most of My Summer Car's game logic lives. Generic Unity inspectors such as UnityExplorer need BepInEx or MelonLoader rather than MSCLoader, so they're not the default here.
+
+### Voice picker
+
+PerkeleRim plays MSC's own voice clips from the player's install, so a feature that needs a line asks which one by name. `scripts/voice-picker.ps1` builds a local page for picking them by ear:
+
+```powershell
+pwsh -NoProfile -File scripts/voice-picker.ps1                      # export the clips and open the page
+pwsh -NoProfile -File scripts/voice-picker.ps1 -Transcribe          # also run Whisper (Finnish text + English translation), searchable
+pwsh -NoProfile -File scripts/voice-picker.ps1 -Transcribe -Groups Hangover,Drunk   # only some groups
+```
+
+It reads `<MscPath>\mysummercar_Data` offline (MSC doesn't run) with `tools/voice-picker/` (VoiceExport, on the AssetStudioMod libraries `tools/setup.ps1` downloads) and writes everything to `tools/out/voices/` (gitignored, never commit it): the clips as Ogg Opus (about 80 MB; WAV without ffmpeg, `winget install Gyan.FFmpeg`), `index.json` and `index.html`. The first run takes a few minutes, a rerun seconds. Clips over 60 s (music, radio, the drunk monologues) are listed without audio; `-MaxSeconds 0` exports them too.
+
+The page groups the clips the way MSC does: MSC plays its voices through **MasterAudio**, a scene object whose children are sound groups (`Hangover` with 7 lines, `Swearing` 16, `Drunk`, `Fuck`, `Shit`, `Yes`, `PlayerMisc`, the NPCs' `Teimo`, `Fleetari`, `Suski`...) and whose children are the group's variations. A line's number is its variation's place in the group, so `Hangover #3 (hangover03)` is unambiguous; in code, the clip name (`hangover03`) is what `Resources.FindObjectsOfTypeAll<AudioClip>()` finds and the variation name is the MasterAudio child's (`msc/src/Game/PlayerVoice.cs` looks up both). Clips no MasterAudio group plays follow, under the scene object playing them (`scene: YARD`) or `(no AudioSource)` (PlayMaker and soundbanks play those, e.g. `Human_Perkele`).
+
+Search matches group, clip and variation names, the scene paths and the transcripts. **copy** puts a line's reference on the clipboard, **pick** collects lines for **Copy picked** at the bottom. Keys: `/` search, `↓`/`↑` or `j`/`k` move, `Space` play, `c` copy, `p` pick, `Esc` stop. Picks are kept in that browser.
+
+`-Transcribe` needs `uv` and an NVIDIA GPU: `tools/voice-picker/transcribe.py` runs faster-whisper large-v3 (about 3 GB, downloaded once into the Hugging Face cache, int8 so it fits next to a running game) for the Finnish text and again for an English translation: all 1,666 clips take about 45 minutes on an RTX 4070 (`-Groups` does a few in seconds). It skips clips it has, so reruns are cheap. The text is a guess; listen before you pick.
+
+Agents: when a feature needs particular MSC lines, ask the user to pick them with this page and paste the references back, rather than guessing from clip names.
+
+## Branches and releases
+
+From 0.1.1 on there are two long-lived branches:
+
+- **`main`** is the development version. Features and fixes for the next release go there through pull requests.
+- **`production`** is what players get. A release is `main` merged into `production`, and release tags (`v0.1.1`, `v0.2.0`, ...) exist only on `production`, each on the commit its release zip is built from.
+- **Hotfixes** for players branch from `production` (`fix-<slug>`), go through a pull request into `production`, are tagged there, and `production` is then merged back into `main`.
+
+CI builds every push to either branch and every pull request. Merge pull requests into `production` with a merge commit, never squash, so `main` and `production` keep a shared history and the merge back stays small.
+
+Repository rulesets (Settings > Rules > Rulesets) hold both branches to this:
+
+- **main and production:** changes go through a pull request (no approval needed), `build` and `protocol-tests-linux` must pass (the branch needn't be up to date with its base), and the branch can't be force-pushed or deleted. On a pull request that only touches `docs/` and Markdown files both checks skip, which counts as passed.
+- **production:** merge commits only; squash and rebase are refused.
+- **Release tags (`v*`):** only admins create them, and nobody moves or deletes one.
+
+Repository admins can bypass all three, for an emergency.
+
+### Cutting a release
+
+The release zip is built on your PC, not in CI: `PerkeleRim.esp` is generated from your `Skyrim.esm`, and the My Summer Car mod compiles against MSCLoader, Unity and the game's DLLs, none of which can go on GitHub. CI's stub build (`-UseStubs`) leaves the mod's whole game layer out (`src/Game`), so its DLL loads but does nothing. The `release` workflow then checks the zip against the tag and finishes the draft release.
+
+1. On `main`, through an ordinary pull request: set the version (`VERSION` in `skse/CMakeLists.txt`, `version-semver` in `skse/vcpkg.json` and `protocol/vcpkg.json`, `<Version>` in `msc/PerkeleRim.csproj`, `Version` in `msc/src/PerkeleRimMod.cs`, and the version line in `docs/nexus/`), and in `CHANGELOG.md` rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` with a new empty `## [Unreleased]` above it. Merge it.
+2. Open the release pull request from `main` into `production`, wait for CI, and merge it with a merge commit:
+
+   ```bash
+   gh pr create --base production --head main --title "Release X.Y.Z" --body "Release notes: CHANGELOG.md, X.Y.Z"
+   gh pr merge --merge <number>
+   ```
+
+3. Tag the merge on `production` and push the tag:
+
+   ```bash
+   git fetch origin
+   git switch production
+   git merge --ff-only origin/production
+   git tag -a vX.Y.Z -m "PerkeleRim X.Y.Z"
+   git push origin vX.Y.Z
+   ```
+
+4. Build the zip from that clean checkout (no local changes: the MSC mod records the commit it's built from, and the workflow compares it with the tag's), then put it on a draft release:
+
+   ```powershell
+   scripts/build.ps1
+   scripts/build-esp.ps1
+   scripts/package.ps1
+   scripts/release-check.ps1 -Zip tools/out/release/PerkeleRim-X.Y.Z.zip -Tag vX.Y.Z
+   gh release create vX.Y.Z --draft --verify-tag --title "PerkeleRim X.Y.Z" tools/out/release/PerkeleRim-X.Y.Z.zip
+   gh workflow run release.yml -f tag=vX.Y.Z
+   ```
+
+5. The `release` workflow (`.github/workflows/release.yml`, on GitHub's windows-latest, a few minutes):
+   - downloads the zip from the draft and checks it against the tag (`scripts/release-check.ps1`): the zip's name and folder, the My Summer Car mod's version and the commit it was built from, and the launcher, `.bat` files, starter saves and `LICENSE` byte for byte. Any mismatch fails the run, and the draft stays as it is;
+   - uploads the zip to VirusTotal and waits for the scan (`scripts/virustotal.ps1`; skipped with a warning without the `VT_API_KEY` secret);
+   - writes `SHA256SUMS.txt` with the zip and every file in it, and the notes (`scripts/release-notes.ps1`): the version's `CHANGELOG.md` section, then "Check your download" with the SHA-256, what the workflow checked and the VirusTotal result;
+   - puts the notes and `SHA256SUMS.txt` on the draft.
+
+   Read the draft on the Releases page, check the VirusTotal line (a few heuristic hits on game-hooking DLLs and PowerShell launchers happen; the notes say so), and publish it. There is no build provenance attestation: GitHub didn't build the zip, so it can't vouch for it.
+6. Nexus Mods: `scripts/nexus-package.ps1` gathers the zip, the screenshots and the page text into `tools/out/nexus/`; [docs/nexus/README.md](nexus/README.md) lists the fields to fill in.
+
+Once, before the first release: add the repository secret `VT_API_KEY` (Settings > Secrets and variables > Actions) with the API key of a free VirusTotal account (virustotal.com, your profile > API key). The free key allows 4 requests a minute and 500 a day, which a release needs a dozen of.
+
+To try the workflow without releasing anything, run it by hand with **dry run** (Actions > release > Run workflow, or `gh workflow run release.yml -f tag=v0.1.1 -f dry_run=true`): it takes the zip of any release, published ones too, only warns where the checks fail, and keeps the zip, `SHA256SUMS.txt` and the notes as the run's artifact, without VirusTotal upload or touching the release. A pull request that changes the release workflow or its scripts does a dry run against the latest release by itself.
+
+### Dev builds
+
+Testers (Discord) play what's merged into `main` between releases from one rolling GitHub pre-release, tag `dev`. The maintainer publishes it from a clean `main` that matches `origin/main`:
+
+```powershell
+scripts/publish-dev.ps1 -DryRun   # build and package only, nothing uploaded
+scripts/publish-dev.ps1
+```
+
+`scripts/publish-dev.ps1` refuses another branch, local changes or a `main` that isn't origin's (a dry run only warns), then:
+
+- builds both sides and the ESP (`build.ps1 -Version`, `build-esp.ps1`) and packages `tools/out/release/PerkeleRim-dev-<yyyymmdd>-<commit>.zip` (`package.ps1`), with a `DEV BUILD.txt` at the top. The My Summer Car mod's version (in bug reports) is a pre-release of the next version, `0.2.0-dev.20261029+<commit>`: the next minor once `main`'s version has its release tag, `main`'s own version once the release pull request has bumped it;
+- writes `SHA256SUMS.txt` and the notes (`release-notes.ps1 -DevCommit`): the commit and date, "untested dev build of main, may break saves", the `[Unreleased]` section of `CHANGELOG.md` and the zip's SHA-256;
+- the first time, creates the `dev` pre-release at the commit (never marked latest, so the README's Download link and the `release` workflow keep pointing at the real release); after that, moves the `dev` tag to the commit, uploads the zip and `SHA256SUMS.txt`, updates the notes and deletes the older dev zip.
+
+Nothing deploys into or starts the games. The `dev` tag isn't a release tag (`v*`): the release tag ruleset doesn't cover it, so it can be moved, and the `release` workflow and `release-check.ps1` refuse it. Because it moves, `git fetch --tags` can complain that it "would clobber existing tag"; `git tag -d dev` fixes that.
+
+### A hotfix
+
+1. Branch from `production`, fix it, and set the patch version and its `CHANGELOG.md` section (`## [X.Y.Z+1] - YYYY-MM-DD`) on the same branch:
+
+   ```bash
+   git fetch origin
+   git switch -c fix-<slug> origin/production
+   ```
+
+2. Push it and open the pull request into `production`; once CI is green, merge it with a merge commit:
+
+   ```bash
+   git push -u origin fix-<slug>
+   gh pr create --base production --title "Fix: <what>"
+   gh pr merge --merge <number>
+   ```
+
+3. Tag it on `production` and release it, as steps 3 to 6 of a release.
+4. Merge `production` back into `main`, through a pull request so CI checks the result:
+
+   ```bash
+   git switch -c merge-production-vX.Y.Z origin/main
+   git merge --no-ff origin/production -m "Merge production (vX.Y.Z) into main"
+   git push -u origin merge-production-vX.Y.Z
+   gh pr create --base main --title "Merge production (vX.Y.Z) into main"
+   ```
+
+   Keep `main`'s own version and `## [Unreleased]` section in the conflict, with the hotfix's changelog section below it. A hotfix should avoid changing the shared memory's layout; if it has to, it takes a `kProtocolVersion` above `main`'s, and `main` renumbers on the merge back.
+
+Agents open feature pull requests against `main` and hotfix pull requests against `production`, and never create tags or releases: those are the maintainer's. The rolling `dev` pre-release is made only by `scripts/publish-dev.ps1`, when the maintainer runs it or explicitly tells an agent to (a `-DryRun` is always fine).
 
 ## How the builds work
 
@@ -174,10 +337,13 @@ Anything that fails here is an SE vs AE difference in CommonLib (a vfunc index o
 
 ### CI (`.github/workflows/build.yml`)
 
-Runs on GitHub-hosted runners for every push and pull request. A quick `ubuntu-latest` job runs `scripts/test.sh`. The `windows-latest` job uses the same `scripts/build.ps1` as local builds, caches vcpkg binaries, builds the C# mod against the stubs (the game's DLLs can't be redistributed), runs `scripts/test.ps1`, and uploads both DLLs as a build artifact.
+Runs on GitHub-hosted runners for every pull request and every push to `main` or `production`. A quick `ubuntu-latest` job runs `scripts/test.sh`. The `windows-latest` job uses the same `scripts/build.ps1` as local builds, caches vcpkg binaries, builds the C# mod against the stubs (the game's DLLs can't be redistributed), runs `scripts/test.ps1`, and uploads both DLLs as a build artifact, kept 7 days. The stub-built mod DLL is a compile check only: it has no game code, so don't install it.
+
+Both jobs are required checks on `main` and `production`. A `changes` job looks at what a pull request touches first: if that's only `docs/` and Markdown files, both jobs skip, which GitHub counts as passed, so a docs-only PR merges at once. A newer push to the same branch cancels the run before it. The release workflow is under "Cutting a release".
 
 ## Troubleshooting
 
 - **`... was unexpected at this time` when entering the developer shell:** a quote character in your `PATH` confuses `VsDevCmd.bat`. `scripts/build.ps1` strips quotes for its own process, but it's worth fixing the entry in System Properties > Environment Variables.
 - **`MSCLoader.dll not found`:** MSCLoader isn't installed yet, or `MscPath` in `local.props` is wrong.
 - **Skyrim crashes at start, or SKSE says the plugin is incompatible:** the game updated. Check the runtime version, then update SKSE and Address Library to match.
+- **No prompt or hand on MSC's door handles and switches** (seen after a load until MSC's window had focus once, #988; not reproduced since): look in `output_log.txt` for `look-at:` lines (`msc/src/Game/LookAtProbe.cs`). MSC's window focus changes are logged, and when one of MSC's control surfaces (a `Use` FSM within 1 m) stays under the crosshair for a second with no prompt, one line per target gives what the look-at depends on: the FSM's state, `Camera.main`, the input shim's cursor, the keys MSC sees held, the cursor lock, the last focus change and how often Unity sends its mouse messages. A control that never has a prompt costs one such line.

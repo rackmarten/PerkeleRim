@@ -7,8 +7,9 @@ namespace PerkeleRim.Game
 {
     // MSC's state goes with Skyrim's saves (MscSave / MscLoad), as an in-place savestate:
     //  - MscSave: captures what can be put back without reloading MSC, from memory in a few ms, into
-    //    the save's snapshot folder (Snapshot): needs, money and the like (PlayMaker globals), and
-    //    while MSC has the player also the vehicles (pose, speed, fuel) and the items near the player
+    //    the save's snapshot folder (Snapshot): needs, money and the like (PlayMaker globals), the
+    //    hangover (Link/Hangover), and while MSC has the player also the vehicles (pose, speed, fuel)
+    //    and the items near the player
     //    (pose, beer case bottle counts). MSC's own save is left alone (broadcasting SAVEGAME
     //    mid-game makes its FSMs act as if quitting, and stalls it for seconds);
     //  - MscLoad: when the folder holds the key Skyrim's cosave has, the globals go back right away;
@@ -28,10 +29,10 @@ namespace PerkeleRim.Game
         {
             "PlayerThirst", "PlayerHunger", "PlayerStress", "PlayerUrine", "PlayerFatigue", "PlayerDirtiness",
             "PlayerDrunk", "PlayerDrunkAdjusted", "PlayerStressRate", "PlayerFatigueRate", "PlayerWeight", "PlayerBurns",
-            "PlayerMoney", "PlayerFines", "PlayerNetIncome", "GlobalTime",
+            "PlayerFines", "PlayerNetIncome", "GlobalTime",
         };
-        // Not PlayerCigarettes: Skyrim's inventory (the pocket) holds them in the same save, and
-        // PocketLink copies its count to MSC; restoring the snapshot's would fight it.
+        // Not PlayerCigarettes or PlayerMoney: Skyrim's inventory (the pocket, its gold) holds them in
+        // the same save, and PocketLink copies them to MSC; restoring the snapshot's would fight it.
         static readonly string[] Ints = { "GlobalDay", "GlobalHour" };
 
         // FSM states and variables, put back in this order (entering a state resets its variables).
@@ -111,6 +112,7 @@ namespace PerkeleRim.Game
             var s = new Snapshot { Key = key, World = playing() };
             CaptureGlobals(s);
             CaptureFsms(s);
+            CaptureHangover(s);
             if (s.World)
             {
                 foreach (var v in vehicles)
@@ -156,7 +158,7 @@ namespace PerkeleRim.Game
 
         void Apply(Snapshot s, string folder)
         {
-            int values = ApplyGlobals(s) + ApplyFsms(s);
+            int values = ApplyGlobals(s) + ApplyFsms(s) + ApplyHangover(s);
             pending = s.World ? s : null;
             pendingAfter = waitingAfter;
             pendingUntil = Time.realtimeSinceStartup + WorldTimeout;
@@ -257,6 +259,48 @@ namespace PerkeleRim.Game
                 var v = fsm != null ? fsm.FsmVariables.FindFsmInt(r[2]) : null;
                 if (v != null) s.Fsms.Add(new Snapshot.FsmValue { Path = r[0], Fsm = r[1], Kind = 'i', Name = r[2], Value = v.Value });
             }
+        }
+
+        // MSC's hangover (Link/Hangover): its state and all its floats, whatever the FSM calls them.
+        static void CaptureHangover(Snapshot s)
+        {
+            var fsm = FindFsm(Hangover.Path, Hangover.Fsm);
+            if (fsm == null) return;
+            s.Fsms.Add(new Snapshot.FsmValue { Path = Hangover.Path, Fsm = Hangover.Fsm, Kind = 's', Name = fsm.ActiveStateName });
+            foreach (var f in fsm.FsmVariables.FloatVariables)
+                s.Fsms.Add(new Snapshot.FsmValue { Path = Hangover.Path, Fsm = Hangover.Fsm, Kind = 'f', Name = f.Name, Value = f.Value });
+        }
+
+        // The save's hangover, none included: a snapshot without one (made before it was kept)
+        // ends MSC's running hangover too. Variables first, so an entered state starts from them.
+        int ApplyHangover(Snapshot s)
+        {
+            var fsm = FindFsm(Hangover.Path, Hangover.Fsm);
+            var timeLeft = fsm != null ? fsm.FsmVariables.FindFsmFloat(Hangover.TimeLeft) : null;
+            if (timeLeft == null) return 0;
+            float wasLeft = timeLeft.Value;
+            string savedState = null;
+            float savedLeft = 0f;
+            int n = 0;
+            bool kept = false;
+            foreach (var v in s.Fsms)
+            {
+                if (v.Path != Hangover.Path || v.Fsm != Hangover.Fsm) continue;
+                kept = true;
+                if (v.Kind == 's') { savedState = v.Name; continue; }
+                var f = v.Kind == 'f' ? fsm.FsmVariables.FindFsmFloat(v.Name) : null;
+                if (f == null) continue;
+                f.Value = (float)v.Value;
+                if (v.Name == Hangover.TimeLeft) savedLeft = f.Value;
+                n++;
+            }
+            if (!kept) { timeLeft.Value = 0f; n++; }
+            var enter = Hangover.StateToEnter(savedState, savedLeft, fsm.ActiveStateName, wasLeft);
+            var state = enter != null ? fsm.Fsm.GetState(enter) : null;
+            if (state != null) { SwitchState.Invoke(fsm.Fsm, new object[] { state }); n++; }
+            if (wasLeft > 0f || savedLeft > 0f)
+                log($"load: hangover {wasLeft:0} s left -> {savedLeft:0} s ({fsm.ActiveStateName}{(kept ? "" : ", the snapshot had none kept")})");
+            return n;
         }
 
         static bool Listed(string[][] table, Snapshot.FsmValue v)

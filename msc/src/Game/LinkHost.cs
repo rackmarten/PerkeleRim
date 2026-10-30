@@ -15,8 +15,17 @@ namespace PerkeleRim.Game
 
         readonly Stopwatch clock = Stopwatch.StartNew();
         Link link;
+        long lastTick;
 
         public static Link Current => instance != null ? instance.link : null;
+
+        // Every line goes to output_log.txt; MSCLoader's console (which writes there too) only gets
+        // the ones a player should see (ConsoleLine).
+        public static void Log(string line)
+        {
+            if (ConsoleLine.IsForPlayer(line)) ModConsole.Print("PerkeleRim: " + line);
+            else UnityEngine.Debug.Log("PerkeleRim: " + line);
+        }
 
         public static void Ensure()
         {
@@ -30,7 +39,7 @@ namespace PerkeleRim.Game
         {
             // MSC runs hidden behind Skyrim; without this Unity pauses it as soon as it loses focus.
             Application.runInBackground = true;
-            Action<string> log = line => ModConsole.Print("PerkeleRim: " + line);
+            Action<string> log = Log;
             link = new Link(Side.Msc, log);
             // Redirect the game's Input calls to InputShim before the game scene loads.
             try { InputRedirect.Apply(log); }
@@ -38,7 +47,21 @@ namespace PerkeleRim.Game
             gameObject.AddComponent<PlayerLink>().Init(log);
         }
 
-        void Update() => link.Tick((ulong)clock.ElapsedMilliseconds);
+        void Update() => Tick();
+
+        void Tick()
+        {
+            lastTick = clock.ElapsedMilliseconds;
+            link.Tick((ulong)lastTick);
+        }
+
+        // Ticks the link from inside work that holds MSC's frame on purpose for longer than the
+        // peer timeout allows (reading the Gifu's model takes over 2 s), at most every 100 ms. Still
+        // on the main thread: a real stall stops the heartbeat as before.
+        public static void KeepAlive()
+        {
+            if (instance != null && instance.clock.ElapsedMilliseconds - instance.lastTick >= 100) instance.Tick();
+        }
 
         void OnApplicationQuit() => link.Dispose();
 
