@@ -7,6 +7,7 @@
 #include "finger.h"
 #include "link/LinkService.h"
 #include "needs.h"
+#include "people/People.h"
 #include "player/PlayerSync.h"
 #include "shout.h"
 
@@ -735,9 +736,11 @@ namespace PerkeleRim::Combat
             return;
         }
         // The player sits in the vehicle, so everything is measured from it. Each actor in the way
-        // dives aside out of the lane (Damage::HornDodge, its ragdoll thrown by Throws).
+        // close by dives aside out of the lane (Damage::HornDodge, its ragdoll thrown by Throws); at
+        // speed the lane is longer (Damage::HornReach) and civilians further along it flee (People).
         const auto at = a_player->GetPosition();
-        int        scared = 0;
+        int        scared = 0, fled = 0;
+        const auto why = fmt::format("the horn at {:.0f} km/h", horn.speed * 3.6f);
         for (auto& handle : lists->highActorHandles) {
             auto actor = handle.get();
             if (!Standing(actor.get())) {
@@ -745,8 +748,12 @@ namespace PerkeleRim::Combat
             }
             const auto pos = actor->GetPosition();
             const float dx = pos.x - at.x, dy = pos.y - at.y;
-            if (!Damage::InHornPath(dx, dy, horn.direction[0], horn.direction[1]) ||
-                Damage::BulkOf(MassOf(actor.get()), IsDragon(actor.get())) == Damage::Bulk::kHuge) {
+            const auto  reaction = Damage::HornReactionOf(dx, dy, horn.direction[0], horn.direction[1], horn.speed);
+            if (reaction == Damage::HornReaction::kNone || Damage::BulkOf(MassOf(actor.get()), IsDragon(actor.get())) == Damage::Bulk::kHuge) {
+                continue;
+            }
+            if (reaction == Damage::HornReaction::kFlee) {
+                fled += People::Flee(a_player, actor.get(), at, horn.direction[0], horn.direction[1], why.c_str()) ? 1 : 0;
                 continue;
             }
             // A dive already asked for (not a ragdoll yet, so still Standing) isn't asked again.
@@ -771,7 +778,8 @@ namespace PerkeleRim::Combat
                     diving ? " (already diving)" : "");
             }
         }
-        SKSE::log::info("combat: the player honked at {:.0f} km/h, {} actors in the way", horn.speed * 3.6f, scared);
+        SKSE::log::info("combat: the player honked at {:.0f} km/h, {} actors in the way dive aside, {} further along its {:.0f} unit lane flee",
+            horn.speed * 3.6f, scared, fled, Damage::HornReach(horn.speed));
     }
 
     void OnMiddleFinger(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)

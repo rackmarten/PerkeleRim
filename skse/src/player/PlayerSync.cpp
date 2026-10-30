@@ -25,6 +25,7 @@
 #include "model/ModelView.h"
 #include "needs/NeedEffects.h"
 #include "particle/ParticleView.h"
+#include "people/People.h"
 #include "piss_tap.h"
 #include "play_mode.h"
 #include "pocket/Pocket.h"
@@ -278,6 +279,7 @@ namespace PerkeleRim::PlayerSync
             Drink::SetDrunk(0.0f, 0.0f);
             CollisionSampler::Stop();
             Combat::Stop();
+            People::Stop();
             NeedEffects::Stop();
             VehicleView::Hide();
             ItemView::Clear();
@@ -841,7 +843,9 @@ namespace PerkeleRim::PlayerSync
             }
             state.standing = valid;
             const bool seated = valid && driven != nullptr;
-            Safe::Set(a_player, seated ? driven->vehicle : valid ? ClimbedInto(a_player) : 0);
+            const std::uint32_t inVehicle = seated ? driven->vehicle : valid ? ClimbedInto(a_player) : 0;
+            Safe::Set(a_player, inVehicle);
+            People::SetInVehicle(inVehicle);  // nobody talks to Kumpo in a vehicle (Bystanders::MayTalk)
             if (seated != state.seated) {
                 state.seated = seated;
                 SetSimulated(a_player, !seated);
@@ -968,6 +972,7 @@ namespace PerkeleRim::PlayerSync
             Protocol::HandLayer hands{};
             HandView::Update(link.ReadHandLayer(hands) ? &hands : nullptr, a_delta);
             Combat::Update(a_player, state.generation, a_delta);
+            People::Update(a_player, seated ? driven : nullptr);
             const bool menu = MenuHasInput();
             HeldDrinkView::Update(a_player, posed && !chase, a_delta);
             Combat::Disarm(a_player);
@@ -1331,6 +1336,7 @@ namespace PerkeleRim::PlayerSync
         UpdateHook::original = vtable.write_vfunc(0xAD, UpdateHook::thunk);
         Safe::Install();
         MetalHit::Install();
+        People::Install();
         REL::Relocation<std::uintptr_t> favorites{ RE::VTABLE_FavoritesHandler[0] };
         FavoritesHook::original = favorites.write_vfunc(0x1, FavoritesHook::thunk);
         REL::Relocation<std::uintptr_t> menuOpen{ RE::VTABLE_MenuOpenHandler[0] };

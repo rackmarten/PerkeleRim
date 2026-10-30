@@ -13,6 +13,7 @@
 #include <iterator>
 
 #include "../perkelerim_protocol.h"
+#include "coords.h"
 
 namespace PerkeleRim::Damage
 {
@@ -301,17 +302,86 @@ namespace PerkeleRim::Damage
         return (std::clamp)(a_speed * kKnockPerSpeed, 1.0f, kKnockMax);
     }
 
+    // How far ahead a moving vehicle is noticed: what it covers in kReactSeconds, so whoever is in
+    // its way has that long to get going (standing to running takes a while) and out of it. Nothing
+    // below kWaySpeedMin (a walk, parking); capped at kWayUnitsMax, which 90 km/h reaches. 30 km/h
+    // is about 33 m, 50 km/h 56 m, 70 km/h 78 m. a_speed in m/s; 0 for no reach.
+    inline constexpr float kReactSeconds = 4.0f;
+    inline constexpr float kWaySpeedMin = 4.0f;          // m/s, about 15 km/h
+    inline constexpr float kWayUnitsMax = 7000.0f;       // 100 m
+    inline constexpr float kWayLaneUnits = 300.0f;       // about 4 m either side of its line, at kWaySpeedMin
+    inline constexpr float kWayLaneMaxUnits = 500.0f;    // 7 m, from kWayLaneFullSpeed on
+    inline constexpr float kWayLaneFullSpeed = 20.0f;    // m/s, 72 km/h
+
+    inline float WayReach(float a_speed)
+    {
+        if (!(a_speed >= kWaySpeedMin)) {
+            return 0.0f;
+        }
+        return (std::min)(a_speed * kReactSeconds * static_cast<float>(Coords::kUnitsPerMeter), kWayUnitsMax);
+    }
+
+    // How far either side of the vehicle's line its way reaches: wider at speed, where a turn of the
+    // wheel moves it further and a stray step is a bigger risk.
+    inline float WayLane(float a_speed)
+    {
+        if (!(a_speed > kWaySpeedMin)) {
+            return kWayLaneUnits;
+        }
+        const float share = (std::min)((a_speed - kWaySpeedMin) / (kWayLaneFullSpeed - kWaySpeedMin), 1.0f);
+        return kWayLaneUnits + (kWayLaneMaxUnits - kWayLaneUnits) * share;
+    }
+
+    // Driving at someone: they're in the way when ahead of the vehicle (a_way, its velocity, flat)
+    // within WayReach of it and no further than WayLane off its line. They flee (People).
+    // a_dx, a_dy: actor minus vehicle.
+    inline bool InVehicleWay(float a_dx, float a_dy, float a_wayX, float a_wayY, float a_speed)
+    {
+        const float reach = WayReach(a_speed);
+        const float way = std::hypot(a_wayX, a_wayY);
+        if (reach <= 0.0f || way < 1e-4f || std::hypot(a_dx, a_dy) > reach) {
+            return false;
+        }
+        const float ahead = (a_dx * a_wayX + a_dy * a_wayY) / way;
+        const float aside = std::abs(a_dx * a_wayY - a_dy * a_wayX) / way;
+        return ahead > 0.0f && aside <= WayLane(a_speed);
+    }
+
+    // What someone in the way flees from, so they clear the lane sideways instead of running down
+    // the road or back past the vehicle: the point on the vehicle's line level with them, moved
+    // kFleeFromBehindUnits to the far side, so someone right on the line still has a side to go to
+    // (the one HornDodge picks, by the cross product). Returns that point, flat, relative to the
+    // vehicle; a_dx, a_dy as for InVehicleWay. No way: the vehicle itself.
+    inline constexpr float kFleeFromBehindUnits = 150.0f;
+
+    inline void FleeFrom(float a_dx, float a_dy, float a_wayX, float a_wayY, float& a_outX, float& a_outY)
+    {
+        const float way = std::hypot(a_wayX, a_wayY);
+        if (way < 1e-4f) {
+            a_outX = 0.0f;
+            a_outY = 0.0f;
+            return;
+        }
+        const float ux = a_wayX / way, uy = a_wayY / way;
+        const float ahead = a_dx * ux + a_dy * uy;
+        // Right of the way is (y, -x); the actor's side by the sign of its cross product.
+        const float sign = a_dx * uy - a_dy * ux >= 0.0f ? 1.0f : -1.0f;
+        a_outX = ux * ahead - sign * uy * kFleeFromBehindUnits;
+        a_outY = uy * ahead + sign * ux * kFleeFromBehindUnits;
+    }
+
     // The horn (HornEvent): actors in the vehicle's way dive aside (HornDodge), so they stop
-    // strolling under its wheels. In its way: within kHornUnits and either closer than kHornNearUnits or ahead of
+    // strolling under its wheels. In its way: within a_reach and either closer than kHornNearUnits or ahead of
     // it (a_way, flat) no further than kHornLaneUnits off its line. a_dx, a_dy: actor minus vehicle.
+    // At speed the horn carries further (HornReach): the ones past kHornUnits flee instead (HornReactionOf).
     inline constexpr float kHornUnits = 800.0f;      // about 11 m
     inline constexpr float kHornNearUnits = 350.0f;  // 5 m
     inline constexpr float kHornLaneUnits = 500.0f;  // 7 m either side
 
-    inline bool InHornPath(float a_dx, float a_dy, float a_wayX, float a_wayY)
+    inline bool InHornPath(float a_dx, float a_dy, float a_wayX, float a_wayY, float a_reach = kHornUnits)
     {
         const float distance = std::hypot(a_dx, a_dy);
-        if (distance > kHornUnits) {
+        if (distance > a_reach) {
             return false;
         }
         const float way = std::hypot(a_wayX, a_wayY);
@@ -321,6 +391,28 @@ namespace PerkeleRim::Damage
         const float ahead = (a_dx * a_wayX + a_dy * a_wayY) / way;
         const float aside = std::abs(a_dx * a_wayY - a_dy * a_wayX) / way;
         return ahead > 0.0f && aside <= kHornLaneUnits;
+    }
+
+    // The horn's lane is kHornUnits long, or as far as the vehicle gets in kReactSeconds at a_speed
+    // (m/s), whichever is longer.
+    inline float HornReach(float a_speed)
+    {
+        return (std::max)(kHornUnits, WayReach(a_speed));
+    }
+
+    enum class HornReaction : std::uint8_t
+    {
+        kNone,  // not in the way, or out of earshot
+        kDive,  // within kHornUnits: dives aside (HornDodge)
+        kFlee,  // further along the lane, which speed lengthens: runs (People)
+    };
+
+    inline HornReaction HornReactionOf(float a_dx, float a_dy, float a_wayX, float a_wayY, float a_speed)
+    {
+        if (!InHornPath(a_dx, a_dy, a_wayX, a_wayY, HornReach(a_speed))) {
+            return HornReaction::kNone;
+        }
+        return std::hypot(a_dx, a_dy) <= kHornUnits ? HornReaction::kDive : HornReaction::kFlee;
     }
 
     // An actor the horn reaches dives aside (a Skyrim fear spell moved nobody and was the likely
