@@ -169,7 +169,7 @@ namespace PerkeleRim.Game
             // The Gifu is 8.6 m long, 4.8 m of it behind its origin: parked well ahead, on flat ground under all of it.
             gifu = new VehicleLink("GIFU(750/450psi)", "Gifu", new Vector3(0f, 0f, 8f), Wire.VehicleGifu, true, "PlayerKeyGifu", VehicleTune.Gifu, island, ground, log);
             gifu.ParkHalfSize = new Vector2(1.3f, 4.6f);
-            gifu.TankSize = 130f;  // its tank has no MaxCapacity; a full one reads FuelLevel 130
+            gifu.TankSize = 300f;  // its tank has no MaxCapacity; its cap trigger reads MaxCapacity=300 once its FSM is up
             vehicles = new[] { van, moped, kekmet, gifu };
             beer = new BeerGift(log);
             shelves = new ShelfStocker(island, ground, log);
