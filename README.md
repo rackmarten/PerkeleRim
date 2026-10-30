@@ -17,7 +17,7 @@
 
 **My Summer Car** and **Skyrim (Special or Anniversary Edition)** run at the same time. Skyrim owns the world and draws everything; My Summer Car runs hidden and simulates Kumpo, the vehicles, the beer and the piss. Drive the Hayosiko van across the Whiterun tundra, get drunk, punch a Thalmor, and take the Kekmet tractor up the Throat of the World.
 
-**v0.1.1.** It's playable start to finish, but it's young: expect bugs, and please [report them](#reporting-bugs).
+**v0.2.0.** It's playable start to finish, but it's young: expect bugs, and please [report them](#reporting-bugs).
 
 ## Install and play
 
