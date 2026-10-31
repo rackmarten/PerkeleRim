@@ -51,6 +51,19 @@ Describe 'Get-SkyrimProblems' {
         $problems = @(Get-SkyrimProblems '1.5.97.0' @('skse64_loader.exe', 'skse64_1_5_97.dll') @('versionlib-1-6-1170-0.bin'))
         $problems.Count | Should -Be 1
         $problems[0] | Should -BeLike '*version-1-5-97-0.bin*All in one (Special Edition)*nexusmods.com/skyrimspecialedition/mods/32444*'
+        $problems[0] | Should -BeLike "*You have the Anniversary Edition file (versionlib-1-6-1170-0.bin)*"
+    }
+    It "says a current Steam Skyrim can't use Address Library's 1.5.X file" {
+        $problems = @(Get-SkyrimProblems '1.7.104.0' @('skse64_loader.exe', 'skse64_1_7_104.dll') @('version-1-5-97-0.bin'))
+        $problems.Count | Should -Be 1
+        $problems[0] | Should -BeLike '*versionlib-1-7-104-0.bin*You have the Special Edition (1.5.X) file (version-1-5-97-0.bin)*current Steam version*All in one (Anniversary Edition)*'
+    }
+    It 'says an Address Library older than the Skyrim update needs updating' {
+        $problems = @(Get-SkyrimProblems '1.7.104.0' @('skse64_loader.exe', 'skse64_1_7_104.dll') $aePlugins)
+        $problems[0] | Should -BeLike '*The one you have (versionlib-1-6-1170-0.bin) is for another Skyrim version*'
+    }
+    It 'adds no hint when there is no Address Library at all' {
+        @(Get-SkyrimProblems '1.7.104.0' @('skse64_loader.exe', 'skse64_1_7_104.dll') @())[0] | Should -Not -BeLike '*You have*'
     }
     It 'turns away a Skyrim older than 1.5.97' {
         @(Get-SkyrimProblems '1.5.80.0' @('skse64_loader.exe', 'skse64_1_5_80.dll') @('version-1-5-80-0.bin'))[0] | Should -BeLike '*1.5.80 is too old*'

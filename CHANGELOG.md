@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - My Summer Car started on its own (not through the launcher) shows its main menu again. Once the launcher had run, MSC continued its save by itself every time, because the launcher's `PerkeleRim_autoload.txt` stayed in the game folder; the mod now deletes it after using it.
+- The launcher says why an installed Address Library doesn't fit: the Special Edition (1.5.X) file on the current Steam Skyrim (which Steam still calls Special Edition but needs the Anniversary Edition file), the other way round, or a file older than the Skyrim update.
 
 ## [0.2.0] - 2026-10-30
 
