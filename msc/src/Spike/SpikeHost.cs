@@ -119,6 +119,27 @@ namespace PerkeleRim.Spike
             SpikeLog.Write("cmd: goto: nothing named " + text);
         }
 
+        // "seat HAYOSIKO": puts the player in that vehicle's DriveTrigger and presses its enter key
+        // (Key DOWN while Press return), as walking up to the driver's door and pressing Return would.
+        // "seat HAYOSIKO cabin" only puts the player there, standing in the cab without driving.
+        static System.Collections.IEnumerator Seat(string root, bool drive)
+        {
+            var player = GameObject.Find("PLAYER");
+            PlayMakerFSM trigger = null;
+            foreach (var f in FindObjectsOfType<PlayMakerFSM>())
+                if (f.FsmName == "PlayerTrigger" && f.name == "DriveTrigger" && f.transform.root.name.StartsWith(root, StringComparison.OrdinalIgnoreCase)) trigger = f;
+            if (player == null || trigger == null) { SpikeLog.Write($"cmd: seat: no PLAYER or no DriveTrigger under {root}"); yield break; }
+            for (float until = Time.realtimeSinceStartup + 5f; Time.realtimeSinceStartup < until; )
+            {
+                if (trigger.ActiveStateName == "Player in car") { SpikeLog.Write($"cmd: seat: in the {trigger.transform.root.name}"); yield break; }
+                player.transform.position = trigger.transform.position;
+                if (!drive) { SpikeLog.Write($"cmd: seat: in the {trigger.transform.root.name} cab, trigger {trigger.ActiveStateName}"); yield break; }
+                if (trigger.ActiveStateName == "Press return") trigger.SendEvent("Key DOWN");
+                yield return null;
+            }
+            SpikeLog.Write($"cmd: seat: the {trigger.transform.root.name} trigger stayed in {trigger.ActiveStateName}");
+        }
+
         // Every particle system (Shuriken and legacy ParticleEmitter), inactive ones too, filtered by a
         // word in its path: what it draws with, where it simulates and whether it runs now.
         static void Particles(string text)
@@ -467,6 +488,9 @@ namespace PerkeleRim.Spike
                         break;
                     case "goto":  // "goto chair_pub 2" puts the player 1 m above the first object with that name (inactive ones too)
                         Goto(lines[0].Trim().Substring(4).Trim());
+                        break;
+                    case "seat":  // "seat HAYOSIKO" sits the player in that vehicle's driver seat, "seat HAYOSIKO cabin" only in its cab
+                        StartCoroutine(Seat(words.Length > 1 ? words[1] : "HAYOSIKO", words.Length < 3 || words[2].ToLower() != "cabin"));
                         break;
                     case "pocket":  // "pocket Y", "pocket 1"
                         var pocketLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();

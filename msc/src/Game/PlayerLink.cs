@@ -124,6 +124,7 @@ namespace PerkeleRim.Game
         float nextFallCheck;
         float lastThrownLog = -10f;
         bool holdLogged;
+        float seatWatchUntil, nextSeatWatch;  // SeatReport after a seated arrival on a new anchor
         Behaviour motor;
         bool motorDisabled;
         bool lastOwned;
@@ -347,6 +348,11 @@ namespace PerkeleRim.Game
             debugView.Update(owned);
 
             playing = owned && player != null && island.HasAnchor && placedGeneration == island.Generation;
+            if (player != null && Time.realtimeSinceStartup < seatWatchUntil && Time.realtimeSinceStartup >= nextSeatWatch)
+            {
+                nextSeatWatch = Time.realtimeSinceStartup + 1f;
+                log($"player: after the arrival, {SeatReport(Driven())}");
+            }
             if (playing) CatchFall();
             StepWalk();
             MotorBoost.Active = playing;
@@ -921,6 +927,8 @@ namespace PerkeleRim.Game
                 holdingGeneration = island.Generation;
                 holdSince = Time.realtimeSinceStartup;
                 holdLogged = false;
+                var seat = Array.Find(vehicles, v => v.Carries(player));
+                if (seat != null) log($"player: seated in the {seat.Name} at the gen {island.Generation} anchor, {SeatReport(seat)}");
             }
 
             var anchor = ToVector3(island.SkyrimToIsland(island.Anchor));
@@ -955,6 +963,25 @@ namespace PerkeleRim.Game
             SetMotor(true);
             placedGeneration = island.Generation;
             log($"player: placed on the island for gen {island.Generation} after {Time.realtimeSinceStartup - holdSince:0.0} s, feet at ({target.x:0.00},{target.y:0.00},{target.z:0.00})");
+            log($"player: arrived {(carrier != null ? "carried in the " + carrier.Name : "on foot")}, {SeatReport(carrier)}");
+            seatWatchUntil = Time.realtimeSinceStartup + 5f;
+            nextSeatWatch = 0f;
+        }
+
+        // What MSC's FSMs say about the seat, for the log around a seated arrival on a new anchor:
+        // the Crouch FSM (its Incar state holds the camera at seat height), its PlayerInCar,
+        // PlayerStop, PlayerCurrentVehicle, the player's parent and the vehicle's speed.
+        string SeatReport(VehicleLink v)
+        {
+            var globals = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
+            var stop = globals.FindFsmBool("PlayerStop");
+            var current = globals.FindFsmString("PlayerCurrentVehicle");
+            var inCar = crouch != null ? crouch.FsmVariables.FindFsmBool("PlayerInCar") : null;
+            var speed = v != null && v.Body != null ? v.Body.velocity.magnitude : 0f;
+            return $"crouch {(crouch != null ? crouch.ActiveStateName : "none")} (PlayerInCar {(inCar != null ? inCar.Value.ToString() : "?")}), " +
+                $"PlayerStop {(stop != null ? stop.Value.ToString() : "?")}, PlayerCurrentVehicle \"{(current != null ? current.Value : "?")}\", " +
+                $"motor {(motor != null ? motor.enabled.ToString() : "none")}, controller {(controller != null ? controller.enabled.ToString() : "none")}, " +
+                $"parent {(player.parent != null ? player.parent.name : "none")}, {(v != null ? $"the {v.Name} at {speed:0.0} m/s" : "no vehicle")}";
         }
 
         // The island surface closest in height to p, straight above or below it.

@@ -822,6 +822,13 @@ namespace PerkeleRim::PlayerSync
             ModelView::Tick(a_delta);
 
             if (const char* reason = MovedByGame(a_player)) {
+                // What could outlast the jump: the seat, the sneak we sent and the graph's, the controller.
+                bool graphSneak = false;
+                a_player->GetGraphVariableBool("IsSneaking"sv, graphSneak);
+                const auto* controller = a_player->GetCharController();
+                SKSE::log::info("player sync: moved by the game while {}, sneak {} (graph {}, actor {}), controller {}",
+                    state.seated ? "seated" : "on foot", state.sneak, graphSneak, a_player->IsSneaking(),
+                    controller ? (controller->flags.any(RE::CHARACTER_FLAGS::kNoSim) ? "not simulated" : "simulated") : "none");
                 SendAnchor(a_player, reason);  // retried next frame if the ring is full
             }
 
