@@ -126,7 +126,9 @@ No dates, just intentions. What comes next depends a lot on what people enjoy, s
 
 ## Reporting bugs
 
-Double-click **Report a bug.bat** (next to Start PerkeleRim.bat). It puts `PerkeleRim-bug-<date>.zip` in the `Bug reports` folder next to the launcher, with your PerkeleRim logs from both games, `PerkeleRim.ini` and the game versions (your Windows user name is replaced by `%USERPROFILE%`), then opens the bug form on GitHub with the versions filled in. Say what happened and drag the zip into the form. Nothing is sent anywhere until you submit it, and PerkeleRim has no telemetry of any kind.
+Double-click **Report a bug.bat** (next to Start PerkeleRim.bat). It puts `PerkeleRim-bug-<date>.zip` in the `Bug reports` folder next to the launcher, with your PerkeleRim logs from both games, `PerkeleRim.ini`, SKSE's `skse64.log` (which SKSE plugins loaded), the newest Skyrim crash log, your load order (`plugins.txt`, and `modlist.txt` with Mod Organizer 2) and the game versions (your Windows user name is replaced by `%USERPROFILE%`), then opens the bug form on GitHub with the versions filled in. Say what happened and drag the zip into the form.
+
+If Skyrim crashes, install [Crash Logger SSE AE VR](https://www.nexusmods.com/skyrimspecialedition/mods/59818) first and make it crash again: Skyrim writes no crash log of its own, and that log says what crashed. Nothing is sent anywhere until you submit it, and PerkeleRim has no telemetry of any kind.
 
 Questions, screenshots, or just want to tell us how far up the mountain the tractor got? Come say hi on [Discord](https://discord.gg/C687NV4dCp).
 
