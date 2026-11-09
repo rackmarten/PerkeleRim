@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-09
+
 ### Fixed
 
 - My Summer Car started on its own (not through the launcher) shows its main menu again. Once the launcher had run, MSC continued its save by itself every time, because the launcher's `PerkeleRim_autoload.txt` stayed in the game folder; the mod now deletes it after using it.
@@ -209,7 +211,8 @@ First public release.
 - The Kekmet no longer hops on the road like a solid block: MSC's tractor has 5 cm of travel on a 75000 N/m spring and sat on its bump stop under its own weight; it now has 30 cm of travel, a softer spring and matching damping. A bounce on its wheels counts half as a crash, so a fast run down a hill doesn't hurt.
 - The moped is easier to ride: it balances only near the lean its turn asks for (none at a crawl, at most 23 degrees) and falls over for real past 30 degrees instead of sliding along the ground trying to stand up (no air assist for a bike lying down either), has more travel and 1.2x to 1.3x grip, and small bumps no longer play MSC's crash sound or stall the engine (only an impact over 9 m/s does).
 
-[Unreleased]: https://github.com/rackmarten/PerkeleRim/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/rackmarten/PerkeleRim/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/rackmarten/PerkeleRim/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/rackmarten/PerkeleRim/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/rackmarten/PerkeleRim/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/rackmarten/PerkeleRim/releases/tag/v0.1.0
