@@ -259,3 +259,15 @@ Describe "My Summer Car's screen settings" {
         (Get-MscScreenValues $key)['Screenmanager Resolution Width_h182942802'] | Should -Be 2560
     }
 }
+
+Describe "The launcher's autoload marker" {
+    It 'has the text the MSC mod deletes after use (AutoloadMarker.LauncherText)' {
+        $repo = Join-Path $PSScriptRoot '..\..'
+        $cs = Get-Content -Raw -LiteralPath (Join-Path $repo 'msc\src\Link\AutoloadMarker.cs')
+        $ps = Get-Content -Raw -LiteralPath (Join-Path $repo 'launcher\PerkeleRim.ps1')
+        $cs -match 'LauncherText = "([^"]+)"' | Should -BeTrue
+        $text = $Matches[1]
+        $ps -match "Set-Content -Path \(Join-Path \`$msc 'PerkeleRim_autoload.txt'\) -Value '([^']+)'" | Should -BeTrue
+        $Matches[1] | Should -Be $text
+    }
+}

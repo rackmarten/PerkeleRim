@@ -24,7 +24,7 @@ body:
     attributes:
       label: Bug report zip
       description: |
-        Run **Report a bug.bat** (next to Start PerkeleRim.bat) and drag the PerkeleRim-bug-<date>.zip it puts in the Bug reports folder next to the launcher into this box. It holds your PerkeleRim logs, PerkeleRim.ini and the game versions, with your Windows user name taken out. Nothing is sent anywhere until you submit this form.
+        Run **Report a bug.bat** (next to Start PerkeleRim.bat) and drag the PerkeleRim-bug-<date>.zip it puts in the Bug reports folder next to the launcher into this box. It holds your PerkeleRim logs, PerkeleRim.ini, SKSE's log, the newest Skyrim crash log, your load order and the game versions, with your Windows user name taken out. If Skyrim crashed, install Crash Logger SSE AE VR from Nexus first so there is a crash log. Nothing is sent anywhere until you submit this form.
   - type: input
     id: skyrim
     attributes:
