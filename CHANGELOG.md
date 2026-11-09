@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- My Summer Car started on its own (not through the launcher) shows its main menu again. Once the launcher had run, MSC continued its save by itself every time, because the launcher's `PerkeleRim_autoload.txt` stayed in the game folder; the mod now deletes it after using it.
+
 ## [0.2.0] - 2026-10-30
 
 ### Added

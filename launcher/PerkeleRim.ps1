@@ -297,7 +297,8 @@ if ($mo2 -and $mo2.LocalSaves) {
     Write-Host 'Added the starter Skyrim save (Kumpo): pick it under Load.'
 }
 
-# The mod continues MSC's save by itself on its main menu while this file exists.
+# The mod continues MSC's save by itself on its main menu, then deletes this file (only with this exact
+# text, AutoloadMarker.LauncherText in msc/src/Link), so MSC started without the launcher shows its menu.
 Set-Content -Path (Join-Path $msc 'PerkeleRim_autoload.txt') -Value 'Written by the PerkeleRim launcher.'
 
 if ($NoStart) { Write-Host 'Installed, not starting the games (-NoStart).'; return }

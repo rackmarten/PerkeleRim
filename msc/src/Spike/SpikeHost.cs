@@ -264,13 +264,27 @@ namespace PerkeleRim.Spike
 
             // Real time: while Skyrim is paused (a menu open) MSC's time scale is 0 and timeSinceLevelLoad stands still.
             if (menuSince < 0f && Application.loadedLevelName == "MainMenu") menuSince = now;
+            string marker = Path.Combine(SpikeLog.GameDir, AutoloadMarker.FileName);
             if (!autoloadDone && menuSince >= 0f && now - menuSince > 2f && Application.loadedLevelName == "MainMenu"
-                && File.Exists(Path.Combine(SpikeLog.GameDir, "PerkeleRim_autoload.txt")))
+                && File.Exists(marker))
             {
                 autoloadDone = true;
                 SpikeLog.Write("autoload: continuing saved game");
+                DropOneShotMarker(marker);
                 Continue();
             }
+        }
+
+        // The launcher's marker is for this start only (AutoloadMarker); MSC started by itself later shows its menu.
+        static void DropOneShotMarker(string marker)
+        {
+            try
+            {
+                if (!AutoloadMarker.IsOneShot(File.ReadAllText(marker))) return;
+                File.Delete(marker);
+                SpikeLog.Write("autoload: removed the launcher's marker");
+            }
+            catch (Exception e) { SpikeLog.Write("autoload: cannot remove the launcher's marker: " + e.Message); }
         }
 
         // Puts the Continue button's FSM into the state its click leads to; it then resets the
