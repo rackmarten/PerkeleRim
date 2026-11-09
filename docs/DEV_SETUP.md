@@ -109,7 +109,7 @@ scripts/hit-test.ps1               # unattended combat check in game (closes bot
 scripts/voice-picker.ps1           # page for listening to MSC's voice lines by group and copying which one you mean (offline); see section 5
 ```
 
-For a test loop with no clicks at all, create an empty `PerkeleRim_autoload.txt` in both game folders: MSC then continues its save, and Skyrim continues its most recent save from the main menu (the SKSE plugin does it once per start). Delete the files to get the main menus back.
+For a test loop with no clicks at all, create an empty `PerkeleRim_autoload.txt` in both game folders: MSC then continues its save, and Skyrim continues its most recent save from the main menu (the SKSE plugin does it once per start). Delete the files to get the main menus back. The launcher's own MSC file (text `Written by the PerkeleRim launcher.`) is for one start only: the mod deletes it once it has continued the save. Empty ones stay.
 
 `restart-games.ps1` and `launch-msc.ps1` also lay the two windows out so you can watch both: Skyrim in the top right corner of the primary screen, My Summer Car directly left of it with the top edges aligned. The positions are worked out from the screen's working area (taskbar excluded) and the real window sizes. Pass `-NoPlace` to leave the windows where Windows puts them; `launch-msc.ps1 -Fullscreen` is never moved.
 
@@ -127,7 +127,7 @@ The first SKSE build takes a while (often 15 to 25 minutes): vcpkg builds the de
 1. Start Skyrim with `skse64_loader.exe`, wait for the main menu, quit.
 2. Start My Summer Car, wait for the main menu (the MSCLoader console shows `PerkeleRim loaded`), quit.
 3. Run `scripts/logs.ps1`. Expect:
-   - in `PerkeleRim.log`: `PerkeleRim loaded (plugin 0.2.0, Skyrim runtime 1.7.104.0)`
+   - in `PerkeleRim.log`: `PerkeleRim loaded (plugin 0.2.1, Skyrim runtime 1.7.104.0)`
    - in `skse64.log`: a line saying `PerkeleRim.dll` loaded correctly
    - in `output_log.txt` (My Summer Car game folder): `PerkeleRim: PerkeleRim loaded`
 

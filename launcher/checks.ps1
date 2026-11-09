@@ -34,6 +34,24 @@ function Get-SkyrimRuntime([string] $FileVersion) {
     }
 }
 
+# Why the Address Library files that are there don't fit, when some are: the other edition's file
+# (Steam's "Skyrim Special Edition" updates to the Anniversary Edition runtime too, so players
+# pick the 1.5.X file by its name), or one made before this Skyrim update. '' when there are none.
+function Get-AddressLibraryHint($Runtime, [string[]] $PluginFiles) {
+    $se = @($PluginFiles | Where-Object { $_ -like 'version-*.bin' })
+    $ae = @($PluginFiles | Where-Object { $_ -like 'versionlib-*.bin' })
+    if ($Runtime.IsAnniversary -and $se -and -not $ae) {
+        return " You have the Special Edition (1.5.X) file ($($se -join ', ')), but Skyrim $($Runtime.Version) is the current Steam version, which Steam still calls Special Edition: remove that one and install the latest All in one (Anniversary Edition)."
+    }
+    if ($Runtime.IsAnniversary -and $ae) {
+        return " The one you have ($($ae -join ', ')) is for another Skyrim version: update it to the latest All in one (Anniversary Edition)."
+    }
+    if (-not $Runtime.IsAnniversary -and $ae -and -not $se) {
+        return " You have the Anniversary Edition file ($($ae -join ', ')), which Skyrim $($Runtime.Version) can't use: install All in one (Special Edition) instead (on Nexus it may be under Archived files)."
+    }
+    return ''
+}
+
 # What's wrong with Skyrim's side. GameFiles: file names in the Skyrim folder. PluginFiles: file
 # names in Data\SKSE\Plugins, the real one and every enabled Mod Organizer 2 mod's.
 function Get-SkyrimProblems([string] $FileVersion, [string[]] $GameFiles, [string[]] $PluginFiles) {
@@ -51,7 +69,7 @@ function Get-SkyrimProblems([string] $FileVersion, [string[]] $GameFiles, [strin
         $problems += "SKSE64 is for another Skyrim version$what, not $($runtime.Version) ($($runtime.SkseDll)). Get the matching build from $($Links.Skse)."
     }
     if ($PluginFiles -notcontains $runtime.AddressLibrary) {
-        $problems += "Address Library for SKSE Plugins is not installed for Skyrim $($runtime.Version) ($($runtime.AddressLibrary)). Get the $($runtime.AddressLibraryFile) file from $($Links.AddressLibrary) and put it in Data\SKSE\Plugins (or install it with your mod manager)."
+        $problems += "Address Library for SKSE Plugins is not installed for Skyrim $($runtime.Version) ($($runtime.AddressLibrary)). Get the $($runtime.AddressLibraryFile) file from $($Links.AddressLibrary) and put it in Data\SKSE\Plugins (or install it with your mod manager).$(Get-AddressLibraryHint $runtime $PluginFiles)"
     }
     return $problems
 }

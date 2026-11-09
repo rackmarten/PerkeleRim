@@ -14,7 +14,8 @@
 
     -NoStart checks and installs, and starts nothing.
     -ReportBug ("Report a bug.bat") installs and starts nothing: it zips the PerkeleRim logs,
-    PerkeleRim.ini and a versions.txt to "Bug reports" next to this script (the Windows user name replaced by
+    PerkeleRim.ini, skse64.log, the newest crash-*.log of a crash logger, the load order
+    (plugins.txt, and modlist.txt with MO2) and a versions.txt to "Bug reports" next to this script (the Windows user name replaced by
     %USERPROFILE%) and opens the GitHub bug form with the versions filled in. Nothing is sent
     anywhere; the player attaches the zip. -NoOpen prints the form's address instead of opening it.
 #>
@@ -92,6 +93,14 @@ function Send-BugReport($config) {
     $skseVersion = if ($skyrim) { (Version-Of (Join-Path $skyrim 'skse64_loader.exe') 'FileVersion') -replace ',\s*', '.' }
     $loaderVersion = if ($msc) { Version-Of (Join-Path $msc 'mysummercar_Data\Managed\MSCLoader.dll') 'FileVersion' }
     $modVersion = (Version-Of $modDll 'ProductVersion') -replace '\+(\w{7})\w*$', '+$1'
+    # The newest crash log of a crash logger (Crash Logger SSE in SKSE, Trainwreck in SKSE\Crashlogs).
+    $crashLog = @(Get-ChildItem -Path $skseDir, (Join-Path $skseDir 'Crashlogs') -Filter 'crash-*.log' -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending)[0]
+    # The load order: MO2's selected profile when the player starts Skyrim through it, else Skyrim's own.
+    $mo2 = if ($skyrim -and $config['ModManager'] -eq 'MO2') {
+        try { @(Get-Mo2Instances $skyrim (Get-Mo2InstanceDirs $config['Mo2Path']))[0] } catch { $null }
+    }
+    $loadOrder = if ($mo2) { $mo2.ProfileDir } else { Join-Path $env:LOCALAPPDATA 'Skyrim Special Edition' }
     $build = $null
     if ($msc) {
         $manifest = Join-Path (Split-Path (Split-Path $msc)) 'appmanifest_516750.acf'
@@ -109,7 +118,12 @@ function Send-BugReport($config) {
             @{ Name = 'PerkeleRim-skse.log'; Source = Join-Path $skseDir 'PerkeleRim.log' },
             @{ Name = 'PerkeleRim-msc.log'; Source = if ($msc) { Join-Path $msc 'PerkeleRim_spike.log' } },
             @{ Name = 'output_log.txt'; Source = if ($msc) { Join-Path $msc 'output_log.txt' } },
-            @{ Name = 'PerkeleRim.ini'; Source = if ($skyrim) { Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.ini' } })
+            @{ Name = 'PerkeleRim.ini'; Source = if ($skyrim) { Join-Path $skyrim 'Data\SKSE\Plugins\PerkeleRim.ini' } },
+            @{ Name = 'skse64.log'; Source = Join-Path $skseDir 'skse64.log' },
+            @{ Name = if ($crashLog) { $crashLog.Name } else { 'crash-*.log' }; Source = if ($crashLog) { $crashLog.FullName };
+               Absent = "no crash log in $skseDir or its Crashlogs folder: if Skyrim crashed, install Crash Logger SSE AE VR from Nexus and make it crash again" },
+            @{ Name = 'plugins.txt'; Source = Join-Path $loadOrder 'plugins.txt' }) +
+            @(if ($mo2) { @{ Name = 'modlist.txt'; Source = Join-Path $mo2.ProfileDir 'modlist.txt' } })
         $included = @()
         $absent = @()
         foreach ($file in $wanted) {
@@ -117,7 +131,7 @@ function Send-BugReport($config) {
                 Copy-Item $file.Source (Join-Path $raw $file.Name)
                 $included += $file.Name
             } else {
-                $where = if ($file.Source) { "looked for $($file.Source)" } else { 'its game folder was not found' }
+                $where = if ($file.Absent) { $file.Absent } elseif ($file.Source) { "looked for $($file.Source)" } else { 'its game folder was not found' }
                 $absent += "$($file.Name) ($where)"
             }
         }
@@ -159,7 +173,8 @@ function Send-BugReport($config) {
     Write-Host ''
     Write-Host "Saved $zip" -ForegroundColor Green
     if ($absent) { Write-Host "Not found (listed in versions.txt): $(($absent | ForEach-Object { ($_ -split ' ')[0] }) -join ', ')" -ForegroundColor Yellow }
-    Write-Host 'Nothing is sent anywhere. The zip holds your PerkeleRim logs, PerkeleRim.ini and the game versions.'
+    if (-not $crashLog) { Write-Host "No Skyrim crash log found. If Skyrim crashed, install Crash Logger SSE AE VR from Nexus, make it crash again and run this again: the crash log says what crashed." -ForegroundColor Yellow }
+    Write-Host 'Nothing is sent anywhere. The zip holds your PerkeleRim logs, PerkeleRim.ini, SKSE''s log, the newest Skyrim crash log, your load order and the game versions.'
     Write-Host ''
     if ($NoOpen) { Write-Host "Bug form: $url"; return }
     Write-Host 'Opening the bug form. Tell us what happened, then drag the zip (shown in a folder window) into the form.'
@@ -297,7 +312,8 @@ if ($mo2 -and $mo2.LocalSaves) {
     Write-Host 'Added the starter Skyrim save (Kumpo): pick it under Load.'
 }
 
-# The mod continues MSC's save by itself on its main menu while this file exists.
+# The mod continues MSC's save by itself on its main menu, then deletes this file (only with this exact
+# text, AutoloadMarker.LauncherText in msc/src/Link), so MSC started without the launcher shows its menu.
 Set-Content -Path (Join-Path $msc 'PerkeleRim_autoload.txt') -Value 'Written by the PerkeleRim launcher.'
 
 if ($NoStart) { Write-Host 'Installed, not starting the games (-NoStart).'; return }
