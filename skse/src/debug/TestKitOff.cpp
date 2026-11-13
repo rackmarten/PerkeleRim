@@ -1,0 +1,11 @@
+// Builds without the test kit (CI, scripts/package.ps1, a checkout without skse/extern/skse-test-kit): no-ops.
+#include "debug/TestKit.h"
+
+namespace PerkeleRim::TestKit
+{
+    void Load() {}
+
+    void OnMessage(SKSE::MessagingInterface::Message*) {}
+
+    bool Active() { return false; }
+}

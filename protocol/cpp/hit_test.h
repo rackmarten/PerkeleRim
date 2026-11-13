@@ -1,6 +1,6 @@
-// The hit test's rules (skse/src/debug/HitTest.cpp drives it in game, scripts/hit-test.ps1 starts
-// it): its scenarios, what a hit that landed must have cost by damage.h, and the CSV rows it
-// writes. Header-only and free of Skyrim types, so the protocol tests cover it.
+// The hit test's rules (skse/src/debug/HitTest.cpp drives it in game as the test kit's pr.hits scenario,
+// scripts/hit-test.ps1 starts it): its scenarios and what a hit that landed must have cost by damage.h.
+// Header-only and free of Skyrim types, so the protocol tests cover it.
 
 #pragma once
 
@@ -31,7 +31,7 @@ namespace PerkeleRim::HitTest
         float            drunk;  // MSC's drunk level (PlayerDrunk) set before the hits
         int              hits;
         float            gap;    // meters between the player's capsule and the target's
-        int              misses = 0;  // throws that may miss (the drunk camera's sway) and go again, unrecorded
+        int              misses = 0;  // times a throw that missed (the drunk camera's sway) may go again, unrecorded
     };
 
     // Drunk 2, not 3: MSC's player sways so much around 2.5 that the camera is hard to keep level.
@@ -171,39 +171,5 @@ namespace PerkeleRim::HitTest
             return { false, "drunk hits x" + Number(ratio) + " the sober ones, damage.h says x" + Number(wanted) };
         }
         return { true, "x" + Number(ratio) + " at drunk " + Number(a_drunk) };
-    }
-
-    inline constexpr std::string_view kCsvHeader = "scenario,hit,target,landed,drunk,unarmed,speed,mass,sneak,level,armor,expected,damage,before,after,drop,pass,note";
-
-    // A CSV field: quoted when it holds a comma, a quote or a line break.
-    inline std::string Field(std::string_view a_text)
-    {
-        if (a_text.find_first_of(",\"\r\n") == std::string_view::npos) {
-            return std::string(a_text);
-        }
-        std::string quoted = "\"";
-        for (const char c : a_text) {
-            quoted += c;
-            if (c == '"') {
-                quoted += '"';
-            }
-        }
-        return quoted + '"';
-    }
-
-    inline std::string Row(const Scenario& a_scenario, int a_hit, std::string_view a_target, const Hit& a_result, const Verdict& a_verdict)
-    {
-        std::string row = Field(a_scenario.name) + ',' + std::to_string(a_hit) + ',' + Field(a_target) + ',' + (a_result.landed ? "1" : "0");
-        for (const float value : { a_result.drunk, a_result.unarmed, a_result.speed, a_result.mass, a_result.sneak, static_cast<float>(a_result.level), a_result.armor, Expected(a_scenario, a_result), a_result.damage,
-                 a_result.before, a_result.after, a_result.before - a_result.after }) {
-            row += ',' + Number(value);
-        }
-        return row + ',' + (a_verdict.pass ? "1" : "0") + ',' + Field(a_verdict.note);
-    }
-
-    // A row for a check across scenarios (CheckDrunk): only its name, pass and note.
-    inline std::string SummaryRow(std::string_view a_name, const Verdict& a_verdict)
-    {
-        return Field(a_name) + ",,,,,,,,,,,,,,,," + (a_verdict.pass ? "1" : "0") + ',' + Field(a_verdict.note);
     }
 }

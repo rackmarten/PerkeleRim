@@ -44,18 +44,19 @@ namespace PerkeleRim::VehicleView
             float radius;       // units, 70 per meter
             float fade;         // brightness
             float spotDegrees;  // beam width of a shadow spotlight, 0 = point light
+            const char* name;   // the light node's, so a test can tell the lamps apart (the test kit's light off name=)
         };
 
         constexpr float kHeadlightSplit = 40.0f;  // units between a role's lights from which each gets its own lamp
 
-        constexpr Look kLow{ { 1.0f, 0.88f, 0.68f }, 2500.0f, 11.0f, 60.0f };
-        constexpr Look kHigh{ { 1.0f, 0.88f, 0.68f }, 4000.0f, 24.0f, 35.0f };
-        constexpr Look kTail{ { 1.0f, 0.08f, 0.05f }, 90.0f, 3.0f, 0.0f };
-        constexpr Look kBrake{ { 1.0f, 0.08f, 0.05f }, 150.0f, 9.0f, 0.0f };
-        constexpr Look kReverse{ { 1.0f, 1.0f, 1.0f }, 100.0f, 2.0f, 0.0f };
-        constexpr Look kInterior{ { 1.0f, 0.96f, 0.88f }, 120.0f, 1.2f, 0.0f };
-        constexpr Look kWork{ { 1.0f, 0.95f, 0.85f }, 1500.0f, 8.0f, 90.0f };
-        constexpr Look kBeacon{ { 1.0f, 0.5f, 0.05f }, 600.0f, 5.0f, 0.0f };
+        constexpr Look kLow{ { 1.0f, 0.88f, 0.68f }, 2500.0f, 11.0f, 60.0f, "PerkeleRimLowBeam" };
+        constexpr Look kHigh{ { 1.0f, 0.88f, 0.68f }, 4000.0f, 24.0f, 35.0f, "PerkeleRimHighBeam" };
+        constexpr Look kTail{ { 1.0f, 0.08f, 0.05f }, 90.0f, 3.0f, 0.0f, "PerkeleRimTailLight" };
+        constexpr Look kBrake{ { 1.0f, 0.08f, 0.05f }, 150.0f, 9.0f, 0.0f, "PerkeleRimBrakeLight" };
+        constexpr Look kReverse{ { 1.0f, 1.0f, 1.0f }, 100.0f, 2.0f, 0.0f, "PerkeleRimReverseLight" };
+        constexpr Look kInterior{ { 1.0f, 0.96f, 0.88f }, 120.0f, 1.2f, 0.0f, "PerkeleRimCabinLight" };
+        constexpr Look kWork{ { 1.0f, 0.95f, 0.85f }, 1500.0f, 8.0f, 90.0f, "PerkeleRimWorkLight" };
+        constexpr Look kBeacon{ { 1.0f, 0.5f, 0.05f }, 600.0f, 5.0f, 0.0f, "PerkeleRimBeacon" };
 
         constexpr float kBeaconHz = 1.5f;  // flashes per second of the beacons' light
 
@@ -139,7 +140,7 @@ namespace PerkeleRim::VehicleView
                 if (!a_lamp.light) {
                     return;
                 }
-                a_lamp.light->name = "PerkeleRimLamp";
+                a_lamp.light->name = a_look.name;
                 a_vehicle.AttachChild(a_lamp.light.get(), true);
             }
             auto& light = *a_lamp.light;
@@ -374,5 +375,14 @@ namespace PerkeleRim::VehicleView
             Hitbox::Hide(i + 1);
             Hide(views[i], kModelNames[i]);
         }
+    }
+
+    RE::NiNode* Node(std::uint32_t a_vehicle)
+    {
+        if (a_vehicle < 1 || a_vehicle > Protocol::kVehicleCount) {
+            return nullptr;
+        }
+        const auto& view = views[a_vehicle - 1];
+        return view.shown ? view.node.get() : nullptr;
     }
 }

@@ -1,9 +1,11 @@
 #include "vehicle/HitboxTest.h"
 
+#include <deque>
+#include <format>
 #include <unordered_set>
 
-#include "Ini.h"
 #include "coords.h"
+#include "player/PlayerSync.h"
 #include "vehicle/Hitbox.h"
 
 namespace PerkeleRim::HitboxTest
@@ -19,7 +21,7 @@ namespace PerkeleRim::HitboxTest
         // away from Kumpo, one beside Kumpo for the control shots.
         constexpr float      kArcherBehind = 300.0f;  // units behind the van's center, away from Kumpo
         constexpr float      kArcherSide = 600.0f;    // ...and beside Kumpo
-        constexpr float      kMeleeBehind = 600.0f;
+        constexpr float      kMeleeBehind = 450.0f;    // inside his 1024 aggro radius of Kumpo with the van called in front of him
         constexpr float      kMeleeAside = 200.0f;    // off the arrows' line
         constexpr float      kChest = 90.0f;          // above Kumpo's feet, what the control arrows aim at
         constexpr float      kDropHeight = 150.0f;   // placed this far above the van's origin, to fall onto the ground
@@ -32,6 +34,8 @@ namespace PerkeleRim::HitboxTest
         constexpr int        kShots = 12;             // every third one a control shot from the side
         constexpr float      kImpactRange = 1500.0f;  // impacts of other projectiles this close to the van are logged
         constexpr float      kFlightSeconds = 5.0f;   // our arrows are followed this long
+        constexpr float      kReached = 40.0f;        // an arrow this close to Kumpo's chest reached him (one that hits him is gone at once)
+        constexpr float      kVanSkin = 40.0f;        // an impact on the hitbox's layer this close to the van's box is the van's
 
         // One of our arrows, followed every frame until it is gone.
         struct Flight
@@ -46,14 +50,20 @@ namespace PerkeleRim::HitboxTest
             bool                 hit = false;  // its impacts are logged
         };
 
+        constexpr std::uint16_t kKeyCallVan = 93;      // Unity KeyCode.RightBracket: MSC calls the van in front of Kumpo
+        constexpr float         kCallHold = 0.3f;      // seconds the key is held
+        constexpr float         kCallAgain = 30.0f;    // and pressed again this long after, while the van isn't there
+
         struct State
         {
-            bool                checked = false;
-            bool                done = false;
+            bool                running = false;
             bool                started = false;
             float               waited = 0.0f;
+            int                 calls = 0;      // times the van was called
+            float               calledAt = -1.0f;  // waited when the key went down, < 0 while it's up
             float               stood = 0.0f;  // the van has been solid near Kumpo this long
             float               time = 0.0f;
+            float               clock = 0.0f;  // since Begin, for the notes
             float               sample = 0.0f;
             float               shotAt = 0.0f;
             int                 shots = 0;
@@ -69,7 +79,18 @@ namespace PerkeleRim::HitboxTest
             float               deepest = 0.0f;  // the deepest he ever stood inside the van's box
             int                 inside = 0;      // samples he stood inside it
             int                 obstaclesAtStart = -1;
+            std::deque<Note>    notes;  // for NextNote, as they were logged
+            Result              result;
         } state;
+
+        // A line of the test's log, also a row of the kit's scenario (NextNote).
+        template <class... Args>
+        void Log(std::format_string<Args...> a_format, Args&&... a_args)
+        {
+            auto text = std::format(a_format, std::forward<Args>(a_args)...);
+            SKSE::log::info("hitbox test: {}", text);
+            state.notes.push_back({ state.clock, std::move(text) });
+        }
 
         // How far inside a_box (in the van's frame) a world point is, 0 when outside.
         float Depth(const Protocol::VehicleState& a_van, const Hitbox::Box& a_box, const RE::NiPoint3& a_at)
@@ -106,7 +127,7 @@ namespace PerkeleRim::HitboxTest
                 return {};
             }
             ref->SetPosition(a_at);
-            SKSE::log::info("hitbox test: {} {} ({:08X}) placed at ({:.0f},{:.0f},{:.0f})", a_what, ref->GetName(), ref->GetFormID(), a_at.x, a_at.y, a_at.z);
+            Log("{} {} ({:08X}) placed at ({:.0f},{:.0f},{:.0f})", a_what, ref->GetName(), ref->GetFormID(), a_at.x, a_at.y, a_at.z);
             return ref->GetHandle();
         }
 
@@ -143,7 +164,7 @@ namespace PerkeleRim::HitboxTest
             }
             away /= distance;
             state.obstaclesAtStart = Obstacles();
-            SKSE::log::info("hitbox test: armed, the van at ({:.0f},{:.0f},{:.0f}) {:.0f} units from Kumpo at ({:.0f},{:.0f},{:.0f}), {} navmesh obstacles loaded", at.x,
+            Log("armed, the van at ({:.0f},{:.0f},{:.0f}) {:.0f} units from Kumpo at ({:.0f},{:.0f},{:.0f}), {} navmesh obstacles loaded", at.x,
                 at.y, at.z, distance, kumpo.x, kumpo.y, kumpo.z, state.obstaclesAtStart);
             const RE::NiPoint3 aside(-away.y, away.x, 0.0f);
             const RE::NiPoint3 drop(0.0f, 0.0f, kDropHeight);
@@ -178,7 +199,7 @@ namespace PerkeleRim::HitboxTest
             }
             const auto* hit = pick.rayOutput.rootCollidable;
             const float at = a_from.GetDistance(a_to) * (hit ? pick.rayOutput.hitFraction : 1.0f);
-            SKSE::log::info("hitbox test: a projectile's ray from ({:.0f},{:.0f},{:.0f}) meets {} after {:.0f} units", a_from.x, a_from.y, a_from.z,
+            Log("a projectile's ray from ({:.0f},{:.0f},{:.0f}) meets {} after {:.0f} units", a_from.x, a_from.y, a_from.z,
                 !hit              ? std::string("nothing") :
                 Hitbox::Owns(hit) ? std::string("the van's hitbox") :
                                     fmt::format("layer {}", static_cast<int>(hit->GetCollisionLayer())),
@@ -215,7 +236,7 @@ namespace PerkeleRim::HitboxTest
             state.ours.insert(id);
             state.flights.push_back({ .handle = handle, .id = id, .through = a_through, .last = from });
             (a_through ? state.through : state.side)++;
-            SKSE::log::info("hitbox test: {} arrow {:08X} from ({:.0f},{:.0f},{:.0f}) at Kumpo", a_through ? "through-the-van" : "control", id, from.x,
+            Log("{} arrow {:08X} from ({:.0f},{:.0f},{:.0f}) at Kumpo", a_through ? "through-the-van" : "control", id, from.x,
                 from.y, from.z);
         }
 
@@ -247,7 +268,7 @@ namespace PerkeleRim::HitboxTest
                     for (auto* impact : projectile->GetProjectileRuntimeData().impacts) {
                         if (impact) {
                             const auto collidee = impact->collidee.get();
-                            SKSE::log::info("hitbox test: projectile {:08X} hit {} on layer {} at ({:.0f},{:.0f},{:.0f}), {:.0f} from the van", id,
+                            Log("projectile {:08X} hit {} on layer {} at ({:.0f},{:.0f},{:.0f}), {:.0f} from the van", id,
                                 impact->colObj && Hitbox::Owns(impact->colObj.get()) ? "the van's hitbox" : collidee.get() == a_player ? "Kumpo" : collidee ? collidee->GetName() : "no reference",
                                 static_cast<int>(impact->collidedLayer.get()), at.x, at.y, at.z, at.GetDistance(a_van));
                         }
@@ -258,8 +279,16 @@ namespace PerkeleRim::HitboxTest
 
         // Our arrows, every frame: how close each comes to the van and to Kumpo, what it hits (its
         // impacts, logged once) and where it ends, wherever that is.
-        void Track(RE::PlayerCharacter* a_player, const RE::NiPoint3& a_van, float a_delta)
+        void Track(RE::PlayerCharacter* a_player, const Protocol::VehicleState& a_state, const Hitbox::Box& a_box, float a_delta)
         {
+            const RE::NiPoint3 a_van(a_state.position[0], a_state.position[1], a_state.position[2]);
+            // The impacts never name the capsules' collision objects (Owns), so an impact on their layer at the van's
+            // box, grown by its skin, counts as the van's too.
+            Hitbox::Box skin = a_box;
+            for (int k = 0; k < 3; k++) {
+                skin.lo[k] -= kVanSkin;
+                skin.hi[k] += kVanSkin;
+            }
             const auto chest = a_player->GetPosition() + RE::NiPoint3(0.0f, 0.0f, kChest);
             std::erase_if(state.flights, [&](Flight& a_flight) {
                 a_flight.age += a_delta;
@@ -277,13 +306,12 @@ namespace PerkeleRim::HitboxTest
                             if (!impact) {
                                 continue;
                             }
-                            const bool ours = impact->colObj && Hitbox::Owns(impact->colObj.get());
+                            const bool ours = (impact->colObj && Hitbox::Owns(impact->colObj.get())) ||
+                                              (static_cast<std::uint32_t>(impact->collidedLayer.get()) == Hitbox::CapsuleLayer() && Depth(a_state, skin, a_flight.last) > 0.0f);
                             const auto collidee = impact->collidee.get();
                             const bool kumpo = collidee.get() == a_player;
                             state.throughStopped += a_flight.through && ours ? 1 : 0;
-                            state.throughOnKumpo += a_flight.through && kumpo ? 1 : 0;
-                            state.sideOnKumpo += !a_flight.through && kumpo ? 1 : 0;
-                            SKSE::log::info("hitbox test: {} arrow {:08X} hit {} on layer {} at ({:.0f},{:.0f},{:.0f}) after {:.2f} s, {:.0f} from the van", kind, a_flight.id,
+                            Log("{} arrow {:08X} hit {} on layer {} at ({:.0f},{:.0f},{:.0f}) after {:.2f} s, {:.0f} from the van", kind, a_flight.id,
                                 ours ? "the van's hitbox" : kumpo ? "Kumpo" : collidee ? collidee->GetName() : "no reference", static_cast<int>(impact->collidedLayer.get()),
                                 a_flight.last.x, a_flight.last.y, a_flight.last.z, a_flight.age, a_flight.last.GetDistance(a_van));
                         }
@@ -292,46 +320,124 @@ namespace PerkeleRim::HitboxTest
                 if (projectile && a_flight.age < kFlightSeconds) {
                     return false;
                 }
-                SKSE::log::info("hitbox test: {} arrow {:08X} {} at ({:.0f},{:.0f},{:.0f}) after {:.2f} s, {}; it came within {:.0f} of the van's center and {:.0f} of Kumpo's chest",
+                const bool reached = a_flight.closestKumpo <= kReached;
+                (a_flight.through ? state.throughOnKumpo : state.sideOnKumpo) += reached ? 1 : 0;
+                Log("{} arrow {:08X} {} at ({:.0f},{:.0f},{:.0f}) after {:.2f} s, {}; it came within {:.0f} of the van's center and {:.0f} of Kumpo's chest",
                     kind, a_flight.id, projectile ? "still flies" : "is gone", a_flight.last.x, a_flight.last.y, a_flight.last.z, a_flight.age,
                     a_flight.hit ? "after its hit" : "with no hit", a_flight.closestVan, a_flight.closestKumpo);
                 return true;
             });
         }
 
-        void Finish()
+        void Finish(const char* a_stopped)
         {
-            state.done = true;
+            state.running = false;
+            PlayerSync::DebugHold(kKeyCallVan, false);
             Remove(state.archer);
             Remove(state.sideArcher);
             Remove(state.melee);
-            SKSE::log::info("hitbox test: done: {} through-the-van arrows, {} stopped by the van, {} on Kumpo; {} control arrows, {} on Kumpo; {} projectile(s) counted on the van; "
+            Log("done: {} through-the-van arrows, {} stopped by the van, {} on Kumpo; {} control arrows, {} on Kumpo; {} projectile(s) counted on the van; "
                             "the melee bandit came within {:.0f} units of Kumpo and stood inside the van's box in {} of {} samples, at most {:.0f} units deep; navmesh obstacles {} at the start, {} now",
                 state.through, state.throughStopped, state.throughOnKumpo, state.side, state.sideOnKumpo, Hitbox::Hits(Protocol::kVehicleHayosiko), state.closest,
                 state.inside, static_cast<int>(kRunSeconds / kSampleSeconds), state.deepest, state.obstaclesAtStart, Obstacles());
+            auto& r = state.result;
+            r.done = !a_stopped;
+            r.stopped = a_stopped ? a_stopped : "";
+            r.through = state.through;
+            r.throughStopped = state.throughStopped;
+            r.throughOnKumpo = state.throughOnKumpo;
+            r.side = state.side;
+            r.sideOnKumpo = state.sideOnKumpo;
+            r.vanHits = static_cast<int>(Hitbox::Hits(Protocol::kVehicleHayosiko));
+            r.meleeClosest = state.closest;
+            r.meleeInside = state.inside;
+            r.samples = static_cast<int>(kRunSeconds / kSampleSeconds);
+            r.meleeDeepest = state.deepest;
+            r.obstaclesAtStart = state.obstaclesAtStart;
+            r.obstaclesAtEnd = Obstacles();
         }
+
+        // Calls the van as ] does while MSC has the player: now, and again kCallAgain later while it isn't near.
+        void CallVan(float a_delta)
+        {
+            if (state.calledAt >= 0.0f) {
+                if (state.waited - state.calledAt >= kCallHold) {
+                    PlayerSync::DebugHold(kKeyCallVan, false);
+                    state.calledAt = -1.0f;
+                }
+                return;
+            }
+            if (state.stood > 0.0f || !PlayerSync::Owned() || (state.calls > 0 && state.waited < state.calls * kCallAgain)) {
+                return;
+            }
+            (void)a_delta;
+            state.calls++;
+            state.calledAt = state.waited;
+            PlayerSync::DebugHold(kKeyCallVan, true);
+            Log("calling the van (]){}", state.calls > 1 ? ", again" : "");
+        }
+    }
+
+    std::string Begin()
+    {
+        if (state.running) {
+            return "the hitbox test runs already";
+        }
+        if (!PlayerSync::Owned()) {
+            return "MSC doesn't have the player (pr.msc first)";
+        }
+        if (PlayerSync::Seated()) {
+            return "Kumpo sits in a vehicle, the hitbox test needs him on foot";
+        }
+        state = State{};
+        state.running = true;
+        Log("on, waiting for the van");
+        return {};
+    }
+
+    void Stop(const char* a_why)
+    {
+        if (state.running) {
+            Log("stopped: {}", a_why);
+            Finish(a_why);
+        }
+    }
+
+    bool Running()
+    {
+        return state.running;
+    }
+
+    std::optional<Note> NextNote()
+    {
+        if (state.notes.empty()) {
+            return std::nullopt;
+        }
+        auto note = std::move(state.notes.front());
+        state.notes.pop_front();
+        return note;
+    }
+
+    const Result& Last()
+    {
+        return state.result;
     }
 
     void Update(RE::PlayerCharacter* a_player, float a_delta)
     {
-        if (state.done || !a_player) {
+        if (!state.running || !a_player) {
             return;
         }
-        if (!state.checked) {
-            state.checked = true;
-            state.done = Ini::Value("HitboxTest") != "1";
-            if (state.done) {
-                return;
-            }
-            SKSE::log::info("hitbox test: HitboxTest=1 in PerkeleRim.ini, waiting for the van");
-        }
+        state.clock += a_delta;
         if (!state.started) {
             state.waited += a_delta;
+            CallVan(a_delta);
             if (Start(a_player, a_delta)) {
                 state.started = true;
+                PlayerSync::DebugHold(kKeyCallVan, false);
             } else if (state.waited > kWaitSeconds) {
-                SKSE::log::warn("hitbox test: the van wasn't solid within {:.0f} units of Kumpo within {:.0f} s, not run", kVanReach, kWaitSeconds);
-                state.done = true;
+                Log("the van wasn't solid within {:.0f} units of Kumpo within {:.0f} s, not run", kVanReach, kWaitSeconds);
+                Finish("the van never stood near Kumpo");
             }
             return;
         }
@@ -346,7 +452,7 @@ namespace PerkeleRim::HitboxTest
         state.time += a_delta;
         if (solid) {
             Impacts(a_player, at);
-            Track(a_player, at, a_delta);
+            Track(a_player, van, box, a_delta);
         }
 
         state.shotAt += a_delta;
@@ -368,13 +474,13 @@ namespace PerkeleRim::HitboxTest
                 state.deepest = (std::max)(state.deepest, depth);
                 state.inside += depth > 0.0f ? 1 : 0;
                 if (static_cast<int>(state.time * 2.0f) % 4 == 0) {  // every 2 s
-                    SKSE::log::info("hitbox test: {:.1f} s: melee bandit at ({:.0f},{:.0f},{:.0f}), {:.0f} from Kumpo, {:.0f} inside the van's box; {} navmesh obstacles",
+                    Log("{:.1f} s: melee bandit at ({:.0f},{:.0f},{:.0f}), {:.0f} from Kumpo, {:.0f} inside the van's box; {} navmesh obstacles",
                         state.time, where.x, where.y, where.z, apart, depth, Obstacles());
                 }
             }
         }
         if (state.time >= kRunSeconds) {
-            Finish();
+            Finish(nullptr);
         }
     }
 }

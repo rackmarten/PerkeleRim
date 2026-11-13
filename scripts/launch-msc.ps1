@@ -10,7 +10,13 @@
     scripts/launch-msc.ps1 -Width 1280 -Height 720
     scripts/launch-msc.ps1 -Width 2560 -Height 1440 -Fullscreen -Quality Fantastic   # for filming MSC itself
     scripts/launch-msc.ps1 -NoPlace   # leave the window where Windows puts it
+    scripts/launch-msc.ps1 -Hidden    # a test session's partner (skytest.psd1): minimized, never focused, no key presses
 .NOTES
+    -Hidden skips Unity's configuration dialog and the news screen with MSCLoader's own skipConfigScreen and skipIntro
+    (doorstop_config.ini, put back as soon as the mod has started, or at the next start if this was killed), starts MSC
+    minimized without activating it and has it continue its save (a one-shot PerkeleRim_autoload.txt, which the mod
+    deletes once used, unless the folder has its own marker). It returns once the mod has started; nothing is pressed
+    or clicked, so the desktop stays usable.
     Windowed MSC is moved to the left of Skyrim's spot in the top right corner of the primary screen,
     top edges aligned (see Set-GameWindowLayout in common.ps1). Fullscreen is never moved.
 #>
@@ -20,13 +26,27 @@ param(
     [string] $Quality = 'Fastest',
     [switch] $Fullscreen,
     [switch] $NoPlace,
+    [switch] $Hidden,
     [int] $TimeoutSeconds = 60
 )
 
 . "$PSScriptRoot/common.ps1"
 . "$RepoRoot/launcher/checks.ps1"
 . "$RepoRoot/launcher/install.ps1"
+. "$PSScriptRoot/test-session.ps1"
 $msc = Get-RequiredSetting (Get-LocalConfig) 'MscPath'
+
+# -Hidden: MSCLoader's own switches skip the dialog and the news screen; the player's doorstop_config.ini is kept
+# here meanwhile.
+$doorstop = Join-Path $msc 'doorstop_config.ini'
+$doorstopKept = Join-Path $env:LOCALAPPDATA 'PerkeleRim\doorstop_config.ini.test-backup'
+function Restore-Doorstop {
+    if (Test-Path -LiteralPath $doorstopKept) {
+        Copy-Item -LiteralPath $doorstopKept $doorstop -Force
+        Remove-Item -LiteralPath $doorstopKept -Force
+    }
+}
+Restore-Doorstop  # a hidden start that was killed before it put it back
 
 if (Get-Process mysummercar -ErrorAction SilentlyContinue) { throw 'My Summer Car is already running.' }
 
@@ -37,7 +57,69 @@ Add-Type -Namespace PerkeleRim -Name Win32 -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
 [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
 [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int cmd);
+[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hwnd);
+[DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hwnd);
 '@
+
+if ($Hidden) {
+    if (-not (Test-Path -LiteralPath $doorstop)) { throw "No ${doorstop}: is MSCLoader installed?" }
+    $marker = Join-Path $msc 'PerkeleRim_autoload.txt'
+    if (-not (Test-Path -LiteralPath $marker)) {
+        [IO.File]::WriteAllText($marker, 'Written by the PerkeleRim launcher.', (New-Object Text.UTF8Encoding $false))  # AutoloadMarker.LauncherText
+    }
+    [void] (Save-MscScreenSettings $MscRegistryKey $MscScreenBackup)
+    New-Item -ItemType Directory -Force (Split-Path $doorstopKept) | Out-Null
+    Copy-Item -LiteralPath $doorstop $doorstopKept -Force
+    try {
+        $text = [IO.File]::ReadAllText($doorstop)
+        [IO.File]::WriteAllText($doorstop, (Set-IniText $text 'MSCLoader' @{ skipIntro = 'true'; skipConfigScreen = 'true' }))
+        $log = Join-Path $msc 'PerkeleRim_spike.log'
+        $launched = Get-Date
+        $before = [PerkeleRim.Win32]::GetForegroundWindow()  # whatever the desktop is doing: it gets the foreground back
+        Start-Process -WorkingDirectory $msc -WindowStyle Minimized (Join-Path $msc 'mysummercar.exe') `
+            -ArgumentList '-force-gfx-direct', '-screen-fullscreen', '0', '-screen-width', $Width, '-screen-height', $Height, '-screen-quality', $Quality
+        Start-MscScreenWatcher (Join-Path $RepoRoot 'launcher/PerkeleRim.ps1')
+        # Unity shows its window as it likes and activates it, again as it loads the game (Windows lets it while nobody
+        # has used the desktop for a while): minimized whenever it's up and not, which hands the activation on
+        # (SW_MINIMIZE), and the foreground given back to the window that had it should MSC still hold it. Until MSC is
+        # in its game with the player (the spike's probe says scene=GAME and where he is), and a moment more.
+        $deadline = $launched.AddSeconds($TimeoutSeconds * 3)
+        $menuAt = $null
+        $inGameAt = $null
+        while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 250
+            $game = [PerkeleRim.Win32]::FindWindowEx([IntPtr]::Zero, [IntPtr]::Zero, 'UnityWndClass', 'My Summer Car')
+            if ($game -ne [IntPtr]::Zero -and [PerkeleRim.Win32]::IsWindowVisible($game) -and -not [PerkeleRim.Win32]::IsIconic($game)) {
+                [void] [PerkeleRim.Win32]::ShowWindow($game, 6)  # SW_MINIMIZE
+            }
+            $front = [PerkeleRim.Win32]::GetForegroundWindow()
+            $owner = 0
+            if ($front -ne [IntPtr]::Zero) { [void] [PerkeleRim.Win32]::GetWindowThreadProcessId($front, [ref] $owner) }
+            if ($owner -and (Get-Process -Id $owner -ErrorAction SilentlyContinue).ProcessName -eq 'mysummercar' -and
+                $before -ne [IntPtr]::Zero -and [PerkeleRim.Win32]::IsWindow($before)) {
+                [void] [PerkeleRim.Win32]::SetForegroundWindow($before)
+            }
+            if (-not $menuAt -and (Test-Path $log) -and (Get-Item $log).LastWriteTime -gt $launched) {
+                $menuAt = Get-Date
+                Restore-Doorstop  # read at the start, no longer needed
+            }
+            if ($menuAt -and -not $inGameAt -and (Select-String -LiteralPath $log -Pattern 'scene=GAME .*pos=' -Quiet)) { $inGameAt = Get-Date }
+            if ($inGameAt -and ((Get-Date) - $inGameAt).TotalSeconds -ge 3) {
+                Write-Host "Mod started after $([int]($menuAt - $launched).TotalSeconds) s, MSC in its game after $([int]($inGameAt - $launched).TotalSeconds) s, minimized."
+                return
+            }
+            if (-not (Get-Process mysummercar -ErrorAction SilentlyContinue) -and ((Get-Date) - $launched).TotalSeconds -gt 20) {
+                throw 'My Summer Car exited before its main menu (its output_log.txt may say why).'
+            }
+        }
+        if ($menuAt) { throw 'My Summer Car reached its main menu but not its game: did it continue its save (PerkeleRim_spike.log)?' }
+        throw 'Main menu not reached (spike log not updated). Is the mod deployed?'
+    } finally {
+        Restore-Doorstop
+    }
+}
 
 # Unity keeps the screen mode MSC ran in as its own settings when it quits: the player launcher's
 # hidden watcher puts the ones from before back once MSC has closed.

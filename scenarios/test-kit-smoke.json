@@ -1,0 +1,11 @@
+// The quickest check that a session works: Kumpo with MSC, the van, PerkeleRim's commands answering. A few seconds
+// from a running session (scripts/skytest.ps1 run scenarios/test-kit-smoke.json).
+{
+  "name": "test-kit-smoke",
+  "steps": [
+    { "label": "MSC has Kumpo", "cmd": "pr.msc", "expect": ["msc == true"] },
+    { "label": "the player is in the world", "cmd": "state", "ref": "player", "expect": ["dead == false"] },
+    { "label": "MSC's debug commands reach it", "cmd": "pr.send", "line": "drunk 0", "expect": "sent == drunk 0" },
+    { "label": "PerkeleRim's commands are there", "cmd": "help", "command": "pr.call", "expect": "usage exists" }
+  ]
+}

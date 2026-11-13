@@ -23,10 +23,12 @@ namespace PerkeleRim::Hitbox
     // its model is built.
     bool Shape(std::uint32_t a_vehicle, Box& a_box);
     // Hits on vehicle a_vehicle since the game started: projectiles that hit its hitbox (each logged,
-    // the first few in full, counted only with HitboxTest=1 in PerkeleRim.ini), and hits on the
+    // the first few in full, counted only while the hitbox test runs, HitboxTest.h), and hits on the
     // player seated in it that landed on it instead (Struck, MetalHit).
     std::uint32_t Hits(std::uint32_t a_vehicle);
     void          Struck(std::uint32_t a_vehicle);
+    // The Havok layer the capsules are on (L_ANIMSTATIC, or HitboxLayer from PerkeleRim.ini).
+    std::uint32_t CapsuleLayer();
     // Whether a collision object is one of the vehicles' capsules (a projectile's impact names it).
     bool Owns(const RE::bhkCollisionObject* a_object);
     // ...or a Havok collidable is (a ray cast's hit names it).

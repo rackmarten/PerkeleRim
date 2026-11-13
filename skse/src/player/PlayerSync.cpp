@@ -1412,6 +1412,13 @@ namespace PerkeleRim::PlayerSync
         }
     }
 
+    void DebugTakeBack()
+    {
+        if (state.owned) {
+            Toggle();
+        }
+    }
+
     void DebugHold(std::uint16_t a_keyCode, bool a_held)
     {
         if (a_keyCode >= 512) {
