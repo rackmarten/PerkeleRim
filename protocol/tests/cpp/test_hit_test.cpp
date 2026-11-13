@@ -9,20 +9,6 @@ using namespace PerkeleRim;
 
 namespace
 {
-    int Fields(const std::string& a_row)
-    {
-        int  fields = 1;
-        bool quoted = false;
-        for (const char c : a_row) {
-            if (c == '"') {
-                quoted = !quoted;
-            } else if (c == ',' && !quoted) {
-                fields++;
-            }
-        }
-        return fields;
-    }
-
     HitTest::Hit Punched(float a_unarmed, float a_drunk, float a_before = 100.0f)
     {
         HitTest::Hit hit;
@@ -36,7 +22,7 @@ namespace
     }
 }
 
-TEST_CASE("the hit test's scenarios come from the ini's list")
+TEST_CASE("the hit test's scenarios come from a list")
 {
     const auto all = HitTest::Parse("all");
     REQUIRE(all.size() == HitTest::kScenarios.size());
@@ -207,22 +193,6 @@ TEST_CASE("drunk punches against sober ones")
     CHECK(HitTest::CheckDrunk(8.0f, Damage::Punch(4.0f, 2.0f), 2.0f).note == "x1.7 at drunk 2.0");
     CHECK_FALSE(HitTest::CheckDrunk(8.0f, 8.0f, 2.0f).pass);
     CHECK_FALSE(HitTest::CheckDrunk(0.0f, 8.0f, 2.0f).pass);
-}
-
-TEST_CASE("the CSV rows match the header")
-{
-    const int columns = Fields(std::string(HitTest::kCsvHeader));
-    CHECK(columns == 18);
-
-    const auto& punch = HitTest::kScenarios[0];
-    const auto  hit = Punched(4.0f, 0.0f);
-    const auto  row = HitTest::Row(punch, 2, "Giant, \"Big\"", hit, HitTest::Check(punch, hit));
-    CHECK(Fields(row) == columns);
-    CHECK(row == "punch,2,\"Giant, \"\"Big\"\"\",1,0.0,4.0,0.0,0.0,1.0,1.0,0.0,8.0,8.0,100.0,92.0,8.0,1,");
-
-    const auto summary = HitTest::SummaryRow("drunk vs punch", { false, "needs a landed punch, and a drunk one" });
-    CHECK(Fields(summary) == columns);
-    CHECK(summary == "drunk vs punch,,,,,,,,,,,,,,,,0,\"needs a landed punch, and a drunk one\"");
 }
 
 TEST_CASE("a stressed punch is expected a little harder")

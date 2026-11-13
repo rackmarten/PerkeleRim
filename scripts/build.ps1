@@ -6,13 +6,17 @@
     scripts/build.ps1 -Target skse -Configuration Debug
     scripts/build.ps1 -Target msc -UseStubs # C# mod against stub DLLs, no game install needed
     scripts/build.ps1 -Version 0.2.0-dev.20261029  # the MSC mod's version (scripts/publish-dev.ps1); default its csproj's
+    scripts/build.ps1 -Target skse -NoTestKit       # without skse-test-kit, as scripts/package.ps1 builds
     powershell.exe -File scripts/build.ps1  # from WSL
 #>
 param(
     [ValidateSet('all', 'skse', 'msc')] [string] $Target = 'all',
     [ValidateSet('Release', 'Debug')] [string] $Configuration = 'Release',
     [switch] $UseStubs,
-    [string] $Version
+    [string] $Version,
+    # Leaves skse-test-kit out of the SKSE plugin. Without this it's linked whenever the submodule is checked out
+    # (docs/DEV_SETUP.md, "Test sessions"); a release never has it.
+    [switch] $NoTestKit
 )
 
 . "$PSScriptRoot/common.ps1"
@@ -32,12 +36,17 @@ if ($Target -in 'all', 'skse') {
     if (-not (Test-Path (Join-Path $skse 'extern/CommonLibSSE-NG/CMakeLists.txt'))) {
         Invoke-Checked git @('-C', $RepoRoot, 'submodule', 'update', '--init', '--recursive')
     }
+    # The test kit's submodule is never fetched by itself (update = none): use it when it's there.
+    $kit = -not $NoTestKit -and (Test-Path (Join-Path $skse 'extern/skse-test-kit/CMakeLists.txt'))
+    if (-not $NoTestKit -and -not $kit) {
+        Write-Host 'skse-test-kit is not checked out: building without test sessions (git submodule update --init --checkout skse/extern/skse-test-kit adds them).' -ForegroundColor Yellow
+    }
     Push-Location $skse
     try {
-        Invoke-Checked cmake @('--preset', $preset)
+        Invoke-Checked cmake @('--preset', $preset, "-DPERKELERIM_TEST_KIT=$(if ($kit) { 'ON' } else { 'OFF' })")
         Invoke-Checked cmake @('--build', '--preset', $preset)
     } finally { Pop-Location }
-    Write-Host "SKSE plugin: skse/build/$preset/PerkeleRim.dll"
+    Write-Host "SKSE plugin: skse/build/$preset/PerkeleRim.dll$(if ($kit) { ' (with skse-test-kit)' })"
 }
 
 if ($Target -in 'all', 'msc') {

@@ -15,4 +15,7 @@ namespace PerkeleRim::VehicleView
     void Update(std::uint32_t a_vehicle, const Protocol::VehicleState* a_state, const Protocol::VehicleParts* a_parts, std::uint32_t a_generation);
     // Hides every vehicle.
     void Hide();
+    // The node vehicle a_vehicle is drawn under while it is shown (its lamps' lights hang under it too), else null:
+    // for the test kit's pr.vehicle target.
+    RE::NiNode* Node(std::uint32_t a_vehicle);
 }

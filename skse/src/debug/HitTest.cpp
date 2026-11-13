@@ -1,13 +1,9 @@
 #include "debug/HitTest.h"
 
 #include <deque>
-#include <filesystem>
-#include <fstream>
 
-#include "Ini.h"
 #include "combat/Combat.h"
 #include "coords.h"
-#include "hit_test.h"
 #include "junk/ThrowJunk.h"
 #include "link/LinkService.h"
 #include "look_at.h"
@@ -24,7 +20,6 @@ namespace PerkeleRim::HitTest
         constexpr std::uint16_t kKeyH = 104;          // Unity KeyCode.H, MSC's Hit
         constexpr std::uint16_t kMouse1 = 324;        // Unity KeyCode.Mouse1, MSC's throw
         constexpr float         kPlayerRadius = 0.3f;  // meters, MSC's player capsule (Actors.Touching)
-        constexpr float         kSettleSeconds = 5.0f;     // after the load, before F10
         constexpr float         kHandoverTimeout = 120.0f;  // the first handover of a save walks to the garage
         constexpr float         kOwnedSettle = 4.0f;       // MSC's island gets built under the player
         constexpr float         kModelQuiet = 4.0f;        // seconds without a ModelChunk: MSC has read its models (one took 2.1 s)
@@ -45,9 +40,7 @@ namespace PerkeleRim::HitTest
         enum class Phase
         {
             Off,
-            Loading,   // waiting for Autoload's save
-            Settling,  // it's in; F10 after kSettleSeconds
-            Handing,   // MSC takes the player
+            Handing,   // MSC takes the player (Begin hands him over unless MSC has him)
             Drunk,     // the scenario's drunk level goes to MSC
             Level,     // MSC's camera is turned level
             Placing,   // the target comes, then stands ahead
@@ -64,7 +57,7 @@ namespace PerkeleRim::HitTest
             std::vector<Scenario>    scenarios;
             std::size_t              scenario = 0;
             int                      hit = 0;  // of the scenario's, from 0
-            int                      missed = 0;  // throws that went again (Again)
+            int                      missed = 0;  // throws of this hit that went again (Again)
             float                    timer = 0.0f;
             float                    step = 0.0f;  // the camera levelling's own clock
             float                    owned = 0.0f;  // seconds MSC has had the player on the ground
@@ -81,10 +74,8 @@ namespace PerkeleRim::HitTest
             float                    pitchGain = 4.0f;  // counts per degree, halved on every overshoot
             float                    lastPitch = 0.0f;
             std::deque<std::string>  commands;  // DebugCommand lines not sent yet (a full ring)
-            std::filesystem::path    csvPath;
-            std::ofstream            csv;
-            int                      passed = 0;
-            int                      rows = 0;
+            std::deque<AttackRow>    written;   // rows NextRow hasn't handed out yet
+            Result                   outcome;
             float                    soberSum = 0.0f, drunkSum = 0.0f, drunkLevel = 0.0f;
             int                      soberCount = 0, drunkCount = 0;
             bool                     ranSober = false, ranDrunk = false;
@@ -148,12 +139,11 @@ namespace PerkeleRim::HitTest
             state.target = {};
         }
 
-        void WriteRow(const std::string& a_row)
+        void WriteRow(AttackRow a_row)
         {
-            if (state.csv) {
-                state.csv << a_row << '\n';
-                state.csv.flush();  // a crash later keeps what was done
-            }
+            state.outcome.rows++;
+            state.outcome.passed += a_row.verdict.pass ? 1 : 0;
+            state.written.push_back(std::move(a_row));
         }
 
         void Finish(const char* a_why)
@@ -164,9 +154,7 @@ namespace PerkeleRim::HitTest
             if (state.ranSober && state.ranDrunk) {
                 const auto verdict = CheckDrunk(state.soberCount ? state.soberSum / state.soberCount : 0.0f,
                     state.drunkCount ? state.drunkSum / state.drunkCount : 0.0f, state.drunkCount ? state.drunkLevel / state.drunkCount : 0.0f);
-                WriteRow(SummaryRow("drunk vs punch", verdict));
-                state.rows++;
-                state.passed += verdict.pass ? 1 : 0;
+                WriteRow(AttackRow{ .name = "drunk vs punch", .verdict = verdict });
                 SKSE::log::info("hit test: drunk vs punch, {}{}", verdict.pass ? "pass" : "FAIL", verdict.note.empty() ? "" : ": " + verdict.note);
             }
             Command("drunk 0");
@@ -182,11 +170,12 @@ namespace PerkeleRim::HitTest
                 }
                 state.bottlesTaken = 0;
             }
-            state.csv.close();
+            state.outcome.done = !a_why;
+            state.outcome.stopped = a_why ? a_why : "";
             if (a_why) {
-                SKSE::log::info("hit test: stopped, {} ({} of {} passed, results in {})", a_why, state.passed, state.rows, state.csvPath.string());
+                SKSE::log::info("hit test: stopped, {} ({} of {} passed)", a_why, state.outcome.passed, state.outcome.rows);
             } else {
-                SKSE::log::info("hit test: done, {} of {} passed, results in {}", state.passed, state.rows, state.csvPath.string());
+                SKSE::log::info("hit test: done, {} of {} passed", state.outcome.passed, state.outcome.rows);
             }
             state.phase = Phase::Done;
         }
@@ -329,9 +318,8 @@ namespace PerkeleRim::HitTest
                 return;
             }
             const auto verdict = Check(Current(), hit);
-            WriteRow(Row(Current(), state.hit + 1, state.targetName, hit, verdict));
-            state.rows++;
-            state.passed += verdict.pass ? 1 : 0;
+            WriteRow(AttackRow{ .name = std::string(Current().name), .hit = state.hit + 1, .target = state.targetName, .result = hit,
+                .expected = Expected(Current(), hit), .verdict = verdict });
             SKSE::log::info("hit test: {} {}: {}, {:.1f} cast ({:.1f} by damage.h), health {:.1f} -> {:.1f}, {}{}", Current().name, state.hit + 1,
                 hit.landed ? "landed" : "missed", hit.damage, Expected(Current(), hit), hit.before, hit.after, verdict.pass ? "pass" : "FAIL",
                 verdict.note.empty() ? "" : ": " + verdict.note);
@@ -349,6 +337,7 @@ namespace PerkeleRim::HitTest
                 (Current().drunk > 0.0f ? state.ranDrunk : state.ranSober) = true;
             }
             if (++state.hit < Current().hits && Target() && !Target()->IsDead()) {
+                state.missed = 0;  // each throw may go again up to Current().misses times
                 state.step = state.lastPitch = 0.0f;
                 Go(Current().attack != Attack::kPunch ? Phase::Holding : Phase::Aiming);
                 Arm(RE::PlayerCharacter::GetSingleton());
@@ -360,63 +349,77 @@ namespace PerkeleRim::HitTest
         }
     }
 
-    void OnDataLoaded()
+    std::string Begin(std::string_view a_scenarios, std::uint32_t a_targetBase)
     {
-        const auto list = Ini::Value("HitTest");
-        if (list.empty()) {
-            return;
+        if (Running()) {
+            return "the hit test runs already";
         }
         std::vector<std::string> unknown;
-        state.scenarios = Parse(list, &unknown);
-        for (const auto& name : unknown) {
-            SKSE::log::warn("hit test: no scenario '{}' (protocol/cpp/hit_test.h)", name);
+        auto                     scenarios = Parse(a_scenarios, &unknown);
+        if (!unknown.empty()) {
+            return "no scenario '" + unknown.front() + "' (protocol/cpp/hit_test.h: punch, bottle, junk, drunk, drunk-bottle, drunker-bottle, or all)";
         }
-        if (state.scenarios.empty()) {
-            SKSE::log::warn("hit test: HitTest={} names no scenario, off", list);
-            return;
+        if (scenarios.empty()) {
+            return "no scenario named";
         }
-        if (const auto base = Ini::Value("HitTestTarget"); !base.empty()) {
-            try {
-                state.targetBase = static_cast<RE::FormID>(std::stoul(base, nullptr, 16));
-            } catch (...) {
-                SKSE::log::warn("hit test: HitTestTarget={} isn't a hex form id, a guard instead", base);
-            }
+        const RE::FormID base = a_targetBase ? a_targetBase : kGuard;
+        if (auto* form = RE::TESForm::LookupByID(base); !form || !form->As<RE::TESNPC>()) {
+            return std::format("{:08X} isn't an actor base", base);
         }
-        const auto csv = Ini::Value("HitTestCsv");
-        const auto logs = SKSE::log::log_directory();
-        state.csvPath = !csv.empty() ? std::filesystem::absolute(std::filesystem::path(std::u8string(csv.begin(), csv.end()))) :
-                        logs              ? logs->parent_path().parent_path() / "PerkeleRim" / "hittest.csv" :
-                                            std::filesystem::path("hittest.csv");
-        std::error_code error;
-        std::filesystem::create_directories(state.csvPath.parent_path(), error);
-        state.csv.open(state.csvPath, std::ios::trunc);
-        state.csv << kCsvHeader << '\n';
-        state.csv.flush();
-        // Skyrim stops while another window is in front (bAlwaysActive is off by default), and the hit
-        // test runs unattended while the desktop may be in use.
-        auto* ini = RE::INISettingCollection::GetSingleton();
-        if (auto* active = ini ? ini->GetSetting("bAlwaysActive:General") : nullptr) {
-            active->data.b = true;
-        } else {
-            SKSE::log::warn("hit test: no bAlwaysActive:General, keep Skyrim in front");
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        if (!player || !player->Is3DLoaded() || !player->GetParentCell() || !player->GetParentCell()->IsAttached()) {
+            return "the player isn't in the world";
         }
-        state.phase = Phase::Loading;
-        SKSE::log::info("hit test: on, {} scenario(s) ({}), target {:08X}, results in {}", state.scenarios.size(), list, state.targetBase,
-            state.csvPath.string());
+        if (PlayerSync::Seated()) {
+            return "Kumpo sits in a vehicle, the hit test needs him on foot";
+        }
+        state = State{};
+        state.scenarios = std::move(scenarios);
+        state.targetBase = base;
+        SKSE::log::info("hit test: on, {} scenario(s) ({}), target {:08X}", state.scenarios.size(), a_scenarios, state.targetBase);
+        if (!PlayerSync::Owned()) {
+            SKSE::log::info("hit test: handing the player to MSC");
+            PlayerSync::DebugHandOver();
+        }
+        Go(Phase::Handing);
+        return {};
+    }
+
+    void Stop(const char* a_why)
+    {
+        if (Running()) {
+            Finish(a_why);
+        }
+    }
+
+    bool Running()
+    {
+        return state.phase != Phase::Off && state.phase != Phase::Done;
+    }
+
+    std::optional<AttackRow> NextRow()
+    {
+        if (state.written.empty()) {
+            return std::nullopt;
+        }
+        auto row = std::move(state.written.front());
+        state.written.pop_front();
+        return row;
+    }
+
+    const Result& Last()
+    {
+        return state.outcome;
     }
 
     void OnGameLoaded()
     {
-        if (state.phase == Phase::Loading) {
-            Go(Phase::Settling);
-        } else if (state.phase != Phase::Off && state.phase != Phase::Done) {
-            Finish("a save loaded in the middle (a death?)");
-        }
+        Stop("a save loaded in the middle (a death?)");
     }
 
     void Update(RE::PlayerCharacter* a_player, float a_delta)
     {
-        if (state.phase == Phase::Off || state.phase == Phase::Done || state.phase == Phase::Loading || a_delta <= 0.0f) {
+        if (!Running() || a_delta <= 0.0f) {
             return;
         }
         auto* ui = RE::UI::GetSingleton();
@@ -425,7 +428,7 @@ namespace PerkeleRim::HitTest
         }
         SendCommands();
         state.timer += a_delta;
-        if (state.phase != Phase::Settling && state.phase != Phase::Handing && !PlayerSync::Owned()) {
+        if (state.phase != Phase::Handing && !PlayerSync::Owned()) {
             Finish("Skyrim has the player back");
             return;
         }
@@ -437,13 +440,6 @@ namespace PerkeleRim::HitTest
         const bool            posed = Pose(pose);
 
         switch (state.phase) {
-        case Phase::Settling:
-            if (a_player->Is3DLoaded() && a_player->GetParentCell() && a_player->GetParentCell()->IsAttached() && state.timer >= kSettleSeconds) {
-                SKSE::log::info("hit test: the save is in, handing the player to MSC");
-                PlayerSync::DebugHandOver();
-                Go(Phase::Handing);
-            }
-            break;
         case Phase::Handing:
             if (PlayerSync::Seated()) {
                 Finish("Kumpo sits in a vehicle, the hit test needs him on foot");

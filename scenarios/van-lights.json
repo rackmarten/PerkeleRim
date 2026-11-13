@@ -1,0 +1,73 @@
+// The van's lights at night (vehicle lights in Skyrim, skse/src/vehicle/VehicleView.cpp): MSC switches them, Skyrim's
+// lamps follow, the low beams light the ground ahead and only there, the tail lamps glow red. Pictures from behind,
+// in front and above, the lamps as the kit finds them, an A/B pair of one paused frame with the low beams put out,
+// and MSC switching every lamp off. scripts/skytest.ps1 run scenarios/van-lights.json in a running session; the
+// pictures are in its results folder (scenarios/README.md has what to look for).
+{
+  "name": "van-lights",
+  "steps": [
+    // Open grass south of the garage's shack, Kumpo facing south, the van called in front of him: its beams fall on
+    // open ground away from the buildings.
+    { "label": "Skyrim takes Kumpo", "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "cmd": "console", "command": "player.setpos x 15700" },
+    { "cmd": "console", "command": "player.setpos y -15300" },
+    { "cmd": "console", "command": "player.setpos z -4650" },
+    { "cmd": "console", "command": "player.setangle z 180" },
+    { "cmd": "wait", "seconds": 2 },
+    { "label": "MSC takes him there", "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
+    { "label": "the van comes", "cmd": "pr.call", "vehicle": "van", "expect": ["drawn == true", "solid == true"] },
+    { "label": "a clear night", "cmd": "scene", "presets": "night clear" },
+    { "cmd": "wait", "frames": 60 },
+
+    // MSC switches them on; Skyrim's lamps follow.
+    { "label": "MSC's lights on", "cmd": "pr.send", "line": "lightson 1" },
+    { "cmd": "wait", "frames": 30 },
+    { "label": "MSC says the low beams and the tail lamps are on", "cmd": "pr.vehicle", "vehicle": "van",
+      "expect": ["lowLevel == 1", "lightRolesOn contains 1", "lightRolesOn contains 3"] },
+    { "label": "Skyrim's lamps are on: both low beams, the rear lamps, the cabin", "cmd": "probe", "kind": "lights", "at": "pr.vehicle:van", "radius": 800,
+      "expect": ["on >= 4"] },
+
+    // Pictures of one paused frame.
+    "pause",
+    { "label": "from behind: the rear lamps lit red, the plate lit, the beams on the ground beyond", "cmd": "screenshot", "name": "night-behind",
+      "camera": "orbit pr.vehicle:van yaw=0 distance=650 pitch=15" },
+    { "label": "from in front: the headlights and the lit ground before them", "cmd": "screenshot", "name": "night-front",
+      "camera": "orbit pr.vehicle:van yaw=180 distance=900 pitch=20" },
+    { "label": "from above: the low beams' patch on the ground ahead, nothing beside it", "cmd": "screenshot", "name": "night-top",
+      "camera": "top pr.vehicle:van distance=1800" },
+    "resume",
+
+    // The low beams alone: put out by the kit for shot b, given back after. The ground ahead goes dark, the ground beside
+    // the van doesn't change (it never had their light).
+    { "label": "the low beams light the ground ahead, and only there", "cmd": "ab", "name": "low-beams",
+      "b": "light off pr.vehicle:van name=LowBeam", "then": "light on", "camera": "top pr.vehicle:van distance=1800",
+      "regions": [
+        { "name": "ground ahead", "at": "pr.vehicle:van", "offset": "450,0,-40", "worldRadius": 180 },
+        { "name": "ground beside", "at": "pr.vehicle:van", "offset": "0,-600,-40", "worldRadius": 150 },
+        "all"],
+      "expect": ["regions.0.delta < -20", "regions.0.darker > 0.4", "regions.1.delta > -3"] },
+
+    // MSC switches every lamp off: Skyrim's lamps and the lenses' glow follow it.
+    { "cmd": "screenshot", "name": "on-behind", "camera": "orbit pr.vehicle:van yaw=0 distance=500 pitch=30" },
+    { "cmd": "screenshot", "name": "on-top", "camera": "top pr.vehicle:van distance=1800" },
+    { "label": "which lamps MSC has on for those (3 tail, 4 brake, 5 reverse)", "cmd": "pr.vehicle", "vehicle": "van" },
+    { "label": "MSC's lights off", "cmd": "pr.send", "line": "lightson 0" },
+    { "cmd": "wait", "frames": 30 },
+    { "label": "MSC says none is on", "cmd": "pr.vehicle", "vehicle": "van", "expect": ["lightsMask == 0"] },
+    { "label": "Skyrim's lamps are out", "cmd": "probe", "kind": "lights", "at": "pr.vehicle:van", "radius": 800, "expect": ["on == 0"] },
+    { "cmd": "screenshot", "name": "off-behind", "camera": "orbit pr.vehicle:van yaw=0 distance=500 pitch=30" },
+    { "cmd": "screenshot", "name": "off-top", "camera": "top pr.vehicle:van distance=1800" },
+    // Numbers only: lightson 1 also lights MSC's brake and reverse lamps, which its own state machines then switch off
+    // again or not, and with the tail lamps alone the lenses hardly change (see scenarios/README.md).
+    { "label": "the rear lenses, MSC's lights on against off", "cmd": "compare", "a": "on-behind", "b": "off-behind",
+      "regions": [
+        { "name": "left tail lens", "at": "pr.vehicle:van", "offset": "-155,-55,15", "worldRadius": 15 },
+        { "name": "right tail lens", "at": "pr.vehicle:van", "offset": "-155,55,15", "worldRadius": 15 }] },
+    { "label": "the ground ahead goes dark, the ground beside doesn't change", "cmd": "compare", "a": "on-top", "b": "off-top",
+      "regions": [
+        { "name": "ground ahead", "at": "pr.vehicle:van", "offset": "450,0,-40", "worldRadius": 180 },
+        { "name": "ground beside", "at": "pr.vehicle:van", "offset": "0,-600,-40", "worldRadius": 150 }],
+      "expect": ["regions.0.delta < -20", "regions.1.delta > -3"] },
+    { "cmd": "scene", "presets": "restore" }
+  ]
+}

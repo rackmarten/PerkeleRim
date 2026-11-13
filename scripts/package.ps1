@@ -4,6 +4,8 @@
     (launcher/: the two .bat files, PerkeleRim.ps1, checks.ps1, install.ps1, wizard.ps1), the built mod files under files/, and the starter saves from
     launcher/saves/MSC and launcher/saves/Skyrim (scripts/starter-save.ps1) if they are there. Run scripts/build.ps1 and scripts/build-esp.ps1 first.
     -Notice puts a "DEV BUILD.txt" with that text at the top (scripts/publish-dev.ps1).
+    It builds the SKSE plugin once more without skse-test-kit (-NoTestKit; only that part rebuilds), checks the DLL has
+    none of it, and afterwards builds it with the kit again when the submodule is there.
 .EXAMPLE
     scripts/package.ps1
 #>
@@ -27,23 +29,36 @@ function Add-File($source, $destDir) {
     Copy-Item $source $dir
 }
 
-foreach ($file in 'Start PerkeleRim.bat', 'Report a bug.bat', 'PerkeleRim.ps1', 'checks.ps1', 'install.ps1', 'wizard.ps1') { Add-File (Join-Path $RepoRoot "launcher/$file") '.' }
-Add-File (Join-Path $RepoRoot 'skse/build/release/PerkeleRim.dll') 'files/Skyrim/Data/SKSE/Plugins'
-Add-File (Join-Path $RepoRoot 'skse/build/release/MscMenu.swf') 'files/Skyrim/Data/Interface/PerkeleRim'
-Add-File (Join-Path $RepoRoot 'tools/out/esp/PerkeleRim.esp') 'files/Skyrim/Data'
-Add-File (Join-Path $RepoRoot 'msc/bin/Release/net35/PerkeleRim.dll') 'files/MSC/Mods'
-Add-File (Join-Path $RepoRoot 'LICENSE') '.'
-if ($Notice) { [IO.File]::WriteAllText((Join-Path $stage 'DEV BUILD.txt'), "$Notice`r`n", (New-Object Text.UTF8Encoding $false)) }
-
-foreach ($game in 'MSC', 'Skyrim') {
-    $saves = Join-Path $RepoRoot "launcher/saves/$game"
-    if (Test-Path $saves) {
-        Copy-Item -Recurse $saves (New-Item -ItemType Directory -Force (Join-Path $stage 'saves')).FullName
-    } else {
-        Write-Host "No launcher/saves/$game (scripts/starter-save.ps1), the zip has no starter $game save." -ForegroundColor Yellow
+try {
+    # A dev build links skse-test-kit (docs/DEV_SETUP.md, "Test sessions"): never a release.
+    & "$PSScriptRoot/build.ps1" -Target skse -NoTestKit
+    $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $RepoRoot 'skse/build/release/PerkeleRim.dll')))
+    foreach ($marker in 'test kit:', 'skse-test-kit', '-test.status') {
+        if ($text.Contains($marker)) { throw "skse/build/release/PerkeleRim.dll still has skse-test-kit in it ('$marker'); it must not ship." }
     }
-}
 
-if (Test-Path $zip) { Remove-Item -Force $zip }
-Compress-Archive -Path $stage -DestinationPath $zip
-Write-Host "Packaged $zip"
+    foreach ($file in 'Start PerkeleRim.bat', 'Report a bug.bat', 'PerkeleRim.ps1', 'checks.ps1', 'install.ps1', 'wizard.ps1') { Add-File (Join-Path $RepoRoot "launcher/$file") '.' }
+    Add-File (Join-Path $RepoRoot 'skse/build/release/PerkeleRim.dll') 'files/Skyrim/Data/SKSE/Plugins'
+    Add-File (Join-Path $RepoRoot 'skse/build/release/MscMenu.swf') 'files/Skyrim/Data/Interface/PerkeleRim'
+    Add-File (Join-Path $RepoRoot 'tools/out/esp/PerkeleRim.esp') 'files/Skyrim/Data'
+    Add-File (Join-Path $RepoRoot 'msc/bin/Release/net35/PerkeleRim.dll') 'files/MSC/Mods'
+    Add-File (Join-Path $RepoRoot 'LICENSE') '.'
+    if ($Notice) { [IO.File]::WriteAllText((Join-Path $stage 'DEV BUILD.txt'), "$Notice`r`n", (New-Object Text.UTF8Encoding $false)) }
+
+    foreach ($game in 'MSC', 'Skyrim') {
+        $saves = Join-Path $RepoRoot "launcher/saves/$game"
+        if (Test-Path $saves) {
+            Copy-Item -Recurse $saves (New-Item -ItemType Directory -Force (Join-Path $stage 'saves')).FullName
+        } else {
+            Write-Host "No launcher/saves/$game (scripts/starter-save.ps1), the zip has no starter $game save." -ForegroundColor Yellow
+        }
+    }
+
+    if (Test-Path $zip) { Remove-Item -Force $zip }
+    Compress-Archive -Path $stage -DestinationPath $zip
+    Write-Host "Packaged $zip"
+} finally {
+    # The dev build back, with the kit when it's checked out (only TestKit.cpp and the link rebuild), so the next deploy
+    # isn't the release build, also when packaging failed.
+    if (Test-Path (Join-Path $RepoRoot 'skse/extern/skse-test-kit/CMakeLists.txt')) { & "$PSScriptRoot/build.ps1" -Target skse }
+}
