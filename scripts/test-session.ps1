@@ -10,7 +10,8 @@
 function Read-SessionList([string] $Store) {
     $file = Join-Path $Store 'list.json'
     if (-not (Test-Path -LiteralPath $file)) { return $null }
-    return @(Get-Content -Raw -LiteralPath $file | ConvertFrom-Json)
+    # ForEach-Object unrolls the array: Windows PowerShell 5.1's ConvertFrom-Json hands it on as one object.
+    return @(Get-Content -Raw -LiteralPath $file | ConvertFrom-Json | ForEach-Object { $_ })
 }
 
 function Write-SessionList([string] $Store, $List) {
