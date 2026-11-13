@@ -100,12 +100,15 @@ scripts/nexus-package.ps1          # the release zip, screenshots and page text 
 scripts/starter-save.ps1           # copy your current MSC save into launcher/saves/MSC with thirst, hunger, urine, fatigue, stress, drunk and dirtiness at 0
 scripts/starter-save.ps1 -Skyrim   # copy your newest Skyrim save (made before the first handover) into launcher/saves/Skyrim as PerkeleRim-Kumpo
 scripts/launch-msc.ps1             # start MSC windowed at 640x480, lowest quality, single-threaded rendering, with no clicks (clicks Play! on the config dialog, presses past the news screen); MSC's own screen settings go back once it closes
-scripts/restart-games.ps1 -Build    # close both games, build, deploy, start MSC and Skyrim (SKSE), wait for "link up"; -NoPlace skips the window layout
+scripts/launch-msc.ps1 -Hidden     # the same minimized and never focused, nothing clicked or pressed (MSCLoader skips the dialog and the news screen); a test session's partner
+scripts/restart-games.ps1 -Build    # the old loop with both games in front: close both, build, deploy, start MSC and Skyrim (SKSE), wait for "link up"; -NoPlace skips the window layout
 scripts/msc-save.ps1 snapshot NAME  # save MSC save data outside the repo; "restore NAME" puts it back
 scripts/spike.ps1 -Command dump    # hidden-MSC spike tools, see docs/SPIKE_HIDDEN_MSC.md
 scripts/skyrim-key.ps1 -Key F10    # press a key in Skyrim (brings it to the front); -Screenshot FILE saves its window
 scripts/skyrim-key.ps1 -Console 'load PerkeleRim-Kumpo'   # type a console command (letters, digits, space, - _ .)
-scripts/hit-test.ps1               # unattended combat check in game (closes both games), results in a CSV; see below
+scripts/skytest.ps1 session        # a test session: Skyrim hidden, MSC minimized, Kumpo handed over; see "Test sessions"
+scripts/hit-test.ps1               # unattended combat check in a test session, results in out/; see below
+scripts/hitbox-test.ps1            # the van's hitbox with nobody at the keys, in a test session
 scripts/voice-picker.ps1           # page for listening to MSC's voice lines by group and copying which one you mean (offline); see section 5
 ```
 
@@ -131,23 +134,46 @@ The first SKSE build takes a while (often 15 to 25 minutes): vcpkg builds the de
    - in `skse64.log`: a line saying `PerkeleRim.dll` loaded correctly
    - in `output_log.txt` (My Summer Car game folder): `PerkeleRim: PerkeleRim loaded`
 
+### Test sessions
+
+Checking something in game doesn't need either game in front, or anyone at the keys: [skse-test-kit](https://github.com/rackmarten/skse-test-kit) starts Skyrim hidden and never focused straight into a test state, with My Summer Car minimized beside it, and answers commands while they run. This is the default way to check in-game behaviour, for people and agents alike. The kit is a submodule that plain and recursive clones leave empty (it isn't public yet), so fetch it once:
+
+```powershell
+git submodule update --init --checkout skse/extern/skse-test-kit
+scripts/build.ps1                  # links the kit into the SKSE plugin when the submodule is there (a dev build)
+```
+
+Then, from PowerShell (or `pwsh -NoProfile -File scripts/skytest.ps1 ...` from Git Bash):
+
+```powershell
+scripts/skytest.ps1 session                          # start, or reuse the session that runs this build
+scripts/skytest.ps1 cmd pr.vehicle van               # one command, one line of JSON back
+scripts/skytest.ps1 run scenarios/van-lights.json    # a scenario file: steps and checks, results and pictures in out/<time>-van-lights/
+scripts/skytest.ps1 shot behind -Camera 'orbit pr.vehicle:van yaw=0 distance=600' -Scene 'night clear'
+scripts/skytest.ps1 status
+scripts/skytest.ps1 stop                             # close both games, put the game's own files back, release the lock
+```
+
+What a session does (`skytest.psd1` holds PerkeleRim's settings):
+
+1. takes the machine's games lock (only one Skyrim at a time; `-WaitForLock <seconds>` waits for another session);
+2. deploys what `scripts/build.ps1` built last into both games through `scripts/test-deploy.ps1`, which first keeps a copy of every file it overwrites (your own PerkeleRim, `plugins.txt`) and moves AhShitRim's SKSE plugin aside, since both take over the player (in `%LOCALAPPDATA%\PerkeleRim\test-session`);
+3. starts My Summer Car with `scripts/launch-msc.ps1 -Hidden`: MSCLoader's own `skipConfigScreen` and `skipIntro` (in `doorstop_config.ini`, put back once the mod has started) skip Unity's dialog and the news screen, so nothing is clicked or pressed; its window is minimized and the foreground given back; a one-shot autoload marker has it continue its save. Its screen settings go back when it closes, as the player launcher does;
+4. starts Skyrim hidden, windowed 1280x720 and muted (your `SkyrimPrefs.ini` is back as soon as Skyrim has read it), loads the starter save `PerkeleRim-Kumpo` (Autoload stays out of it), and counts as ready once play mode has handed Kumpo to MSC, MSC stands him on its island and has sent its models.
+
+`scripts/skytest.ps1 stop` closes both games and puts every file back byte for byte (`scripts/test-deploy.ps1 restore`, also after a crashed session; `scripts/test-deploy.ps1 status` lists what's kept). A start that fails cleans up the same way. A new build restarts the session at the next `session`; everything else is a command.
+
+Besides the kit's own commands (the console, state, waits, pause and exact single steps, screenshots from any camera, scenes, probes of lights and effects, A/B pairs, recording actors; the kit's `docs/COMMANDS.md`), PerkeleRim adds `pr.msc` (Kumpo to MSC or back, F10's job), `pr.send` (MSC's debug commands: `drunk 2`, `lightson 1`), `pr.key` (hold one of MSC's keys), `pr.call` and `pr.vehicle`, the camera and probe target `pr.vehicle:<van|moped|kekmet|gifu>`, and the scenarios `pr.hits` and `pr.hitbox`. [scenarios/README.md](../scenarios/README.md) has them all, the scenario files and what they measured. `scripts/skyrim-key.ps1` (real key presses with Skyrim in front) is only for a game you're playing yourself.
+
+Timings on the test desktop (13 November 2026): a session is ready about 54 s after the command (Skyrim's main menu at 12 s, the save controllable at 20 s, play mode's handover at 29 s, then about 22 s while MSC sends its 3,900 model chunks; MSC itself is at its menu after 7 s); `stop` takes 3 s. From a running session the hit test takes 80 to 92 s, the hitbox test 65 s, the van's lights 9 s.
+
 ### Hit test (combat, unattended)
 
-`scripts/hit-test.ps1` checks PerkeleRim's attacks in game with nobody at the keys. It closes both games (anything unsaved is lost), so don't run it while you play. It:
+`scripts/hit-test.ps1` checks PerkeleRim's attacks in game with nobody at the keys: it makes sure a test session runs (one up for this build is reused; one it started is stopped again unless `-Keep`) and runs `scenarios/hits.json`. That moves Kumpo onto open grass south of the garage's shack (bottles thrown inside would hit its planks) and hands him to MSC there, then runs the kit's `pr.hits` scenario, whose driver (`skse/src/debug/HitTest.cpp`) waits for MSC to finish sending its models (it reads each in one frame, and a key pressed during that freeze never reaches it) and runs each scenario: it sets MSC's drunk level and what Kumpo holds over the link (the `DebugCommand` message, a line for MSC's spike commands: `drunk 2`, `hold 1`, an empty bottle into the hand without key 3's throwing stance, so nothing else comes out after the throw), turns MSC's camera level with mouse moves (again before every attack: drunk, it drifts), places a target just ahead and keeps it there until the attack goes out (Skyrim.esm's Whiterun guard, `tai` so it doesn't fight back) and presses MSC's keys (H to punch, the right button held for a full charge to throw).
 
-1. adds `[Debug] HitTest=<scenarios>` to `<SkyrimPath>\Data\SKSE\Plugins\PerkeleRim.ini` and creates `PerkeleRim_autoload.txt` in both game folders if missing, so both load their newest save;
-2. runs `scripts/restart-games.ps1` (`-Build` builds first), which deploys and starts both games;
-3. waits while the SKSE plugin's driver (`skse/src/debug/HitTest.cpp`) hands Kumpo to MSC as F10 would, waits for MSC to finish sending its models (it reads each in one frame, and a key pressed during that freeze never reaches it) and runs each scenario: it sets MSC's drunk level and what Kumpo holds over the link (the `DebugCommand` message, a line for MSC's spike commands: `drunk 2`, `hold 1`, an empty bottle into the hand without key 3's throwing stance, so nothing else comes out after the throw), turns MSC's camera level with mouse moves (again before every attack: drunk, it drifts), places a target just ahead and keeps it there until the attack goes out (Skyrim.esm's Whiterun guard, `tai` so it doesn't fight back) and presses MSC's keys (H to punch, the right button held for a full charge to throw);
-4. watches for a crash (a new `crash-*.log`), either game gone, a hang (`PerkeleRim.log` still for 120 s) and a 10 minute timeout;
-5. prints the driver's log lines and the CSV, closes both games, takes the `[Debug]` lines out of the ini and deletes the flag files it created. It exits 1 if a row failed or the test didn't finish. While it runs, the driver sets Skyrim's `bAlwaysActive` in memory (never in an ini), so Skyrim keeps going with another window in front and the desktop can be used meanwhile.
+The scenarios (`protocol/cpp/hit_test.h`, unit tested): `punch` (sober, three punches), `bottle` (an empty bottle from the pocket thrown three times from 3 m), `junk` (the Empty Bottles taken out of Skyrim's inventory and a cabbage added, and while it runs ThrowJunk counts one cabbage as the only junk (`ThrowJunk::OnlyOne`), so key 3's random pick always takes it and nothing comes out after the throw by itself; thrown three times from 3 m, the damage by its weight) `drunk` (punches at MSC's drunk level 2) and `drunk-bottle` and `drunker-bottle` (a bottle at drunk 1 and 2 from 3 m, by `Damage::DrunkThrow`; up to two throws, as the first may kill the guard, and a kill passes when the damage cast was at least the health it had; a throw the swaying camera sends past the guard goes again, up to twice, logged but not a row). The drunk ones go last, since MSC's camera sways on for a while after and sober throws then miss. Plus a `drunk vs punch` row checking the drunk punches against the sober ones by `Damage::DrunkPunch`. Each row says whether the hit reached Skyrim, what Combat cast against what `protocol/cpp/damage.h` says, and how far the target's health fell. Pick some with `-Scenarios punch,bottle`; `-Target <hex form id>` uses another actor base (a giant, `0003053F`, takes only two thirds of a hit, so its rows fail the health check).
 
-The scenarios (`protocol/cpp/hit_test.h`, unit tested): `punch` (sober, three punches), `bottle` (an empty bottle from the pocket thrown three times from 3 m), `junk` (the Empty Bottles taken out of Skyrim's inventory and a cabbage added, and while it runs ThrowJunk counts one cabbage as the only junk (`ThrowJunk::OnlyOne`), so key 3's random pick always takes it and nothing comes out after the throw by itself; thrown three times from 3 m, the damage by its weight) `drunk` (punches at MSC's drunk level 2) and `drunk-bottle` and `drunker-bottle` (a bottle at drunk 1 and 2 from 3 m, by `Damage::DrunkThrow`; up to two throws, as the first may kill the guard, and a kill passes when the damage cast was at least the health it had; a throw the swaying camera sends past the guard goes again, up to twice, logged but not a row). The drunk ones go last, since MSC's camera sways on for a while after and sober throws then miss. Plus a `drunk vs punch` row checking the drunk punches against the sober ones by `Damage::DrunkPunch`. Each row says whether the hit reached Skyrim, what Combat cast against what `protocol/cpp/damage.h` says, and how far the target's health fell. `-Save <file name>` loads that Skyrim save instead of the newest (`AutoloadSave=` in the ini, which Autoload follows), for when other tests have saved since. Pick some with `-Scenarios punch,bottle`; `-Target <hex form id>` uses another actor base (a giant, `0003053F`, takes only two thirds of a hit, so its rows fail the health check); `-KeepOpen` leaves the games running at the end to look around.
-
-Results go to `Documents\My Games\PerkeleRim\hittest.csv` (`HitTestCsv=<path>` in the ini moves it), one row per attack, with MSC's logs of the run next to it (`hittest-msc.log`, `hittest-msc-spike.log`):
-
-`scenario,hit,target,landed,drunk,unarmed,speed,mass,sneak,level,armor,expected,damage,before,after,drop,pass,note`
-
-Start from a save where Kumpo stands on foot outdoors with a few metres of open ground ahead. Not in the shed or the garage: the island has their walls, and thrown bottles hit the planks (the starter save wakes him in the shed). A save where he sits in a vehicle stops the test; one taken while MSC had him is fine, the handover resumes by itself. Nothing is saved in either game. The driver is off unless the ini asks for it, and the release never ships the `[Debug]` lines. What it doesn't cover (stagger, ragdolls, how a hit looks and sounds) stays a manual check.
+Results go to `out/<time>-hits/`: `step-9-rows.csv` has a row per attack (`scenario, hit, target, landed, drunk, unarmed, speed, mass, sneak, level, armor, expected, damage, before, after, drop, pass, note`), `results.csv` the scenario's checks. It exits 0 when every row passed, 1 when one didn't, 2 when Skyrim crashed, exited or hung. Nothing is saved in either game. What it doesn't cover (stagger, ragdolls, how a hit looks and sounds) stays a manual check.
 
 ### Testing on Skyrim Special Edition 1.5.97
 
