@@ -58,6 +58,14 @@ try {
     $run = Get-ChildItem (Join-Path $RepoRoot 'out') -Directory -Filter '*-hits*' -ErrorAction SilentlyContinue |
         Where-Object CreationTime -GE $ranAt.AddSeconds(-1) | Sort-Object CreationTime | Select-Object -Last 1  # this run's only
     $rows = if ($run) { Get-ChildItem $run.FullName -Filter 'step-*-rows.csv' | Select-Object -Last 1 }
+    # MSC rewrites its logs at its next start: this run's go with the results.
+    $mscDir = Get-RequiredSetting (Get-LocalConfig) 'MscPath'
+    if ($run) {
+        foreach ($kept in @(@('output_log.txt', 'msc.log'), @('PerkeleRim_spike.log', 'msc-spike.log'))) {
+            $from = Join-Path $mscDir $kept[0]
+            if (Test-Path $from) { Copy-Item -Force $from (Join-Path $run.FullName $kept[1]) }
+        }
+    }
     if ($rows) {
         Write-Host "--- $($rows.FullName)"
         Import-Csv $rows.FullName | Format-Table scenario, hit, landed, drunk, speed, level, armor, expected, damage, drop, pass, note -AutoSize | Out-Host

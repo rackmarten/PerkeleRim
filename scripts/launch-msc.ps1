@@ -62,7 +62,9 @@ Add-Type -Namespace PerkeleRim -Name Win32 -MemberDefinition @'
 if ($Hidden) {
     if (-not (Test-Path -LiteralPath $doorstop)) { throw "No ${doorstop}: is MSCLoader installed?" }
     $marker = Join-Path $msc 'PerkeleRim_autoload.txt'
-    if (-not (Test-Path -LiteralPath $marker)) {
+    $markerOurs = -not (Test-Path -LiteralPath $marker)
+    $inGameAt = $null
+    if ($markerOurs) {
         [IO.File]::WriteAllText($marker, 'Written by the PerkeleRim launcher.', (New-Object Text.UTF8Encoding $false))  # AutoloadMarker.LauncherText
     }
     [void] (Save-MscScreenSettings $MscRegistryKey $MscScreenBackup)
@@ -84,7 +86,6 @@ if ($Hidden) {
         # Until MSC is in its game with the player (the spike's probe says scene=GAME and where he is), and a moment more.
         $deadline = $launched.AddSeconds($TimeoutSeconds * 3)
         $menuAt = $null
-        $inGameAt = $null
         while ((Get-Date) -lt $deadline) {
             Start-Sleep -Milliseconds 250
             $game = [PerkeleRim.Win32]::FindWindowEx([IntPtr]::Zero, [IntPtr]::Zero, 'UnityWndClass', 'My Summer Car')
@@ -119,6 +120,8 @@ if ($Hidden) {
         throw 'Main menu not reached (spike log not updated). Is the mod deployed?'
     } finally {
         [void] (Restore-MscDoorstop $msc)
+        # MSC never got to use the one-shot marker: it mustn't continue the player's save the next time they start it.
+        if ($markerOurs -and -not $inGameAt) { Remove-Item -LiteralPath $marker -ErrorAction SilentlyContinue }
     }
 }
 

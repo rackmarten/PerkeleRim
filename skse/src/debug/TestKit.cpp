@@ -14,6 +14,7 @@
 #include <skse_test_kit/Kit.h>
 
 #include <array>
+#include <cstdlib>
 #include <functional>
 #include <cmath>
 #include <memory>
@@ -35,6 +36,7 @@ namespace PerkeleRim::TestKit
         constexpr float kHandAgain = 5.0f;     // seconds between handovers asked for while play mode hasn't done it
 
         bool g_active = false;
+        bool g_exiting = false;  // the process is tearing down: the game can't be driven any more
 
         // Runs once when the last copy of a step goes: a request that ends, times out or whose client goes (the kit
         // drops its step then). For what a task started that would outlive it: a test driver, a held key. Harmless
@@ -43,7 +45,12 @@ namespace PerkeleRim::TestKit
         {
         public:
             explicit OnDrop(std::function<void()> a_what) : _what(std::move(a_what)) {}
-            ~OnDrop() { if (_what) { _what(); } }
+            ~OnDrop()
+            {
+                if (_what && !g_exiting) {  // not while the kit's own statics go as Skyrim quits
+                    _what();
+                }
+            }
             OnDrop(const OnDrop&) = delete;
             OnDrop& operator=(const OnDrop&) = delete;
 
@@ -161,7 +168,7 @@ namespace PerkeleRim::TestKit
 
         // What the kit says about a vehicle MSC has on the island: where, how fast, drawn or not, which of its
         // model's lights are on.
-        Json DescribeVehicle(std::uint32_t a_id, const Protocol::VehicleState& a_state)
+        Json DescribeVehicle(std::uint32_t a_id, const Protocol::VehicleState& a_state, bool a_parts = true)
         {
             const float speed = std::sqrt(a_state.velocity[0] * a_state.velocity[0] + a_state.velocity[1] * a_state.velocity[1] +
                                           a_state.velocity[2] * a_state.velocity[2]);
@@ -171,8 +178,8 @@ namespace PerkeleRim::TestKit
             Protocol::VehicleState box{};
             Hitbox::Box            shape{};
             out.Set("solid", Hitbox::Where(a_id, box, shape));
-            auto parts = std::make_unique<Protocol::VehicleParts>();
-            if (LinkService::Get().ReadVehicleParts(a_id, *parts) && parts->vehicle == a_id) {
+            auto parts = a_parts ? std::make_unique<Protocol::VehicleParts>() : nullptr;  // 8 KB: not for every frame a camera follows it
+            if (parts && LinkService::Get().ReadVehicleParts(a_id, *parts) && parts->vehicle == a_id) {
                 JsonArray on;
                 if (const auto* lights = ModelView::Lights(parts->model)) {
                     for (std::size_t i = 0; i < lights->size() && i < 32; i++) {
@@ -408,7 +415,7 @@ namespace PerkeleRim::TestKit
                         throw Error(std::format("the {} isn't drawn in Skyrim now", kVehicles[id - 1]));
                     }
                     return SkseTestKit::Place{ .x = state.position[0], .y = state.position[1], .z = state.position[2], .heading = Heading(state.rotation),
-                        .root = node, .details = DescribeVehicle(id, state) };
+                        .root = node, .details = DescribeVehicle(id, state, false) };  // pr.vehicle has its lights
                 });
         }
     }
@@ -418,6 +425,7 @@ namespace PerkeleRim::TestKit
         const SkseTestKit::Hooks hooks{ .arrived = &Arrived, .ready = &MscReady };
         g_active = SkseTestKit::Load({ .name = "PerkeleRim", .ini = Ini::kPath, .hooks = hooks });
         if (g_active) {
+            std::atexit([] { g_exiting = true; });  // registered after the kit's statics, so it runs before they go
             AddCommands();
             AddTests();
         }

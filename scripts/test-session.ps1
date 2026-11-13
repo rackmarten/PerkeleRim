@@ -94,8 +94,8 @@ function Get-ChangedSinceDeploy([string] $Store) {
 # put back or deleted; none without a list. Refuses, keeping everything, when a file changed since the deploy (-Force:
 # puts them back all the same).
 function Restore-SessionFiles([string] $Store, [switch] $Force) {
-    $list = Read-SessionList $Store
-    if ($null -eq $list) { return @() }
+    if (-not (Test-Path -LiteralPath (Join-Path $Store 'list.json'))) { return @() }
+    $list = @(Read-SessionList $Store)
     $changed = @(Get-ChangedSinceDeploy $Store)
     if ($changed -and -not $Force) {
         throw "Not put back: $($changed -join ', ') changed since the test session deployed (a new PerkeleRim installed?). Look at them, then scripts/test-deploy.ps1 restore-anyway or forget."
