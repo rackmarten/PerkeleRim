@@ -54,6 +54,9 @@ Add-Type -Namespace PerkeleRim -Name Win32 -MemberDefinition @'
 [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
 [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hwnd);
 [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hwnd);
+[DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hwnd, int cmd);
+[DllImport("user32.dll")] public static extern bool AttachThreadInput(uint attach, uint to, bool on);
+[DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
 '@
 
 if ($Hidden) {
@@ -74,10 +77,11 @@ if ($Hidden) {
         Start-Process -WorkingDirectory $msc -WindowStyle Minimized (Join-Path $msc 'mysummercar.exe') `
             -ArgumentList '-force-gfx-direct', '-screen-fullscreen', '0', '-screen-width', $Width, '-screen-height', $Height, '-screen-quality', $Quality
         Start-MscScreenWatcher (Join-Path $RepoRoot 'launcher/PerkeleRim.ps1')
-        # Unity shows its window as it likes and activates it, again as it loads the game (Windows lets it while nobody
-        # has used the desktop for a while): minimized whenever it's up and not, which hands the activation on
-        # (SW_MINIMIZE), and the foreground given back to the window that had it should MSC still hold it. Until MSC is
-        # in its game with the player (the spike's probe says scene=GAME and where he is), and a moment more.
+        # Unity takes the foreground about 1.5 s after it starts, its window still hidden (Windows lets it while nobody
+        # has used the keyboard or mouse for a while), and shows it later: minimized whenever it's up and not, which
+        # hands the activation on (SW_MINIMIZE), and the foreground given back to the window that had it should MSC
+        # still hold it. That can only happen once MSC's thread answers, 3 to 4 s after its grab while it loads.
+        # Until MSC is in its game with the player (the spike's probe says scene=GAME and where he is), and a moment more.
         $deadline = $launched.AddSeconds($TimeoutSeconds * 3)
         $menuAt = $null
         $inGameAt = $null
@@ -85,14 +89,18 @@ if ($Hidden) {
             Start-Sleep -Milliseconds 250
             $game = [PerkeleRim.Win32]::FindWindowEx([IntPtr]::Zero, [IntPtr]::Zero, 'UnityWndClass', 'My Summer Car')
             if ($game -ne [IntPtr]::Zero -and [PerkeleRim.Win32]::IsWindowVisible($game) -and -not [PerkeleRim.Win32]::IsIconic($game)) {
-                [void] [PerkeleRim.Win32]::ShowWindow($game, 6)  # SW_MINIMIZE
+                [void] [PerkeleRim.Win32]::ShowWindowAsync($game, 6)  # SW_MINIMIZE, without waiting on MSC's busy thread
             }
             $front = [PerkeleRim.Win32]::GetForegroundWindow()
             $owner = 0
-            if ($front -ne [IntPtr]::Zero) { [void] [PerkeleRim.Win32]::GetWindowThreadProcessId($front, [ref] $owner) }
+            $thread = if ($front -ne [IntPtr]::Zero) { [PerkeleRim.Win32]::GetWindowThreadProcessId($front, [ref] $owner) } else { 0 }
             if ($owner -and (Get-Process -Id $owner -ErrorAction SilentlyContinue).ProcessName -eq 'mysummercar' -and
                 $before -ne [IntPtr]::Zero -and [PerkeleRim.Win32]::IsWindow($before)) {
+                # Windows lets only the foreground's own input thread pass the foreground on: share it for the call.
+                $me = [PerkeleRim.Win32]::GetCurrentThreadId()
+                $attached = [PerkeleRim.Win32]::AttachThreadInput($me, $thread, $true)
                 [void] [PerkeleRim.Win32]::SetForegroundWindow($before)
+                if ($attached) { [void] [PerkeleRim.Win32]::AttachThreadInput($me, $thread, $false) }
             }
             if (-not $menuAt -and (Test-Path $log) -and (Get-Item $log).LastWriteTime -gt $launched) {
                 $menuAt = Get-Date
