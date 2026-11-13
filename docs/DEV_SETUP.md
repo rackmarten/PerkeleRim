@@ -141,7 +141,10 @@ Checking something in game doesn't need either game in front, or anyone at the k
 ```powershell
 git submodule update --init --checkout skse/extern/skse-test-kit
 scripts/build.ps1                  # links the kit into the SKSE plugin when the submodule is there (a dev build)
+scripts/build-esp.ps1              # PerkeleRim.esp from your Skyrim.esm: build.ps1 doesn't make it, the session deploys it
 ```
+
+The ESP matters: without it the session still starts, but the plugin finds none of its forms (`PerkeleRim.log`: `punch spells missing (PerkeleRim.esp not loaded or too old)`), so punches and throws do nothing (`hits.json` fails with no attack reaching Skyrim), drinking has no effect, and the garage and the fuel pumps are missing.
 
 Then, from PowerShell (or `pwsh -NoProfile -File scripts/skytest.ps1 ...` from Git Bash):
 
