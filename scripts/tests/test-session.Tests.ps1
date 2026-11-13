@@ -54,6 +54,17 @@ Describe 'Save-SessionFiles and Restore-SessionFiles' {
         [IO.File]::ReadAllText($ours) | Should -Be 'the player''s own'
     }
 
+    It "doesn't watch a file the game writes itself" {
+        Save-SessionFiles $store -Keep @($ours, $absent) | Should -BeTrue
+        [IO.File]::WriteAllText($ours, 'the test build')
+        [IO.File]::WriteAllText($absent, 'a load order')
+        Save-DeployStamps $store -Skip $absent
+        [IO.File]::WriteAllText($absent, 'the load order as the game rewrote it')
+        @(Get-ChangedSinceDeploy $store).Count | Should -Be 0
+        [void] (Restore-SessionFiles $store)
+        Test-Path $absent | Should -BeFalse
+    }
+
     It 'refuses to go on when a file it set aside is back' {
         Save-SessionFiles $store -Keep @($ours) -Move @($other) | Should -BeTrue
         [IO.File]::WriteAllText($other, 'put back by someone')

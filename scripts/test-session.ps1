@@ -71,9 +71,12 @@ function Save-SessionFiles([string] $Store, [string[]] $Keep = @(), [string[]] $
 }
 
 # After a deploy: what it wrote over the kept paths, so a later deploy or restore can tell whether anyone changed them.
-function Save-DeployStamps([string] $Store) {
+# $Skip: kept paths the game writes itself while it runs (Skyrim rewrites plugins.txt), which aren't watched.
+function Save-DeployStamps([string] $Store, [string[]] $Skip = @()) {
     $stamps = [ordered]@{}
-    foreach ($entry in @(Read-SessionList $Store)) { if (-not $entry.moved) { $stamps[$entry.path] = Get-FileStamp $entry.path } }
+    foreach ($entry in @(Read-SessionList $Store)) {
+        if (-not $entry.moved -and @($Skip) -notcontains $entry.path) { $stamps[$entry.path] = Get-FileStamp $entry.path }
+    }
     [IO.File]::WriteAllText((Join-Path $Store 'deployed.json'), (ConvertTo-Json -InputObject $stamps), (New-Object Text.UTF8Encoding $false))
 }
 

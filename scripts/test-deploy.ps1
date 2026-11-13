@@ -38,7 +38,7 @@ $ours = @(
     (Join-Path $plugins 'PerkeleRim.pdb'),
     (Join-Path $skyrim 'Data\Interface\PerkeleRim\MscMenu.swf'),
     (Join-Path $skyrim 'Data\PerkeleRim.esp'),
-    (Join-Path $env:LOCALAPPDATA 'Skyrim Special Edition\plugins.txt'),
+    ($pluginsTxt = Join-Path $env:LOCALAPPDATA 'Skyrim Special Edition\plugins.txt'),
     (Join-Path $mods 'PerkeleRim.dll'))
 $others = @($Aside | Where-Object { $_ } | ForEach-Object { (Join-Path $plugins "$_.dll"), (Join-Path $plugins "$_.pdb") })
 
@@ -50,7 +50,7 @@ switch ($Mode) {
             Write-Host "The game's own files from before this session are still kept in $store."
         }
         & "$PSScriptRoot/deploy-local.ps1"
-        Save-DeployStamps $store
+        Save-DeployStamps $store -Skip $pluginsTxt  # Skyrim rewrites it as it runs
     }
     { $_ -in 'restore', 'restore-anyway' } {
         if (Restore-MscDoorstop $msc) { Write-Host "Put back My Summer Car's doorstop_config.ini (a hidden start hadn't)." }
