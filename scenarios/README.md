@@ -14,7 +14,7 @@ either game.
 | File | What it checks | Time from a running session |
 |---|---|---|
 | `test-kit-smoke.json` | MSC has Kumpo, the player is in the world, MSC's debug commands reach it, PerkeleRim's commands are there | under 1 s |
-| `hits.json` | the hit test (`scripts/hit-test.ps1`): punches sober and drunk, a thrown bottle, thrown junk, bottles drunk and drunker at a Whiterun guard with its AI off, each attack's damage against `protocol/cpp/damage.h` and the guard's health; a row per attack in `step-9-rows.csv` | 80 to 92 s |
+| `hits.json` | the hit test (`scripts/hit-test.ps1`): punches sober and drunk, a thrown bottle, thrown junk, bottles drunk and drunker at a Whiterun guard with its AI off, each attack's damage against `protocol/cpp/damage.h` and the guard's health; a row per attack in `step-9-rows.csv` | 73 to 92 s |
 | `hitbox.json` | the hitbox test (`scripts/hitbox-test.ps1`): the van called in front of Kumpo, 8 arrows shot at him through it (all stop at the van), 4 from his side (they reach him), a melee bandit behind it who walks round it to him, never through; every line of the test in `step-8-rows.csv` | 65 s |
 | `van-lights.json` | the van's lights at night: MSC switches them on and Skyrim's lamps follow (both low beams, the rear lamps, the cabin); pictures from behind, in front and above; an A/B pair of one paused frame with the low beams put out (the ground ahead goes dark, the ground beside doesn't change); MSC switching every lamp off | 9 s |
 
@@ -23,11 +23,13 @@ either game.
 Measured on the test desktop on 13 November 2026 (Skyrim AE 1.7.104, SKSE 2.3.1, My Summer Car with MSCLoader 1.3.1),
 in a hidden session:
 
-- `hits.json`: 17 of 17 rows passed (16 attacks and the drunk-against-sober ratio, x1.7 at drunk 2), twice.
-- `hitbox.json`: 8 of 8 arrows through the van stopped at it (on the hitbox's layer, about 142 units from the van's
+- `hits.json`: 17 of 17 rows passed (16 attacks and the drunk-against-sober ratio, x1.7 at drunk 2) in 4 of 5 runs. The
+  other lost `drunker-bottle 2`: the drunk camera's sway sent three of five throws past the guard and the two re-throws
+  were counted per scenario, so the second hit had none left. They're counted per throw now; both runs since passed.
+- `hitbox.json` (4 runs, the same each time): 8 of 8 arrows through the van stopped at it (on the hitbox's layer, about 142 units from the van's
   middle, its back end), none came nearer Kumpo than 559 units; 4 of 4 control arrows reached him; the bandit stood for
   about 26 s, then walked round the van's side to within 90 units of Kumpo, never inside its box.
-- `van-lights.json`: the low beams put out darkened the ground ahead by 42 luma (86 to 44, two thirds of its pixels), the
+- `van-lights.json` (4 runs): the low beams put out darkened the ground ahead by 42 luma (86 to 44, two thirds of its pixels), the
   ground beside the van rose by 0.9 (eye adaptation); MSC switching every lamp off darkened the ground ahead by 47 to 57.
 
 The rear lenses: `lightson 1` also lights MSC's brake and reverse lamps, which its own state machines switch off again
