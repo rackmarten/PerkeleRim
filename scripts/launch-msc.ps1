@@ -37,16 +37,9 @@ param(
 $msc = Get-RequiredSetting (Get-LocalConfig) 'MscPath'
 
 # -Hidden: MSCLoader's own switches skip the dialog and the news screen; the player's doorstop_config.ini is kept
-# here meanwhile.
+# meanwhile ($MscDoorstopKept, test-session.ps1; scripts/test-deploy.ps1 restore puts it back too).
 $doorstop = Join-Path $msc 'doorstop_config.ini'
-$doorstopKept = Join-Path $env:LOCALAPPDATA 'PerkeleRim\doorstop_config.ini.test-backup'
-function Restore-Doorstop {
-    if (Test-Path -LiteralPath $doorstopKept) {
-        Copy-Item -LiteralPath $doorstopKept $doorstop -Force
-        Remove-Item -LiteralPath $doorstopKept -Force
-    }
-}
-Restore-Doorstop  # a hidden start that was killed before it put it back
+[void] (Restore-MscDoorstop $msc)  # a hidden start that was killed before it put it back
 
 if (Get-Process mysummercar -ErrorAction SilentlyContinue) { throw 'My Summer Car is already running.' }
 
@@ -70,8 +63,8 @@ if ($Hidden) {
         [IO.File]::WriteAllText($marker, 'Written by the PerkeleRim launcher.', (New-Object Text.UTF8Encoding $false))  # AutoloadMarker.LauncherText
     }
     [void] (Save-MscScreenSettings $MscRegistryKey $MscScreenBackup)
-    New-Item -ItemType Directory -Force (Split-Path $doorstopKept) | Out-Null
-    Copy-Item -LiteralPath $doorstop $doorstopKept -Force
+    New-Item -ItemType Directory -Force (Split-Path $MscDoorstopKept) | Out-Null
+    Copy-Item -LiteralPath $doorstop $MscDoorstopKept -Force
     try {
         $text = [IO.File]::ReadAllText($doorstop)
         [IO.File]::WriteAllText($doorstop, (Set-IniText $text 'MSCLoader' @{ skipIntro = 'true'; skipConfigScreen = 'true' }))
@@ -103,7 +96,7 @@ if ($Hidden) {
             }
             if (-not $menuAt -and (Test-Path $log) -and (Get-Item $log).LastWriteTime -gt $launched) {
                 $menuAt = Get-Date
-                Restore-Doorstop  # read at the start, no longer needed
+                [void] (Restore-MscDoorstop $msc)  # read at the start, no longer needed
             }
             if ($menuAt -and -not $inGameAt -and (Select-String -LiteralPath $log -Pattern 'scene=GAME .*pos=' -Quiet)) { $inGameAt = Get-Date }
             if ($inGameAt -and ((Get-Date) - $inGameAt).TotalSeconds -ge 3) {
@@ -117,7 +110,7 @@ if ($Hidden) {
         if ($menuAt) { throw 'My Summer Car reached its main menu but not its game: did it continue its save (PerkeleRim_spike.log)?' }
         throw 'Main menu not reached (spike log not updated). Is the mod deployed?'
     } finally {
-        Restore-Doorstop
+        [void] (Restore-MscDoorstop $msc)
     }
 }
 

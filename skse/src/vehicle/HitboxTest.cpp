@@ -34,7 +34,8 @@ namespace PerkeleRim::HitboxTest
         constexpr int        kShots = 12;             // every third one a control shot from the side
         constexpr float      kImpactRange = 1500.0f;  // impacts of other projectiles this close to the van are logged
         constexpr float      kFlightSeconds = 5.0f;   // our arrows are followed this long
-        constexpr float      kReached = 40.0f;        // an arrow this close to Kumpo's chest reached him (one that hits him is gone at once)
+        constexpr float      kReached = 40.0f;        // an arrow whose path came this close to Kumpo's body reached him
+        constexpr float      kHead = 120.0f;          // his body for that: a line from his feet to this far above them
         constexpr float      kVanSkin = 40.0f;        // an impact on the hitbox's layer this close to the van's box is the van's
 
         // One of our arrows, followed every frame until it is gone.
@@ -45,7 +46,9 @@ namespace PerkeleRim::HitboxTest
             bool                 through = false;
             float                age = 0.0f;
             float                closestVan = 1e9f;    // least distance to the van's center
-            float                closestKumpo = 1e9f;  // ...and to Kumpo's chest
+            float                closestKumpo = 1e9f;  // ...and its path (from frame to frame) to Kumpo's body
+            bool                 onKumpo = false;      // an impact named him
+            bool                 onVan = false;        // an impact was the van's
             RE::NiPoint3         last;
             bool                 hit = false;  // its impacts are logged
         };
@@ -90,6 +93,38 @@ namespace PerkeleRim::HitboxTest
             auto text = std::format(a_format, std::forward<Args>(a_args)...);
             SKSE::log::info("hitbox test: {}", text);
             state.notes.push_back({ state.clock, std::move(text) });
+        }
+
+        // The least distance between segments a0-a1 and b0-b1: an arrow's path in one frame and Kumpo's body. An arrow
+        // flies tens of units a frame, and one that hits him is gone at once, so its samples alone can miss him.
+        float SegmentDistance(const RE::NiPoint3& a_a0, const RE::NiPoint3& a_a1, const RE::NiPoint3& a_b0, const RE::NiPoint3& a_b1)
+        {
+            const RE::NiPoint3 d1 = a_a1 - a_a0, d2 = a_b1 - a_b0, r = a_a0 - a_b0;
+            const float        a = d1.Dot(d1), e = d2.Dot(d2), f = d2.Dot(r);
+            float              s = 0.0f, u = 0.0f;
+            if (a <= 1e-6f && e <= 1e-6f) {
+                return r.Length();
+            }
+            if (a <= 1e-6f) {
+                u = std::clamp(f / e, 0.0f, 1.0f);
+            } else {
+                const float c = d1.Dot(r);
+                if (e <= 1e-6f) {
+                    s = std::clamp(-c / a, 0.0f, 1.0f);
+                } else {
+                    const float b = d1.Dot(d2), denom = a * e - b * b;
+                    s = denom > 1e-6f ? std::clamp((b * f - c * e) / denom, 0.0f, 1.0f) : 0.0f;
+                    u = (b * s + f) / e;
+                    if (u < 0.0f) {
+                        u = 0.0f;
+                        s = std::clamp(-c / a, 0.0f, 1.0f);
+                    } else if (u > 1.0f) {
+                        u = 1.0f;
+                        s = std::clamp((b - c) / a, 0.0f, 1.0f);
+                    }
+                }
+            }
+            return ((a_a0 + d1 * s) - (a_b0 + d2 * u)).Length();
         }
 
         // How far inside a_box (in the van's frame) a world point is, 0 when outside.
@@ -289,16 +324,18 @@ namespace PerkeleRim::HitboxTest
                 skin.lo[k] -= kVanSkin;
                 skin.hi[k] += kVanSkin;
             }
-            const auto chest = a_player->GetPosition() + RE::NiPoint3(0.0f, 0.0f, kChest);
+            const auto feet = a_player->GetPosition();
+            const auto head = feet + RE::NiPoint3(0.0f, 0.0f, kHead);
             std::erase_if(state.flights, [&](Flight& a_flight) {
                 a_flight.age += a_delta;
                 auto  ptr = a_flight.handle.get();
                 auto* projectile = ptr.get();
                 const char* kind = a_flight.through ? "through-the-van" : "control";
                 if (projectile) {
+                    const auto from = a_flight.last;
                     a_flight.last = projectile->GetPosition();
                     a_flight.closestVan = (std::min)(a_flight.closestVan, a_flight.last.GetDistance(a_van));
-                    a_flight.closestKumpo = (std::min)(a_flight.closestKumpo, a_flight.last.GetDistance(chest));
+                    a_flight.closestKumpo = (std::min)(a_flight.closestKumpo, SegmentDistance(from, a_flight.last, feet, head));
                     auto& impacts = projectile->GetProjectileRuntimeData().impacts;
                     if (!a_flight.hit && !impacts.empty()) {
                         a_flight.hit = true;
@@ -310,7 +347,8 @@ namespace PerkeleRim::HitboxTest
                                               (static_cast<std::uint32_t>(impact->collidedLayer.get()) == Hitbox::CapsuleLayer() && Depth(a_state, skin, a_flight.last) > 0.0f);
                             const auto collidee = impact->collidee.get();
                             const bool kumpo = collidee.get() == a_player;
-                            state.throughStopped += a_flight.through && ours ? 1 : 0;
+                            a_flight.onVan |= ours;  // counted once per arrow, below
+                            a_flight.onKumpo |= kumpo;
                             Log("{} arrow {:08X} hit {} on layer {} at ({:.0f},{:.0f},{:.0f}) after {:.2f} s, {:.0f} from the van", kind, a_flight.id,
                                 ours ? "the van's hitbox" : kumpo ? "Kumpo" : collidee ? collidee->GetName() : "no reference", static_cast<int>(impact->collidedLayer.get()),
                                 a_flight.last.x, a_flight.last.y, a_flight.last.z, a_flight.age, a_flight.last.GetDistance(a_van));
@@ -320,9 +358,10 @@ namespace PerkeleRim::HitboxTest
                 if (projectile && a_flight.age < kFlightSeconds) {
                     return false;
                 }
-                const bool reached = a_flight.closestKumpo <= kReached;
+                const bool reached = a_flight.onKumpo || a_flight.closestKumpo <= kReached;
                 (a_flight.through ? state.throughOnKumpo : state.sideOnKumpo) += reached ? 1 : 0;
-                Log("{} arrow {:08X} {} at ({:.0f},{:.0f},{:.0f}) after {:.2f} s, {}; it came within {:.0f} of the van's center and {:.0f} of Kumpo's chest",
+                state.throughStopped += a_flight.through && a_flight.onVan ? 1 : 0;
+                Log("{} arrow {:08X} {} at ({:.0f},{:.0f},{:.0f}) after {:.2f} s, {}; it came within {:.0f} of the van's center and {:.0f} of Kumpo",
                     kind, a_flight.id, projectile ? "still flies" : "is gone", a_flight.last.x, a_flight.last.y, a_flight.last.z, a_flight.age,
                     a_flight.hit ? "after its hit" : "with no hit", a_flight.closestVan, a_flight.closestKumpo);
                 return true;

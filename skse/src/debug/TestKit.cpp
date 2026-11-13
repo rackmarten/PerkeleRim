@@ -14,6 +14,7 @@
 #include <skse_test_kit/Kit.h>
 
 #include <array>
+#include <functional>
 #include <cmath>
 #include <memory>
 #include <optional>
@@ -34,6 +35,26 @@ namespace PerkeleRim::TestKit
         constexpr float kHandAgain = 5.0f;     // seconds between handovers asked for while play mode hasn't done it
 
         bool g_active = false;
+
+        // Runs once when the last copy of a step goes: a request that ends, times out or whose client goes (the kit
+        // drops its step then). For what a task started that would outlive it: a test driver, a held key. Harmless
+        // after a normal end, since each of them does nothing then.
+        class OnDrop
+        {
+        public:
+            explicit OnDrop(std::function<void()> a_what) : _what(std::move(a_what)) {}
+            ~OnDrop() { if (_what) { _what(); } }
+            OnDrop(const OnDrop&) = delete;
+            OnDrop& operator=(const OnDrop&) = delete;
+
+        private:
+            std::function<void()> _what;
+        };
+
+        std::shared_ptr<OnDrop> Dropping(std::function<void()> a_what)
+        {
+            return std::make_shared<OnDrop>(std::move(a_what));
+        }
 
         // [Test] MSC=1: the session is ready once MSC has the player standing on its island and has gone quiet sending
         // its models (it reads each in one frame, and keys held meanwhile never reach it).
@@ -208,7 +229,8 @@ namespace PerkeleRim::TestKit
                         throw Error(refusal);
                     }
                     a_call.DefaultTimeout(600.0);
-                    return [](Call& a_call) -> std::optional<Json> {
+                    return [drop = Dropping([] { HitTest::Stop("its request went away (a timeout, or the client stopped)"); })](
+                               Call& a_call) -> std::optional<Json> {
                         while (const auto row = HitTest::NextRow()) {
                             a_call.Row(DescribeHit(*row));
                         }
@@ -231,7 +253,8 @@ namespace PerkeleRim::TestKit
                         throw Error(refusal);
                     }
                     a_call.DefaultTimeout(300.0);
-                    return [](Call& a_call) -> std::optional<Json> {
+                    return [drop = Dropping([] { HitboxTest::Stop("its request went away (a timeout, or the client stopped)"); })](
+                               Call& a_call) -> std::optional<Json> {
                         while (const auto note = HitboxTest::NextNote()) {
                             a_call.Row(JsonObject{ { "seconds", note->seconds }, { "what", note->what } });
                         }
@@ -265,15 +288,15 @@ namespace PerkeleRim::TestKit
                         throw Error("MSC isn't linked (not running, or still starting): nothing to hand the player to");
                     }
                     a_call.DefaultTimeout(120.0);  // a save's first handover walks Kumpo to the garage
-                    auto wait = std::make_shared<int>(0);
-                    return [want, wait](Call&) -> std::optional<Json> {
+                    auto asked = std::make_shared<double>(-1e9);  // a_call.Seconds() when it last asked
+                    return [want, asked](Call& a_call) -> std::optional<Json> {
                         if (PlayerSync::Owned() == want && (!want || PlayerSync::Standing())) {
                             return JsonObject{ { "msc", want }, { "seated", PlayerSync::Seated() } };
                         }
-                        if (PlayerSync::Owned() == want || (*wait)-- > 0) {
+                        if (PlayerSync::Owned() == want || a_call.Seconds() - *asked < 5.0) {
                             return std::nullopt;  // handed over, MSC's first pose still to come; or a moment after asking
                         }
-                        *wait = 300;  // 5 s: a handover takes a moment, and play mode may be about to do it itself
+                        *asked = a_call.Seconds();  // a handover takes a moment, and play mode may be about to do it itself
                         if (want) {
                             PlayerSync::DebugHandOver();
                         } else {
@@ -320,7 +343,7 @@ namespace PerkeleRim::TestKit
                     const auto code = static_cast<std::uint16_t>(key);
                     PlayerSync::DebugHold(code, true);
                     a_call.DefaultTimeout(seconds + 10.0);
-                    return [code, seconds](Call& a_call) -> std::optional<Json> {
+                    return [code, seconds, drop = Dropping([code] { PlayerSync::DebugHold(code, false); })](Call& a_call) -> std::optional<Json> {
                         if (a_call.Seconds() < seconds) {
                             return std::nullopt;
                         }
@@ -342,7 +365,7 @@ namespace PerkeleRim::TestKit
                     PlayerSync::DebugHold(key, true);
                     a_call.DefaultTimeout(60.0);
                     auto still = std::make_shared<float>(0.0f);
-                    return [id, key, still](Call& a_call) -> std::optional<Json> {
+                    return [id, key, still, drop = Dropping([key] { PlayerSync::DebugHold(key, false); })](Call& a_call) -> std::optional<Json> {
                         if (a_call.Seconds() >= 0.3) {
                             PlayerSync::DebugHold(key, false);
                         }

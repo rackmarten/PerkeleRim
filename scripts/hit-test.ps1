@@ -49,18 +49,21 @@ $code = 1
 try {
     $log = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\Skyrim Special Edition\SKSE\PerkeleRim.log'
     $from = if (Test-Path $log) { @(Get-Content $log).Count } else { 0 }  # this run's lines only
+    $ranAt = Get-Date
     & $skytest run $file -Timeout $TimeoutSeconds
     $code = $LASTEXITCODE
     Write-Host "--- $log"
     Get-Content $log -ErrorAction SilentlyContinue | Select-Object -Skip $from |
         Select-String -Pattern 'hit test:|combat: the player (punched|.s throw)' | ForEach-Object { $_.Line }
-    $run = Get-ChildItem (Join-Path $RepoRoot 'out') -Directory -Filter '*-hits' | Sort-Object LastWriteTime | Select-Object -Last 1
+    $run = Get-ChildItem (Join-Path $RepoRoot 'out') -Directory -Filter '*-hits*' -ErrorAction SilentlyContinue |
+        Where-Object CreationTime -GE $ranAt.AddSeconds(-1) | Sort-Object CreationTime | Select-Object -Last 1  # this run's only
     $rows = if ($run) { Get-ChildItem $run.FullName -Filter 'step-*-rows.csv' | Select-Object -Last 1 }
     if ($rows) {
         Write-Host "--- $($rows.FullName)"
         Import-Csv $rows.FullName | Format-Table scenario, hit, landed, drunk, speed, level, armor, expected, damage, drop, pass, note -AutoSize | Out-Host
     }
 } finally {
-    if ($ours -and -not $Keep) { & $skytest stop }
+    # A session this run started goes again; so does one that crashed or hung (its deploy mustn't stay in the game).
+    if (($ours -and -not $Keep) -or $code -eq 2) { & $skytest stop }
 }
 exit $code

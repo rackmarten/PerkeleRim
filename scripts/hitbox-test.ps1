@@ -38,6 +38,7 @@ try {
     Get-Content $log -ErrorAction SilentlyContinue | Select-Object -Skip $from |
         Select-String -Pattern 'hitbox|player sync: (seated|out of the seat)' | ForEach-Object { $_.Line }
 } finally {
-    if ($ours -and -not $Keep) { & $skytest stop }
+    # A session this run started goes again; so does one that crashed or hung (its deploy mustn't stay in the game).
+    if (($ours -and -not $Keep) -or $code -eq 2) { & $skytest stop }
 }
 exit $code
