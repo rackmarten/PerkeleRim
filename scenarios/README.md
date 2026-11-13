@@ -23,13 +23,13 @@ either game.
 Measured on the test desktop on 13 November 2026 (Skyrim AE 1.7.104, SKSE 2.3.1, My Summer Car with MSCLoader 1.3.1),
 in a hidden session:
 
-- `hits.json`: 17 of 17 rows passed (16 attacks and the drunk-against-sober ratio, x1.7 at drunk 2) in 4 of 5 runs. The
+- `hits.json`: 17 of 17 rows passed (16 attacks and the drunk-against-sober ratio, x1.7 at drunk 2) in 5 of 6 runs. The
   other lost `drunker-bottle 2`: the drunk camera's sway sent three of five throws past the guard and the two re-throws
-  were counted per scenario, so the second hit had none left. They're counted per throw now; both runs since passed.
-- `hitbox.json` (4 runs, the same each time): 8 of 8 arrows through the van stopped at it (on the hitbox's layer, about 142 units from the van's
+  were counted per scenario, so the second hit had none left. They're counted per throw now; all runs since passed.
+- `hitbox.json` (5 runs, the same each time): 8 of 8 arrows through the van stopped at it (on the hitbox's layer, about 142 units from the van's
   middle, its back end), none came nearer Kumpo than 559 units; 4 of 4 control arrows reached him; the bandit stood for
   about 26 s, then walked round the van's side to within 90 units of Kumpo, never inside its box.
-- `van-lights.json` (4 runs): the low beams put out darkened the ground ahead by 42 luma (86 to 44, two thirds of its pixels), the
+- `van-lights.json` (5 runs): the low beams put out darkened the ground ahead by 42 luma (86 to 44, two thirds of its pixels), the
   ground beside the van rose by 0.9 (eye adaptation); MSC switching every lamp off darkened the ground ahead by 47 to 57.
 
 The rear lenses: `lightson 1` also lights MSC's brake and reverse lamps, which its own state machines switch off again
