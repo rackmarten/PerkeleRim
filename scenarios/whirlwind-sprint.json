@@ -1,0 +1,30 @@
+// Whirlwind Sprint while MSC has Kumpo: MSC dashes him the way he faces, about 15 m for one word and 30 m for three
+// (msc/src/Link/ShoutDash.cs), a wall stops him (the van) and other shouts don't move him. pr.shout sends MSC what
+// Combat sends when a shout is released, so the Z key and Skyrim's own shout handling aren't part of it.
+{
+  "name": "whirlwind-sprint",
+  "steps": [
+    // On the open grass south of the garage's shack, facing north first: the van called in front of him, where it's
+    // out of the way of the dashes south (hitbox.json leaves it south of here).
+    { "label": "Skyrim takes Kumpo", "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "cmd": "console", "command": "player.setpos x 15700" },
+    { "cmd": "console", "command": "player.setpos y -15300" },
+    { "cmd": "console", "command": "player.setpos z -4650" },
+    { "cmd": "console", "command": "player.setangle z 0" },
+    { "cmd": "wait", "seconds": 2 },
+    { "label": "MSC takes him there", "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
+    { "label": "the van is in front of him", "cmd": "pr.call", "vehicle": "van" },
+    { "label": "the van stops the dash", "cmd": "pr.shout", "words": 3, "expect": "moved < 10" },
+    // Then south, onto open grass.
+    { "label": "Skyrim takes Kumpo again", "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "cmd": "console", "command": "player.setpos x 15700" },
+    { "cmd": "console", "command": "player.setpos y -15300" },
+    { "cmd": "console", "command": "player.setpos z -4650" },
+    { "cmd": "console", "command": "player.setangle z 180" },
+    { "cmd": "wait", "seconds": 2 },
+    { "label": "MSC takes him, facing south", "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
+    { "label": "one word dashes about 15 m", "cmd": "pr.shout", "words": 1, "expect": "moved ~ 15 +- 2" },
+    { "label": "three words dash about 30 m", "cmd": "pr.shout", "words": 3, "expect": "moved ~ 30 +- 3" },
+    { "label": "Fire Breath doesn't move him", "cmd": "pr.shout", "words": 3, "shout": "03F9EA", "expect": "moved < 1" }
+  ]
+}

@@ -10,13 +10,16 @@
     scripts/launch-msc.ps1 -Width 1280 -Height 720
     scripts/launch-msc.ps1 -Width 2560 -Height 1440 -Fullscreen -Quality Fantastic   # for filming MSC itself
     scripts/launch-msc.ps1 -NoPlace   # leave the window where Windows puts it
-    scripts/launch-msc.ps1 -Hidden    # a test session's partner (skytest.psd1): minimized, never focused, no key presses
+    scripts/launch-msc.ps1 -Hidden    # a test session's partner (skytest.psd1): minimized, never focused, no key presses, muted
+    scripts/launch-msc.ps1 -Hidden -Sound   # the same with MSC's sound (skytest ... -Sound sets SKYTEST_SOUND=1 for it)
 .NOTES
     -Hidden skips Unity's configuration dialog and the news screen with MSCLoader's own skipConfigScreen and skipIntro
     (doorstop_config.ini, put back as soon as the mod has started, or at the next start if this was killed), starts MSC
     minimized without activating it and has it continue its save (a one-shot PerkeleRim_autoload.txt, which the mod
     deletes once used, unless the folder has its own marker). It returns once the mod has started; nothing is pressed
-    or clicked, so the desktop stays usable.
+    or clicked, so the desktop stays usable. A one-shot PerkeleRim_test_session.txt (TestSessionMarker in msc/src/Link)
+    tells the mod it's a test session: MSC never locks the cursor (minimized, Unity would pin it to the screen's top
+    left corner) and is muted, unless -Sound or SKYTEST_SOUND=1 (the kit's -Sound).
     Windowed MSC is moved to the left of Skyrim's spot in the top right corner of the primary screen,
     top edges aligned (see Set-GameWindowLayout in common.ps1). Fullscreen is never moved.
 #>
@@ -27,6 +30,7 @@ param(
     [switch] $Fullscreen,
     [switch] $NoPlace,
     [switch] $Hidden,
+    [switch] $Sound,
     [int] $TimeoutSeconds = 60
 )
 
@@ -40,8 +44,11 @@ $msc = Get-RequiredSetting (Get-LocalConfig) 'MscPath'
 # meanwhile ($MscDoorstopKept, test-session.ps1; scripts/test-deploy.ps1 restore puts it back too).
 $doorstop = Join-Path $msc 'doorstop_config.ini'
 [void] (Restore-MscDoorstop $msc)  # a hidden start that was killed before it put it back
+$testMarker = Join-Path $msc 'PerkeleRim_test_session.txt'
 
 if (Get-Process mysummercar -ErrorAction SilentlyContinue) { throw 'My Summer Car is already running.' }
+# A hidden start's test session marker that MSC never read (the mod deletes it): this start is no test session.
+Remove-Item -LiteralPath $testMarker -ErrorAction SilentlyContinue
 
 Add-Type -Namespace PerkeleRim -Name Win32 -MemberDefinition @'
 [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);
@@ -67,6 +74,9 @@ if ($Hidden) {
     if ($markerOurs) {
         [IO.File]::WriteAllText($marker, 'Written by the PerkeleRim launcher.', (New-Object Text.UTF8Encoding $false))  # AutoloadMarker.LauncherText
     }
+    # TestSessionMarker.Header, then TestSessionMarker.SoundLine when the session keeps its sound.
+    $testText = "Written by scripts/launch-msc.ps1 for a test session.`n$(if ($Sound -or $env:SKYTEST_SOUND -eq '1') { "Sound`n" })"
+    [IO.File]::WriteAllText($testMarker, $testText, (New-Object Text.UTF8Encoding $false))
     [void] (Save-MscScreenSettings $MscRegistryKey $MscScreenBackup)
     New-Item -ItemType Directory -Force (Split-Path $MscDoorstopKept) | Out-Null
     Copy-Item -LiteralPath $doorstop $MscDoorstopKept -Force
@@ -122,6 +132,7 @@ if ($Hidden) {
         [void] (Restore-MscDoorstop $msc)
         # MSC never got to use the one-shot marker: it mustn't continue the player's save the next time they start it.
         if ($markerOurs -and -not $inGameAt) { Remove-Item -LiteralPath $marker -ErrorAction SilentlyContinue }
+        Remove-Item -LiteralPath $testMarker -ErrorAction SilentlyContinue  # read by now, or never: no later start's
     }
 }
 

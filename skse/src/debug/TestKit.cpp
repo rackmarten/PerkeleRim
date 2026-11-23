@@ -2,11 +2,13 @@
 #include "debug/TestKit.h"
 
 #include "Ini.h"
+#include "coords.h"
 #include "debug/HitTest.h"
 #include "link/LinkService.h"
 #include "look_at.h"
 #include "model/ModelView.h"
 #include "player/PlayerSync.h"
+#include "shout.h"
 #include "vehicle/Hitbox.h"
 #include "vehicle/HitboxTest.h"
 #include "vehicle/VehicleView.h"
@@ -35,6 +37,7 @@ namespace PerkeleRim::TestKit
         constexpr float kModelQuiet = 4.0f;    // seconds without a ModelChunk: MSC has sent its models (a vehicle's freezes it)
         constexpr float kModelWait = 60.0f;    // and ready anyway after this long standing
         constexpr float kHandAgain = 5.0f;     // seconds between handovers asked for while play mode hasn't done it
+        constexpr std::uint32_t kWhirlwindSprint = 0x2F7BA;  // Skyrim.esm's shout (pr.shout's default)
 
         bool g_active = false;
         bool g_exiting = false;  // the process is tearing down: the game can't be driven any more
@@ -359,6 +362,55 @@ namespace PerkeleRim::TestKit
                         }
                         PlayerSync::DebugHold(code, false);
                         return JsonObject{ { "key", static_cast<int>(code) }, { "held", a_call.Seconds() } };
+                    };
+                });
+
+            SkseTestKit::AddTask("pr.shout", "[words] [shout=<hex form id>] [seconds=<s>]",
+                "Tells MSC the player shouted, as Combat does when a shout is released (PlayerShout: Whirlwind Sprint, 0002F7BA, unless "
+                "shout=; words 1 to 3, 3 by default), while MSC has the player; answers seconds (2) later with how far the player went, "
+                "flat, in metres (moved)",
+                [](Call& a_call) -> Step {
+                    RequireMsc();
+                    const double words = a_call.Number("words", 3.0);
+                    const double seconds = a_call.Number("seconds", 2.0);
+                    if (words < 1 || words > 3 || words != std::floor(words)) {
+                        throw Error("words is 1, 2 or 3");
+                    }
+                    if (seconds < 0.0 || seconds > 30.0) {
+                        throw Error("seconds is 0 to 30");
+                    }
+                    Protocol::PlayerShout message{};
+                    message.shout = kWhirlwindSprint;
+                    if (const auto text = a_call.Text("shout"); !text.empty()) {
+                        try {
+                            message.shout = static_cast<std::uint32_t>(std::stoul(text, nullptr, 16));
+                        } catch (...) {
+                            throw Error("shout is a shout's form id in hex");
+                        }
+                    }
+                    message.kind = Shout::KindOf(message.shout);
+                    message.words = static_cast<std::uint32_t>(words);
+                    auto* player = RE::PlayerCharacter::GetSingleton();
+                    if (!player) {
+                        throw Error("no player");
+                    }
+                    a_call.DefaultTimeout(seconds + 10.0);
+                    auto sentAt = std::make_shared<double>(-1.0);
+                    return [message, seconds, sentAt, from = player->GetPosition()](Call& a_call) -> std::optional<Json> {
+                        if (*sentAt < 0.0) {
+                            if (!LinkService::Get().Send(Protocol::MessageType::PlayerShout, &message, sizeof(message))) {
+                                return std::nullopt;  // the ring is full: next frame
+                            }
+                            *sentAt = a_call.Seconds();
+                            SKSE::log::info("test kit: told MSC the player shouted {:08X}, {} words", message.shout, message.words);
+                        }
+                        if (a_call.Seconds() - *sentAt < seconds) {
+                            return std::nullopt;
+                        }
+                        const auto  to = RE::PlayerCharacter::GetSingleton()->GetPosition();
+                        const float moved = static_cast<float>(std::hypot(to.x - from.x, to.y - from.y) * Coords::kMetersPerUnit);
+                        return JsonObject{ { "shout", std::format("{:08X}", message.shout) }, { "words", static_cast<int>(message.words) },
+                            { "moved", moved } };
                     };
                 });
 

@@ -41,13 +41,20 @@ namespace PerkeleRim.Game
             Application.runInBackground = true;
             Action<string> log = Log;
             link = new Link(Side.Msc, log);
+            // A test session's partner keeps quiet and leaves the cursor alone; read before the redirect, which uses it.
+            try { QuietSession.Start(log); }
+            catch (Exception e) { log("test session setup FAILED: " + e); }
             // Redirect the game's Input calls to InputShim before the game scene loads.
             try { InputRedirect.Apply(log); }
             catch (Exception e) { log("input redirect FAILED: " + e); }
             gameObject.AddComponent<PlayerLink>().Init(log);
         }
 
-        void Update() => Tick();
+        void Update()
+        {
+            Tick();
+            QuietSession.Guard(Log);
+        }
 
         void Tick()
         {
