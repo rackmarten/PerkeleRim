@@ -326,20 +326,24 @@ namespace PerkeleRim.Tests
             EncodedModel encoded = null;
             foreach (var step in model.EncodeSteps()) if (step != null) encoded = step;
             var blob = encoded.ToArray();
-            var expected = ModelData.Split(blob, 9, 100);
-            var cursor = new ChunkCursor(encoded, 9, 100);
-            var buffer = new byte[16 + 100];
-            int i = 0;
-            while (!cursor.Done)
+            // Chunks of 100, ending exactly where the first part ends, and the whole model in one.
+            foreach (int chunkMax in new[] { 100, encoded.Parts[0].Length, blob.Length })
             {
-                int size = cursor.Next(buffer);
-                Assert.That(buffer.Take(size), Is.EqualTo(expected[i]), $"chunk {i}");
-                Assert.That(cursor.Next(buffer), Is.EqualTo(size), "made again until it went: the same");
-                cursor.Sent(size);
-                i++;
+                var expected = ModelData.Split(blob, 9, chunkMax);
+                var cursor = new ChunkCursor(encoded, 9, chunkMax);
+                var buffer = new byte[16 + chunkMax];
+                int i = 0;
+                while (!cursor.Done)
+                {
+                    int size = cursor.Next(buffer);
+                    Assert.That(buffer.Take(size), Is.EqualTo(expected[i]), $"chunk {i} of {chunkMax}");
+                    Assert.That(cursor.Next(buffer), Is.EqualTo(size), "made again until it went: the same");
+                    cursor.Sent(size);
+                    i++;
+                }
+                Assert.That(i, Is.EqualTo(expected.Count));
+                Assert.That(cursor.Offset, Is.EqualTo(blob.Length));
             }
-            Assert.That(i, Is.EqualTo(expected.Count));
-            Assert.That(cursor.Offset, Is.EqualTo(blob.Length));
         }
     }
 }

@@ -346,8 +346,9 @@ namespace PerkeleRim.Game
             lastCollections = collections;
             ownClock.Reset();
             lastStep = "";  // the end of this frame's reading says what it did
-            // A build that keeps finding nothing (asked again every frame) is no work.
-            if (outgoing.Count > 0) lastWork = now;
+            // A build that keeps finding nothing (asked again every frame) is no work; a read under way
+            // is, however long a frame took.
+            if (outgoing.Count > 0 || current != null) lastWork = now;
             bool settled = now - lastWork >= IdleMs;
             if (settled && textures.Count > 0)
             {

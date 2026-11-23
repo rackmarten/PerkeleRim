@@ -56,8 +56,11 @@ try {
     $failed = @()
     if ($stretches.Count -lt 2) { $failed += "MSC logged $($stretches.Count) whole stretches for the scenario's models again, not 2." }
     # MSC logs every frame over 200 ms with how much of it reading and sending models took.
-    foreach ($h in ($ran | Select-String -Pattern 'model: a (\d+) ms frame, .*?(\d+) ms of it reading and sending models')) {
-        $ms = [int]$h.Matches[0].Groups[1].Value; $own = [int]$h.Matches[0].Groups[2].Value
+    foreach ($h in ($ran | Select-String -Pattern 'model: a (\d+) ms frame')) {
+        $share = [regex]::Match($h.Line, 'model: a \d+ ms frame, .*?(\d+) ms of it reading and sending models')
+        $ms = [int]$h.Matches[0].Groups[1].Value
+        if (-not $share.Success) { $failed += "A $ms ms frame without its share of model work: an MSC mod older than this script (build it, -Build)."; continue }
+        $own = [int]$share.Groups[1].Value
         if ($own -gt $ownMs) { $failed += "A $ms ms frame had $own ms of reading and sending models in it." }
         else { Write-Host "A $ms ms frame, but only $own ms of it reading and sending models: something else in MSC." -ForegroundColor Yellow }
     }
