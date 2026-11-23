@@ -66,6 +66,24 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void SkyrimsDryTipNamesTheTowFee()
+        {
+            var header = System.IO.File.ReadAllText(System.IO.Path.Combine(Paths.ProtocolDir, "cpp", "fuel_hint.h"));
+            var fee = System.Text.RegularExpressions.Regex.Match(header, @"kTowFee = (\d+);");
+            Assert.That(fee.Success, Is.True);
+            Assert.That(float.Parse(fee.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture), Is.EqualTo(Fuel.TowFee));
+        }
+
+        [Test]
+        public void FlagsTheLineLowOrDryForSkyrim()
+        {
+            Assert.That(Fuel.LineFlags(20f, 40f), Is.EqualTo(0u));
+            Assert.That(Fuel.LineFlags(9.9f, 40f), Is.EqualTo(Wire.FuelTextLow));
+            Assert.That(Fuel.LineFlags(0.2f, 40f), Is.EqualTo(Wire.FuelTextLow | Wire.FuelTextDry));
+            Assert.That(Fuel.LineFlags(0f, 0f), Is.EqualTo(0u));  // no tank to speak of
+        }
+
+        [Test]
         public void PaysForEveryLitreWhileTheMoneyLasts()
         {
             float money = 100.5f;

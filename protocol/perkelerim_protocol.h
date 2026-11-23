@@ -714,7 +714,10 @@ namespace PerkeleRim::Protocol
     };
 
     // FuelText: the fuel line MSC wants on the HUD (the litres poured and the gold they cost, a low
-    // tank, a dry one), empty for none. Same payload as LookAtText, sent when it changes.
+    // tank, a dry one), empty for none. Same payload as LookAtText, sent when it or its flags change.
+    // Flags only add to the line, so either side without them still works (protocol/cpp/fuel_hint.h).
+    inline constexpr std::uint32_t kFuelTextLow = 0x1;  // FuelText.flags: the low-tank line; Skyrim adds the nearest pump
+    inline constexpr std::uint32_t kFuelTextDry = 0x2;  // FuelText.flags: the driven tank is dry; Skyrim tips about the tow once a save
 
     // Consumed: MSC's player finished an alcoholic drink, lit a cigarette or ate something. Skyrim
     // heals by kind (protocol/cpp/damage.h). Drinks without alcohol aren't sent.
