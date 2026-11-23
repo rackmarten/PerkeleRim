@@ -61,6 +61,7 @@ TEST_CASE("distances read in metres, then kilometres")
     CHECK(FuelHint::Distance(0.996f * kKm) == "1.0 km");
     CHECK(FuelHint::Distance(2.34f * kKm) == "2.3 km");
     CHECK(FuelHint::Distance(12.0f * kKm) == "12.0 km");
+    CHECK(FuelHint::Distance(1.96f * kKm) == "2.0 km");  // the tenths carry over
 }
 
 TEST_CASE("where the nearest pump is: name, distance and direction")
@@ -88,5 +89,5 @@ TEST_CASE("the low-fuel line with the pump after it")
 
 TEST_CASE("the dry tip names the tow fee")
 {
-    CHECK(std::string(FuelHint::kDryTip).find(std::to_string(FuelHint::kTowFee) + " gold") != std::string::npos);
+    CHECK(FuelHint::DryTip() == "Out of oil. Walk to a Dwemer Oil pump and call the vehicle: it's towed there for 50 gold.");
 }

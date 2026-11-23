@@ -6,7 +6,6 @@
 #pragma once
 
 #include <cmath>
-#include <cstdio>
 #include <span>
 #include <string>
 #include <string_view>
@@ -17,10 +16,13 @@ namespace PerkeleRim::FuelHint
 {
     inline constexpr std::string_view kNoName = "Dwemer Oil";  // a pump without a map marker name (an older ESP)
     inline constexpr double           kHere = 50.0;            // metres: closer than this the pump is "right here"
-    inline constexpr int              kTowFee = 50;            // gold, msc/src/Link/Fuel.cs TowFee
+    inline constexpr int              kTowFee = 50;            // gold: msc/src/Link/Fuel.cs TowFee, which charges it (msc/tests/FuelTests.cs checks they match)
 
     // Shown once a save, the first time the driven tank is dry (kFuelTextDry).
-    inline constexpr std::string_view kDryTip = "Out of oil. Walk to a Dwemer Oil pump and call the vehicle: it's towed there for 50 gold.";
+    inline std::string DryTip()
+    {
+        return "Out of oil. Walk to a Dwemer Oil pump and call the vehicle: it's towed there for " + std::to_string(kTowFee) + " gold.";
+    }
 
     struct Pump
     {
@@ -64,14 +66,13 @@ namespace PerkeleRim::FuelHint
     // A distance in Skyrim units as the HUD says it: "350 m" (to 10 m) under a kilometre, else "2.3 km".
     inline std::string Distance(double a_units)
     {
+        // Whole numbers only, so no locale puts a comma in "2.3 km".
         const double metres = a_units * Coords::kMetersPerUnit;
-        char         text[32];
         if (metres < 995.0) {
-            std::snprintf(text, sizeof(text), "%d m", static_cast<int>(std::lround(metres / 10.0)) * 10);
-        } else {
-            std::snprintf(text, sizeof(text), "%.1f km", metres / 1000.0);
+            return std::to_string(std::lround(metres / 10.0) * 10) + " m";
         }
-        return text;
+        const long tenths = std::lround(metres / 100.0);
+        return std::to_string(tenths / 10) + "." + std::to_string(tenths % 10) + " km";
     }
 
     // Where the nearest pump is from a_x, a_y: "Whiterun Dwemer Oil 2.3 km north-east", or

@@ -11,7 +11,7 @@ namespace PerkeleRim
     // north). Unity-free.
     public static class Fuel
     {
-        public const float TowFee = 50f;          // marks (gold) to tow a dry vehicle onto a pump
+        public const float TowFee = 50f;          // marks (gold) to tow a dry vehicle onto a pump; Skyrim's dry tip says it too (protocol/cpp/fuel_hint.h kTowFee, tested)
         public const float FreeTowReach = 7000f;  // units (100 m): a dry vehicle this close to the pump is towed for nothing
         public const float TowReach = 2100f;      // units (30 m): a call this close to a pump tows
         public const float LaneOffset = 134f;     // units from the pump's spot to the lane's middle

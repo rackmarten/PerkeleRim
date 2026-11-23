@@ -56,8 +56,13 @@ namespace PerkeleRim::Fuel
             SKSE::log::info("fuel: {} has no pump list, no gas stations (rebuild it with scripts/build-esp.ps1)", kPlugin);
             return;
         }
-        list->ForEachForm([](RE::TESForm* a_form) {
+        // Both lists in the same order: a pump entry that's skipped (not a reference, past
+        // kFuelPumpsMax) skips its marker's name too.
+        const auto  names = MarkerNames(data);
+        std::size_t entry = 0, named = 0;
+        list->ForEachForm([&](RE::TESForm* a_form) {
             auto* ref = a_form ? a_form->As<RE::TESObjectREFR>() : nullptr;
+            const auto index = entry++;
             if (ref && state.message.count < Protocol::kFuelPumpsMax) {
                 auto& pump = state.message.pumps[state.message.count++];
                 const auto at = ref->GetPosition();
@@ -65,16 +70,11 @@ namespace PerkeleRim::Fuel
                 pump.position[1] = at.y;
                 pump.position[2] = at.z;
                 pump.heading = ref->GetAngleZ();
+                state.hints.push_back({ at.x, at.y, index < names.size() ? names[index] : std::string() });
+                named += state.hints.back().name.empty() ? 0 : 1;
             }
             return RE::BSContainer::ForEachResult::kContinue;
         });
-        const auto  names = MarkerNames(data);
-        std::size_t named = 0;
-        for (std::uint32_t i = 0; i < state.message.count; ++i) {
-            const auto& pump = state.message.pumps[i];
-            state.hints.push_back({ pump.position[0], pump.position[1], i < names.size() ? names[i] : std::string() });
-            named += state.hints.back().name.empty() ? 0 : 1;
-        }
         SKSE::log::info("fuel: {} pumps, {} with a map marker name", state.message.count, named);
     }
 
@@ -98,7 +98,7 @@ namespace PerkeleRim::Fuel
     {
         if ((a_flags & Protocol::kFuelTextDry) != 0 && !state.tipped) {
             state.tipped = true;
-            RE::SendHUDMessage::ShowHUDMessage(std::string(FuelHint::kDryTip).c_str());
+            RE::SendHUDMessage::ShowHUDMessage(FuelHint::DryTip().c_str());
             SKSE::log::info("fuel: the tank ran dry, tow tip shown (once a save)");
         }
         state.lastFlags = a_flags;
@@ -122,8 +122,9 @@ namespace PerkeleRim::Fuel
         if (a_type != kRecord) {
             return false;
         }
-        if (a_version >= 1) {
-            a_intfc->ReadRecordData(state.tipped);
+        if (a_version >= 1 && !a_intfc->ReadRecordData(state.tipped)) {
+            SKSE::log::warn("fuel: the tow tip flag in the save is cut short, counting it as not shown");
+            state.tipped = false;
         }
         SKSE::log::info("fuel: save loaded, tow tip {}", state.tipped ? "already shown" : "not shown yet");
         return true;
