@@ -399,6 +399,7 @@ foreach (var p in stationMarkers.Concat(stationPieces))
     Console.WriteLine($"  {p.FormKey.ID:X3} {name,-16} ({at.Position.X:0},{at.Position.Y:0},{at.Position.Z:0}) rot {at.Rotation.Z:0.000}");
 }
 uint stationsNextId = nextId;
+if (stationsNextId > 0xB00) throw new InvalidOperationException($"the gas stations' ids reach {stationsNextId:X3}, into Teimo's from 0xB00");
 
 // ---- Teimo's stall in Riverwood ----
 //
@@ -796,7 +797,7 @@ foreach (var spot in pumpSpots)
 mod.FormLists.Add(pumpList);
 Console.WriteLine($"  980 {pumpList.EditorID} ({pumpList.Items.Count} pumps)");
 
-mod.ModHeader.Stats.NextFormID = teimoNextId;  // after Teimo's stall (0xB00 on), past every record id
+mod.ModHeader.Stats.NextFormID = Math.Max(stationsNextId, teimoNextId);  // past every record id (the stations from 0xA00, Teimo from 0xB00)
 // Header 1.70, not Mutagen's 1.71: Skyrim SE 1.5.97 skips 1.71 plugins, AE loads both.
 mod.ModHeader.Stats.Version = 1.7f;
 

@@ -143,7 +143,7 @@ TEST_CASE("walking off after a visit gets his goodbye, once")
     CHECK((Stay(talk, 11.0, 12.0, Teimo::kAround + 50.0f) == std::vector{ Topic::kBye }));
     // Talked to (E) from the edge of the stall, then a walk-up: one greeting, and the goodbye.
     Talk talked;
-    REQUIRE((talked.OnTalk(0.0) == Topic::kGreet));
+    REQUIRE((talked.OnTalk(0.0, 500.0f) == Topic::kGreet));
     talked.Say(Topic::kGreet, 0.0, 0.0);
     CHECK(Stay(talked, 0.0, 10.0, 200.0f).empty());
     CHECK((Stay(talked, 10.0, 11.0, Teimo::kAround + 50.0f) == std::vector{ Topic::kBye }));
@@ -190,10 +190,23 @@ TEST_CASE("insults cut in, one reply per outburst, never over another insult")
 TEST_CASE("talking to him greets Kumpo unless he is speaking")
 {
     Talk talk;
-    REQUIRE((talk.OnTalk(0.0) == Topic::kGreet));
+    REQUIRE((talk.OnTalk(0.0, 300.0f) == Topic::kGreet));
     talk.Say(Topic::kGreet, 0.0, 0.0);
-    CHECK_FALSE(talk.OnTalk(1.0));
-    CHECK((talk.OnTalk(10.0) == Topic::kGreet));
+    CHECK_FALSE(talk.OnTalk(1.0, 300.0f));
+    CHECK((talk.OnTalk(10.0, 300.0f) == Topic::kGreet));
+    CHECK_FALSE(talk.OnTalk(20.0, Teimo::kAround + 1.0f));  // too far to talk
+    // E from 5 m starts a visit: stories while Kumpo stays, the goodbye when he goes.
+    Talk asked;
+    REQUIRE((asked.OnTalk(0.0, 350.0f) == Topic::kGreet));
+    asked.Say(Topic::kGreet, 0.0, 0.0);
+    CHECK(asked.Visiting());
+    CHECK((Stay(asked, 0.0, 20.0, 350.0f) == std::vector{ Topic::kChat }));
+    CHECK(Stay(asked, 20.0, 45.0, 350.0f).empty());  // the story runs, the next is a while off
+    REQUIRE((asked.OnInsult(Topic::kFinger, 45.0, 350.0f) == Topic::kFinger));
+    Talk leaving;
+    REQUIRE((leaving.OnTalk(0.0, 350.0f) == Topic::kGreet));
+    leaving.Say(Topic::kGreet, 0.0, 0.0);
+    CHECK((Stay(leaving, 5.0, 6.0, Teimo::kAround + 50.0f) == std::vector{ Topic::kBye }));
 }
 
 TEST_CASE("he never says the same line twice in a row")

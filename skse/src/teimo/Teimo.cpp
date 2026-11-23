@@ -30,6 +30,7 @@ namespace PerkeleRim::Teimo
             float                     heading = 0.0f;
             bool                      headingSet = false;
             float                     home = 0.0f;  // his stall's heading: his reference's angle z
+            RE::NiPoint3              homeAt;       // and his spot behind the counter
             Talk                      talk;
             double                    clock = 0.0;  // seconds of game time MSC had the player, his talk's clock
             const Line*               line = nullptr;  // the line he says, while its caption runs
@@ -42,6 +43,28 @@ namespace PerkeleRim::Teimo
 
         std::atomic<RE::FormID> teimoId{ 0 };  // for OnTalk on other threads
         std::atomic<bool>       talkedTo{ false };
+        std::atomic<bool>       mscOwns{ false };  // PlayerSync::Owned(), mirrored each frame for OnTalk on the AI threads
+        constexpr float         kOffSpot = 210.0f;  // units off his spot (3 m) from which he's shown as Skyrim's actor: pushed, or running from a fight
+        constexpr float         kFacesFor = 1.3f;   // radians either side of where he looks that he sees the finger in
+
+        // Times his MSC model can't show what his Skyrim actor does: down, ragdolled, fighting or
+        // running from a fight, or off his spot. His Skyrim body shows instead, until he's back.
+        const char* Busy(RE::Actor* a_teimo)
+        {
+            if (a_teimo->IsInRagdollState()) {
+                return "ragdolled";
+            }
+            if (const auto* life = a_teimo->AsActorState(); life && life->IsBleedingOut()) {
+                return "down";
+            }
+            if (a_teimo->IsInCombat()) {
+                return "in a fight";
+            }
+            if (a_teimo->GetPosition().GetDistance(state.homeAt) > kOffSpot) {
+                return "off his spot";
+            }
+            return nullptr;
+        }
 
         RE::Actor* Find()
         {
@@ -168,6 +191,7 @@ namespace PerkeleRim::Teimo
             return;
         }
         state.home = teimo->GetAngleZ();
+        state.homeAt = teimo->GetPosition();
         SKSE::log::info("teimo: at his stall in Riverwood ({:08X}) at ({:.0f},{:.0f},{:.0f}) facing {:.2f}", state.id, teimo->GetPositionX(),
             teimo->GetPositionY(), teimo->GetPositionZ(), state.home);
     }
@@ -186,7 +210,9 @@ namespace PerkeleRim::Teimo
 
     void Draw(RE::PlayerCharacter* a_player, float a_delta)
     {
-        if (!PlayerSync::Owned()) {
+        state.clock += a_delta;  // whoever has the player: his lines and captions run on while Skyrim has it
+        mscOwns = PlayerSync::Owned();
+        if (!mscOwns) {
             talkedTo = false;        // E with Skyrim's own player: no Kumpo to greet
             state.talk.EndVisit();   // whatever visit there was ended with the handover, without a goodbye
         }
@@ -194,6 +220,17 @@ namespace PerkeleRim::Teimo
         auto* root = teimo && !teimo->IsDisabled() && teimo->Is3DLoaded() ? teimo->Get3D(false) : nullptr;
         if (!root || !LoadModel()) {
             HideModel();
+            return;
+        }
+        if (const char* busy = Busy(teimo)) {
+            if (state.shown) {
+                SKSE::log::info("teimo: {}, shown as Skyrim's actor until he's back at his stall", busy);
+            }
+            HideModel();
+            if (state.hiddenRoot) {
+                ShowBody(root, true);
+                state.hiddenRoot = nullptr;
+            }
             return;
         }
         auto* scene = Scene();
@@ -233,18 +270,17 @@ namespace PerkeleRim::Teimo
         }
     }
 
-    void Update(RE::PlayerCharacter* a_player, float a_delta, float a_drunk)
+    void Update(RE::PlayerCharacter* a_player, float a_drunk, bool a_inVehicle)
     {
-        state.clock += a_delta;
         auto* teimo = Find();
-        if (!teimo || !teimo->Is3DLoaded() || teimo->IsDisabled() || teimo->IsDead() || !LinkService::Get().IsUp()) {
+        if (!teimo || !teimo->Is3DLoaded() || teimo->IsDisabled() || teimo->IsDead() || !LinkService::Get().IsUp() || a_inVehicle) {
             talkedTo = false;
-            state.talk.EndVisit();  // Kumpo went far away (or the link): a later walk-up is a new visit
+            state.talk.EndVisit();  // Kumpo went far away, drives past (or the link went): a later walk-up is a new visit
             return;
         }
         const float distance = FlatDistance(teimo->GetPosition(), a_player->GetPosition());
         if (talkedTo.exchange(false) && distance <= kAround) {
-            if (const auto topic = state.talk.OnTalk(state.clock)) {
+            if (const auto topic = state.talk.OnTalk(state.clock, distance)) {
                 Say(a_player, teimo, *topic, "Kumpo talks to him");
                 return;
             }
@@ -281,6 +317,16 @@ namespace PerkeleRim::Teimo
         if (!SeesFinger(at.x - kumpo.x, at.y - kumpo.y, a_dirX, a_dirY)) {
             return;
         }
+        const float looking = state.shown ? state.heading : teimo->GetAngleZ();
+        if (std::abs(std::remainder(HeadingTo(kumpo.x - at.x, kumpo.y - at.y) - looking, 6.2831853f)) > kFacesFor) {
+            SKSE::log::info("teimo: the finger is pointed at him, but he looks the other way");
+            return;
+        }
+        bool unused = false;
+        if (!teimo->HasLineOfSight(a_player, unused)) {
+            SKSE::log::info("teimo: the finger is pointed at him, but he can't see Kumpo");
+            return;
+        }
         if (const auto say = state.talk.OnInsult(Topic::kFinger, state.clock, FlatDistance(at, kumpo))) {
             Say(a_player, teimo, *say, "the finger");
         }
@@ -292,7 +338,7 @@ namespace PerkeleRim::Teimo
         if (!a_actor || id == 0 || a_actor->GetFormID() != id) {
             return false;
         }
-        if (PlayerSync::Owned()) {
+        if (mscOwns) {
             talkedTo = true;  // only Kumpo gets the greeting, not Skyrim's own player pressing E
         }
         return true;

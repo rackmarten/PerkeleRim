@@ -974,7 +974,7 @@ namespace PerkeleRim::PlayerSync
             HandView::Update(link.ReadHandLayer(hands) ? &hands : nullptr, a_delta);
             Combat::Update(a_player, state.generation, a_delta);
             People::Update(a_player, seated ? driven : nullptr);
-            Teimo::Update(a_player, a_delta, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f);
+            Teimo::Update(a_player, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, inVehicle != 0);
             const bool menu = MenuHasInput();
             HeldDrinkView::Update(a_player, posed && !chase, a_delta);
             Combat::Disarm(a_player);

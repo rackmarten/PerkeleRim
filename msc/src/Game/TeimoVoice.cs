@@ -70,17 +70,18 @@ namespace PerkeleRim.Game
             log($"teimo: says {name} ({clip.name}, {clip.length:0.0} s){(placed ? $", {meters:0.0} m from the player" : ", in 2D")}");
         }
 
-        // The clip of MasterAudio/Teimo/<name>, or a clip of that name anywhere (the clip names
-        // differ from the variations': päivää for paivaa1).
+        // The clip of MasterAudio/Teimo/<name> (a variation: paivaa1, whose clip is päivää), else a
+        // clip of that name in the same group; never another character's.
         static AudioClip Find(string name)
         {
             AudioClip byClip = null;
             foreach (var s in Resources.FindObjectsOfTypeAll<AudioSource>())
             {
-                if (s == null || s.clip == null) continue;
+                if (s == null) continue;
                 var parent = s.transform.parent;
-                if (s.gameObject.name == name && parent != null && parent.name == "Teimo") return s.clip;
-                if (byClip == null && s.clip.name == name) byClip = s.clip;
+                if (parent == null || parent.name != "Teimo" || parent.parent == null || parent.parent.name != "MasterAudio") continue;
+                if (s.gameObject.name == name) return s.clip;  // the variation, even without a clip: nothing else stands in
+                if (byClip == null && s.clip != null && s.clip.name == name) byClip = s.clip;
             }
             return byClip;
         }

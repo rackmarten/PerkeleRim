@@ -184,17 +184,22 @@ namespace PerkeleRim::Teimo
             return std::nullopt;
         }
 
-        // E on him: his greeting, unless he is speaking. A walk-up after it is the same visit.
-        std::optional<Topic> OnTalk(double a_now)
+        // E on him a_distance away (the caller checks it's within kAround): his greeting, unless he
+        // is speaking. It starts a visit as walking up does, or greets the one going on.
+        std::optional<Topic> OnTalk(double a_now, float a_distance)
         {
             now_ = a_now;
-            if (Speaking()) {
+            if (Speaking() || a_distance > kAround) {
                 return std::nullopt;
             }
-            greeted_ = a_now;
-            if (visiting_) {
-                greetedVisit_ = true;
+            if (!visiting_) {
+                visiting_ = true;
+                byeSaid_ = false;
+                nextChat_ = a_now + kChatAfter;
             }
+            greeted_ = a_now;
+            greetedVisit_ = true;
+            drunkSaid_ = false;
             return Topic::kGreet;
         }
 

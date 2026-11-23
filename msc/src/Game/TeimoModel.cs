@@ -55,6 +55,15 @@ namespace PerkeleRim.Game
             return null;
         }
 
+        // Active from t up to his root: the root itself may be off (his shop closed, him out on his
+        // bicycle), and he's still read then.
+        static bool ActiveBelow(Transform root, Transform t)
+        {
+            for (; t != null && t != root; t = t.parent)
+                if (!t.gameObject.activeSelf) return false;
+            return true;
+        }
+
         // His bicycle stands next to him in the shop: left out.
         static bool Drawn(Transform root, Transform t)
         {
@@ -79,7 +88,7 @@ namespace PerkeleRim.Game
             {
                 foreach (var r in root.GetComponentsInChildren<Renderer>(true))
                 {
-                    if (r == null || !r.enabled || !r.gameObject.activeSelf || !Drawn(root, r.transform)) continue;
+                    if (r == null || !r.enabled || !ActiveBelow(root, r.transform) || !Drawn(root, r.transform)) continue;
                     var skinned = r as SkinnedMeshRenderer;
                     Mesh mesh;
                     Matrix4x4 m = ModelSender.RelativeTo(root, r.transform);

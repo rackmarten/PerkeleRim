@@ -18,12 +18,14 @@ namespace PerkeleRim::Teimo
     void OnDataLoaded();  // finds him in PerkeleRim.esp; call on kDataLoaded
     void OnGameLoaded();  // a load: he forgets the visit; call on kPostLoadGame and kNewGame
 
-    // Every frame, whoever has the player: his MSC model on him, turned toward Kumpo or his stall.
+    // Every frame, whoever has the player: his talk's clock, and his MSC model on him, turned
+    // toward Kumpo or his stall (his Skyrim body instead while he's down, fighting or off his spot).
     void Draw(RE::PlayerCharacter* a_player, float a_delta);
 
-    // Every frame MSC has the player (Kumpo, on foot or not): what Teimo says to him. a_drunk is
-    // MSC's drunk level.
-    void Update(RE::PlayerCharacter* a_player, float a_delta, float a_drunk);
+    // Every frame MSC has the player, after the frame's Draw: what Teimo says to him. a_drunk is
+    // MSC's drunk level; a_inVehicle: Kumpo sits in a vehicle or has climbed into one (no talk, and
+    // the visit ends: driving past isn't a visit).
+    void Update(RE::PlayerCharacter* a_player, float a_drunk, bool a_inVehicle);
 
     bool IsTeimo(const RE::TESObjectREFR* a_ref);
 
