@@ -97,6 +97,27 @@ namespace PerkeleRim.Spike
             if (n == 0) SpikeLog.Write("cmd: inspect: nothing named like " + text);
         }
 
+        // Stands MSC's player in a vehicle's DriveTrigger (docs/FSM_MAP.md, "Vehicle enter and exit"),
+        // the active root whose name starts with prefix: its PlayerTrigger FSM then shows ENTER DRIVING
+        // MODE and takes Return. For scenarios that need Kumpo at the wheel.
+        static void Drive(string prefix)
+        {
+            var player = GameObject.Find("PLAYER");
+            if (player == null || prefix.Length == 0) { SpikeLog.Write("cmd: drive: no PLAYER or no vehicle"); return; }
+            foreach (Transform t in FindObjectsOfType<Transform>())
+            {
+                if (t.parent != null || !t.name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (var child in t.GetComponentsInChildren<Transform>())
+                {
+                    if (child.name != "DriveTrigger") continue;
+                    player.transform.position = child.position;
+                    SpikeLog.Write($"cmd: drive: player put in {t.name}'s DriveTrigger at {child.position}");
+                    return;
+                }
+            }
+            SpikeLog.Write("cmd: drive: no active vehicle named " + prefix + "* with a DriveTrigger");
+        }
+
         // Teleports MSC's player next to a scene object, for filming MSC itself (the pub, the shop).
         static void Goto(string text)
         {
@@ -487,6 +508,9 @@ namespace PerkeleRim.Spike
                         break;
                     case "goto":  // "goto chair_pub 2" puts the player 1 m above the first object with that name (inactive ones too)
                         Goto(lines[0].Trim().Substring(4).Trim());
+                        break;
+                    case "drive":  // "drive HAYOSIKO": the player into that vehicle's driving trigger (Return then gets in, as a player would)
+                        Drive(words.Length > 1 ? words[1] : "");
                         break;
                     case "pocket":  // "pocket Y", "pocket 1"
                         var pocketLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
