@@ -96,7 +96,6 @@ scripts/logs.ps1                   # tail of the plugin, SKSE and My Summer Car 
 scripts/package.ps1                # player release zip (launcher/ + built files + launcher/saves/MSC and Skyrim if present) in tools/out/release/ (build and build-esp first)
 scripts/release-check.ps1 -Zip tools/out/release/PerkeleRim-X.Y.Z.zip -Tag vX.Y.Z  # check a release zip against its tag (see "Cutting a release")
 scripts/publish-dev.ps1 -DryRun    # build a dev build of main for testers; without -DryRun, publish it to the dev pre-release (see "Dev builds")
-scripts/nexus-package.ps1          # the release zip, screenshots and page text for the Nexus Mods upload, in tools/out/nexus/
 scripts/starter-save.ps1           # copy your current MSC save into launcher/saves/MSC with thirst, hunger, urine, fatigue, stress, drunk and dirtiness at 0
 scripts/starter-save.ps1 -Skyrim   # copy your newest Skyrim save (made before the first handover) into launcher/saves/Skyrim as PerkeleRim-Kumpo
 scripts/launch-msc.ps1             # start MSC windowed at 640x480, lowest quality, single-threaded rendering, with no clicks (clicks Play! on the config dialog, presses past the news screen); MSC's own screen settings go back once it closes
@@ -130,7 +129,7 @@ The first SKSE build takes a while (often 15 to 25 minutes): vcpkg builds the de
 1. Start Skyrim with `skse64_loader.exe`, wait for the main menu, quit.
 2. Start My Summer Car, wait for the main menu (the MSCLoader console shows `PerkeleRim loaded`), quit.
 3. Run `scripts/logs.ps1`. Expect:
-   - in `PerkeleRim.log`: `PerkeleRim loaded (plugin 0.2.1, Skyrim runtime 1.7.104.0)`
+   - in `PerkeleRim.log`: `PerkeleRim loaded (plugin 0.2.2, Skyrim runtime 1.7.104.0)`
    - in `skse64.log`: a line saying `PerkeleRim.dll` loaded correctly
    - in `output_log.txt` (My Summer Car game folder): `PerkeleRim: PerkeleRim loaded`
 
@@ -166,7 +165,7 @@ What a session does (`skytest.psd1` holds PerkeleRim's settings):
 
 `scripts/skytest.ps1 stop` closes both games and puts every file back byte for byte (`scripts/test-deploy.ps1 restore`, also after a crashed session; `scripts/test-deploy.ps1 status` lists what's kept). A start that fails cleans up the same way. Should the game's files have changed since a session deployed (one that was never stopped, and a new PerkeleRim installed meanwhile), the next deploy and `restore` refuse rather than put old files over new ones: look, then `scripts/test-deploy.ps1 restore-anyway` or `forget`. A new build restarts the session at the next `session`; everything else is a command.
 
-Besides the kit's own commands (the console, state, waits, pause and exact single steps, screenshots from any camera, scenes, probes of lights and effects, A/B pairs, recording actors; the kit's `docs/COMMANDS.md`), PerkeleRim adds `pr.msc` (Kumpo to MSC or back, F10's job), `pr.send` (MSC's debug commands: `drunk 2`, `lightson 1`), `pr.key` (hold one of MSC's keys), `pr.call` and `pr.vehicle`, the camera and probe target `pr.vehicle:<van|moped|kekmet|gifu>`, and the scenarios `pr.hits` and `pr.hitbox`. [scenarios/README.md](../scenarios/README.md) has them all, the scenario files and what they measured. `scripts/skyrim-key.ps1` (real key presses with Skyrim in front) is only for a game you're playing yourself.
+Besides the kit's own commands (the console, state, waits, pause and exact single steps, screenshots from any camera, scenes, probes of lights and effects, A/B pairs, recording actors; the kit's `docs/COMMANDS.md`), PerkeleRim adds `pr.msc` (Kumpo to MSC or back, F10's job), `pr.send` (MSC's debug commands: `drunk 2`, `lightson 1`), `pr.key` (hold one of MSC's keys), `pr.shout` (a shout released, as Combat tells MSC), `pr.call` and `pr.vehicle`, the camera and probe target `pr.vehicle:<van|moped|kekmet|gifu>`, and the scenarios `pr.hits` and `pr.hitbox`. [scenarios/README.md](../scenarios/README.md) has them all, the scenario files and what they measured. `scripts/skyrim-key.ps1` (real key presses with Skyrim in front) is only for a game you're playing yourself.
 
 Timings on the test desktop (13 November 2026): a session is ready about 54 s after the command (Skyrim's main menu at 12 s, the save controllable at 20 s, play mode's handover at 29 s, then about 22 s while MSC sends its 3,900 model chunks; MSC itself is at its menu after 7 s); `stop` takes 3 s. From a running session the hit test takes 73 to 92 s, the hitbox test 65 s, the van's lights 9 s. The old way with both games in front (`restart-games.ps1` and Autoload, on the same build) had them at their menus after 13 s and Kumpo handed over after 33 to 34 s, with a game in front 95% of the time, and every test started both games again.
 
@@ -256,7 +255,7 @@ Repository admins can bypass all three, for an emergency.
 
 The release zip is built on your PC, not in CI: `PerkeleRim.esp` is generated from your `Skyrim.esm`, and the My Summer Car mod compiles against MSCLoader, Unity and the game's DLLs, none of which can go on GitHub. CI's stub build (`-UseStubs`) leaves the mod's whole game layer out (`src/Game`), so its DLL loads but does nothing. The `release` workflow then checks the zip against the tag and finishes the draft release.
 
-1. On `main`, through an ordinary pull request: set the version (`VERSION` in `skse/CMakeLists.txt`, `version-semver` in `skse/vcpkg.json` and `protocol/vcpkg.json`, `<Version>` in `msc/PerkeleRim.csproj`, `Version` in `msc/src/PerkeleRimMod.cs`, and the version line in `docs/nexus/`), and in `CHANGELOG.md` rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` with a new empty `## [Unreleased]` above it. Merge it.
+1. On `main`, through an ordinary pull request: set the version (`VERSION` in `skse/CMakeLists.txt`, `version-semver` in `skse/vcpkg.json` and `protocol/vcpkg.json`, `<Version>` in `msc/PerkeleRim.csproj`, and `Version` in `msc/src/PerkeleRimMod.cs`), and in `CHANGELOG.md` rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` with a new empty `## [Unreleased]` above it. Merge it.
 2. Open the release pull request from `main` into `production`, wait for CI, and merge it with a merge commit:
 
    ```bash
@@ -292,7 +291,6 @@ The release zip is built on your PC, not in CI: `PerkeleRim.esp` is generated fr
    - puts the notes and `SHA256SUMS.txt` on the draft.
 
    Read the draft on the Releases page, check the VirusTotal line (a few heuristic hits on game-hooking DLLs and PowerShell launchers happen; the notes say so), and publish it. There is no build provenance attestation: GitHub didn't build the zip, so it can't vouch for it.
-6. Nexus Mods: `scripts/nexus-package.ps1` gathers the zip, the screenshots and the page text into `tools/out/nexus/`; [docs/nexus/README.md](nexus/README.md) lists the fields to fill in.
 
 Once, before the first release: add the repository secret `VT_API_KEY` (Settings > Secrets and variables > Actions) with the API key of a free VirusTotal account (virustotal.com, your profile > API key). The free key allows 4 requests a minute and 500 a day, which a release needs a dozen of.
 
