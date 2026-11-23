@@ -1,0 +1,21 @@
+// The hitbox test: the van called in front of Kumpo, two bandit archers' 12 arrows at him (8 through the van, 4 from
+// his side as a control) and a melee bandit behind the van for a minute (skse/src/vehicle/HitboxTest.cpp).
+// scripts/hitbox-test.ps1 runs it, or scripts/skytest.ps1 run scenarios/hitbox.json in a running session.
+{
+  "name": "hitbox",
+  "steps": [
+    // Open grass south of the garage's shack, facing south: room for the van in front and the archers.
+    { "label": "Skyrim takes Kumpo", "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "cmd": "console", "command": "player.setpos x 15700" },
+    { "cmd": "console", "command": "player.setpos y -15300" },
+    { "cmd": "console", "command": "player.setpos z -4650" },
+    { "cmd": "console", "command": "player.setangle z 180" },
+    { "cmd": "wait", "seconds": 2 },
+    { "label": "MSC takes him there", "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
+    { "label": "the van stops the arrows through it and the bandit walks round it", "cmd": "pr.hitbox", "expect": [
+      // Every arrow through the van stops at it, none reaches Kumpo; the control arrows from his side do reach him.
+      "through == 8", "throughStopped == 8", "throughOnKumpo == 0", "side == 4", "sideOnKumpo >= 3",
+      // The melee bandit walks round the van to Kumpo, never through it.
+      "meleeInside == 0", "meleeClosest < 400"] }
+  ]
+}

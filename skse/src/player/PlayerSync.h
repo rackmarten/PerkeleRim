@@ -32,6 +32,7 @@ namespace PerkeleRim::PlayerSync
     // hands over by itself after a load), a Unity KeyCode held for MSC on top of what
     // the devices hold (until let go or the release), and mouse counts as a mouse move brings them.
     void DebugHandOver();
+    void DebugTakeBack();  // Skyrim takes the player back, as F10 does while MSC has him (the test kit's pr.msc on=false)
     void DebugHold(std::uint16_t a_keyCode, bool a_held);
     void DebugMouse(std::int32_t a_dx, std::int32_t a_dy);
 }

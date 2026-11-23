@@ -1,3 +1,7 @@
 [submodule "skse/extern/CommonLibSSE-NG"]
 	path = skse/extern/CommonLibSSE-NG
 	url = https://github.com/alandtse/CommonLibSSE-NG.git
+[submodule "skse/extern/skse-test-kit"]
+	path = skse/extern/skse-test-kit
+	url = https://github.com/rackmarten/skse-test-kit.git
+	update = none

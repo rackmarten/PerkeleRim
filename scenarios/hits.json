@@ -1,0 +1,20 @@
+// The hit test: PerkeleRim's attacks on a Whiterun guard placed just ahead with its AI off, nobody at the keys
+// (protocol/cpp/hit_test.h's scenarios, skse/src/debug/HitTest.cpp). scripts/hit-test.ps1 runs it, or
+// scripts/skytest.ps1 run scenarios/hits.json in a running session (scenarios/README.md).
+{
+  "name": "hits",
+  "steps": [
+    // Open grass south of the garage's shack (the starter save wakes Kumpo inside it, and thrown bottles would hit its
+    // planks), facing south, away from the buildings. Skyrim takes him for the move, MSC takes him again there.
+    { "label": "Skyrim takes Kumpo", "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "cmd": "console", "command": "player.setpos x 15700" },
+    { "cmd": "console", "command": "player.setpos y -15300" },
+    { "cmd": "console", "command": "player.setpos z -4650" },
+    { "cmd": "console", "command": "player.setangle z 180" },
+    { "cmd": "wait", "seconds": 2 },
+    { "label": "on the grass south of the shack", "cmd": "state", "ref": "player", "expect": ["position.y < -15200", "dead == false"] },
+    { "label": "MSC takes him there", "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
+    { "label": "every attack lands as damage.h says", "cmd": "pr.hits", "scenarios": "all", "expect": ["failed == 0", "rows >= 16"] },
+    { "label": "sober again", "cmd": "pr.send", "line": "drunk 0" }
+  ]
+}

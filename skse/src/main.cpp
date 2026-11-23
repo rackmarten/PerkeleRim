@@ -7,6 +7,7 @@
 #include "combat/Combat.h"
 #include "death/Death.h"
 #include "debug/HitTest.h"
+#include "debug/TestKit.h"
 #include "drink/Drink.h"
 #include "fuel/Fuel.h"
 #include "garage/Garage.h"
@@ -30,10 +31,14 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
         SKSE::GetPluginVersion().string("."),
         a_skse->RuntimeVersion().string("."));
 
+    // Dev builds only, and only with a [Test] section in PerkeleRim.ini: before anything else, so Skyrim's window is
+    // hidden from the start.
+    PerkeleRim::TestKit::Load();
     PerkeleRim::LinkService::Start();
     PerkeleRim::PlayerSync::Install();
     PerkeleRim::Cosave::Install();
     SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
+        PerkeleRim::TestKit::OnMessage(a_msg);
         if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
             PerkeleRim::PlayerSync::OnDataLoaded();
             PerkeleRim::Garage::OnDataLoaded();
@@ -47,7 +52,6 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::NeedEffects::OnDataLoaded();
             PerkeleRim::Autoload::OnDataLoaded();
             PerkeleRim::Rest::OnDataLoaded();
-            PerkeleRim::HitTest::OnDataLoaded();
             PerkeleRim::MscMenuView::OnDataLoaded();
             PerkeleRim::Blackout::OnDataLoaded();
         } else if (a_msg->type == SKSE::MessagingInterface::kPreLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {

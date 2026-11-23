@@ -4,6 +4,7 @@
 
 #include "Ini.h"
 #include "model/ModelView.h"
+#include "vehicle/HitboxTest.h"
 
 namespace PerkeleRim::Hitbox
 {
@@ -329,11 +330,10 @@ namespace PerkeleRim::Hitbox
 
         // Every projectile Skyrim stopped at one of the capsules (its impact names the capsule's
         // collision object): counted once and logged, so a test can tell an arrow at the van from one
-        // that fell short. Only with HitboxTest=1 in PerkeleRim.ini.
+        // that fell short. Only while the hitbox test runs (HitboxTest.h).
         void CountHits(Body& a_body)
         {
-            static const bool testing = Ini::Value("HitboxTest") == "1";  // only the hitbox test reads them
-            if (!testing) {
+            if (!HitboxTest::Running()) {  // only the hitbox test reads them
                 return;
             }
             auto* manager = RE::Projectile::Manager::GetSingleton();
@@ -493,6 +493,11 @@ namespace PerkeleRim::Hitbox
         }
         a_box = bodies[a_vehicle - 1].box;
         return true;
+    }
+
+    std::uint32_t CapsuleLayer()
+    {
+        return Layer();
     }
 
     std::uint32_t Hits(std::uint32_t a_vehicle)

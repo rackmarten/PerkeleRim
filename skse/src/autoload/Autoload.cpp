@@ -1,6 +1,7 @@
 #include "autoload/Autoload.h"
 
 #include "Ini.h"
+#include "debug/TestKit.h"
 
 namespace PerkeleRim::Autoload
 {
@@ -67,8 +68,9 @@ namespace PerkeleRim::Autoload
         public:
             RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
             {
+                // A test session (debug/TestKit.h) has its own start state: the kit takes the main menu from there.
                 if (!started && a_event && a_event->opening && a_event->menuName == RE::MainMenu::MENU_NAME &&
-                    std::filesystem::exists(kFlagFile)) {
+                    std::filesystem::exists(kFlagFile) && !TestKit::Active()) {
                     started = loading = true;
                     SKSE::log::info("autoload: main menu, loading the newest save");
                     SKSE::GetTaskInterface()->AddTask([]() { LoadNewestSave(); });

@@ -33,20 +33,49 @@ if (-not $env:VT_API_KEY) {
 
 $api = 'https://www.virustotal.com/api/v3'
 $headers = @{ 'x-apikey' = $env:VT_API_KEY }
-# Files over 32 MB go to an upload URL of their own; the free API allows 4 requests a minute.
-$uploadUrl = if ((Get-Item -LiteralPath $Path).Length -gt 32MB) { (Invoke-RestMethod -Headers $headers "$api/files/upload_url").data } else { "$api/files" }
-$analysis = (Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers $headers -Form @{ file = Get-Item -LiteralPath $Path }).data.id
-Write-Host "Uploaded $($result.file) to VirusTotal (analysis $analysis), waiting for the scan"
+
+# The HTTP status of a failed request, 0 when it isn't one.
+function Get-Status($record) {
+    $response = $record.Exception.Response
+    if ($response) { [int] $response.StatusCode } else { 0 }
+}
+
+# The file's report by its SHA-256, $null until VirusTotal has scanned it (404, or no engine results yet).
+# The report is what the release notes link to, so waiting on it, not on the upload's analysis id,
+# also covers a file that was sent before (a rerun of the workflow).
+function Get-Report {
+    try {
+        $attributes = (Invoke-RestMethod -Headers $headers "$api/files/$sha256").data.attributes
+    } catch {
+        if ((Get-Status $_) -eq 404) { return $null }
+        throw
+    }
+    if ($attributes.last_analysis_results -and @($attributes.last_analysis_results.PSObject.Properties).Count -gt 0) { $attributes } else { $null }
+}
 
 $result.status = 'queued'
-$deadline = (Get-Date).AddMinutes($WaitMinutes)
-while ((Get-Date) -lt $deadline) {
-    Start-Sleep -Seconds 30
-    $attributes = (Invoke-RestMethod -Headers $headers "$api/analyses/$analysis").data.attributes
-    if ($attributes.status -eq 'completed') {
-        $result.status = 'completed'
-        $result.stats = $attributes.stats
-        break
+$report = Get-Report
+if ($report) {
+    Write-Host "$($result.file) was scanned on VirusTotal before"
+} else {
+    # Files over 32 MB go to an upload URL of their own; the free API allows 4 requests a minute.
+    $uploadUrl = if ((Get-Item -LiteralPath $Path).Length -gt 32MB) { (Invoke-RestMethod -Headers $headers "$api/files/upload_url").data } else { "$api/files" }
+    try {
+        $analysis = (Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers $headers -Form @{ file = Get-Item -LiteralPath $Path }).data.id
+        Write-Host "Uploaded $($result.file) to VirusTotal (analysis $analysis), waiting for the scan"
+    } catch {
+        # An earlier run's upload of the same file is still being scanned: wait for that one.
+        if ((Get-Status $_) -ne 409) { throw }
+        Write-Host "$($result.file) is already being scanned on VirusTotal, waiting for that scan"
     }
+    $deadline = (Get-Date).AddMinutes($WaitMinutes)
+    while (-not $report -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 30
+        $report = Get-Report
+    }
+}
+if ($report) {
+    $result.status = 'completed'
+    $result.stats = $report.last_analysis_stats
 }
 Save-Result
