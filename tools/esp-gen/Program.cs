@@ -317,6 +317,7 @@ var mapMarker = new FormKey(skyrim.ModKey, 0x000010);
 
 nextId = 0xA00;
 var pumpSpots = new List<PlacedObject>();
+var pumpMapMarkers = new List<PlacedObject>();  // each pump's map marker, in the same order
 var stationMarkers = new List<PlacedObject>();
 var stationPieces = new List<PlacedObject>();
 foreach (var st in stations)
@@ -367,6 +368,7 @@ foreach (var st in stations)
     var onMap = Put(mapMarker, 0f, markerY, Ground(0f, markerY), 0f, persistent: true);
     onMap.MapMarker = new MapMarker { Flags = MapMarker.Flag.Visible, Name = $"{st.Name} Dwemer Oil", Type = MapMarker.MarkerType.Smelter };
     stationMarkers.Add(onMap);
+    pumpMapMarkers.Add(onMap);
 
     float pumpGround = Ground(0f, pumpY);
     stationPieces.Add(Put(Base(skyrim.Statics, "DwePipeBoiler02"), 0f, pumpY, pumpGround - 10f, 0f));
@@ -796,6 +798,12 @@ foreach (var spot in pumpSpots)
     pumpList.Items.Add(new FormLink<ISkyrimMajorRecordGetter>(spot.FormKey));
 mod.FormLists.Add(pumpList);
 Console.WriteLine($"  980 {pumpList.EditorID} ({pumpList.Items.Count} pumps)");
+// And their map markers in the same order, whose names the low-fuel line gives (skse/src/fuel/Fuel.cpp).
+var pumpMarkerList = new FormList(new FormKey(mod.ModKey, 0x981), SkyrimRelease.SkyrimSE) { EditorID = "PerkeleRimFuelPumpMarkers" };
+foreach (var onMap in pumpMapMarkers)
+    pumpMarkerList.Items.Add(new FormLink<ISkyrimMajorRecordGetter>(onMap.FormKey));
+mod.FormLists.Add(pumpMarkerList);
+Console.WriteLine($"  981 {pumpMarkerList.EditorID} ({pumpMarkerList.Items.Count} map markers)");
 
 mod.ModHeader.Stats.NextFormID = Math.Max(stationsNextId, teimoNextId);  // past every record id (the stations from 0xA00, Teimo from 0xB00)
 // Header 1.70, not Mutagen's 1.71: Skyrim SE 1.5.97 skips 1.71 plugins, AE loads both.

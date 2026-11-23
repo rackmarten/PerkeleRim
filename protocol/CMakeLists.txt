@@ -55,6 +55,7 @@ add_executable(protocol_tests
     tests/cpp/test_blackout.cpp
     tests/cpp/test_held_drink.cpp
     tests/cpp/test_bystanders.cpp
+    tests/cpp/test_fuel_hint.cpp
     tests/cpp/test_teimo.cpp
 )
 if(WIN32)

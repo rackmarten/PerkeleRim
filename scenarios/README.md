@@ -16,6 +16,7 @@ either game.
 | `test-kit-smoke.json` | MSC has Kumpo, the player is in the world, MSC's debug commands reach it, PerkeleRim's commands are there | under 1 s |
 | `hits.json` | the hit test (`scripts/hit-test.ps1`): punches sober and drunk, a thrown bottle, thrown junk, bottles drunk and drunker at a Whiterun guard with its AI off, each attack's damage against `protocol/cpp/damage.h` and the guard's health; a row per attack in `step-9-rows.csv` | 73 to 92 s |
 | `hitbox.json` | the hitbox test (`scripts/hitbox-test.ps1`): the van called in front of Kumpo, 8 arrows shot at him through it (all stop at the van), 4 from his side (they reach him), a melee bandit behind it who walks round it to him, never through; every line of the test in `step-8-rows.csv` | 65 s |
+| `fuel-hint.json` | where to refuel: Kumpo at the van's wheel in Riverwood (`drive HAYOSIKO`, then Return), the tank set full, low and dry; a full tank has no fuel line, a low one names the nearest pump with its distance and direction ("Fuel 6.0 / 40 L. Whiterun Dwemer Oil ..."), a dry one shows the tow tip once; pictures with the HUD of the low and the dry tank | 20 s (Riverwood's load included) |
 | `teimo.json` | Teimo at his stall in Riverwood: drawn as MSC's Teimo behind the counter (pictures from the front, close up, the side and above), Kumpo walking up to the counter and Teimo greeting him with a caption, turning to him, small talk while he hangs about, and his answer to the middle finger; which line he said each time (`pr.teimo`'s `lastClip`, `PerkeleRim.log`'s `teimo: says`) | 34 s |
 | `teimo-drunk.json` | Kumpo walking up drunk (MSC drunk 2): Teimo greets him, then remarks on the drink with a caption; backing off past 8 m gets his goodbye | 26 s |
 | `whirlwind-sprint.json` | Whirlwind Sprint while MSC has Kumpo: the van called in front of him stops a dash, one word dashes him about 15 m the way he faces, three about 30 m, Fire Breath doesn't move him (`pr.shout`, so not the Z key itself) | 15 to 17 s |
@@ -35,6 +36,9 @@ in a hidden session:
 - `van-lights.json` (5 runs): the low beams put out darkened the ground ahead by 42 luma (86 to 44, two thirds of its pixels), the
   ground beside the van rose by 0.9 (eye adaptation); MSC switching every lamp off darkened the ground ahead by 47 to 57.
 - `whirlwind-sprint.json` (23 November 2026, 3 runs, one right after `hitbox.json`): 15.0 and 30.0 m on open grass, 3.0 to 3.2 m into the van (MSC logs `stopped by a wall`), 0 for Fire Breath.
+- `fuel-hint.json` (23 November 2026, 1 run): 27 of 27 steps; with the van 481 m south of the Whiterun pump spot (bearing
+  352 degrees) the line read "Fuel 6.0 / 40 L. Whiterun Dwemer Oil 480 m north", then "Fuel 0.1 / ..." with the tow tip top
+  left, above the needs bars; the fuel line on its box above the gear, clear of everything else.
 
 - `teimo.json` (3 runs in one session, 23 November 2026): 27 of 27 steps each. Teimo said a different greeting, story and answer
   to the finger each run (`paivaa5`, `random8`, `keskari4`; `paivaa7`, `random17`, `keskari5`; `paivaa2`, `random4`, `keskari4`), the
@@ -54,10 +58,11 @@ Start from the closest file. Steps are the kit's requests (`docs/COMMANDS.md` in
 | Command | What it does |
 |---|---|
 | `pr.msc [on=<bool>]` | Kumpo to MSC (the default) or back to Skyrim, as F10 does; answers once it's done (`msc`, `seated`) |
-| `pr.send <line>` | a line for MSC's debug commands (`msc/src/Spike/SpikeHost.cs`): `drunk 2`, `lightson 1`, `time 6`, `hold 0`, ... |
+| `pr.send <line>` | a line for MSC's debug commands (`msc/src/Spike/SpikeHost.cs`): `drunk 2`, `lightson 1`, `time 6`, `hold 0`, `drive HAYOSIKO` (into the van's driving trigger; `pr.key 13`, Return, then gets in), `fsmvar FuelTank Data FuelLevel 6` (every tank's level), ... |
 | `pr.key <Unity KeyCode> [seconds=<s>]` | holds one of MSC's keys (93 is ] to call the van, 104 H to punch) |
 | `pr.shout [words] [shout=<hex>] [seconds=<s>]` | tells MSC the player shouted, as Combat does when a shout is released (Whirlwind Sprint unless `shout=`, 3 words by default), and answers 2 s later with how far Kumpo went, flat, in metres (`moved`) |
 | `pr.call [vehicle]` | calls the van (]) or the moped ([) and answers once it stands solid in Skyrim, with where it is |
+| `pr.fuel` | the fuel line as Skyrim shows it (`line`, with the nearest pump on a low tank), MSC's `low` and `dry` flags for it, and whether this save had the tow tip (`tipped`) |
 | `pr.vehicle [vehicle]` | a vehicle MSC has on the island: where, how fast, drawn, solid, which of its lights are on (`lightRolesOn`: 1 low, 2 high, 3 tail, 4 brake, 5 reverse, 6 cabin, 7 work, 8 beacon) |
 | `pr.hits [scenarios] [target=<hex>]` | the hit test, a row per attack |
 | `pr.hitbox` | the hitbox test, a row per line it logs |

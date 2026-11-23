@@ -1,5 +1,6 @@
 #include "save/Cosave.h"
 
+#include "fuel/Fuel.h"
 #include "garage/Garage.h"
 #include "needs/NeedEffects.h"
 #include "save/SaveSync.h"
@@ -15,6 +16,7 @@ namespace PerkeleRim::Cosave
             Garage::Save(a_intfc);
             SaveSync::Save(a_intfc);
             NeedEffects::Save(a_intfc);
+            Fuel::Save(a_intfc);
         }
 
         void Load(SKSE::SerializationInterface* a_intfc)
@@ -22,7 +24,7 @@ namespace PerkeleRim::Cosave
             std::uint32_t type, version, length;
             while (a_intfc->GetNextRecordInfo(type, version, length)) {
                 if (!Garage::Read(a_intfc, type, version) && !SaveSync::Read(a_intfc, type, version) &&
-                    !NeedEffects::Read(a_intfc, type, version)) {
+                    !NeedEffects::Read(a_intfc, type, version) && !Fuel::Read(a_intfc, type, version)) {
                     SKSE::log::warn("cosave: unknown record {:08X} v{}, skipped", type, version);
                 }
             }
@@ -34,6 +36,7 @@ namespace PerkeleRim::Cosave
             Garage::Revert();
             SaveSync::Revert();
             NeedEffects::Revert();
+            Fuel::Revert();
         }
     }
 

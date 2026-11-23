@@ -11,7 +11,7 @@ namespace PerkeleRim
     // north). Unity-free.
     public static class Fuel
     {
-        public const float TowFee = 50f;          // marks (gold) to tow a dry vehicle onto a pump
+        public const float TowFee = 50f;          // marks (gold) to tow a dry vehicle onto a pump; Skyrim's dry tip says it too (protocol/cpp/fuel_hint.h kTowFee, tested)
         public const float FreeTowReach = 7000f;  // units (100 m): a dry vehicle this close to the pump is towed for nothing
         public const float TowReach = 2100f;      // units (30 m): a call this close to a pump tows
         public const float LaneOffset = 134f;     // units from the pump's spot to the lane's middle
@@ -89,6 +89,14 @@ namespace PerkeleRim
         public static bool Dry(float level) => level <= DryLevel;
 
         public static bool Low(float level, float capacity) => capacity > 0f && level < capacity * LowShare;
+
+        // FuelText's flags for the driven tank: low under a quarter (Skyrim adds the nearest pump to
+        // the low line), dry too at DryLevel or below (Skyrim's one-time tip about the tow).
+        public static uint LineFlags(float level, float capacity)
+        {
+            if (!Low(level, capacity)) return 0u;
+            return Dry(level) ? Wire.FuelTextLow | Wire.FuelTextDry : Wire.FuelTextLow;
+        }
 
         // Pays for poured litres at price marks a litre out of money (MSC's PlayerMoney, pennies
         // kept) and returns the litres paid for: all of them, or what the money covers (the caller
