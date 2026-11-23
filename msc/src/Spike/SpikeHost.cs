@@ -38,6 +38,9 @@ namespace PerkeleRim.Spike
     //   spawn <product> [n]  a shop product in front of the player, from its Spawner/CreateItems FSM
     //                        (spawn Sausages 2; Pizza, Chips, MacaronBox, Cigarettes, Beer, ...)
     //   event <NAME>         broadcast a global PlayMaker event (DRINKBEER: the beer drinking animation)
+    //   aim <words>          stand at the nearest control surface ("Use" FSM) with those words in its path, looking
+    //                        at it (aim doorl Handle); a second later, what the crosshair is on and MSC's prompt.
+    //                        aim up: looks at the sky, where nothing has a prompt; aim stop: lets go of the look
     //   textures <name>      read an object's model (GameObject.Find) without sending it and log it
     //   shot                 MSC's view to <MSC>/PerkeleRim_shot.png, the way F11 saves it (ViewShot)
     //   override on|off      InputShim on/off with nothing pressed (on: the link no longer feeds it)
@@ -138,6 +141,146 @@ namespace PerkeleRim.Spike
                 return;
             }
             SpikeLog.Write("cmd: goto: nothing named " + text);
+        }
+
+        // Stands the player at the nearest control surface (an enabled "Use" FSM with an enabled collider, within
+        // AimReach) whose path has every word of text, facing it: on the ground straight out from the
+        // vehicle's side, 0.4 m from it (well within the 1 m reach of doors and switches), PLAYER turned to it,
+        // the camera's MouseLook pitched at it; and keeps him looking at it for AimHold seconds, aiming again
+        // from where the camera is as he settles. Logs the candidates, then a second on what the crosshair is
+        // on and MSC's prompt (GUIuse, GUIinteraction): the test kit's look-at check (scenarios/look-at.json).
+        // "aim up" looks at the sky instead, where nothing has a prompt; "aim stop" ends a hold. AimReach covers the
+        // van on the garage's pit seen from the shack.
+        const float AimReach = 60f;
+        const int AimHold = 10;  // longer than a scenario's wait for the hand and its look a moment later
+        int aims;  // a new aim ends the last one's hold
+
+        void Aim(string text)
+        {
+            var player = GameObject.Find("PLAYER");
+            var cam = Camera.main;
+            if (player == null || cam == null) { SpikeLog.Write("cmd: aim: no PLAYER or no Camera.main"); return; }
+            aims++;
+            if (text.Length == 0) { SpikeLog.Write("cmd: aim <words in a control surface's path> (aim doorl Handle), aim up or aim stop"); return; }
+            if (text.Equals("stop", StringComparison.OrdinalIgnoreCase)) { SpikeLog.Write("cmd: aim: stopped"); return; }
+            if (text.Equals("up", StringComparison.OrdinalIgnoreCase))
+            {
+                SpikeLog.Write("cmd: aim: up, " + Pitch(cam.transform, player.transform, 80f));
+                return;
+            }
+            var words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            PlayMakerFSM best = null;
+            float bestDistance = AimReach;
+            int n = 0;
+            foreach (var fsm in FindObjectsOfType<PlayMakerFSM>())
+            {
+                var collider = fsm.GetComponent<Collider>();
+                if (fsm.FsmName != "Use" || !fsm.enabled || collider == null || !collider.enabled) continue;
+                var path = FullPath(fsm.transform);
+                bool all = true;
+                foreach (var w in words) all &= path.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!all) continue;
+                float d = Vector3.Distance(player.transform.position, fsm.transform.position);
+                if (d >= AimReach) continue;
+                if (++n <= 12) SpikeLog.Write($"cmd: aim: candidate {path} [{fsm.ActiveStateName}] {d:0.0} m");
+                if (d < bestDistance) { best = fsm; bestDistance = d; }
+            }
+            if (best == null) { SpikeLog.Write($"cmd: aim: no control surface within {AimReach} m with '{text}' in its path"); return; }
+            StartCoroutine(AimAt(best, player.transform));
+        }
+
+        System.Collections.IEnumerator AimAt(PlayMakerFSM target, Transform player)
+        {
+            var at = target.GetComponent<Collider>().bounds.center;
+            var root = target.transform.root;
+            // Straight out from the vehicle's side the surface is on (its right or left), else from its front or back.
+            var offset = at - root.position;
+            float side = Vector3.Dot(offset, root.right), along = Vector3.Dot(offset, root.forward);
+            var away = Mathf.Abs(side) >= 0.3f ? root.right * Mathf.Sign(side) : root.forward * Mathf.Sign(along);
+            away.y = 0f;
+            if (away.sqrMagnitude < 0.01f) { away = player.position - at; away.y = 0f; }
+            away.Normalize();
+            // On the ground there, as high above it as the player stands now (the vehicle may be on other ground).
+            float below;
+            float feet = Ground(player.position, 5f, player, player, out below) ? below : 0f;
+            var stand = at + away * 0.4f;
+            var top = new Vector3(stand.x, at.y + 1.5f, stand.z);
+            // Not the vehicle's own mirrors and doors (the whole vehicle when the root is one, a rigidbody; else
+            // the surface's own body), nor the player: a house's switch keeps the floor below it.
+            var body = target.GetComponent<Collider>().attachedRigidbody;
+            var skip = root.GetComponent<Rigidbody>() != null ? root : body != null ? body.transform : target.transform;
+            stand.y = Ground(top, 6f, skip, player, out below) ? top.y - below + feet : player.position.y;
+            player.position = stand;
+            int generation = ++aims;
+            for (int pass = 0; pass < AimHold * 4 && generation == aims; pass++)
+            {
+                if (target == null || !target.gameObject.activeInHierarchy) { SpikeLog.Write("cmd: aim: the target went away"); yield break; }
+                var cam = Camera.main;
+                if (cam == null) { SpikeLog.Write("cmd: aim: no Camera.main"); yield break; }
+                var look = at - cam.transform.position;
+                float yaw = Mathf.Atan2(look.x, look.z) * Mathf.Rad2Deg;
+                float pitch = Mathf.Atan2(look.y, new Vector2(look.x, look.z).magnitude) * Mathf.Rad2Deg;
+                player.rotation = Quaternion.Euler(0f, yaw, 0f);
+                var how = $"player at {player.position}, eye {look.magnitude:0.00} m away, yaw {yaw:0}, {Pitch(cam.transform, player, pitch)}";
+                if (pass == 0) SpikeLog.Write($"cmd: aim: {FullPath(target.transform)} [{target.ActiveStateName}], {how}");
+                if (pass == 4) AimReport(target, how);  // a second on
+                yield return new WaitForSeconds(0.25f);  // he settles, the camera sways: aim again from where it is
+            }
+        }
+
+        // How far below from the ground is: the nearest solid hit down from there, not a trigger and nothing
+        // under skip or player.
+        static bool Ground(Vector3 from, float reach, Transform skip, Transform player, out float below)
+        {
+            below = float.MaxValue;
+            foreach (var hit in Physics.RaycastAll(from, Vector3.down, reach))
+            {
+                var t = hit.collider.transform;
+                if (!hit.collider.isTrigger && !t.IsChildOf(skip) && !t.IsChildOf(player) && hit.distance < below) below = hit.distance;
+            }
+            return below < float.MaxValue;
+        }
+
+        // What the crosshair is on (within the 1 m reach of doors and switches) and MSC's prompt.
+        static void AimReport(PlayMakerFSM target, string how)
+        {
+            var camera = Camera.main;
+            var hits = new List<string>();
+            if (camera != null)
+                foreach (var hit in Physics.RaycastAll(camera.ScreenPointToRay(InputShim.get_mousePosition()), 1f, camera.cullingMask))  // 1 m: the reach on doors and switches
+                    hits.Add($"{hit.collider.transform.parent?.name}/{hit.collider.name} (layer {hit.collider.gameObject.layer}) at {hit.distance:0.00} m");
+            string under = hits.Count > 0 ? string.Join(", ", hits.ToArray()) : "nothing within 1 m";
+            var g = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
+            var use = g.FindFsmBool("GUIuse");
+            var interaction = g.FindFsmString("GUIinteraction");
+            SpikeLog.Write($"cmd: aim: a second on the crosshair is on {under}; {target.name} [{target.ActiveStateName}], " +
+                           $"GUIuse {(use != null && use.Value)}, GUIinteraction '{(interaction != null ? interaction.Value : "")}'; {how}");
+        }
+
+        // Pitches MSC's camera (its MouseLook's rotationY, degrees up) on the way from the camera up to PLAYER.
+        static string Pitch(Transform camera, Transform player, float degrees)
+        {
+            var pitched = new List<string>();
+            var seen = new List<string>();
+            const System.Reflection.BindingFlags Fields = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
+            for (var t = camera; t != null && t != player; t = t.parent)
+                foreach (var c in t.GetComponents<MonoBehaviour>())
+                {
+                    if (c == null) continue;
+                    var field = c.GetType().GetField("rotationY", Fields);
+                    if (field == null || field.FieldType != typeof(float)) { seen.Add($"{t.name}:{c.GetType().Name}"); continue; }
+                    field.SetValue(c, degrees);
+                    pitched.Add($"{t.name}:{c.GetType().Name}");
+                }
+            return pitched.Count > 0 ? $"pitch {degrees:0} on {string.Join(", ", pitched.ToArray())}"
+                                     : "nothing to pitch on the camera's way up: " + string.Join(", ", seen.ToArray());
+        }
+
+        static string FullPath(Transform t)
+        {
+            var path = t.name;
+            for (var p = t.parent; p != null; p = p.parent) path = p.name + "/" + path;
+            return path;
         }
 
         // Every particle system (Shuriken and legacy ParticleEmitter), inactive ones too, filtered by a
@@ -514,6 +657,9 @@ namespace PerkeleRim.Spike
                             SpikeLog.Write("cmd: time" + PerkeleRim.Game.RestLink.ClockMove(hours));
                         else
                             SpikeLog.Write("cmd: time <hours, 0..48>");
+                        break;
+                    case "aim":  // "aim HAYOSIKO door": the player in front of the nearest control surface ("Use" FSM) whose path has those words, looking at it
+                        Aim(lines[0].Trim().Substring(3).Trim());
                         break;
                     case "goto":  // "goto chair_pub 2" puts the player 1 m above the first object with that name (inactive ones too)
                         Goto(lines[0].Trim().Substring(4).Trim());

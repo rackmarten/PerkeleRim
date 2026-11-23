@@ -1,0 +1,56 @@
+// MSC's look-at prompt on its control surfaces with MSC's window never focused by the test: the hand on the van's
+// driver door handle right after the session starts, after a load (as a quickload does), and with the van called on
+// open grass. Each time Kumpo first looks at the sky (MSC's `aim up`: no prompt there), then MSC's `aim doorl Handle`
+// stands him at the handle and keeps him looking at it (up to 10 s, `aim stop` lets go after the picture), and MSC's
+// hand has to come: pr.lookat is MSC's prompt as Skyrim got it, the screenshots have the HUD on. scripts/skytest.ps1 run scenarios/look-at.json in a running session.
+// MSC's own lines are in its folder: `cmd: aim:` (the candidates, where it stood him, then what the crosshair is on a
+// second later, the handle's FSM state and MSC's GUIuse) in PerkeleRim_spike.log, `look-at:` (focus changes, a control
+// surface under the crosshair with no prompt) in output_log.txt.
+{
+  "name": "look-at",
+  "steps": [
+    // Right after the start (or the last load): the van where the save has it, on the garage's pit, no F10 in between.
+    { "label": "MSC has Kumpo", "cmd": "pr.msc", "expect": ["msc == true"] },
+    { "label": "Kumpo looks at the sky", "cmd": "pr.send", "line": "aim up" },
+    { "label": "no prompt there", "cmd": "wait", "until": "hand == false", "for": "pr.lookat", "timeout": 3 },
+    { "label": "Kumpo at the van's driver door, looking at its handle", "cmd": "pr.send", "line": "aim doorl Handle" },
+    { "label": "MSC shows its hand on the handle, and Skyrim has it", "cmd": "wait", "until": "hand == true", "for": "pr.lookat", "timeout": 6 },
+    { "cmd": "wait", "seconds": 1.5 },
+    { "label": "and keeps it there", "cmd": "pr.lookat", "expect": ["hand == true"] },
+    { "label": "the hand under Skyrim's crosshair", "cmd": "screenshot", "name": "handle-after-start", "hud": true },
+    { "label": "Kumpo looks where he likes again", "cmd": "pr.send", "line": "aim stop" },
+
+    // A load, as a quickload does: play mode hands Kumpo to MSC by itself once the game has settled. He wakes up in the
+    // shack, and MSC's wake-up holds him for about 10 s; then the van comes to him.
+    { "label": "load the starter save", "cmd": "pr.load", "save": "PerkeleRim-Kumpo" },
+    { "label": "MSC has Kumpo again", "cmd": "pr.msc", "timeout": 120, "expect": ["msc == true"] },
+    { "cmd": "wait", "seconds": 15 },
+    { "label": "the van comes", "cmd": "pr.call", "vehicle": "van", "expect": ["drawn == true", "solid == true"] },
+    { "label": "Kumpo looks at the sky", "cmd": "pr.send", "line": "aim up" },
+    { "label": "no prompt there", "cmd": "wait", "until": "hand == false", "for": "pr.lookat", "timeout": 3 },
+    { "label": "Kumpo at the driver door again", "cmd": "pr.send", "line": "aim doorl Handle" },
+    { "label": "after the load too, MSC shows its hand on the handle", "cmd": "wait", "until": "hand == true", "for": "pr.lookat", "timeout": 6 },
+    { "cmd": "wait", "seconds": 1.5 },
+    { "label": "and keeps it there", "cmd": "pr.lookat", "expect": ["hand == true"] },
+    { "label": "the hand under Skyrim's crosshair after the load", "cmd": "screenshot", "name": "handle-after-load", "hud": true },
+    { "label": "Kumpo looks where he likes again", "cmd": "pr.send", "line": "aim stop" },
+
+    // The van called on the open grass south of the shack (Skyrim takes Kumpo there, MSC takes him again).
+    { "label": "Skyrim takes Kumpo", "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "cmd": "console", "command": "player.setpos x 15700" },
+    { "cmd": "console", "command": "player.setpos y -15300" },
+    { "cmd": "console", "command": "player.setpos z -4650" },
+    { "cmd": "console", "command": "player.setangle z 180" },
+    { "cmd": "wait", "seconds": 2 },
+    { "label": "MSC takes him there", "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
+    { "label": "the van comes", "cmd": "pr.call", "vehicle": "van", "expect": ["drawn == true", "solid == true"] },
+    { "label": "Kumpo looks at the sky", "cmd": "pr.send", "line": "aim up" },
+    { "label": "no prompt there", "cmd": "wait", "until": "hand == false", "for": "pr.lookat", "timeout": 3 },
+    { "label": "Kumpo at its driver door", "cmd": "pr.send", "line": "aim doorl Handle" },
+    { "label": "on the open grass, MSC shows its hand on the handle", "cmd": "wait", "until": "hand == true", "for": "pr.lookat", "timeout": 6 },
+    { "cmd": "wait", "seconds": 1.5 },
+    { "label": "and keeps it there", "cmd": "pr.lookat", "expect": ["hand == true"] },
+    { "label": "the hand under Skyrim's crosshair, called van", "cmd": "screenshot", "name": "handle-called", "hud": true },
+    { "label": "Kumpo looks where he likes again", "cmd": "pr.send", "line": "aim stop" }
+  ]
+}

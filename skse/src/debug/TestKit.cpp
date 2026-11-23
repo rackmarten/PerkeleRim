@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <functional>
 #include <cmath>
+#include <filesystem>
 #include <memory>
 #include <optional>
 
@@ -42,6 +43,8 @@ namespace PerkeleRim::TestKit
 
         bool g_active = false;
         bool g_exiting = false;  // the process is tearing down: the game can't be driven any more
+        std::uint32_t g_loads = 0;  // kPostLoadGame messages so far, for pr.load
+        bool          g_loaded = false;  // ...and whether the last one loaded
 
         // Runs once when the last copy of a step goes: a request that ends, times out or whose client goes (the kit
         // drops its step then). For what a task started that would outlive it: a test driver, a held key. Harmless
@@ -471,6 +474,84 @@ namespace PerkeleRim::TestKit
                     return DescribeVehicle(id, state);
                 });
 
+            SkseTestKit::AddTask("pr.load", "<save>",
+                "Loads a save in the running game, as a quickload does (pr.load PerkeleRim-Kumpo, the starter save); answers once it's "
+                "loaded. Play mode hands the player to MSC by itself a little later: pr.msc waits for that",
+                [](Call& a_call) -> Step {
+                    auto name = a_call.Text("save");
+                    if (name.size() > 4 && _stricmp(name.c_str() + name.size() - 4, ".ess") == 0) {
+                        name.resize(name.size() - 4);
+                    }
+                    if (name.empty()) {
+                        throw Error("no save to load");
+                    }
+                    auto* saves = RE::BGSSaveLoadManager::GetSingleton();
+                    if (!saves) {
+                        throw Error("no save manager");
+                    }
+                    // A save that isn't there never sends kPostLoadGame: say so now rather than time out.
+                    std::string folder = "Saves";
+                    auto*       ini = RE::INISettingCollection::GetSingleton();
+                    if (auto* setting = ini ? ini->GetSetting("sLocalSavePath:General") : nullptr; setting && setting->GetString() && *setting->GetString()) {
+                        folder = setting->GetString();
+                    }
+                    if (const auto logs = SKSE::log::log_directory(); logs && !std::filesystem::exists(logs->parent_path() / folder / (name + ".ess"))) {
+                        throw Error(std::format("no save {} in {}", name, (logs->parent_path() / folder).string()));
+                    }
+                    a_call.DefaultTimeout(90.0);
+                    // A failed kPostLoadGame is provisional, as the kit's own start load treats it: with Creations
+                    // installed, Skyrim may report a failure and ask before loading, then load once it's answered.
+                    struct Pending
+                    {
+                        std::uint32_t loads;
+                        bool          answered = false;
+                        int           failures = 0;
+                        double        failedAt = -1.0;  // a_call.Seconds() of a failure no answer explains yet
+                    };
+                    auto pending = std::make_shared<Pending>(Pending{ .loads = g_loads });  // before Load: SKSE may send kPostLoadGame inside it
+                    SKSE::log::info("test kit: loading the save {} (pr.load)", name);
+                    saves->Load(name.c_str(), false);  // returns nothing: kPostLoadGame says how it went
+                    return [pending, name](Call& a_call) -> std::optional<Json> {
+                        if (g_loads != pending->loads) {
+                            pending->loads = g_loads;
+                            if (g_loaded) {
+                                return JsonObject{ { "loaded", name } };
+                            }
+                            if (++pending->failures > 1) {  // twice: it really failed
+                                throw Error(std::format("the save {} didn't load", name));
+                            }
+                            if (!pending->answered) {
+                                pending->failedAt = a_call.Seconds();  // a question has 5 s to explain it
+                            }  // after the answer it was the question's: the load goes on (or times out)
+                        }
+                        // Skyrim's question about installed Creations (the kit answers that only for its start). Matched
+                        // by the English game's text, as the kit's own answer is; answered once.
+                        if (auto* box = RE::MessageBoxMenu::GetCurrentMessageBoxData(); box && !pending->answered) {
+                            const std::string_view body = box->bodyText.c_str();
+                            if (body.find("continue loading this save") != std::string_view::npos) {
+                                for (std::int32_t i = 0; i < static_cast<std::int32_t>(box->buttonText.size()); i++) {
+                                    if (_stricmp(box->buttonText[i].c_str(), "Yes") == 0) {
+                                        SKSE::log::info("test kit: answering \"{}\" with \"Yes\" (pr.load)", body);
+                                        RE::MessageBoxMenu::SelectOption(i);
+                                        pending->answered = true;
+                                        pending->failedAt = -1.0;  // a failure before it was this question
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (pending->failedAt >= 0.0 && a_call.Seconds() - pending->failedAt > 5.0) {  // and no question came
+                            throw Error(std::format("the save {} didn't load", name));
+                        }
+                        return std::nullopt;
+                    };
+                });
+
+            SkseTestKit::AddCommand("pr.lookat", "", "MSC's look-at prompt as Skyrim last got it: whether MSC shows its hand (doors, switches, knobs) and its text",
+                [](Call&) -> Json {
+                    return JsonObject{ { "msc", PlayerSync::Owned() }, { "hand", PlayerSync::PromptHand() }, { "text", PlayerSync::PromptText() } };
+                });
+
             SkseTestKit::AddCommand("pr.teimo", "", "Teimo at his stall in Riverwood: found, loaded, drawn as MSC's Teimo, where, which way he faces, how far Kumpo is, the last line he said and his caption now",
                 [](Call&) -> Json { return DescribeTeimo(); });
 
@@ -560,6 +641,10 @@ namespace PerkeleRim::TestKit
 
     void OnMessage(SKSE::MessagingInterface::Message* a_message)
     {
+        if (a_message->type == SKSE::MessagingInterface::kPostLoadGame) {
+            g_loaded = a_message->data != nullptr;
+            g_loads++;
+        }
         SkseTestKit::OnMessage(a_message);
     }
 
