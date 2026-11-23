@@ -226,7 +226,9 @@ namespace PerkeleRim.Game
             outgoing.Clear();
             outgoingBytes = 0;
             current = null;
+            var steps = currentSteps as IDisposable;  // a read given up halfway: its finally blocks run
             currentSteps = null;
+            if (steps != null) steps.Dispose();
         }
 
         // At the end of the frame (the textures are copied through a RenderTexture): the models' read
@@ -543,10 +545,17 @@ namespace PerkeleRim.Game
         // root), named name and "name#<n>" from the second submesh on. Steps: the mesh's arrays, each
         // material's textures and bake, each submesh. Stops halfway when the renderer or its mesh is
         // destroyed meanwhile, with materials.Cut set (the caller then takes out what it added).
+        // Not an iterator itself: AddMesh is.
         public IEnumerable AddRenderer(ModelData model, Materials materials, MeshRenderer renderer, Matrix4x4 m, string name, int node, Look look)
         {
             var filter = renderer.GetComponent<MeshFilter>();
-            var mesh = filter != null ? filter.sharedMesh : null;
+            return AddMesh(model, materials, renderer, filter != null ? filter.sharedMesh : null, m, name, node, look);
+        }
+
+        // The same for a mesh drawn with renderer's materials that isn't its MeshFilter's: a
+        // SkinnedMeshRenderer's, baked in its pose (TeimoModel, which owns the baked mesh).
+        public IEnumerable AddMesh(ModelData model, Materials materials, Renderer renderer, Mesh mesh, Matrix4x4 m, string name, int node, Look look)
+        {
             if (mesh == null) yield break;
             // Everything of the mesh at once, so a mesh changed meanwhile can't mix with it.
             var vertices = mesh.vertices;

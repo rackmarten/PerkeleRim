@@ -258,6 +258,20 @@ PassOut's flow: `Test alc` -> `Check hunger` (the Finnish wedding achievement, `
 
 PerkeleRim switches both FSMs off while the link is up and ends one that runs anyway (`msc/src/Game/PassOutGuard.cs`), and blacks the player out its own way instead: Skyrim wakes him at a random map marker (PROTOCOL.md, [Blackouts](PROTOCOL.md#blackouts)).
 
+## 9. Teimo (the store)
+
+Dumped 2026-11-23 with the spike's `teimo` (every Teimo in the scene, what he is made of, his clips) and `dump Teimo`. MSC has four: `STORE/TeimoInShop` behind the counter, `STORE/TeimoInBike` riding home, and the COPS' `CopTeimo1`..`3`. PerkeleRim draws the shop's (`TeimoModel`): one `SkinnedMeshRenderer` (`Pivot/Teimo/bodymesh`) on a skeleton with legacy `Animation` clips (`teimo_cash_register`, `teimo_lean_table_in/out`, `teimo_give_drink`, `teimo_cook`, `teimo_angry`, `fat_walk`, ...), his bicycle beside him (left out), and his FSMs:
+
+| FSM | What it does |
+|---|---|
+| `Pivot/Speak :: Greetings` | `HELLO`: stops the `Teimo` group and plays a random `paivaa1`..`7`. `GOODBYE`: a random `kiitos1`..`5`. `PUB`: the pub lines (`pubi1`..`4`). Each sets `GUIsubtitle` |
+| `Pivot/Speak :: Speak` | While the player is in the store (`Random`): the job offer if one is up, else `Is drunk`: `PlayerDrunk` >= 0.7 plays a random `teimo_huomio_kannin1`..`5` after 2 s; else waits 5 to 15 s, then, within 8 m of the player, a random story (`random1`..`20`), then waits 125 s (or until the player is past 8 m) before the next. At hour 18 (`SUN :: Color` `Time`) `kauppasulkeutuu` instead. Global `FINGER`: angry, then a random `keskari1`..`6` after 2 s |
+| `Pivot/TeimoCollider :: Reaction` | `PISS` on him within 8 m of the player: a random `kusta1`..`3`, angry, the register's `PissedOff`; 20 s before it reacts again |
+| `Pivot/FacePissTrigger :: Reaction` | `PISS` in his face: `kustaan_teimon_naamaan`, the same; 25 s |
+| `TeimoInShop :: Animate`, `Angry` | his animations at the till and the bar, and his angry pose |
+
+PerkeleRim's Teimo (`protocol/cpp/teimo_talk.h`) follows these: the greeting at the counter, the drunk remark from 0.7, a story 10 s after his last line and every 135 s while Kumpo stays within 8 m, the goodbye when he walks off, the finger, the piss and a hit. The stall has no till, phone, pub or closing time, so those lines are left out.
+
 ## Global variables of interest
 
 | Name | Type | Meaning (seen in dump) |
