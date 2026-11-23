@@ -17,14 +17,14 @@
 
 **My Summer Car** and **Skyrim (Special or Anniversary Edition)** run at the same time. Skyrim owns the world and draws everything; My Summer Car runs hidden and simulates Kumpo, the vehicles, the beer and the piss. Drive the Hayosiko van across the Whiterun tundra, get drunk, punch a Thalmor, and take the Kekmet tractor up the Throat of the World.
 
-**v0.2.1.** It's playable start to finish, but it's young: expect bugs, and please [report them](#reporting-bugs).
+**v0.2.2.** It's playable start to finish, but it's young: expect bugs, and please [report them](#reporting-bugs).
 
 ## Install and play
 
 You need:
 
 - Windows 10/11 and a PC that can run both games at once
-- [The Elder Scrolls V: Skyrim Special Edition or Anniversary Edition](https://store.steampowered.com/app/489830/) (latest Steam version, or Special Edition 1.5.97) with [SKSE64](https://skse.silverlock.org) for that version and [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444) (the "Special Edition" file on 1.5.97, "All in one (Anniversary Edition)" otherwise)
+- [The Elder Scrolls V: Skyrim Special Edition or Anniversary Edition](https://store.steampowered.com/app/489830/) (latest Steam version, or Special Edition 1.5.97) with [SKSE64](https://skse.silverlock.org) for that version and [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444) (the "All in one (Anniversary Edition)" file on the current Steam version, "All in one (Special Edition)" only on 1.5.97: see [Which Address Library file?](#which-address-library-file))
 - [My Summer Car](https://store.steampowered.com/app/516750/) (Steam) with [MSCLoader](https://www.nexusmods.com/mysummercar/mods/147)
 
 Then:
@@ -66,6 +66,14 @@ Tip: playing your own character? Make him a male Nord, like the starter save's K
     <td><img src="docs/media/kekmet-crash.jpg" alt="The Kekmet tipped over in the snow at night"></td>
   </tr>
 </table>
+
+### Which Address Library file?
+
+This is the install problem people hit most. Steam's **Skyrim Special Edition** keeps updating itself, and it has run the Anniversary Edition runtime (Skyrim 1.6 or later) for years, with or without the Anniversary upgrade. So on Steam's current Skyrim you need Address Library's **All in one (Anniversary Edition)** file, even though Steam still calls the game Special Edition. Only a Skyrim downgraded to **1.5.97** needs **All in one (Special Edition)** (on Nexus it may be under Archived files).
+
+Both files are called "All in one", so go by the name in brackets. To check which Skyrim you have, right-click `SkyrimSE.exe` in the Skyrim folder, then Properties > Details > File version. In `Data\SKSE\Plugins`, the Anniversary file for your Skyrim is `versionlib-<your Skyrim version>-0.bin` (`versionlib-1-7-104-0.bin` on Skyrim 1.7.104), the Special Edition one `version-1-5-97-0.bin`.
+
+Start PerkeleRim.bat checks this every time: if the file doesn't fit your Skyrim, it says which one you have and which one to install instead. Skyrim's runtime and SKSE have to match too, so after Steam updates Skyrim, update SKSE and Address Library as well.
 
 ## Keys
 
@@ -111,11 +119,12 @@ No dates, just intentions. What comes next depends a lot on what people enjoy, s
 
 **Next**
 
-- **The Satsuma** on the Whiterun tundra, next to the van, moped, Kekmet and Gifu.
-- **Water and swimming**: swim instead of walking on the bottom, drink from lakes and rivers for thirst, and vehicles that don't just drive through water.
+- **The Satsuma in the garage**: it comes over from My Summer Car, body and parts, and Kumpo bolts it together in the garage outside Whiterun.
+- **Teimo in Riverwood**: he turns up with a makeshift stall, starting from scratch, and talks to Kumpo in Finnish the way he does in My Summer Car.
 
 **Later, maybe**
 
+- **Water and swimming**: swim instead of walking on the bottom, drink from lakes and rivers for thirst, and vehicles that don't just drive through water.
 - Delivery jobs for the Gifu, and traffic.
 - More Finnish summer: clear weather, long bright evenings, a sauna by the garage.
 
