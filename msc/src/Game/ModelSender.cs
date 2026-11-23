@@ -78,8 +78,9 @@ namespace PerkeleRim.Game
         // MSC's frames from the link coming up (or Again) until the models have gone out: what a
         // player feels of the reads (logged as "model: link-up: sent ...", "model: models again: ...").
         double lastFrame = -1;
+        int lastCollections;
         FrameWatch watch;
-        double watchStart, idleSince = -1, lastChunkAt, longestGap, longestStepMs;
+        double watchStart, lastWork, lastChunkAt, longestGap, longestStepMs;  // lastWork: a chunk sent, a model read or being read over frames
         long watchReadMs;
         string longestStep, watchWhat;
         int watchModels, watchChunks;
@@ -107,7 +108,7 @@ namespace PerkeleRim.Game
         {
             var key = Key(root, include);
             if (key == null) return 0;
-            return Queue(key, () => Read(root, include), () => root == null, root.name);
+            return Queue(key, () => Read(root, include, key), () => root == null, root.name);
         }
 
         // The id of a model build puts together in one go (an overlay, a particle), known by key and
@@ -147,6 +148,7 @@ namespace PerkeleRim.Game
         {
             if (watch != null) LogWatch(frameClock.Elapsed.TotalMilliseconds, false);  // the stretch before, cut short
             Forget();
+            log($"model: every model goes out again{(cold ? ", read anew under new ids" : "")}");
             if (cold)
             {
                 ids.Clear();
@@ -163,7 +165,12 @@ namespace PerkeleRim.Game
             if (link.IsUp != wasUp)
             {
                 wasUp = link.IsUp;
-                if (!wasUp) Forget();
+                if (!wasUp)
+                {
+                    if (watch != null) LogWatch(frameClock.Elapsed.TotalMilliseconds, false);
+                    Forget();
+                    log("model: link down, models go out again once it is back");
+                }
                 else Watch("link-up");
             }
             if (!wasUp) return;
@@ -211,7 +218,6 @@ namespace PerkeleRim.Game
             outgoingBytes = 0;
             current = null;
             currentSteps = null;
-            log("model: link down, models go out again once it is back");
         }
 
         // At the end of the frame (the textures are copied through a RenderTexture): the models' read
@@ -246,8 +252,11 @@ namespace PerkeleRim.Game
                     currentSteps = null;
                 }
             }
-            if (any && current != null) currentFrames++;
-            if (!any) lastStep = "";
+            if (any && current != null)
+            {
+                currentFrames++;
+                lastWork = frameClock.Elapsed.TotalMilliseconds;
+            }
         }
 
         // Starts reading the next queued model, unless enough waits to be sent already.
@@ -291,6 +300,7 @@ namespace PerkeleRim.Game
             }
             if (job.Session != session) yield break;  // the link went down meanwhile
             outgoing.Enqueue(new Outgoing { Id = job.Id, Blob = blob });
+            lastWork = frameClock.Elapsed.TotalMilliseconds;
             outgoingBytes += blob.Length;
             if (watch != null)
             {
@@ -310,7 +320,7 @@ namespace PerkeleRim.Game
         {
             watchWhat = what;
             watch = new FrameWatch();
-            watchStart = frameClock.Elapsed.TotalMilliseconds;
+            watchStart = lastWork = frameClock.Elapsed.TotalMilliseconds;
             watchModels = watchChunks = 0;
             watchBytes = watchReadMs = 0;
             longestGap = longestStepMs = 0;
@@ -320,19 +330,21 @@ namespace PerkeleRim.Game
         void WatchFrame()
         {
             double now = frameClock.Elapsed.TotalMilliseconds;
+            int collections = GC.CollectionCount(0);
             if (lastFrame >= 0 && watch != null)
             {
                 double ms = now - lastFrame;
                 watch.Add(ms);
                 if (ms > FrameWatch.HitchMs)
                     log($"model: a {ms:0} ms frame, {(lastStep.Length > 0 ? "reading (last step: " + lastStep + ")" : "no model read in it")}, " +
-                        $"{outgoing.Count} read models waiting to go out");
+                        $"{outgoing.Count} read models waiting to go out, {collections - lastCollections} garbage collections in it");
             }
             lastFrame = now;
-            bool idle = jobs.Count == 0 && current == null && outgoing.Count == 0;
-            if (!idle) idleSince = -1;
-            else if (idleSince < 0) idleSince = now;
-            bool settled = idle && now - idleSince >= IdleMs;
+            lastCollections = collections;
+            lastStep = "";  // the end of this frame's reading says what it did
+            // A build that keeps finding nothing (asked again every frame) is no work.
+            if (outgoing.Count > 0) lastWork = now;
+            bool settled = now - lastWork >= IdleMs;
             if (settled && textures.Count > 0)
             {
                 log($"model: nothing left to read, letting go of {textures.Count} textures kept ({textures.Size >> 20} MB, {textures.Hits} reused, {textures.Misses} read)");
@@ -405,7 +417,7 @@ namespace PerkeleRim.Game
             ModelData model = null;
             try
             {
-                foreach (var step in Read(root, t => true))
+                foreach (var step in Read(root, t => true, null))
                     if (step is ModelData) model = (ModelData)step;
             }
             catch (Exception e)
@@ -419,11 +431,12 @@ namespace PerkeleRim.Game
             foreach (var mesh in model.Meshes) log($"model: mesh {mesh.Name} {UvRange(mesh.Uvs)}");
         }
 
-        IEnumerable Read(Transform root, Predicate<Transform> include)
+        // key: what the scan saw (Key), null not to check it.
+        IEnumerable Read(Transform root, Predicate<Transform> include, string key)
         {
-            // Read over several frames: should the item or a part of it go meanwhile (eaten, drunk,
-            // despawned), there is no model, rather than part of one under the whole item's id; the
-            // next scan asks again.
+            // Read over several frames: should the item or a part of it go or change meanwhile (eaten,
+            // drunk, despawned, a bottle out of its case), there is no model, rather than another one
+            // under the scanned item's id; the next scan asks again.
             var model = new ModelData { Name = root.name };
             var materials = new Materials();
             foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
@@ -433,9 +446,9 @@ namespace PerkeleRim.Game
                 if (!renderer.enabled || filter == null || filter.sharedMesh == null || !include(renderer.transform)) continue;
                 foreach (var step in AddRenderer(model, materials, renderer, RelativeTo(root, renderer.transform), PathBelow(root, renderer.transform), -1, null))
                     yield return step;
-                if (renderer == null) yield break;
+                if (renderer == null || materials.Cut) yield break;
             }
-            if (root == null) yield break;
+            if (root == null || (key != null && Key(root, include) != key)) yield break;
             yield return model;
         }
 
@@ -446,6 +459,7 @@ namespace PerkeleRim.Game
             internal readonly Dictionary<int, ModelTextureData> Pixels = new Dictionary<int, ModelTextureData>();  // Texture instance id -> as read
             internal readonly Dictionary<string, int> Baked = new Dictionary<string, int>();  // what a texture was baked from -> index in model
             internal readonly List<int> TextureOf = new List<int>();  // material index -> texture index
+            public bool Cut;  // AddRenderer stopped halfway: its renderer or mesh went meanwhile (the caller resets it)
         }
 
         // How a caller draws MSC's materials instead of as they are (the van's rules).
@@ -459,8 +473,8 @@ namespace PerkeleRim.Game
 
         // Adds renderer's submeshes to model: moved by m (into the space of node, -1 = the model's
         // root), named name and "name#<n>" from the second submesh on. Steps: the mesh's arrays, each
-        // material's textures and bake, each submesh. Stops when the renderer is destroyed meanwhile
-        // (the caller then takes out what it added).
+        // material's textures and bake, each submesh. Stops halfway when the renderer or its mesh is
+        // destroyed meanwhile, with materials.Cut set (the caller then takes out what it added).
         public IEnumerable AddRenderer(ModelData model, Materials materials, MeshRenderer renderer, Matrix4x4 m, string name, int node, Look look)
         {
             var filter = renderer.GetComponent<MeshFilter>();
@@ -474,14 +488,22 @@ namespace PerkeleRim.Game
             yield return name;
             for (int sub = 0; sub < subMeshes; sub++)
             {
-                if (renderer == null || mesh == null) yield break;
+                if (renderer == null || mesh == null)
+                {
+                    materials.Cut = true;
+                    yield break;
+                }
                 var material = sub < shared.Length ? shared[sub] : null;
                 if (look != null && look.Keep != null && !look.Keep(material)) continue;
                 var triangles = mesh.GetTriangles(sub);
                 if (triangles.Length == 0) continue;
                 if (material != null)
                     foreach (var step in AddMaterial(model, materials, material, look)) yield return step;
-                if (renderer == null) yield break;
+                if (renderer == null)
+                {
+                    materials.Cut = true;
+                    yield break;
+                }
                 int index;
                 if (material == null || !materials.Index.TryGetValue(MaterialKey(material, look), out index)) index = -1;  // none, or destroyed meanwhile
                 var scale = material != null ? material.mainTextureScale : Vector2.one;
@@ -624,7 +646,7 @@ namespace PerkeleRim.Game
             {
                 bool direct;
                 data = Pixels(texture, log, out direct);
-                // Only what can't change: MSC may draw into a RenderTexture or write a readable texture.
+                // Only what can't change: MSC may draw into a RenderTexture or write a texture it can read.
                 if (!direct && !(texture is RenderTexture)) textures.Put(id, data, data.Rgba.LongLength);
             }
             pixels[id] = data;

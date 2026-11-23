@@ -56,9 +56,10 @@ namespace PerkeleRim.Game
                 bool light = VanModel.IsLight(path);
                 foreach (var step in sender.AddRenderer(model, materials, renderer, pose.inverse * m, path.Replace('/', '|'), found.Count, light ? lit : plain))
                     yield return step;
-                if (renderer == null)  // destroyed while it was read
+                if (renderer == null || materials.Cut)  // it or its mesh destroyed while it was read
                 {
                     model.Meshes.RemoveRange(before, model.Meshes.Count - before);
+                    materials.Cut = false;
                     continue;
                 }
                 if (model.Meshes.Count == before) continue;
