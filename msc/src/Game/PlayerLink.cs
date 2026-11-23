@@ -35,7 +35,8 @@ namespace PerkeleRim.Game
     //    PlayerDamage (DeathGuard), plays MSC's death sound on PlayerDeath, and sends MSC's blood
     //    overlay for Skyrim's death ahead of time;
     //  - yells "Perkele!" (or another swear) when the player shouts in Skyrim, grunts or swears when
-    //    Skyrim hurts it or the van hits someone (PlayerVoice);
+    //    Skyrim hurts it or the van hits someone (PlayerVoice), and dashes it forward for Whirlwind
+    //    Sprint (ShoutDash);
     //  - sends what the player drinks, smokes and eats for Skyrim to heal by (ConsumeWatch);
     //  - keeps MSC's state with Skyrim's saves and puts it back when one loads (SaveSync).
     public unsafe class PlayerLink : MonoBehaviour
@@ -73,6 +74,8 @@ namespace PerkeleRim.Game
         readonly ThrowWindUp windUp = new ThrowWindUp();
         readonly KeyRemap remap = new KeyRemap();
         readonly PauseClock clock = new PauseClock();
+        readonly ShoutDash dash = new ShoutDash();
+        Vector3 dashDirection;  // flat, the way the player faced when it shouted
         ChaseCamera chase;
         DebugView debugView;
         string shotPath;  // F11's PNG for MSC's view (ScreenshotEvent), saved at the end of this LateUpdate
@@ -304,6 +307,7 @@ namespace PerkeleRim.Game
             var feet = Feet();
             if (!playing || driven != null) haveGrounded = false;
             else if (CatchLaunch(feet)) return;
+            if (Dash(driven)) feet = Feet();
             if (haveLastFeet)
                 velocity = Coords.UnityToSkyrim(ToVec3((feet - lastFeet) / Time.fixedDeltaTime));
             lastFeet = feet;
@@ -493,7 +497,10 @@ namespace PerkeleRim.Game
             else if (type == MessageType.PlayerDeath)
                 DeathGuard.PlayDeathSound();
             else if (type == MessageType.PlayerShout)
+            {
                 voice.OnShout(payload, size);
+                StartDash(payload, size);
+            }
             else if (type == MessageType.PlayerHurt)
                 voice.OnHurt(payload, size);
             else if (type == MessageType.IntroCue)
@@ -1078,6 +1085,46 @@ namespace PerkeleRim.Game
             steps.Update(ToVec3(feet), controller.isGrounded, Time.deltaTime);
         }
 
+        // Whirlwind Sprint (PlayerShout): on foot, the way the player faces.
+        void StartDash(byte[] payload, int size)
+        {
+            if (size < sizeof(PlayerShout) || player == null) return;
+            PlayerShout s;
+            fixed (byte* p = payload) s = *(PlayerShout*)p;
+            var forward = Vector3.ProjectOnPlane(player.forward, Vector3.up);
+            if (!playing || Driven() != null || forward.sqrMagnitude < 1e-4f || !dash.Start(s.shout, s.words)) return;
+            dashDirection = forward.normalized;
+            log($"player: Whirlwind Sprint, {s.words} words, dashing {ShoutDash.Distance(s.words):0} m");
+        }
+
+        // Moves the player along its dash this physics step, through the controller so a wall stops
+        // it (it climbs steps as walking does), then down onto the ground within a step's length
+        // below, so it follows a slope down and stays grounded for CatchLaunch, CatchFall and
+        // StepWalk; off a ledge it flies on level. True when it moved.
+        bool Dash(VehicleLink driven)
+        {
+            if (!dash.Active) return false;
+            if (!playing || driven != null || controller == null || !controller.enabled)
+            {
+                dash.Stop();
+                return false;
+            }
+            var from = Feet();
+            float step = dash.Step(Time.fixedDeltaTime);
+            controller.Move(dashDirection * step);
+            var moved = Vector3.ProjectOnPlane(Feet() - from, Vector3.up).magnitude;
+            RaycastHit hit;
+            if (!controller.isGrounded && islandObject != null && Physics.Raycast(Feet() + Vector3.up * 0.05f, Vector3.down, out hit, step + 0.05f) &&
+                hit.collider.transform.parent == islandObject.transform)
+                controller.Move(Vector3.down * hit.distance);
+            if (step > 0.01f && moved < step * 0.3f)
+            {
+                dash.Stop();
+                log("player: Whirlwind Sprint stopped by a wall");
+            }
+            return true;
+        }
+
         // Remembers where the player stands on foot, and puts it back there when it shoots up
         // faster than any jump (see LaunchSpeed). True when it was put back.
         bool CatchLaunch(Vector3 feet)
@@ -1128,6 +1175,7 @@ namespace PerkeleRim.Game
             }
             haveLastFeet = false;
             velocity = new Vec3();
+            dash.Stop();  // not on from the rescue spot
         }
 
         void SetMotor(bool on)

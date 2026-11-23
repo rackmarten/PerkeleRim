@@ -17,6 +17,7 @@ either game.
 | `hits.json` | the hit test (`scripts/hit-test.ps1`): punches sober and drunk, a thrown bottle, thrown junk, bottles drunk and drunker at a Whiterun guard with its AI off, each attack's damage against `protocol/cpp/damage.h` and the guard's health; a row per attack in `step-9-rows.csv` | 73 to 92 s |
 | `hitbox.json` | the hitbox test (`scripts/hitbox-test.ps1`): the van called in front of Kumpo, 8 arrows shot at him through it (all stop at the van), 4 from his side (they reach him), a melee bandit behind it who walks round it to him, never through; every line of the test in `step-8-rows.csv` | 65 s |
 | `model-read.json` | MSC's frames while it reads and sends its models (`scripts/model-read-test.ps1`): every model read again with new ids, as after MSC starts (`pr.send models again cold`), then again under the same ids, as after Skyrim restarts (`models again`), each waited out with `pr.models`; MSC logs each stretch's worst frame (`model: models again cold: ... worst <n> ms`) and the script fails a frame over 200 ms. Then the van, the moped, the Kekmet and the Gifu called one by one and pictured from outside | 66 s |
+| `whirlwind-sprint.json` | Whirlwind Sprint while MSC has Kumpo: the van called in front of him stops a dash, one word dashes him about 15 m the way he faces, three about 30 m, Fire Breath doesn't move him (`pr.shout`, so not the Z key itself) | 15 to 17 s |
 | `van-lights.json` | the van's lights at night: MSC switches them on and Skyrim's lamps follow (both low beams, the rear lamps, the cabin); pictures from behind, in front and above; an A/B pair of one paused frame with the low beams put out (the ground ahead goes dark, the ground beside doesn't change); MSC switching every lamp off | 9 s |
 
 ## What the numbers were
@@ -39,6 +40,7 @@ in a hidden session:
   9.3 s frame, MSC loading its game (logged as `no model read in it`), with either reader. All four vehicles look as before.
 - `van-lights.json` (5 runs): the low beams put out darkened the ground ahead by 42 luma (86 to 44, two thirds of its pixels), the
   ground beside the van rose by 0.9 (eye adaptation); MSC switching every lamp off darkened the ground ahead by 47 to 57.
+- `whirlwind-sprint.json` (23 November 2026, 3 runs, one right after `hitbox.json`): 15.0 and 30.0 m on open grass, 3.0 to 3.2 m into the van (MSC logs `stopped by a wall`), 0 for Fire Breath.
 
 The rear lenses: `lightson 1` also lights MSC's brake and reverse lamps, which its own state machines switch off again
 or not. With them on, the left lens was 18 to 20 luma darker with the lights off (mostly red); with only the tail lamps
@@ -54,6 +56,7 @@ Start from the closest file. Steps are the kit's requests (`docs/COMMANDS.md` in
 | `pr.msc [on=<bool>]` | Kumpo to MSC (the default) or back to Skyrim, as F10 does; answers once it's done (`msc`, `seated`) |
 | `pr.send <line>` | a line for MSC's debug commands (`msc/src/Spike/SpikeHost.cs`): `drunk 2`, `lightson 1`, `time 6`, `hold 0`, ... |
 | `pr.key <Unity KeyCode> [seconds=<s>]` | holds one of MSC's keys (93 is ] to call the van, 104 H to punch) |
+| `pr.shout [words] [shout=<hex>] [seconds=<s>]` | tells MSC the player shouted, as Combat does when a shout is released (Whirlwind Sprint unless `shout=`, 3 words by default), and answers 2 s later with how far Kumpo went, flat, in metres (`moved`) |
 | `pr.call [vehicle]` | calls the van (]) or the moped ([) and answers once it stands solid in Skyrim, with where it is |
 | `pr.vehicle [vehicle]` | a vehicle MSC has on the island: where, how fast, drawn, solid, which of its lights are on (`lightRolesOn`: 1 low, 2 high, 3 tail, 4 brake, 5 reverse, 6 cabin, 7 work, 8 beacon) |
 | `pr.hits [scenarios] [target=<hex>]` | the hit test, a row per attack |

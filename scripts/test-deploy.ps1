@@ -56,6 +56,13 @@ switch ($Mode) {
         if (Restore-MscDoorstop $msc) { Write-Host "Put back My Summer Car's doorstop_config.ini (a hidden start hadn't)." }
         $back = Restore-SessionFiles $store -Force:($Mode -eq 'restore-anyway')
         if ($back) { Write-Host "Put back the game's own files ($(@($back).Count))." } else { Write-Host 'Nothing kept to put back.' }
+        # A hidden start's test session marker (launch-msc.ps1) that MSC never read: the player's next start keeps its
+        # sound. After the files, and never fatal: those matter more.
+        $testMarker = Join-Path $msc 'PerkeleRim_test_session.txt'
+        if (-not (Get-Process mysummercar -ErrorAction SilentlyContinue) -and (Test-Path -LiteralPath $testMarker)) {
+            try { Remove-Item -LiteralPath $testMarker -Force -ErrorAction Stop; Write-Host 'Removed a test session marker My Summer Car never read.' }
+            catch { Write-Warning "Could not remove ${testMarker}: $($_.Exception.Message)" }
+        }
     }
     'forget' {
         if (Test-Path -LiteralPath $store) {
