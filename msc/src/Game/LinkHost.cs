@@ -15,7 +15,6 @@ namespace PerkeleRim.Game
 
         readonly Stopwatch clock = Stopwatch.StartNew();
         Link link;
-        long lastTick;
 
         public static Link Current => instance != null ? instance.link : null;
 
@@ -47,21 +46,7 @@ namespace PerkeleRim.Game
             gameObject.AddComponent<PlayerLink>().Init(log);
         }
 
-        void Update() => Tick();
-
-        void Tick()
-        {
-            lastTick = clock.ElapsedMilliseconds;
-            link.Tick((ulong)lastTick);
-        }
-
-        // Ticks the link from inside work that holds MSC's frame on purpose for longer than the
-        // peer timeout allows (reading the Gifu's model takes over 2 s), at most every 100 ms. Still
-        // on the main thread: a real stall stops the heartbeat as before.
-        public static void KeepAlive()
-        {
-            if (instance != null && instance.clock.ElapsedMilliseconds - instance.lastTick >= 100) instance.Tick();
-        }
+        void Update() => link.Tick((ulong)clock.ElapsedMilliseconds);
 
         void OnApplicationQuit() => link.Dispose();
 

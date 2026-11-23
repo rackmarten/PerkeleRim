@@ -31,7 +31,7 @@ namespace PerkeleRim::TestKit
         using SkseTestKit::JsonObject;
         using SkseTestKit::Step;
 
-        constexpr float kModelQuiet = 4.0f;    // seconds without a ModelChunk: MSC has sent its models (a vehicle's freezes it)
+        constexpr float kModelQuiet = 4.0f;    // seconds without a ModelChunk: MSC has sent its models
         constexpr float kModelWait = 60.0f;    // and ready anyway after this long standing
         constexpr float kHandAgain = 5.0f;     // seconds between handovers asked for while play mode hasn't done it
 
@@ -64,7 +64,7 @@ namespace PerkeleRim::TestKit
         }
 
         // [Test] MSC=1: the session is ready once MSC has the player standing on its island and has gone quiet sending
-        // its models (it reads each in one frame, and keys held meanwhile never reach it).
+        // its models (about 190 MB at a link-up: tests start on a quiet link and a steady frame rate).
         struct Readiness
         {
             bool          msc = false;
@@ -331,6 +331,33 @@ namespace PerkeleRim::TestKit
                         }
                         SKSE::log::info("test kit: sent MSC '{}'", line);
                         return JsonObject{ { "sent", line } };
+                    };
+                });
+
+            SkseTestKit::AddTask("pr.models", "[quiet=<s>]",
+                "Waits for MSC's models: answers once model chunks have come and then none for quiet seconds (8: MSC logs its stretch of frames after 5), with how many came and "
+                "the seconds from the request to the last (after pr.send models again, say)",
+                [](Call& a_call) -> Step {
+                    const double quiet = a_call.Number("quiet", 8.0);
+                    if (quiet <= 0.0 || quiet > 60.0) {
+                        throw Error("quiet is over 0, up to 60 seconds");
+                    }
+                    a_call.DefaultTimeout(300.0);
+                    struct Seen
+                    {
+                        std::uint32_t start = ModelView::Chunks();
+                        std::uint32_t last = start;
+                        double        lastAt = 0.0;
+                    };
+                    return [quiet, seen = std::make_shared<Seen>()](Call& a_call) -> std::optional<Json> {
+                        if (const auto chunks = ModelView::Chunks(); chunks != seen->last) {
+                            seen->last = chunks;
+                            seen->lastAt = a_call.Seconds();
+                        }
+                        if (seen->last == seen->start || a_call.Seconds() - seen->lastAt < quiet) {
+                            return std::nullopt;
+                        }
+                        return JsonObject{ { "chunks", static_cast<double>(seen->last - seen->start) }, { "seconds", seen->lastAt } };
                     };
                 });
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using PerkeleRim.Protocol;
 using UnityEngine;
@@ -9,7 +10,8 @@ namespace PerkeleRim.Game
     // vehicle), and its pose every frame. Every MSC object of it with a mesh, switched off or not, is
     // one node straight under the model's root, its meshes in the node's frame (scale baked in);
     // VehicleParts then carries each node's pose relative to the vehicle and whether MSC draws it.
-    // The player and items riding along are left out.
+    // The player and items riding along are left out. Read in steps over several frames (ModelSender):
+    // the nodes Fill poses change over to the new model only once it is read whole.
     public sealed unsafe class VehicleModel
     {
         Transform[] nodes = new Transform[0];  // ModelNode order
@@ -23,8 +25,10 @@ namespace PerkeleRim.Game
         // ModelChunk.model of the model these nodes are of, 0 until it was asked for.
         public uint Id;
 
-        public ModelData Read(string name, Transform car, Transform player, ModelSender sender, Action<string> log)
+        // Yields what it is doing after each bit of work, the model last.
+        public IEnumerable Read(string name, Transform car, Transform player, ModelSender sender, Action<string> log)
         {
+            if (car == null) yield break;  // gone since it was asked for
             var model = new ModelData { Name = name };
             var plain = new ModelSender.Look { Key = "van", Keep = KeepMaterial, Adjust = Blend };
             var lit = new ModelSender.Look { Key = "lit", Keep = KeepMaterial, Diffuse = GlowTexture, Adjust = (m, data) => VanModel.Lit(Blend(m, data)) };
@@ -34,6 +38,7 @@ namespace PerkeleRim.Game
             int switchedOff = 0, left = 0, lights = 0;
             foreach (var renderer in car.GetComponentsInChildren<MeshRenderer>(true))
             {
+                if (renderer == null || car == null) continue;  // destroyed since
                 var t = renderer.transform;
                 var path = ModelSender.PathBelow(car, t);
                 if ((player != null && t.IsChildOf(player)) || path.Contains("(itemx)") || VanModel.Skipped(path)) { left++; continue; }
@@ -45,24 +50,31 @@ namespace PerkeleRim.Game
                 }
                 var m = ModelSender.RelativeTo(car, t);
                 var pose = Pose(car, t, m);
-                int before = model.Meshes.Count;
-                bool light = VanModel.IsLight(path);
-                sender.AddRenderer(model, materials, renderer, pose.inverse * m, path.Replace('/', '|'), found.Count, light ? lit : plain);
-                if (model.Meshes.Count == before) continue;
                 var p = Position(pose);
                 var q = Rotation(car, t);
+                int before = model.Meshes.Count;
+                bool light = VanModel.IsLight(path);
+                foreach (var step in sender.AddRenderer(model, materials, renderer, pose.inverse * m, path.Replace('/', '|'), found.Count, light ? lit : plain))
+                    yield return step;
+                if (renderer == null)  // destroyed while it was read
+                {
+                    model.Meshes.RemoveRange(before, model.Meshes.Count - before);
+                    continue;
+                }
+                if (model.Meshes.Count == before) continue;
                 model.Nodes.Add(new ModelNodeData { Name = path, Translation = new[] { p.x, p.y, p.z }, Rotation = new[] { q.x, q.y, q.z, q.w } });
                 found.Add(t);
                 shown.Add(renderer);
                 if (!Visible(renderer)) switchedOff++;
                 if (light) lights++;
             }
+            if (car == null) yield break;  // the vehicle went meanwhile
             nodes = found.ToArray();
             renderers = shown.ToArray();
             ReadLights(car, model, log);
             log($"vehicle model: {name} has {nodes.Length} objects ({switchedOff} switched off, {lights} lights), {left} left out, " +
                 $"{model.Meshes.Count} meshes, {lightObjects.Length} Unity lights");
-            return model;
+            yield return model;
         }
 
         // MSC's own Unity Lights that Skyrim draws (VanModel.LightRole), with where they shine from

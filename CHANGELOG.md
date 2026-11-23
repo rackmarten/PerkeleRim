@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- My Summer Car no longer freezes for seconds when the games link up (each time Skyrim or My Summer Car starts). It used to read each vehicle's model for Skyrim in one frame, two seconds and more for the van or the Gifu, and a key pressed meanwhile was lost; it now reads them a little every frame, and much faster. The vehicles show in Skyrim once their model is there, as before.
+
 ## [0.2.1] - 2026-11-09
 
 ### Fixed

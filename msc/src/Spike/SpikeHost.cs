@@ -399,6 +399,12 @@ namespace PerkeleRim.Spike
                         if (reader != null) reader.InspectModel(lines[0].Trim().Substring(8).Trim());
                         else SpikeLog.Write("cmd: no PlayerLink");
                         break;
+                    case "models":  // "models again": every model sent again as after the link came up; "models again cold" read again too, with new ids, as after MSC started
+                        var sender = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (sender == null) SpikeLog.Write("cmd: no PlayerLink");
+                        else if (words.Length > 1 && words[1].ToLower() == "again") sender.ModelsAgain(words.Length > 2 && words[2].ToLower() == "cold");
+                        else SpikeLog.Write("cmd: models again [cold]");
+                        break;
                     case "shot":  // MSC's own view, next to the game, as F11 saves it (ViewShot)
                         PerkeleRim.Game.ViewShot.Save(Path.Combine(SpikeLog.GameDir, "PerkeleRim_shot.png"), 0, 0, SpikeLog.Write);
                         break;

@@ -216,6 +216,7 @@ namespace PerkeleRim.Game
 
         // Spike commands "textures" (read an object's model and log it) and "items" (what Skyrim gets).
         public void InspectModel(string name) => models.Inspect(name);
+        public void ModelsAgain(bool cold) => models.Again(cold);
         public void DumpItems() => items.Dump();
         public void DumpParticles() => particles.Dump();
         public void PuffParticles(int count) => particles.Puff(count);
