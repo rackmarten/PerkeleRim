@@ -110,7 +110,7 @@ namespace PerkeleRim.Game
         {
             var key = Key(root, include);
             if (key == null) return 0;
-            return Queue(key, () => Read(root, include, true), () => root == null, root.name);
+            return Queue(key, () => Read(root, include, key), () => root == null, root.name);
         }
 
         // The id of a model build puts together in one go (an overlay, a particle), known by key and
@@ -218,6 +218,7 @@ namespace PerkeleRim.Game
         void Forget()
         {
             session++;
+            failed.Clear();  // a new link session tries every model again
             sent.Clear();
             queued.Clear();
             jobs.Clear();
@@ -305,7 +306,6 @@ namespace PerkeleRim.Game
             }
             if (model == null || model.Meshes.Count == 0)
             {
-                if (currentFrames > 1) lastWork = frameClock.Elapsed.TotalMilliseconds;  // it took a while, even though nothing came of it
                 queued.Remove(job.Id);  // not there yet, or its renderers went off since the scan: asked again
                 yield break;
             }
@@ -386,7 +386,9 @@ namespace PerkeleRim.Game
 
         // What a model is made of, or null without renderers: two objects with the same key look the same.
         // Meshes and textures go by content (name, size, bounds), not instance: MSC gives every spawned
-        // copy of an item (a thrown bottle) its own mesh instance.
+        // copy of an item (a thrown bottle) its own mesh instance. Nothing that moves goes in (where its
+        // parts sit, a texture's offset): an item with a turning part or a scrolling texture keeps one
+        // model instead of a new one every scan; its model has them as they were when it was read.
         static string Key(Transform root, Predicate<Transform> include)
         {
             StringBuilder key = null;
@@ -404,13 +406,11 @@ namespace PerkeleRim.Game
                     var texture = material != null ? material.mainTexture : null;
                     if (texture != null) key.Append(texture.name).Append('/').Append(texture.width).Append('x').Append(texture.height);
                     if (material != null)
-                        key.Append(material.mainTextureScale).Append(material.mainTextureOffset).Append(material.shader != null ? material.shader.name : "")
+                        key.Append(material.mainTextureScale).Append(material.shader != null ? material.shader.name : "")
                             .Append(Color(material, "_Color")).Append(Float(material, "_Mode")).Append(Float(material, "_Metallic"))
                             .Append(Float(material, "_Glossiness"));
                     key.Append(',');
                 }
-                var m = RelativeTo(root, renderer.transform);
-                for (int i = 0; i < 16; i++) key.Append(Mathf.Round(m[i] * 1000f)).Append(',');  // rotation, scale and offset
                 key.Append(';');
             }
             return key != null ? key.ToString() : null;
@@ -434,7 +434,7 @@ namespace PerkeleRim.Game
             inspecting = true;
             string name = root.name;
             ModelData model = null;
-            var steps = Read(root, t => true, false).GetEnumerator();
+            var steps = Read(root, t => true, null).GetEnumerator();
             var clock = new Stopwatch();
             bool more = true;
             try
@@ -457,59 +457,38 @@ namespace PerkeleRim.Game
                         more = false;
                     }
                 }
+                if (model == null) yield break;
+                log($"model: {model.Name} has {model.Meshes.Count} meshes, {model.VertexCount} vertices, {model.Textures.Count} textures");
+                for (int i = 0; i < model.Textures.Count; i++)
+                {
+                    SavePng(model.Textures[i], $"PerkeleRim_texture_{i}.png");  // a PNG of a big texture takes a while: one a frame
+                    yield return null;
+                }
+                foreach (var mesh in model.Meshes) log($"model: mesh {mesh.Name} {UvRange(mesh.Uvs)}");
             }
-            finally { inspecting = false; }  // however the read ends
-            if (model == null) yield break;
-            log($"model: {model.Name} has {model.Meshes.Count} meshes, {model.VertexCount} vertices, {model.Textures.Count} textures");
-            for (int i = 0; i < model.Textures.Count; i++) SavePng(model.Textures[i], $"PerkeleRim_texture_{i}.png");
-            foreach (var mesh in model.Meshes) log($"model: mesh {mesh.Name} {UvRange(mesh.Uvs)}");
+            finally { inspecting = false; }  // however it ends
         }
 
-        // whole: drop the model should the renderers it is made of change while it is read.
-        IEnumerable Read(Transform root, Predicate<Transform> include, bool whole)
+        // key: the content key the model was asked for under (Key), null not to check it. The item must
+        // still be made of that when the read starts and when it ends, or there is no model: something
+        // went or changed since the scan or meanwhile (eaten, drunk, despawned, a bottle out of its
+        // case, another texture), and the next scan asks again under what it is now.
+        IEnumerable Read(Transform root, Predicate<Transform> include, string key)
         {
-            // Read over several frames: should the item or a part of it go meanwhile (eaten, drunk,
-            // despawned, a bottle out of its case), there is no model, rather than part of one under
-            // the item's id; the next scan asks again. What only moves or scrolls (a part turning, a
-            // texture's offset) is read as it is at its step.
+            if (root == null || (key != null && Key(root, include) != key)) yield break;
             var model = new ModelData { Name = root.name };
             var materials = new Materials();
-            var read = new List<int>();  // the renderers drawn and what with (Parts)
             foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
             {
                 if (root == null || renderer == null) yield break;
-                if (!Drawn(renderer, include)) continue;
-                Parts(renderer, read);
+                var filter = renderer.GetComponent<MeshFilter>();
+                if (!renderer.enabled || filter == null || filter.sharedMesh == null || !include(renderer.transform)) continue;
                 foreach (var step in AddRenderer(model, materials, renderer, RelativeTo(root, renderer.transform), PathBelow(root, renderer.transform), -1, null))
                     yield return step;
                 if (renderer == null || materials.Cut) yield break;
             }
-            if (root == null) yield break;
-            if (whole)
-            {
-                var now = new List<int>();
-                foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
-                    if (Drawn(renderer, include)) Parts(renderer, now);
-                if (now.Count != read.Count) yield break;
-                for (int i = 0; i < now.Count; i++) if (now[i] != read[i]) yield break;
-            }
+            if (root == null || (key != null && Key(root, include) != key)) yield break;
             yield return model;
-        }
-
-        // A renderer as instance ids: itself, its mesh, its materials (what it draws, not where).
-        static void Parts(MeshRenderer renderer, List<int> to)
-        {
-            to.Add(renderer.GetInstanceID());
-            to.Add(renderer.GetComponent<MeshFilter>().sharedMesh.GetInstanceID());
-            var materials = renderer.sharedMaterials;
-            to.Add(materials.Length);
-            foreach (var material in materials) to.Add(material != null ? material.GetInstanceID() : 0);
-        }
-
-        static bool Drawn(MeshRenderer renderer, Predicate<Transform> include)
-        {
-            var filter = renderer.GetComponent<MeshFilter>();
-            return renderer.enabled && filter != null && filter.sharedMesh != null && include(renderer.transform);
         }
 
         // The MSC materials and textures already in a model being read.

@@ -8,7 +8,8 @@
     start's too when this run started it. Results in out/<time>-model-read/, with MSC's log of the run (msc.log) and
     the pictures. A session this script started is stopped at the end (-Keep leaves it up).
     Exit code: 0 passed, both stretches logged and no frame over 200 ms with over 100 ms of reading and sending models
-    in it; 1 a check failed, a stretch is missing or such a frame; 2 Skyrim crashed, exited or hung. Frames over 200 ms
+    in it (400 ms with a garbage collection among it); 1 a check failed, a stretch is missing or such a frame; 2 Skyrim
+    crashed, exited or hung. Frames over 200 ms
     that were something else in MSC (its own scene load, the machine busy) and gaps over 8 s between chunks are reported.
 .EXAMPLE
     scripts/model-read-test.ps1
@@ -27,6 +28,7 @@ $skytest = Join-Path $PSScriptRoot 'skytest.ps1'
 $file = Join-Path $RepoRoot 'scenarios/model-read.json'
 $hitchMs = 200  # FrameWatch.HitchMs
 $ownMs = 100    # of a frame over hitchMs, the most the model sender may have taken
+$ownCapMs = 400 # and with a garbage collection in it
 if ($Build) { & "$PSScriptRoot/build.ps1" }
 
 $json = & $skytest session -Json -WaitForLock $WaitForLock
@@ -65,7 +67,7 @@ try {
         $collected = $gc.Success -and [int]$gc.Groups[1].Value -gt 0
         # A garbage collection takes 150 to 300 ms of MSC's frame whoever's allocation set it off, and the reads' steps
         # allocate the most: counted and shown, but not the reader's own time.
-        if ($own -gt $ownMs -and -not $collected) { $failed += "A $ms ms frame had $own ms of reading and sending models in it." }
+        if (($own -gt $ownMs -and -not $collected) -or $own -gt $ownCapMs) { $failed += "A $ms ms frame had $own ms of reading and sending models in it." }
         elseif ($own -gt $ownMs) { Write-Host "A $ms ms frame with $own ms of model work, a garbage collection among it." -ForegroundColor Yellow }
         else { Write-Host "A $ms ms frame, but only $own ms of it reading and sending models: something else in MSC$(if ($collected) { ' (a garbage collection)' })." -ForegroundColor Yellow }
     }
