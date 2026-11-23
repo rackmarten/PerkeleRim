@@ -66,6 +66,15 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void FlagsTheLineLowOrDryForSkyrim()
+        {
+            Assert.That(Fuel.LineFlags(20f, 40f), Is.EqualTo(0u));
+            Assert.That(Fuel.LineFlags(9.9f, 40f), Is.EqualTo(Wire.FuelTextLow));
+            Assert.That(Fuel.LineFlags(0.2f, 40f), Is.EqualTo(Wire.FuelTextLow | Wire.FuelTextDry));
+            Assert.That(Fuel.LineFlags(0f, 0f), Is.EqualTo(0u));  // no tank to speak of
+        }
+
+        [Test]
         public void PaysForEveryLitreWhileTheMoneyLasts()
         {
             float money = 100.5f;

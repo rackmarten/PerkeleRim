@@ -15,7 +15,8 @@ namespace PerkeleRim.Game
     //    while Kumpo stands at a pump, as it pours, and takes back what the money doesn't cover;
     //  - tows a dry vehicle called near a pump onto it for Fuel.TowFee (free when it stands within
     //    100 m of the pump), with its parking brake on, and refuses the call anywhere else;
-    //  - sends the HUD's fuel line (FuelText).
+    //  - sends the HUD's fuel line (FuelText), flagged low or dry so Skyrim adds the nearest pump
+    //    and, once a save, a tip about the tow.
     public class FuelLink
     {
         const float PayReach = 1000f;    // units (14 m): a tank filling this close to a pump is paid for
@@ -36,6 +37,7 @@ namespace PerkeleRim.Game
         string flash;
         float flashUntil;
         string sent;
+        uint sentFlags;
         FsmFloat money;
         int loggedLitre = -1;  // the driven tank's whole litres last logged
 
@@ -73,7 +75,7 @@ namespace PerkeleRim.Game
             {
                 last.Clear();
                 pump.Away();
-                Send(link, playing, "");
+                Send(link, playing, "", 0);
                 return;
             }
             if (generation != island.Generation)
@@ -104,7 +106,9 @@ namespace PerkeleRim.Game
             }
 
             LogBurn(driven);
-            Send(link, playing, Line(driven));
+            uint flags;
+            string line = Line(driven, out flags);
+            Send(link, playing, line, flags);
         }
 
         // The driven tank's level in the log at every whole litre it burns, to check consumption.
@@ -189,24 +193,37 @@ namespace PerkeleRim.Game
             flashUntil = Time.realtimeSinceStartup + FlashShown;
         }
 
-        string Line(VehicleLink driven)
+        // flags: the driven tank's state (Fuel.LineFlags), whatever the line says.
+        string Line(VehicleLink driven, out uint flags)
         {
+            float level = 0f, capacity = 0f;
+            bool drivenTank = driven != null && !driven.EndlessFuel && driven.Tank(out level, out capacity);
+            flags = drivenTank ? Fuel.LineFlags(level, capacity) : 0u;
             float now = Time.realtimeSinceStartup;
-            if (flash != null && now < flashUntil) return flash;
-            float level, capacity;
-            if (poured > 0f && now - lastPour < PourShown && filling != null && filling.Tank(out level, out capacity))
-                return Fuel.PourLine(poured, paid, level, capacity);
-            if (driven != null && !driven.EndlessFuel && driven.Tank(out level, out capacity) && Fuel.Low(level, capacity))
-                return Fuel.LowLine(level, capacity);
-            return "";
+            if (flash != null && now < flashUntil)
+            {
+                flags &= ~Wire.FuelTextLow;  // a message, not the low line
+                return flash;
+            }
+            float fillLevel, fillCapacity;
+            if (poured > 0f && now - lastPour < PourShown && filling != null && filling.Tank(out fillLevel, out fillCapacity))
+            {
+                flags &= ~Wire.FuelTextLow;
+                return Fuel.PourLine(poured, paid, fillLevel, fillCapacity);
+            }
+            return (flags & Wire.FuelTextLow) != 0 ? Fuel.LowLine(level, capacity) : "";
         }
 
-        void Send(Link link, bool playing, string text)
+        void Send(Link link, bool playing, string text, uint flags)
         {
             if (!playing && sent == null) return;
-            if (text == sent) return;
-            var payload = LookAt.Encode(text);
-            if (link.Send(MessageType.FuelText, payload, payload.Length)) sent = playing ? text : null;
+            if (text == sent && flags == sentFlags) return;
+            var payload = LookAt.Encode(text, flags);
+            if (link.Send(MessageType.FuelText, payload, payload.Length))
+            {
+                sent = playing ? text : null;
+                sentFlags = flags;
+            }
         }
     }
 }

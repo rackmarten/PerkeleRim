@@ -103,6 +103,7 @@ namespace PerkeleRim::PlayerSync
             std::string    subtitle;          // MSC's subtitle line
             std::string    gear;              // MSC's gear indicator while driving
             std::string    fuel;              // MSC's fuel line (FuelText)
+            std::uint32_t  fuelFlags = 0;     // and its kFuelText*
             bool           hasNeeds = false;  // needs below came from MSC since the handover
             std::array<float, 7> needs{};     // PlayerState.needs
             bool           cameraParentLogged = false;
@@ -274,6 +275,7 @@ namespace PerkeleRim::PlayerSync
             state.subtitle.clear();
             state.gear.clear();
             state.fuel.clear();
+            state.fuelFlags = 0;
             state.hasNeeds = false;
             Hud::Set({});
             Drink::SetDrunk(0.0f, 0.0f);
@@ -915,6 +917,7 @@ namespace PerkeleRim::PlayerSync
                     state.gear.assign(text->text);
                 } else if (a_type == Protocol::MessageType::FuelText) {
                     state.fuel.assign(text->text);
+                    state.fuelFlags = text->flags;
                 } else {
                     state.lookAt.assign(text->text);
                     state.lookAtUse = (text->flags & Protocol::kLookAtUse) != 0;
@@ -995,7 +998,7 @@ namespace PerkeleRim::PlayerSync
             hud.hand = state.lookAtUse;
             hud.subtitle = state.subtitle.empty() ? std::string(Intro::Caption()) : state.subtitle;  // the shack's wake-up caption carries over the handover
             hud.gear = state.gear;
-            hud.fuel = state.fuel;
+            hud.fuel = Fuel::Line(state.fuel, state.fuelFlags, a_player->GetPosition());
             hud.tools = valid && (pose.flags & Protocol::kPlayerTools) != 0;
             hud.charge = valid && pose.throwCharge > 0 ? (pose.throwCharge - 1) / 254.0f : -1.0f;
             hud.money = Pocket::Money(a_player);

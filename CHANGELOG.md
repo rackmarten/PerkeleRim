@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The low-fuel line (under a quarter of a tank) says where the nearest Dwemer Oil pump is, by its map marker's name, with how far and which way: "Fuel 8.3 / 40 L. Whiterun Dwemer Oil 2.3 km north-east". The first time a save's tank runs dry, a message says to walk to a pump and call the vehicle there, which tows it over for 50 gold. Needs the new `PerkeleRim.esp`; with an older one the line says "Dwemer Oil" without the place.
+
 ## [0.2.1] - 2026-11-09
 
 ### Fixed

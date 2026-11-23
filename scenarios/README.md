@@ -16,6 +16,7 @@ either game.
 | `test-kit-smoke.json` | MSC has Kumpo, the player is in the world, MSC's debug commands reach it, PerkeleRim's commands are there | under 1 s |
 | `hits.json` | the hit test (`scripts/hit-test.ps1`): punches sober and drunk, a thrown bottle, thrown junk, bottles drunk and drunker at a Whiterun guard with its AI off, each attack's damage against `protocol/cpp/damage.h` and the guard's health; a row per attack in `step-9-rows.csv` | 73 to 92 s |
 | `hitbox.json` | the hitbox test (`scripts/hitbox-test.ps1`): the van called in front of Kumpo, 8 arrows shot at him through it (all stop at the van), 4 from his side (they reach him), a melee bandit behind it who walks round it to him, never through; every line of the test in `step-8-rows.csv` | 65 s |
+| `fuel-hint.json` | where to refuel: Kumpo at the van's wheel in Riverwood (`drive HAYOSIKO`, then Return), the tank set full, low and dry; a full tank has no fuel line, a low one names the nearest pump with its distance and direction ("Fuel 6.0 / 40 L. Whiterun Dwemer Oil ..."), a dry one shows the tow tip once; pictures with the HUD of the low and the dry tank | to be measured |
 | `van-lights.json` | the van's lights at night: MSC switches them on and Skyrim's lamps follow (both low beams, the rear lamps, the cabin); pictures from behind, in front and above; an A/B pair of one paused frame with the low beams put out (the ground ahead goes dark, the ground beside doesn't change); MSC switching every lamp off | 9 s |
 
 ## What the numbers were
@@ -44,9 +45,10 @@ Start from the closest file. Steps are the kit's requests (`docs/COMMANDS.md` in
 | Command | What it does |
 |---|---|
 | `pr.msc [on=<bool>]` | Kumpo to MSC (the default) or back to Skyrim, as F10 does; answers once it's done (`msc`, `seated`) |
-| `pr.send <line>` | a line for MSC's debug commands (`msc/src/Spike/SpikeHost.cs`): `drunk 2`, `lightson 1`, `time 6`, `hold 0`, ... |
+| `pr.send <line>` | a line for MSC's debug commands (`msc/src/Spike/SpikeHost.cs`): `drunk 2`, `lightson 1`, `time 6`, `hold 0`, `drive HAYOSIKO` (into the van's driving trigger; `pr.key 13`, Return, then gets in), `fsmvar FuelTank Data FuelLevel 6` (every tank's level), ... |
 | `pr.key <Unity KeyCode> [seconds=<s>]` | holds one of MSC's keys (93 is ] to call the van, 104 H to punch) |
 | `pr.call [vehicle]` | calls the van (]) or the moped ([) and answers once it stands solid in Skyrim, with where it is |
+| `pr.fuel` | the fuel line as Skyrim shows it (`line`, with the nearest pump on a low tank), MSC's `low` and `dry` flags for it, and whether this save had the tow tip (`tipped`) |
 | `pr.vehicle [vehicle]` | a vehicle MSC has on the island: where, how fast, drawn, solid, which of its lights are on (`lightRolesOn`: 1 low, 2 high, 3 tail, 4 brake, 5 reverse, 6 cabin, 7 work, 8 beacon) |
 | `pr.hits [scenarios] [target=<hex>]` | the hit test, a row per attack |
 | `pr.hitbox` | the hitbox test, a row per line it logs |

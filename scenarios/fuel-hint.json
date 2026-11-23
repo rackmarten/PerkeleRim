@@ -1,0 +1,51 @@
+// Where to refuel (skse/src/fuel/Fuel.cpp, protocol/cpp/fuel_hint.h): with Kumpo at the van's wheel in Riverwood, a
+// low tank's line names the nearest Dwemer Oil pump with its distance and direction (Whiterun's, to the north), and
+// a dry one shows the one-time tip about the tow. scripts/skytest.ps1 run scenarios/fuel-hint.json in a running
+// session; the pictures (with the HUD) are in its results folder: the line bottom right above the gear, readable on
+// its box, the tip top left, neither over the needs or the money.
+{
+  "name": "fuel-hint",
+  "steps": [
+    // Riverwood, about half a kilometre south of the Whiterun pump.
+    { "label": "Skyrim takes Kumpo", "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "cmd": "console", "command": "coc Riverwood" },
+    { "cmd": "wait", "seconds": 10 },
+    { "label": "Kumpo is in Riverwood", "cmd": "state", "ref": "player", "expect": ["dead == false"] },
+    { "label": "MSC takes him there", "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
+    { "label": "the van comes", "cmd": "pr.call", "vehicle": "van", "expect": ["drawn == true", "solid == true"] },
+    { "label": "a clear day", "cmd": "scene", "presets": "noon clear" },
+
+    // At the wheel: into the van's driving trigger, then Return, as a player gets in.
+    { "cmd": "pr.send", "line": "drive HAYOSIKO" },
+    { "cmd": "wait", "frames": 30 },
+    { "label": "Return gets him in", "cmd": "pr.key", "key": 13, "seconds": 0.3 },
+    { "cmd": "wait", "frames": 60 },
+    { "label": "Kumpo drives the van", "cmd": "pr.vehicle", "vehicle": "van", "expect": ["driven == true"] },
+
+    // A full tank: no line.
+    { "cmd": "pr.send", "line": "fsmvar FuelTank Data FuelLevel 30" },
+    { "cmd": "wait", "frames": 30 },
+    { "label": "a full tank says nothing", "cmd": "pr.fuel", "expect": ["line.length == 0", "low == false", "dry == false"] },
+
+    // Low: the line with the nearest pump.
+    { "cmd": "pr.send", "line": "fsmvar FuelTank Data FuelLevel 6" },
+    { "cmd": "wait", "frames": 30 },
+    { "label": "a low tank names the nearest pump", "cmd": "pr.fuel",
+      "expect": ["low == true", "dry == false", "tipped == false", "line matches ^Fuel 6\\.0 / 40 L\\. Whiterun Dwemer Oil [0-9.]+ k?m [a-z-]+$"] },
+    { "label": "the low line on the HUD", "cmd": "screenshot", "name": "low-tank", "hud": true },
+
+    // Dry: the tip once, the line still says where.
+    { "cmd": "pr.send", "line": "fsmvar FuelTank Data FuelLevel 0.1" },
+    { "cmd": "wait", "frames": 20 },
+    { "label": "a dry tank shows the tip once", "cmd": "pr.fuel",
+      "expect": ["low == true", "dry == true", "tipped == true", "line contains Whiterun Dwemer Oil"] },
+    { "label": "the tip and the dry line on the HUD", "cmd": "screenshot", "name": "dry-tank", "hud": true },
+
+    // Fuel back, and out of the van.
+    { "cmd": "pr.send", "line": "fsmvar FuelTank Data FuelLevel 30" },
+    { "cmd": "wait", "frames": 30 },
+    { "label": "Return gets him out", "cmd": "pr.key", "key": 13, "seconds": 0.3 },
+    { "cmd": "wait", "frames": 60 },
+    { "cmd": "scene", "presets": "restore" }
+  ]
+}

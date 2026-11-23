@@ -75,6 +75,8 @@ namespace PerkeleRim.Protocol
         public const uint ParticleCapacity = 512;
         public const uint LookAtTextMax = 255;
         public const uint LookAtUse = 0x1;
+        public const uint FuelTextLow = 0x1;
+        public const uint FuelTextDry = 0x2;
         public const uint ModelChunkMax = 49152;
         public const uint ModelSizeMax = 67108864;
         public const uint ModelNameMax = 48;

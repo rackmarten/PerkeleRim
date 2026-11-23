@@ -3,6 +3,7 @@
 
 #include "Ini.h"
 #include "debug/HitTest.h"
+#include "fuel/Fuel.h"
 #include "link/LinkService.h"
 #include "look_at.h"
 #include "model/ModelView.h"
@@ -389,6 +390,13 @@ namespace PerkeleRim::TestKit
                         }
                         return DescribeVehicle(id, state);
                     };
+                });
+
+            SkseTestKit::AddCommand("pr.fuel", "", "The fuel line on the HUD as Skyrim shows it (MSC's with the nearest pump on a low tank), MSC's flags for it (low, dry) and whether this save had the tow tip",
+                [](Call&) -> Json {
+                    const auto flags = Fuel::LastFlags();
+                    return JsonObject{ { "line", Fuel::LastLine() }, { "low", (flags & Protocol::kFuelTextLow) != 0 },
+                        { "dry", (flags & Protocol::kFuelTextDry) != 0 }, { "tipped", Fuel::Tipped() } };
                 });
 
             SkseTestKit::AddCommand("pr.vehicle", "[vehicle]", "A vehicle MSC has on the island (van, moped, kekmet, gifu): where, how fast, drawn, solid, its lights",

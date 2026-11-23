@@ -90,6 +90,14 @@ namespace PerkeleRim
 
         public static bool Low(float level, float capacity) => capacity > 0f && level < capacity * LowShare;
 
+        // FuelText's flags for the driven tank: low under a quarter (Skyrim adds the nearest pump to
+        // the low line), dry too at DryLevel or below (Skyrim's one-time tip about the tow).
+        public static uint LineFlags(float level, float capacity)
+        {
+            if (!Low(level, capacity)) return 0u;
+            return Dry(level) ? Wire.FuelTextLow | Wire.FuelTextDry : Wire.FuelTextLow;
+        }
+
         // Pays for poured litres at price marks a litre out of money (MSC's PlayerMoney, pennies
         // kept) and returns the litres paid for: all of them, or what the money covers (the caller
         // takes the rest back out of the tank). Free with no price.
