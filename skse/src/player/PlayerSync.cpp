@@ -34,6 +34,7 @@
 #include "safe/Safe.h"
 #include "shot/Shot.h"
 #include "stamina.h"
+#include "teimo/Teimo.h"
 #include "wading.h"
 #include "vehicle/Hitbox.h"
 #include "vehicle/HitboxTest.h"
@@ -977,6 +978,7 @@ namespace PerkeleRim::PlayerSync
             HandView::Update(link.ReadHandLayer(hands) ? &hands : nullptr, a_delta);
             Combat::Update(a_player, state.generation, a_delta);
             People::Update(a_player, seated ? driven : nullptr);
+            Teimo::Update(a_player, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, inVehicle != 0);
             const bool menu = MenuHasInput();
             HeldDrinkView::Update(a_player, posed && !chase, a_delta);
             Combat::Disarm(a_player);
@@ -997,7 +999,9 @@ namespace PerkeleRim::PlayerSync
             hud.hideStealth = !state.sneak;  // Skyrim's sneak eye stayed up after standing
             hud.label = state.lookAt;
             hud.hand = state.lookAtUse;
-            hud.subtitle = state.subtitle.empty() ? std::string(Intro::Caption()) : state.subtitle;  // the shack's wake-up caption carries over the handover
+            hud.subtitle = !state.subtitle.empty()        ? state.subtitle :
+                           !Intro::Caption().empty() ? std::string(Intro::Caption()) :  // the shack's wake-up caption carries over the handover
+                                                       Teimo::CurrentCaption();
             hud.gear = state.gear;
             hud.fuel = Fuel::Line(state.fuel, state.fuelFlags, a_player->GetPosition());
             hud.tools = valid && (pose.flags & Protocol::kPlayerTools) != 0;
@@ -1050,6 +1054,9 @@ namespace PerkeleRim::PlayerSync
                     Play(a_player, a_delta);
                 }
                 HitTest::Update(a_player, a_delta);
+                if (a_delta > 0.0f) {
+                    Teimo::Draw(a_player, a_delta);
+                }
             }
             static inline REL::Relocation<decltype(thunk)> original;
         };

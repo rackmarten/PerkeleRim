@@ -90,6 +90,7 @@ namespace PerkeleRim.Game
         PocketLink pocket;
         JunkLink junk;
         ModelSender models;
+        TeimoVoice teimo;
         ItemLink items;
         ParticleLink particles;
         ActorLink actors;
@@ -186,6 +187,7 @@ namespace PerkeleRim.Game
             actors = new ActorLink(island, charge, log, what => voice.Swear(what));
             finger = new FingerLink(log);
             voice = new PlayerVoice(log);
+            teimo = new TeimoVoice(island, log);
             horn = new VehicleHorn(log);
             chase = new ChaseCamera(log);
             debugView = new DebugView(SetIslandVisible, log);
@@ -216,6 +218,9 @@ namespace PerkeleRim.Game
 
         // Spike "intro <cue>": what IntroCue plays (Wire.Intro*: 1 blackout, 2 wake).
         public void Intro(uint cue) => voice.Intro(cue, "spike");
+
+        // Spike "teimo say <variation>": one of Teimo's lines, from where the player stands.
+        public void TeimoSay(string name) => teimo.Say(name, null);
 
         // Spike commands "textures" (read an object's model and log it) and "items" (what Skyrim gets).
         public void InspectModel(string name) => models.Inspect(name);
@@ -365,6 +370,8 @@ namespace PerkeleRim.Game
             SendConsumed(link);
             // Skyrim has the blood ready before it is needed (shown when the player dies there).
             if (playing) models.IdForBuilt(BloodModel, () => ModelSender.Overlay(BloodModel, BloodTexture, log));
+            // Teimo for his stall in Riverwood, by name; a new pose is a new model.
+            if (playing) models.IdForBuilt(TeimoModel.Key, () => TeimoModel.Build(models, log));
             if (playing) FillPose(ref state);
             if (player != null) state.flags |= Wire.PlayerInGame;  // Skyrim's play mode hands over only then
             if (menu.Open) state.flags |= Wire.PlayerMscMenu;  // Skyrim closes its side when Resume closes it
@@ -504,6 +511,8 @@ namespace PerkeleRim.Game
                 voice.OnHurt(payload, size);
             else if (type == MessageType.IntroCue)
                 voice.OnIntro(payload, size);
+            else if (type == MessageType.TeimoLine)
+                teimo.OnLine(payload, size);
             else if (type == MessageType.StockShelves)
                 shelves.OnMessage(payload, size);
             else if (type == MessageType.FuelStations)

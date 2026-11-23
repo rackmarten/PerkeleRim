@@ -21,6 +21,7 @@
 #include "rest/Rest.h"
 #include "save/Cosave.h"
 #include "save/SaveSync.h"
+#include "teimo/Teimo.h"
 
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
@@ -54,12 +55,14 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::Rest::OnDataLoaded();
             PerkeleRim::MscMenuView::OnDataLoaded();
             PerkeleRim::Blackout::OnDataLoaded();
+            PerkeleRim::Teimo::OnDataLoaded();
         } else if (a_msg->type == SKSE::MessagingInterface::kPreLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
             PerkeleRim::Death::Hide();  // the reload after a death
             PerkeleRim::Rest::OnGameLoad();  // before the release: MSC stops pissing and the like at once
             PerkeleRim::PlayerSync::OnGameLoad();
             if (a_msg->type == SKSE::MessagingInterface::kNewGame) {
                 PerkeleRim::Intro::OnNewGame();
+                PerkeleRim::Teimo::OnGameLoaded();
                 PerkeleRim::Blackout::OnGameLoaded();
                 PerkeleRim::PlayerSync::OnGameLoaded();
             }
@@ -70,6 +73,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             PerkeleRim::HitTest::OnGameLoaded();
             PerkeleRim::Intro::OnGameLoaded();
             PerkeleRim::Blackout::OnGameLoaded();
+            PerkeleRim::Teimo::OnGameLoaded();
             if (a_msg->data) {  // the load worked (its success flag is the pointer's value)
                 PerkeleRim::PlayerSync::OnGameLoaded();  // after SaveSync's MscLoad
             }

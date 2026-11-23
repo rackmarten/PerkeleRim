@@ -10,6 +10,7 @@
 #include "people/People.h"
 #include "player/PlayerSync.h"
 #include "shout.h"
+#include "teimo/Teimo.h"
 
 #include <cstring>
 #include <optional>
@@ -508,6 +509,7 @@ namespace PerkeleRim::Combat
         const float health = values ? values->GetActorValue(RE::ActorValue::kHealth) : 0.0f;  // the spell lands next frame
         caster->CastSpellImmediate(state.punch, false, target, 1.0f, false, damage, a_player);
         caster->CastSpellImmediate(state.stagger, false, target, 1.0f, false, 0.0f, a_player);
+        Teimo::OnHit(a_player, target, false);
         lastHit = { lastHit.count + 1, target->GetFormID(), false, damage, unarmed, a_drunk, 0.0f, 1.0f, 0.0f, a_stress };
         SKSE::log::info("combat: the player punched {} for {:.0f} (unarmed {:.1f}, drunk {:.1f}, stress {:.0f}), it had {:.0f} of {:.0f} max health",
             NameOf(target), damage, unarmed, a_drunk, a_stress, health, max);
@@ -634,6 +636,7 @@ namespace PerkeleRim::Combat
             SKSE::log::info("combat: the player pushed {} aside (stagger from {:.2f}){}", NameOf(target), direction, took ? "" : ", but its graph refused");
             return;
         }
+        Teimo::OnHit(a_player, target, piss);
         if (piss) {
             if (!state.piss) {
                 return;
@@ -794,6 +797,7 @@ namespace PerkeleRim::Combat
         if (!lists) {
             return;
         }
+        Teimo::OnFinger(a_player, finger.direction[0], finger.direction[1]);
         const auto at = a_player->GetPosition();
         int        seen = 0;
         for (auto& handle : lists->highActorHandles) {

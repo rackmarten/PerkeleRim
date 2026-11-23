@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 50;
+        public const uint ProtocolVersion = 51;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -75,6 +75,7 @@ namespace PerkeleRim.Protocol
         public const uint ParticleCapacity = 512;
         public const uint LookAtTextMax = 255;
         public const uint LookAtUse = 0x1;
+        public const uint TeimoClipMax = 48;
         public const uint FuelTextLow = 0x1;
         public const uint FuelTextDry = 0x2;
         public const uint ModelChunkMax = 49152;
@@ -183,6 +184,7 @@ namespace PerkeleRim.Protocol
         JunkBack = 33,
         Blackout = 34,
         HeldDrink = 35,
+        TeimoLine = 36,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -753,6 +755,14 @@ namespace PerkeleRim.Protocol
         public fixed float top[3];
         public fixed float side[3];
         public fixed float grip[3];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct TeimoLine
+    {
+        public fixed float position[3];
+        public uint length;
+        public fixed byte clip[48];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
