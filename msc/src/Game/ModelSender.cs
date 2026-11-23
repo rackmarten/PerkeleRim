@@ -50,6 +50,7 @@ namespace PerkeleRim.Game
         readonly HashSet<uint> sent = new HashSet<uint>();    // this link session
         readonly HashSet<uint> queued = new HashSet<uint>();  // waiting, being read or being sent
         readonly Dictionary<uint, Failure> failed = new Dictionary<uint, Failure>();  // reads that threw
+        readonly HashSet<int> changedLogged = new HashSet<int>();  // items whose read was given up, by instance id
 
         // A read that threw is tried again 10 s after, then 20, 40, ... up to 10 minutes.
         class Failure
@@ -388,7 +389,9 @@ namespace PerkeleRim.Game
         // Meshes and textures go by content (name, size, bounds), not instance: MSC gives every spawned
         // copy of an item (a thrown bottle) its own mesh instance. Nothing that moves goes in (where its
         // parts sit, a texture's offset): an item with a turning part or a scrolling texture keeps one
-        // model instead of a new one every scan; its model has them as they were when it was read.
+        // model instead of a new one every scan; its model has them as they were when it was read. Each
+        // part's scale does go in (it is baked into the model, and the pose doesn't carry it), and the
+        // material's name (two labels on one atlas differ only by their offset).
         static string Key(Transform root, Predicate<Transform> include)
         {
             StringBuilder key = null;
@@ -406,11 +409,13 @@ namespace PerkeleRim.Game
                     var texture = material != null ? material.mainTexture : null;
                     if (texture != null) key.Append(texture.name).Append('/').Append(texture.width).Append('x').Append(texture.height);
                     if (material != null)
-                        key.Append(material.mainTextureScale).Append(material.shader != null ? material.shader.name : "")
+                        key.Append(material.name).Append(material.mainTextureScale).Append(material.shader != null ? material.shader.name : "")
                             .Append(Color(material, "_Color")).Append(Float(material, "_Mode")).Append(Float(material, "_Metallic"))
                             .Append(Float(material, "_Glossiness"));
                     key.Append(',');
                 }
+                var m = RelativeTo(root, renderer.transform);  // its scale only: the lengths of its axes
+                key.Append(Round(new Vector3(((Vector3)m.GetColumn(0)).magnitude, ((Vector3)m.GetColumn(1)).magnitude, ((Vector3)m.GetColumn(2)).magnitude)));
                 key.Append(';');
             }
             return key != null ? key.ToString() : null;
@@ -475,7 +480,12 @@ namespace PerkeleRim.Game
         // case, another texture), and the next scan asks again under what it is now.
         IEnumerable Read(Transform root, Predicate<Transform> include, string key)
         {
-            if (root == null || (key != null && Key(root, include) != key)) yield break;
+            if (root == null) yield break;
+            if (key != null && Key(root, include) != key)
+            {
+                Changed(root, "since it was seen");
+                yield break;
+            }
             var model = new ModelData { Name = root.name };
             var materials = new Materials();
             foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
@@ -487,8 +497,20 @@ namespace PerkeleRim.Game
                     yield return step;
                 if (renderer == null || materials.Cut) yield break;
             }
-            if (root == null || (key != null && Key(root, include) != key)) yield break;
+            if (root == null) yield break;
+            if (key != null && Key(root, include) != key)
+            {
+                Changed(root, "while it was read");
+                yield break;
+            }
             yield return model;
+        }
+
+        // A read given up because its item changed, logged the first time per item (one that keeps
+        // changing would be asked again every scan).
+        void Changed(Transform root, string when)
+        {
+            if (changedLogged.Add(root.GetInstanceID())) log($"model: {root.name} changed {when}, asked again as it is now (logged once per item)");
         }
 
         // The MSC materials and textures already in a model being read.
