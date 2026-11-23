@@ -16,7 +16,7 @@ either game.
 | `test-kit-smoke.json` | MSC has Kumpo, the player is in the world, MSC's debug commands reach it, PerkeleRim's commands are there | under 1 s |
 | `hits.json` | the hit test (`scripts/hit-test.ps1`): punches sober and drunk, a thrown bottle, thrown junk, bottles drunk and drunker at a Whiterun guard with its AI off, each attack's damage against `protocol/cpp/damage.h` and the guard's health; a row per attack in `step-9-rows.csv` | 73 to 92 s |
 | `hitbox.json` | the hitbox test (`scripts/hitbox-test.ps1`): the van called in front of Kumpo, 8 arrows shot at him through it (all stop at the van), 4 from his side (they reach him), a melee bandit behind it who walks round it to him, never through; every line of the test in `step-8-rows.csv` | 65 s |
-| `model-read.json` | MSC's frames while it reads and sends its models (`scripts/model-read-test.ps1`): every model read again with new ids, as after MSC starts (`pr.send models again cold`), then again under the same ids, as after Skyrim restarts (`models again`), each waited out with `pr.models`; MSC logs each stretch's worst frame (`model: models again cold: ... worst <n> ms`) and the script fails a frame over 200 ms. Then the van, the moped, the Kekmet and the Gifu called one by one and pictured from outside | 66 s |
+| `model-read.json` | MSC's frames while it reads and sends its models (`scripts/model-read-test.ps1`): every model read again with new ids, as after MSC starts (`pr.send models again cold`), then again under the same ids, as after Skyrim restarts (`models again`), each waited out with `pr.models`; MSC logs each stretch's worst frame (`model: models again cold: ... worst <n> ms`) and each frame over 200 ms with how much of it was reading and sending models; the script fails such a frame with over 100 ms of that. Then the van, the moped, the Kekmet and the Gifu called one by one and pictured from outside | 66 s |
 | `whirlwind-sprint.json` | Whirlwind Sprint while MSC has Kumpo: the van called in front of him stops a dash, one word dashes him about 15 m the way he faces, three about 30 m, Fire Breath doesn't move him (`pr.shout`, so not the Z key itself) | 15 to 17 s |
 | `van-lights.json` | the van's lights at night: MSC switches them on and Skyrim's lamps follow (both low beams, the rear lamps, the cabin); pictures from behind, in front and above; an A/B pair of one paused frame with the low beams put out (the ground ahead goes dark, the ground beside doesn't change); MSC switching every lamp off | 9 s |
 
@@ -33,10 +33,15 @@ in a hidden session:
   about 26 s, then walked round the van's side to within 90 units of Kumpo, never inside its box.
 - `model-read.json` (23 November 2026, 11 models: the four vehicles, the blood overlay and six items, 3924 chunks, 193 MB):
   MSC's worst frame reading every model again was 2009 ms with the old reader (5 frames over 200 ms: a vehicle each and
-  one more), 2018 ms sending them again under the same ids (4 over 200 ms); with the stepped reader 146 to 172 ms and
-  150 to 151 ms over two runs (none over 200 ms, 3 over 100 ms each), the van read in 0.3 to 0.5 s of steps over about 40 frames instead of 1.7 to
-  2.5 s in one, and the whole stretch over in 16 s instead of 25. The longest steps (120 to 150 ms) are a few that take 3 to
-  15 ms in other runs, most likely Mono's garbage collector stopping in them; the gaps between chunks stay under 1.3 s. A session start's own link-up also holds a
+  one more), 2018 ms sending them again under the same ids (4 over 200 ms); with the stepped reader, over seven runs, 146
+  to 186 ms in 10 of the 14 stretches (3 or 4 frames over 100 ms each), the van read in 0.3 to 0.7 s of steps over about
+  40 frames instead of 1.7 to 2.5 s in one, and the whole stretch over in 16 s instead of 25. The other four: a 229 ms
+  frame with 190 ms of model work in it, a garbage collection in the Gifu's encode (since then a model is no longer
+  encoded into one array, the Gifu's was 63 MB); a 1101 ms frame after the reading was over, from before MSC logged each
+  long frame's share; and frames of 203 to 374 ms in two runs while other sessions loaded the desktop, with 0 to 16 ms of
+  model work in them. The longest steps (120 to 170 ms) are a few that take 3 to 15 ms in other runs: a garbage
+  collection stopping in them (MSC logs the count per long frame) or a texture's read back waiting for the GPU. The gaps
+  between chunks stay under 1.5 s, 4.7 s on the loaded desktop. A session start's own link-up also holds a
   9.3 s frame, MSC loading its game (logged as `no model read in it`), with either reader. All four vehicles look as before.
 - `van-lights.json` (5 runs): the low beams put out darkened the ground ahead by 42 luma (86 to 44, two thirds of its pixels), the
   ground beside the van rose by 0.9 (eye adaptation); MSC switching every lamp off darkened the ground ahead by 47 to 57.

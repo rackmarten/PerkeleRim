@@ -44,21 +44,13 @@ namespace PerkeleRim.Game
             public int Session;
         }
 
-        // A read model on its way out, a chunk at a time as the ring has room.
-        class Outgoing
-        {
-            public uint Id;
-            public byte[] Blob;
-            public int Offset;
-        }
-
         readonly Action<string> log;
         readonly MonoBehaviour host;  // runs the end-of-frame reads
         readonly Dictionary<string, uint> ids = new Dictionary<string, uint>();  // model key -> id
         readonly HashSet<uint> sent = new HashSet<uint>();    // this link session
         readonly HashSet<uint> queued = new HashSet<uint>();  // waiting, being read or being sent
         readonly Queue<Job> jobs = new Queue<Job>();
-        readonly Queue<Outgoing> outgoing = new Queue<Outgoing>();
+        readonly Queue<ChunkCursor> outgoing = new Queue<ChunkCursor>();  // read models on their way out, a chunk at a time as the ring has room
         long outgoingBytes;
         readonly byte[] payload = new byte[16 + Wire.ModelChunkMax];  // sizeof(ModelChunk) + the most data
         Job current;
@@ -79,6 +71,7 @@ namespace PerkeleRim.Game
         // player feels of the reads (logged as "model: link-up: sent ...", "model: models again: ...").
         double lastFrame = -1;
         int lastCollections;
+        readonly Stopwatch ownClock = new Stopwatch();  // this sender's own work (sending, reading) since the last frame
         FrameWatch watch;
         double watchStart, lastWork, lastChunkAt, longestGap, longestStepMs;  // lastWork: a chunk sent, a model read or being read over frames
         long watchReadMs;
@@ -174,7 +167,9 @@ namespace PerkeleRim.Game
                 else Watch("link-up");
             }
             if (!wasUp) return;
-            Send(link);
+            ownClock.Start();
+            try { Send(link); }
+            finally { ownClock.Stop(); }
             if ((current != null || jobs.Count > 0) && !scheduled)
             {
                 scheduled = true;
@@ -187,9 +182,9 @@ namespace PerkeleRim.Game
             while (outgoing.Count > 0)
             {
                 var o = outgoing.Peek();
-                int size = ModelData.ChunkInto(o.Blob, o.Id, o.Offset, payload);
+                int size = o.Next(payload);
                 if (!link.Send(MessageType.ModelChunk, payload, size)) break;  // ring full, next frame
-                o.Offset += size - 16;
+                o.Sent(size);
                 double now = frameClock.Elapsed.TotalMilliseconds;
                 if (watch != null)
                 {
@@ -198,9 +193,9 @@ namespace PerkeleRim.Game
                     watchChunks++;
                     watchBytes += size;
                 }
-                if (o.Offset < o.Blob.Length) continue;
+                if (!o.Done) continue;
                 outgoing.Dequeue();
-                outgoingBytes -= o.Blob.Length;
+                outgoingBytes -= o.Length;
                 sent.Add(o.Id);
                 queued.Remove(o.Id);
                 watchModels++;
@@ -227,6 +222,13 @@ namespace PerkeleRim.Game
             yield return new WaitForEndOfFrame();
             scheduled = false;
             if (!wasUp) yield break;
+            ownClock.Start();
+            try { ReadThisFrame(); }
+            finally { ownClock.Stop(); }
+        }
+
+        void ReadThisFrame()
+        {
             budget.BeginFrame();
             bool any = false;
             while (!budget.Spent)
@@ -292,14 +294,14 @@ namespace PerkeleRim.Game
                 queued.Remove(job.Id);  // not there yet, or its renderers went off since the scan: asked again
                 yield break;
             }
-            byte[] blob = null;
+            EncodedModel blob = null;
             foreach (var step in model.EncodeSteps())
             {
                 if (step != null) blob = step;
                 yield return "encoding " + model.Name;
             }
             if (job.Session != session) yield break;  // the link went down meanwhile
-            outgoing.Enqueue(new Outgoing { Id = job.Id, Blob = blob });
+            outgoing.Enqueue(new ChunkCursor(blob, job.Id));
             lastWork = frameClock.Elapsed.TotalMilliseconds;
             outgoingBytes += blob.Length;
             if (watch != null)
@@ -337,10 +339,12 @@ namespace PerkeleRim.Game
                 watch.Add(ms);
                 if (ms > FrameWatch.HitchMs)
                     log($"model: a {ms:0} ms frame, {(lastStep.Length > 0 ? "reading (last step: " + lastStep + ")" : "no model read in it")}, " +
-                        $"{outgoing.Count} read models waiting to go out, {collections - lastCollections} garbage collections in it");
+                        $"{ownClock.ElapsedMilliseconds} ms of it reading and sending models, {outgoing.Count} read models waiting to go out, " +
+                        $"{collections - lastCollections} garbage collections in it");
             }
             lastFrame = now;
             lastCollections = collections;
+            ownClock.Reset();
             lastStep = "";  // the end of this frame's reading says what it did
             // A build that keeps finding nothing (asked again every frame) is no work.
             if (outgoing.Count > 0) lastWork = now;

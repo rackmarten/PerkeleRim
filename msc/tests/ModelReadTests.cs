@@ -293,9 +293,11 @@ namespace PerkeleRim.Tests
             Assert.That(model.EncodedSize(), Is.EqualTo(expected.Length));
             Assert.That(model.Encode(), Is.EqualTo(expected));
             var steps = model.EncodeSteps().ToList();
-            Assert.That(steps.Count, Is.EqualTo(2 + 3 + 1), "a step per texture and per mesh, then the blob");
+            Assert.That(steps.Count, Is.EqualTo(2 + 3 + 1), "a step per texture and per mesh, then the encoded model");
             Assert.That(steps.Take(5).All(s => s == null), Is.True);
-            Assert.That(steps[5], Is.EqualTo(expected));
+            Assert.That(steps[5].ToArray(), Is.EqualTo(expected));
+            Assert.That(steps[5].Length, Is.EqualTo(expected.Length));
+            Assert.That(steps[5].Parts, Does.Contain(model.Textures[0].Rgba), "a texture's pixels go in as they are, not copied");
         }
 
         [Test]
@@ -315,10 +317,29 @@ namespace PerkeleRim.Tests
             }
             Assert.That(whole, Is.EqualTo(blob));
             Assert.That(chunks, Is.EqualTo(ModelData.Split(blob, 9, 100).Count));
+        }
+
+        [Test]
+        public void ACursorCutsTheEncodedPartsIntoTheSameChunks()
+        {
+            var model = Sample();
+            EncodedModel encoded = null;
+            foreach (var step in model.EncodeSteps()) if (step != null) encoded = step;
+            var blob = encoded.ToArray();
+            var expected = ModelData.Split(blob, 9, 100);
+            var cursor = new ChunkCursor(encoded, 9, 100);
             var buffer = new byte[16 + 100];
-            int last = (chunks - 1) * 100;
-            Assert.That(ModelData.ChunkInto(blob, 9, last, buffer, 100), Is.EqualTo(16 + blob.Length - last), "the last chunk, into a buffer");
-            Assert.That(buffer.Take(16 + blob.Length - last), Is.EqualTo(ModelData.Chunk(blob, 9, last, 100)));
+            int i = 0;
+            while (!cursor.Done)
+            {
+                int size = cursor.Next(buffer);
+                Assert.That(buffer.Take(size), Is.EqualTo(expected[i]), $"chunk {i}");
+                Assert.That(cursor.Next(buffer), Is.EqualTo(size), "made again until it went: the same");
+                cursor.Sent(size);
+                i++;
+            }
+            Assert.That(i, Is.EqualTo(expected.Count));
+            Assert.That(cursor.Offset, Is.EqualTo(blob.Length));
         }
     }
 }

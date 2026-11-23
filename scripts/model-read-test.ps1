@@ -7,8 +7,9 @@
     each stretch (its frames: the worst, how many over 200 ms) and each model's read, the session
     start's too when this run started it. Results in out/<time>-model-read/, with MSC's log of the run (msc.log) and
     the pictures. A session this script started is stopped at the end (-Keep leaves it up).
-    Exit code: 0 passed, both stretches logged and no frame over 200 ms; 1 a check failed, a stretch is missing or a
-    frame was over 200 ms; 2 Skyrim crashed, exited or hung. A gap of over 4 s between chunks is only reported.
+    Exit code: 0 passed, both stretches logged and no frame over 200 ms with over 100 ms of reading and sending models
+    in it; 1 a check failed, a stretch is missing or such a frame; 2 Skyrim crashed, exited or hung. Frames over 200 ms
+    that were something else in MSC (its own scene load, the machine busy) and gaps over 4 s between chunks are reported.
 .EXAMPLE
     scripts/model-read-test.ps1
     scripts/model-read-test.ps1 -Build -Keep
@@ -25,6 +26,7 @@ $ErrorActionPreference = 'Stop'
 $skytest = Join-Path $PSScriptRoot 'skytest.ps1'
 $file = Join-Path $RepoRoot 'scenarios/model-read.json'
 $hitchMs = 200  # FrameWatch.HitchMs
+$ownMs = 100    # of a frame over hitchMs, the most the model sender may have taken
 if ($Build) { & "$PSScriptRoot/build.ps1" }
 
 $json = & $skytest session -Json -WaitForLock $WaitForLock
@@ -53,8 +55,13 @@ try {
     $stretches = @($ran | Select-String -Pattern 'model: models again( cold)?: (?!.*cut short).* worst (\d+) ms.* longest gap between chunks (\d+) ms')
     $failed = @()
     if ($stretches.Count -lt 2) { $failed += "MSC logged $($stretches.Count) whole stretches for the scenario's models again, not 2." }
+    # MSC logs every frame over 200 ms with how much of it reading and sending models took.
+    foreach ($h in ($ran | Select-String -Pattern 'model: a (\d+) ms frame, .*?(\d+) ms of it reading and sending models')) {
+        $ms = [int]$h.Matches[0].Groups[1].Value; $own = [int]$h.Matches[0].Groups[2].Value
+        if ($own -gt $ownMs) { $failed += "A $ms ms frame had $own ms of reading and sending models in it." }
+        else { Write-Host "A $ms ms frame, but only $own ms of it reading and sending models: something else in MSC." -ForegroundColor Yellow }
+    }
     foreach ($s in $stretches) {
-        if ([int]$s.Matches[0].Groups[2].Value -gt $hitchMs) { $failed += "A frame took over $hitchMs ms." }
         # The session's readiness and the hit test take 4 s without a chunk as MSC done sending (skse/src/debug).
         if ([int]$s.Matches[0].Groups[3].Value -gt 4000) { Write-Host 'A gap between chunks was over 4 s: a test could start while MSC still reads.' -ForegroundColor Yellow }
     }

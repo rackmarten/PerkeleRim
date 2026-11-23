@@ -229,6 +229,84 @@ namespace PerkeleRim
         public float[] Direction = { 0f, 1f, 0f };
     }
 
+    // A model's blob as the pieces it was encoded in, in order (ModelData.EncodeSteps): textures'
+    // pixels are their own arrays, not copied. ChunkCursor cuts it into ModelChunk payloads.
+    public sealed class EncodedModel
+    {
+        public readonly List<byte[]> Parts = new List<byte[]>();
+        public int Length { get; private set; }
+
+        public void Add(byte[] part)
+        {
+            if (part.Length == 0) return;
+            Parts.Add(part);
+            Length += part.Length;
+        }
+
+        public byte[] ToArray()
+        {
+            var blob = new byte[Length];
+            int at = 0;
+            foreach (var part in Parts)
+            {
+                Array.Copy(part, 0, blob, at, part.Length);
+                at += part.Length;
+            }
+            return blob;
+        }
+    }
+
+    // An encoded model's ModelChunk payloads, one after the other, each copied from its parts into
+    // one buffer (ModelSender's, for every chunk): Next makes the next one, Sent moves on past it.
+    public sealed class ChunkCursor
+    {
+        readonly EncodedModel model;
+        readonly uint id;
+        readonly int chunkMax;
+        int part, at;          // where the next chunk starts
+        int nextPart, nextAt;  // where the one after starts, once Next made one
+
+        public ChunkCursor(EncodedModel model, uint id, int chunkMax = (int)Wire.ModelChunkMax)
+        {
+            this.model = model;
+            this.id = id;
+            this.chunkMax = chunkMax;
+        }
+
+        public uint Id => id;
+        public int Length => model.Length;
+        public int Offset { get; private set; }  // into the blob, of the next chunk
+        public bool Done => Offset >= model.Length;
+
+        // The next chunk into payload (at least 16 + chunkMax long): its size.
+        public int Next(byte[] payload)
+        {
+            int size = Math.Min(chunkMax, model.Length - Offset);
+            ModelData.PutChunkHeader(payload, id, (uint)model.Length, (uint)Offset, (uint)size);
+            int p = part, a = at, filled = 0;
+            while (filled < size)
+            {
+                var from = model.Parts[p];
+                int n = Math.Min(size - filled, from.Length - a);
+                Array.Copy(from, a, payload, 16 + filled, n);
+                filled += n;
+                a += n;
+                if (a == from.Length) { p++; a = 0; }
+            }
+            nextPart = p;
+            nextAt = a;
+            return 16 + size;
+        }
+
+        // The chunk Next made went out.
+        public void Sent(int payloadSize)
+        {
+            Offset += payloadSize - 16;
+            part = nextPart;
+            at = nextAt;
+        }
+    }
+
     public sealed class ModelData
     {
         public string Name;
@@ -250,9 +328,9 @@ namespace PerkeleRim
 
         public byte[] Encode()
         {
-            byte[] blob = null;
-            foreach (var step in EncodeSteps()) blob = step;
-            return blob;
+            EncodedModel encoded = null;
+            foreach (var step in EncodeSteps()) if (step != null) encoded = step;
+            return encoded.ToArray();
         }
 
         // The blob's size, worked out before writing it.
@@ -268,12 +346,14 @@ namespace PerkeleRim
         }
 
         // Encoded a texture or a mesh at a time (ModelSender reads over several frames): null after
-        // each, the blob last. A mesh's vertices go out through one block copy, not float by float.
-        public IEnumerable<byte[]> EncodeSteps()
+        // each, the encoded model last. Never one array: a texture's pixels go in as they are, the
+        // rest in pieces (EncodedModel), so a vehicle's 50 MB and more is never copied whole.
+        public IEnumerable<EncodedModel> EncodeSteps()
         {
             long size = EncodedSize();
             if (size > Wire.ModelSizeMax) throw new ArgumentException($"{Name}: {size} bytes, at most {Wire.ModelSizeMax}");
-            var stream = new MemoryStream((int)size);
+            var encoded = new EncodedModel();
+            var stream = new MemoryStream();
             var w = new BinaryWriter(stream);
             WriteName(w, Name);
             w.Write((uint)Textures.Count);
@@ -290,7 +370,8 @@ namespace PerkeleRim
                 w.Write((uint)t.Height);
                 w.Write(Wire.ModelTextureRgba8);
                 w.Write(0u);
-                w.Write(t.Rgba);
+                encoded.Add(Take(stream));
+                encoded.Add(t.Rgba);
                 yield return null;
             }
             foreach (var m in Materials)
@@ -330,30 +411,44 @@ namespace PerkeleRim
                 w.Write(m.Material);
                 w.Write(m.Node);
                 w.Write(0u);
-                // Position, normal, uv per vertex, then the indices: little-endian, as the machine is.
-                int n = m.VertexCount;
-                var vertices = new float[n * 8];
-                for (int i = 0; i < n; i++)
-                {
-                    int o = i * 8;
-                    vertices[o] = m.Positions[i * 3];
-                    vertices[o + 1] = m.Positions[i * 3 + 1];
-                    vertices[o + 2] = m.Positions[i * 3 + 2];
-                    vertices[o + 3] = m.Normals[i * 3];
-                    vertices[o + 4] = m.Normals[i * 3 + 1];
-                    vertices[o + 5] = m.Normals[i * 3 + 2];
-                    vertices[o + 6] = m.Uvs[i * 2];
-                    vertices[o + 7] = m.Uvs[i * 2 + 1];
-                }
-                var bytes = new byte[vertices.Length * 4 + m.Indices.Length * 2];
-                Buffer.BlockCopy(vertices, 0, bytes, 0, vertices.Length * 4);
-                Buffer.BlockCopy(m.Indices, 0, bytes, vertices.Length * 4, m.Indices.Length * 2);
-                w.Write(bytes);
+                encoded.Add(Take(stream));
+                encoded.Add(Vertices(m));
                 yield return null;
             }
-            w.Flush();
-            if (stream.Length != size) throw new InvalidOperationException($"{Name}: encoded {stream.Length} bytes, worked out {size}");
-            yield return stream.GetBuffer();  // exactly size long: the stream was made that big
+            encoded.Add(Take(stream));
+            if (encoded.Length != size) throw new InvalidOperationException($"{Name}: encoded {encoded.Length} bytes, worked out {size}");
+            yield return encoded;
+        }
+
+        // What the writer wrote since the last Take, and the stream emptied for the next.
+        static byte[] Take(MemoryStream stream)
+        {
+            var bytes = stream.ToArray();
+            stream.SetLength(0);
+            return bytes;
+        }
+
+        // A mesh's position, normal and uv per vertex, then its indices: little-endian, as the machine is.
+        static unsafe byte[] Vertices(ModelMeshData m)
+        {
+            int n = m.VertexCount;
+            var bytes = new byte[n * 32 + m.Indices.Length * 2];
+            if (n > 0)
+                fixed (byte* to = bytes)
+                fixed (float* p = m.Positions)
+                fixed (float* nn = m.Normals)
+                fixed (float* uv = m.Uvs)
+                {
+                    float* f = (float*)to;
+                    for (int i = 0; i < n; i++, f += 8)
+                    {
+                        f[0] = p[i * 3]; f[1] = p[i * 3 + 1]; f[2] = p[i * 3 + 2];
+                        f[3] = nn[i * 3]; f[4] = nn[i * 3 + 1]; f[5] = nn[i * 3 + 2];
+                        f[6] = uv[i * 2]; f[7] = uv[i * 2 + 1];
+                    }
+                }
+            Buffer.BlockCopy(m.Indices, 0, bytes, n * 32, m.Indices.Length * 2);
+            return bytes;
         }
 
         // A screen overlay: one quad showing texture over everything without lighting, 2 units wide
@@ -417,21 +512,20 @@ namespace PerkeleRim
         // The ModelChunk payload starting at offset.
         public static byte[] Chunk(byte[] blob, uint model, int offset, int chunkMax = (int)Wire.ModelChunkMax)
         {
-            var payload = new byte[16 + Math.Min(chunkMax, blob.Length - offset)];  // sizeof(ModelChunk)
-            ChunkInto(blob, model, offset, payload, chunkMax);
+            int size = Math.Min(chunkMax, blob.Length - offset);
+            var payload = new byte[16 + size];  // sizeof(ModelChunk)
+            PutChunkHeader(payload, model, (uint)blob.Length, (uint)offset, (uint)size);
+            Array.Copy(blob, offset, payload, 16, size);
             return payload;
         }
 
-        // The same into payload (16 + chunkMax long, ModelSender's one buffer for every chunk): its size.
-        public static int ChunkInto(byte[] blob, uint model, int offset, byte[] payload, int chunkMax = (int)Wire.ModelChunkMax)
+        // sizeof(ModelChunk): model, totalSize, offset, size.
+        public static void PutChunkHeader(byte[] payload, uint model, uint total, uint offset, uint size)
         {
-            int size = Math.Min(chunkMax, blob.Length - offset);
             Put(payload, 0, model);
-            Put(payload, 4, (uint)blob.Length);
-            Put(payload, 8, (uint)offset);
-            Put(payload, 12, (uint)size);
-            Array.Copy(blob, offset, payload, 16, size);
-            return 16 + size;
+            Put(payload, 4, total);
+            Put(payload, 8, offset);
+            Put(payload, 12, size);
         }
 
         static void Put(byte[] to, int at, uint value)
