@@ -16,6 +16,7 @@ either game.
 | `test-kit-smoke.json` | MSC has Kumpo, the player is in the world, MSC's debug commands reach it, PerkeleRim's commands are there | under 1 s |
 | `hits.json` | the hit test (`scripts/hit-test.ps1`): punches sober and drunk, a thrown bottle, thrown junk, bottles drunk and drunker at a Whiterun guard with its AI off, each attack's damage against `protocol/cpp/damage.h` and the guard's health; a row per attack in `step-9-rows.csv` | 73 to 92 s |
 | `hitbox.json` | the hitbox test (`scripts/hitbox-test.ps1`): the van called in front of Kumpo, 8 arrows shot at him through it (all stop at the van), 4 from his side (they reach him), a melee bandit behind it who walks round it to him, never through; every line of the test in `step-8-rows.csv` | 65 s |
+| `model-read.json` | MSC's frames while it reads and sends its models (`scripts/model-read-test.ps1`): every model read again with new ids, as after MSC starts (`pr.send models again cold`), then again under the same ids, as after Skyrim restarts (`models again`), each waited out with `pr.models`; MSC logs each stretch's worst frame (`model: models again cold: ... worst <n> ms`) and each frame over 200 ms with how much of it was reading and sending models; the script fails such a frame with over 100 ms of that and no garbage collection in it (one takes 150 to 300 ms of MSC's frame, whoever's allocation set it off). Then the van, the moped, the Kekmet and the Gifu called one by one and pictured from outside | 66 s |
 | `fuel-hint.json` | where to refuel: Kumpo at the van's wheel in Riverwood (`drive HAYOSIKO`, then Return), the tank set full, low and dry; a full tank has no fuel line, a low one names the nearest pump with its distance and direction ("Fuel 6.0 / 40 L. Whiterun Dwemer Oil ..."), a dry one shows the tow tip once; pictures with the HUD of the low and the dry tank | 20 s (Riverwood's load included) |
 | `teimo.json` | Teimo at his stall in Riverwood: drawn as MSC's Teimo behind the counter (pictures from the front, close up, the side and above), Kumpo walking up to the counter and Teimo greeting him with a caption, turning to him, small talk while he hangs about, and his answer to the middle finger; which line he said each time (`pr.teimo`'s `lastClip`, `PerkeleRim.log`'s `teimo: says`) | 34 s |
 | `teimo-drunk.json` | Kumpo walking up drunk (MSC drunk 2): Teimo greets him, then remarks on the drink with a caption; backing off past 8 m gets his goodbye | 26 s |
@@ -34,6 +35,20 @@ in a hidden session:
 - `hitbox.json` (5 runs, the same each time): 8 of 8 arrows through the van stopped at it (on the hitbox's layer, about 142 units from the van's
   middle, its back end), none came nearer Kumpo than 559 units; 4 of 4 control arrows reached him; the bandit stood for
   about 26 s, then walked round the van's side to within 90 units of Kumpo, never inside its box.
+- `model-read.json` (23 November 2026, 11 models: the four vehicles, the blood overlay and six items, 3924 chunks, 193 MB):
+  MSC's worst frame reading every model again was 2009 ms with the old reader (5 frames over 200 ms: a vehicle each and
+  one more), 2018 ms sending them again under the same ids (4 over 200 ms); with the stepped reader, over seven runs, 146
+  to 186 ms in 10 of the 14 stretches (3 or 4 frames over 100 ms each), the van read in 0.3 to 0.7 s of steps over about
+  40 frames instead of 1.7 to 2.5 s in one, and the whole stretch over in 16 s instead of 25. The other four: a 229 ms
+  frame with 190 ms of model work in it, a garbage collection in the Gifu's encode (since then a model is no longer
+  encoded into one array, the Gifu's was 63 MB); a 1101 ms frame after the reading was over, from before MSC logged each
+  long frame's share; and frames of 203 to 374 ms in two runs while other sessions loaded the desktop, with 0 to 16 ms of
+  model work in them. The longest steps (120 to 170 ms) are a few that take 3 to 15 ms in other runs: a garbage
+  collection stopping in them (MSC logs the count per long frame) or a texture's read back waiting for the GPU. The gaps
+  between chunks stay under 1.5 s, 4.7 s on the loaded desktop; the session's readiness and the hit test take 8 s
+  without a chunk as MSC done. On a loaded desktop a link-up's few garbage collections land in the reads' steps as 200 to
+  350 ms frames: every such frame with model work in it had one. A session start's own link-up also holds a
+  9.3 s frame, MSC loading its game (logged as `no model read in it`), with either reader. All four vehicles look as before.
 - `van-lights.json` (5 runs): the low beams put out darkened the ground ahead by 42 luma (86 to 44, two thirds of its pixels), the
   ground beside the van rose by 0.9 (eye adaptation); MSC switching every lamp off darkened the ground ahead by 47 to 57.
 - `whirlwind-sprint.json` (23 November 2026, 3 runs, one right after `hitbox.json`): 15.0 and 30.0 m on open grass, 3.0 to 3.2 m into the van (MSC logs `stopped by a wall`), 0 for Fire Breath.
@@ -72,6 +87,7 @@ Start from the closest file. Steps are the kit's requests (`docs/COMMANDS.md` in
 | `pr.vehicle [vehicle]` | a vehicle MSC has on the island: where, how fast, drawn, solid, which of its lights are on (`lightRolesOn`: 1 low, 2 high, 3 tail, 4 brake, 5 reverse, 6 cabin, 7 work, 8 beacon) |
 | `pr.hits [scenarios] [target=<hex>]` | the hit test, a row per attack |
 | `pr.hitbox` | the hitbox test, a row per line it logs |
+| `pr.models [quiet=<s>]` | waits until MSC's model chunks have come and then stopped for quiet seconds (8), with how many came |
 | `pr.teimo` | Teimo at his stall: found, loaded, drawn as MSC's Teimo, where, which way he faces, how far the player is, the last line he said (`lastClip`, `lastTopic`, `lines`) and his caption now; `pr.teimo:` is his camera and probe target (his middle, facing the way his model looks) |
 | `pr.teimo.say <topic>` | Teimo says a line of a topic now (`greet`, `drunk`, `chat`, `bye`, `finger`, `pissed`, `hit`), as if its event came |
 | `pr.teimo.front [distance=<units>]` | moves the player (Skyrim has it) in front of the stall, facing Teimo |

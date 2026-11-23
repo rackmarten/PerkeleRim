@@ -22,7 +22,7 @@ namespace PerkeleRim::HitTest
         constexpr float         kPlayerRadius = 0.3f;  // meters, MSC's player capsule (Actors.Touching)
         constexpr float         kHandoverTimeout = 120.0f;  // the first handover of a save walks to the garage
         constexpr float         kOwnedSettle = 4.0f;       // MSC's island gets built under the player
-        constexpr float         kModelQuiet = 4.0f;        // seconds without a ModelChunk: MSC has read its models (one took 2.1 s)
+        constexpr float         kModelQuiet = 8.0f;        // seconds without a ModelChunk: MSC has sent its models (gaps measured up to 4.7 s)
         constexpr float         kModelWait = 60.0f;        // and starting anyway after this long handed over
         constexpr float         kLevelTimeout = 8.0f;
         constexpr float         kLevelPitch = 0.05f;  // radians, about 3 degrees: level enough
@@ -445,8 +445,8 @@ namespace PerkeleRim::HitTest
                 Finish("Kumpo sits in a vehicle, the hit test needs him on foot");
             } else if (PlayerSync::Owned() && posed && (pose.flags & Protocol::kPlayerGrounded) != 0) {
                 state.owned += a_delta;
-                // MSC reads each model it sends in one frame, a vehicle's freezing it for a second or
-                // two, and a key held meanwhile never reaches it: the first attack waits for them.
+                // MSC reads and sends its models over the first half minute or so of a link-up: the
+                // first attack waits for them, so the attacks run on a quiet link and a steady frame rate.
                 if (const auto chunks = ModelView::Chunks(); chunks != state.chunks) {
                     state.chunks = chunks;
                     state.quiet = 0.0f;

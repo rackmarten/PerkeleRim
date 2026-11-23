@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using PerkeleRim.Protocol;
@@ -72,18 +73,26 @@ namespace PerkeleRim.Game
             return true;
         }
 
-        // ModelSender's build: null while MSC has no Teimo loaded.
-        public static ModelData Build(ModelSender sender, Action<string> log)
+        // ModelSender's read, in steps (ModelSender.IdForRead): nothing while MSC has no Teimo loaded,
+        // else what it is doing after each bit of work and the model last. Every mesh of him is baked
+        // in the first step, so all of him is in one pose; the steps after only read them.
+        public static IEnumerable Read(ModelSender sender, Action<string> log)
         {
-            // ModelSender asks again every frame until this returns a model: look only now and then.
-            if (Time.realtimeSinceStartup < nextTry) return null;
+            // ModelSender asks again every frame until this gives a model: look only now and then.
+            if (Time.realtimeSinceStartup < nextTry) yield break;
             nextTry = Time.realtimeSinceStartup + RetryEvery;
             var root = Find();
-            if (root == null) return Fail("no Teimo in MSC's scene yet", log);
+            if (root == null)
+            {
+                Fail("no Teimo in MSC's scene yet", log);
+                yield break;
+            }
             Pose(root, log);
+            string path = Path(root);
             var model = new ModelData { Name = Name };
             var materials = new ModelSender.Materials();
             var baked = new List<Mesh>();
+            var parts = new List<Part>();
             try
             {
                 foreach (var r in root.GetComponentsInChildren<Renderer>(true))
@@ -107,26 +116,47 @@ namespace PerkeleRim.Game
                         mesh = filter != null ? filter.sharedMesh : null;
                     }
                     else continue;
-                    sender.AddMesh(model, materials, r, mesh, m, ModelSender.PathBelow(root, r.transform), -1, null);
+                    parts.Add(new Part { Renderer = r, Mesh = mesh, M = m, Name = ModelSender.PathBelow(root, r.transform) });
+                }
+                yield return "baking Teimo";
+                foreach (var part in parts)
+                {
+                    // A part of him gone meanwhile (MSC unloading him): no Teimo rather than part of
+                    // one, read whole at the next try.
+                    if (part.Renderer == null) yield break;
+                    foreach (var step in sender.AddMesh(model, materials, part.Renderer, part.Mesh, part.M, part.Name, -1, null)) yield return step;
+                    if (materials.Cut) yield break;
                 }
             }
             finally
             {
                 foreach (var mesh in baked) UnityEngine.Object.Destroy(mesh);
             }
-            if (model.Meshes.Count == 0) return Fail("nothing to draw on " + Path(root), log);
+            if (model.Meshes.Count == 0)
+            {
+                Fail("nothing to draw on " + path, log);
+                yield break;
+            }
             failed = null;
             float floor = Floor(model);
-            log($"teimo: {Path(root)} baked ({PoseName()}): {model.Meshes.Count} meshes, {model.VertexCount} vertices, " +
+            log($"teimo: {path} baked ({PoseName()}): {model.Meshes.Count} meshes, {model.VertexCount} vertices, " +
                 $"{model.Textures.Count} textures, feet {floor:0.0} units below his root, raised to 0");
-            return model;
+            yield return model;
         }
 
-        static ModelData Fail(string why, Action<string> log)
+        // One mesh of him to read: baked or his own, where it sits on him.
+        sealed class Part
+        {
+            public Renderer Renderer;
+            public Mesh Mesh;
+            public Matrix4x4 M;
+            public string Name;
+        }
+
+        static void Fail(string why, Action<string> log)
         {
             if (why != failed) log("teimo: " + why + $", looking again every {RetryEvery:0} s");
             failed = why;
-            return null;
         }
 
         static string PoseName() => string.IsNullOrEmpty(PoseClip) ? "as he stands now" : $"{PoseClip} at {PoseTime:0.00} s";

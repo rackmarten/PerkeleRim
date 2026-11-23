@@ -33,21 +33,66 @@ namespace PerkeleRim
         // the whole texture when there is no map).
         public static ModelTextureData Baked(ModelTextureData texture, float[] tint, ModelTextureData metalMap, float metallic)
         {
-            var src = texture ?? new ModelTextureData { Width = 1, Height = 1, Rgba = new byte[] { 255, 255, 255, 255 } };
-            var rgba = new byte[src.Rgba.Length];
-            for (int y = 0; y < src.Height; y++)
-                for (int x = 0; x < src.Width; x++)
-                {
-                    int i = (y * src.Width + x) * 4;
-                    float metal = metallic;
-                    if (metalMap != null)
-                        metal = metalMap.Rgba[((y * metalMap.Height / src.Height) * metalMap.Width + x * metalMap.Width / src.Width) * 4] / 255f;
-                    float shade = 1f - MetalDarkening * Math.Max(0f, Math.Min(1f, metal));
-                    for (int c = 0; c < 3; c++) rgba[i + c] = Byte(src.Rgba[i + c] * tint[c] * shade);
-                    rgba[i + 3] = Byte(src.Rgba[i + 3] * tint[3]);
-                }
-            return new ModelTextureData { Width = src.Width, Height = src.Height, Rgba = rgba };
+            ModelTextureData baked = null;
+            foreach (var step in BakeSteps(texture, tint, metalMap, metallic, int.MaxValue)) baked = step;
+            return baked;
         }
+
+        // Baked a band of rows at a time (ModelSender reads over several frames): null after each
+        // band, the texture last. Each output byte depends only on its input byte and, with a metal
+        // map, the map's byte there, so they go through tables worked out once (the same sums).
+        public static IEnumerable<ModelTextureData> BakeSteps(ModelTextureData texture, float[] tint, ModelTextureData metalMap, float metallic, int rowsPerStep)
+        {
+            var src = texture ?? new ModelTextureData { Width = 1, Height = 1, Rgba = new byte[] { 255, 255, 255, 255 } };
+            int w = src.Width, h = src.Height;
+            var rgba = new byte[src.Rgba.Length];
+            var alpha = new byte[256];
+            for (int v = 0; v < 256; v++) alpha[v] = Byte(v * tint[3]);
+            // By shade: one table of 3 x 256 for the whole texture, or one per byte of the metal map
+            // (worked out when that byte first comes up).
+            var tables = new byte[metalMap != null ? 256 : 1][];
+            if (metalMap == null) tables[0] = ShadeTable(tint, Shade(metallic));
+            int[] column = null;
+            if (metalMap != null)
+            {
+                column = new int[w];
+                for (int x = 0; x < w; x++) column[x] = x * metalMap.Width / w;
+            }
+            var from = src.Rgba;
+            for (int y0 = 0; y0 < h; y0 += rowsPerStep)
+            {
+                int y1 = (int)Math.Min(h, (long)y0 + rowsPerStep);
+                for (int y = y0; y < y1; y++)
+                {
+                    int metalRow = metalMap != null ? (y * metalMap.Height / h) * metalMap.Width : 0;
+                    var table = tables[0];
+                    for (int x = 0, i = y * w * 4; x < w; x++, i += 4)
+                    {
+                        if (metalMap != null)
+                        {
+                            int m = metalMap.Rgba[(metalRow + column[x]) * 4];
+                            table = tables[m] ?? (tables[m] = ShadeTable(tint, Shade(m / 255f)));
+                        }
+                        rgba[i] = table[from[i]];
+                        rgba[i + 1] = table[256 + from[i + 1]];
+                        rgba[i + 2] = table[512 + from[i + 2]];
+                        rgba[i + 3] = alpha[from[i + 3]];
+                    }
+                }
+                if (y1 < h) yield return null;
+            }
+            yield return new ModelTextureData { Width = w, Height = h, Rgba = rgba };
+        }
+
+        static byte[] ShadeTable(float[] tint, float shade)
+        {
+            var table = new byte[768];
+            for (int c = 0; c < 3; c++)
+                for (int v = 0; v < 256; v++) table[c * 256 + v] = Byte(v * tint[c] * shade);
+            return table;
+        }
+
+        static float Shade(float metal) => 1f - MetalDarkening * Math.Max(0f, Math.Min(1f, metal));
 
         static byte Byte(float v) => (byte)Math.Max(0, Math.Min(255, (int)Math.Round(v)));
     }
@@ -184,6 +229,84 @@ namespace PerkeleRim
         public float[] Direction = { 0f, 1f, 0f };
     }
 
+    // A model's blob as the pieces it was encoded in, in order (ModelData.EncodeSteps): textures'
+    // pixels are their own arrays, not copied. ChunkCursor cuts it into ModelChunk payloads.
+    public sealed class EncodedModel
+    {
+        public readonly List<byte[]> Parts = new List<byte[]>();
+        public int Length { get; private set; }
+
+        public void Add(byte[] part)
+        {
+            if (part.Length == 0) return;
+            Parts.Add(part);
+            Length += part.Length;
+        }
+
+        public byte[] ToArray()
+        {
+            var blob = new byte[Length];
+            int at = 0;
+            foreach (var part in Parts)
+            {
+                Array.Copy(part, 0, blob, at, part.Length);
+                at += part.Length;
+            }
+            return blob;
+        }
+    }
+
+    // An encoded model's ModelChunk payloads, one after the other, each copied from its parts into
+    // one buffer (ModelSender's, for every chunk): Next makes the next one, Sent moves on past it.
+    public sealed class ChunkCursor
+    {
+        readonly EncodedModel model;
+        readonly uint id;
+        readonly int chunkMax;
+        int part, at;          // where the next chunk starts
+        int nextPart, nextAt;  // where the one after starts, once Next made one
+
+        public ChunkCursor(EncodedModel model, uint id, int chunkMax = (int)Wire.ModelChunkMax)
+        {
+            this.model = model;
+            this.id = id;
+            this.chunkMax = chunkMax;
+        }
+
+        public uint Id => id;
+        public int Length => model.Length;
+        public int Offset { get; private set; }  // into the blob, of the next chunk
+        public bool Done => Offset >= model.Length;
+
+        // The next chunk into payload (at least 16 + chunkMax long): its size.
+        public int Next(byte[] payload)
+        {
+            int size = Math.Min(chunkMax, model.Length - Offset);
+            ModelData.PutChunkHeader(payload, id, (uint)model.Length, (uint)Offset, (uint)size);
+            int p = part, a = at, filled = 0;
+            while (filled < size)
+            {
+                var from = model.Parts[p];
+                int n = Math.Min(size - filled, from.Length - a);
+                Array.Copy(from, a, payload, 16 + filled, n);
+                filled += n;
+                a += n;
+                if (a == from.Length) { p++; a = 0; }
+            }
+            nextPart = p;
+            nextAt = a;
+            return 16 + size;
+        }
+
+        // The chunk Next made went out.
+        public void Sent(int payloadSize)
+        {
+            Offset += payloadSize - 16;
+            part = nextPart;
+            at = nextAt;
+        }
+    }
+
     public sealed class ModelData
     {
         public string Name;
@@ -205,6 +328,32 @@ namespace PerkeleRim
 
         public byte[] Encode()
         {
+            EncodedModel encoded = null;
+            foreach (var step in EncodeSteps()) if (step != null) encoded = step;
+            return encoded.ToArray();
+        }
+
+        // The blob's size, worked out before writing it.
+        public long EncodedSize()
+        {
+            long size = Wire.ModelNameMax + 5 * 4;
+            foreach (var t in Textures) size += 16 + (t.Rgba != null ? t.Rgba.LongLength : 0);
+            size += Materials.Count * 40L;
+            size += Nodes.Count * (Wire.ModelNodeNameMax + 4 + 7 * 4L);
+            size += Lights.Count * 40L;
+            foreach (var m in Meshes)
+                size += Wire.ModelNameMax + 6 * 4 + (m.Positions != null ? m.VertexCount * 32L : 0) + (m.Indices != null ? m.Indices.Length * 2L : 0);
+            return size;
+        }
+
+        // Encoded a texture or a mesh at a time (ModelSender reads over several frames): null after
+        // each, the encoded model last. Never one array: a texture's pixels go in as they are, the
+        // rest in pieces (EncodedModel), so a vehicle's 50 MB and more is never copied whole.
+        public IEnumerable<EncodedModel> EncodeSteps()
+        {
+            long size = EncodedSize();
+            if (size > Wire.ModelSizeMax) throw new ArgumentException($"{Name}: {size} bytes, at most {Wire.ModelSizeMax}");
+            var encoded = new EncodedModel();
             var stream = new MemoryStream();
             var w = new BinaryWriter(stream);
             WriteName(w, Name);
@@ -222,7 +371,9 @@ namespace PerkeleRim
                 w.Write((uint)t.Height);
                 w.Write(Wire.ModelTextureRgba8);
                 w.Write(0u);
-                w.Write(t.Rgba);
+                encoded.Add(Take(stream));
+                encoded.Add(t.Rgba);
+                yield return null;
             }
             foreach (var m in Materials)
             {
@@ -254,6 +405,9 @@ namespace PerkeleRim
             {
                 if (m.Material < -1 || m.Material >= Materials.Count) throw new ArgumentException($"{Name}: mesh {m.Name} has material {m.Material}");
                 if (m.Node < -1 || m.Node >= Nodes.Count) throw new ArgumentException($"{Name}: mesh {m.Name} has node {m.Node}");
+                if (m.Positions == null || m.Positions.Length % 3 != 0 || m.Normals == null || m.Normals.Length < m.Positions.Length || m.Uvs == null ||
+                    m.Uvs.Length < m.VertexCount * 2 || m.Indices == null)
+                    throw new ArgumentException($"{Name}: mesh {m.Name} has {(m.Positions != null ? m.Positions.Length / 3 : 0)} positions but not as many normals and uvs");
                 WriteName(w, m.Name);
                 w.Write(m.Texture);
                 w.Write((uint)m.VertexCount);
@@ -261,18 +415,44 @@ namespace PerkeleRim
                 w.Write(m.Material);
                 w.Write(m.Node);
                 w.Write(0u);
-                for (int i = 0; i < m.VertexCount; i++)
-                {
-                    for (int k = 0; k < 3; k++) w.Write(m.Positions[i * 3 + k]);
-                    for (int k = 0; k < 3; k++) w.Write(m.Normals[i * 3 + k]);
-                    w.Write(m.Uvs[i * 2]);
-                    w.Write(m.Uvs[i * 2 + 1]);
-                }
-                foreach (var index in m.Indices) w.Write(index);
+                encoded.Add(Take(stream));
+                encoded.Add(Vertices(m));
+                yield return null;
             }
-            w.Flush();
-            if (stream.Length > Wire.ModelSizeMax) throw new ArgumentException($"{Name}: {stream.Length} bytes, at most {Wire.ModelSizeMax}");
-            return stream.ToArray();
+            encoded.Add(Take(stream));
+            if (encoded.Length != size) throw new InvalidOperationException($"{Name}: encoded {encoded.Length} bytes, worked out {size}");
+            yield return encoded;
+        }
+
+        // What the writer wrote since the last Take, and the stream emptied for the next.
+        static byte[] Take(MemoryStream stream)
+        {
+            var bytes = stream.ToArray();
+            stream.SetLength(0);
+            return bytes;
+        }
+
+        // A mesh's position, normal and uv per vertex, then its indices: little-endian, as the machine is.
+        static unsafe byte[] Vertices(ModelMeshData m)
+        {
+            int n = m.VertexCount;
+            var bytes = new byte[n * 32 + m.Indices.Length * 2];
+            if (n > 0)
+                fixed (byte* to = bytes)
+                fixed (float* p = m.Positions)
+                fixed (float* nn = m.Normals)
+                fixed (float* uv = m.Uvs)
+                {
+                    float* f = (float*)to;
+                    for (int i = 0; i < n; i++, f += 8)
+                    {
+                        f[0] = p[i * 3]; f[1] = p[i * 3 + 1]; f[2] = p[i * 3 + 2];
+                        f[3] = nn[i * 3]; f[4] = nn[i * 3 + 1]; f[5] = nn[i * 3 + 2];
+                        f[6] = uv[i * 2]; f[7] = uv[i * 2 + 1];
+                    }
+                }
+            Buffer.BlockCopy(m.Indices, 0, bytes, n * 32, m.Indices.Length * 2);
+            return bytes;
         }
 
         // A screen overlay: one quad showing texture over everything without lighting, 2 units wide
@@ -327,17 +507,37 @@ namespace PerkeleRim
             int offset = 0;
             do
             {
-                int size = Math.Min(chunkMax, blob.Length - offset);
-                var payload = new byte[16 + size];  // sizeof(ModelChunk)
-                BitConverter.GetBytes(model).CopyTo(payload, 0);
-                BitConverter.GetBytes((uint)blob.Length).CopyTo(payload, 4);
-                BitConverter.GetBytes((uint)offset).CopyTo(payload, 8);
-                BitConverter.GetBytes((uint)size).CopyTo(payload, 12);
-                Array.Copy(blob, offset, payload, 16, size);
-                payloads.Add(payload);
-                offset += size;
+                payloads.Add(Chunk(blob, model, offset, chunkMax));
+                offset += payloads[payloads.Count - 1].Length - 16;
             } while (offset < blob.Length);
             return payloads;
+        }
+
+        // The ModelChunk payload starting at offset.
+        public static byte[] Chunk(byte[] blob, uint model, int offset, int chunkMax = (int)Wire.ModelChunkMax)
+        {
+            int size = Math.Min(chunkMax, blob.Length - offset);
+            var payload = new byte[16 + size];  // sizeof(ModelChunk)
+            PutChunkHeader(payload, model, (uint)blob.Length, (uint)offset, (uint)size);
+            Array.Copy(blob, offset, payload, 16, size);
+            return payload;
+        }
+
+        // sizeof(ModelChunk): model, totalSize, offset, size.
+        public static void PutChunkHeader(byte[] payload, uint model, uint total, uint offset, uint size)
+        {
+            Put(payload, 0, model);
+            Put(payload, 4, total);
+            Put(payload, 8, offset);
+            Put(payload, 12, size);
+        }
+
+        static void Put(byte[] to, int at, uint value)
+        {
+            to[at] = (byte)value;
+            to[at + 1] = (byte)(value >> 8);
+            to[at + 2] = (byte)(value >> 16);
+            to[at + 3] = (byte)(value >> 24);
         }
 
         // UTF-8, cut at a character boundary to fit, zero padded.

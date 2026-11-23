@@ -169,7 +169,8 @@ namespace PerkeleRim.Game
         public void SendModel(ModelSender models, Transform player)
         {
             if (car == null) return;
-            model.Id = models.IdForBuilt(driverName, () => car != null ? model.Read(driverName, car, player, models, log) : null);
+            var at = car;
+            model.Id = models.IdForRead(driverName, () => model.Read(driverName, at, player, models, log));
         }
 
         // The tank's level and capacity (<vehicle>/FuelTank :: Data); either may be null.

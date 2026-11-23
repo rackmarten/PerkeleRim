@@ -563,6 +563,12 @@ namespace PerkeleRim.Spike
                         if (reader != null) reader.InspectModel(lines[0].Trim().Substring(8).Trim());
                         else SpikeLog.Write("cmd: no PlayerLink");
                         break;
+                    case "models":  // "models again": every model sent again as after the link came up; "models again cold" read again too, with new ids, as after MSC started
+                        var sender = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (sender == null) SpikeLog.Write("cmd: no PlayerLink");
+                        else if (words.Length > 1 && words[1].ToLower() == "again") sender.ModelsAgain(words.Length > 2 && words[2].ToLower() == "cold");
+                        else SpikeLog.Write("cmd: models again [cold]");
+                        break;
                     case "teimo":  // "teimo" lists every Teimo MSC has and what he's made of; "teimo pose idle 0.5" bakes him from that clip and time again; "teimo say paivaa1" plays a line
                         if (words.Length > 2 && words[1].ToLower() == "pose")
                         {

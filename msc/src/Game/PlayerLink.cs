@@ -224,6 +224,7 @@ namespace PerkeleRim.Game
 
         // Spike commands "textures" (read an object's model and log it) and "items" (what Skyrim gets).
         public void InspectModel(string name) => models.Inspect(name);
+        public void ModelsAgain(bool cold) => models.Again(cold);
         public void DumpItems() => items.Dump();
         public void DumpParticles() => particles.Dump();
         public void PuffParticles(int count) => particles.Puff(count);
@@ -371,7 +372,7 @@ namespace PerkeleRim.Game
             // Skyrim has the blood ready before it is needed (shown when the player dies there).
             if (playing) models.IdForBuilt(BloodModel, () => ModelSender.Overlay(BloodModel, BloodTexture, log));
             // Teimo for his stall in Riverwood, by name; a new pose is a new model.
-            if (playing) models.IdForBuilt(TeimoModel.Key, () => TeimoModel.Build(models, log));
+            if (playing) models.IdForRead(TeimoModel.Key, () => TeimoModel.Read(models, log));
             if (playing) FillPose(ref state);
             if (player != null) state.flags |= Wire.PlayerInGame;  // Skyrim's play mode hands over only then
             if (menu.Open) state.flags |= Wire.PlayerMscMenu;  // Skyrim closes its side when Resume closes it

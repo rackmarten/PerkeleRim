@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The low-fuel line (under a quarter of a tank) says where the nearest Dwemer Oil pump is, by its map marker's name, with how far and which way: "Fuel 8.3 / 40 L. Whiterun Dwemer Oil 2.3 km north-east". The first time a save's tank runs dry, a message says to walk to a pump and call the vehicle there, which tows it over for 50 gold. Needs the new `PerkeleRim.esp`; with an older one the line says "Dwemer Oil" without the place.
 - Teimo has come to Riverwood: he stands behind a makeshift stall of crates and a rough market stand, his broken cart parked beside it, out in the open just outside the north gate on the road from Whiterun (no load door). He looks like My Summer Car's own Teimo, read from your running My Summer Car and drawn in Skyrim, turns to face Kumpo when he comes close, and talks to him in Finnish with My Summer Car's own lines, captioned in English: a greeting when Kumpo walks up to the counter or talks to him (E), a remark when he's drunk, stories while he hangs about, a goodbye when he leaves, and answers to the middle finger, the piss stream and a punch. Shopping at his stall comes next. The Riverwood Trader stays as it is (protocol v51).
 
+### Fixed
+
+- My Summer Car no longer freezes for seconds when the games link up (each time Skyrim or My Summer Car starts). It used to read each vehicle's model for Skyrim in one frame, two seconds and more for the van or the Gifu, and a key pressed meanwhile was lost; it now reads them a little every frame, and much faster. The vehicles show in Skyrim once their model is there, as before.
+
 ## [0.2.2] - 2026-11-23
 
 ### Fixed
