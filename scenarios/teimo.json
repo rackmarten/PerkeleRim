@@ -8,13 +8,14 @@
   "steps": [
     // In front of the stall, Kumpo facing Teimo across the counter.
     { "label": "Skyrim takes Kumpo", "cmd": "pr.msc", "on": false, "expect": "msc == false" },
-    { "label": "Kumpo in front of Teimo's stall, about 9 m out", "cmd": "pr.teimo.front", "distance": 650 },
+    { "label": "Kumpo in front of Teimo's stall, about 6 m out", "cmd": "pr.teimo.front", "distance": 450 },
+    { "label": "Teimo hasn't met him yet", "cmd": "pr.teimo.reset" },
     { "cmd": "wait", "seconds": 6 },
     { "label": "MSC takes him there", "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
     { "label": "a clear day", "cmd": "scene", "presets": "day clear" },
     { "cmd": "wait", "seconds": 4 },
     { "label": "Teimo is there, drawn as MSC's Teimo, quiet so far", "cmd": "pr.teimo",
-      "expect": ["loaded == true", "drawn == true", "distance > 400", "lines == 0"] },
+      "expect": ["loaded == true", "drawn == true", "distance > 300", "lines == 0"] },
 
     // The stall and Teimo, one paused frame.
     "pause",
@@ -28,20 +29,20 @@
     "resume",
 
     // Kumpo walks up to the counter: Teimo greets him and turns to him.
-    { "label": "Kumpo walks up to the counter", "cmd": "pr.key", "key": 119, "seconds": 3.5 },
-    { "cmd": "wait", "seconds": 1 },
+    { "label": "Kumpo walks up to the counter", "cmd": "pr.key", "key": 119, "seconds": 2.0 },
     { "label": "Teimo greets him", "cmd": "pr.teimo", "expect": ["distance < 280", "lines == 1", "lastTopic matches ^(greet|drunk)$", "caption contains Teimo:"] },
     { "label": "the greeting's caption on Kumpo's view", "cmd": "screenshot", "name": "greeting", "hud": true },
-    { "label": "Teimo faces Kumpo", "cmd": "screenshot", "name": "teimo-faces-kumpo", "camera": "orbit player yaw=200 distance=420 pitch=15" },
+    { "cmd": "wait", "seconds": 1 },
+    { "label": "Teimo has turned to face Kumpo", "cmd": "pr.teimo", "expect": ["offPlayer < 10"] },
+    { "label": "Teimo faces Kumpo, seen from behind him", "cmd": "screenshot", "name": "teimo-faces-kumpo", "camera": "orbit player yaw=0 distance=260 pitch=10" },
 
     // He hangs about: small talk.
-    { "cmd": "wait", "seconds": 19 },
+    { "cmd": "wait", "seconds": 18 },
     { "label": "small talk while Kumpo hangs about", "cmd": "pr.teimo", "expect": ["lines == 2", "lastTopic == chat"] },
     { "label": "the small talk's caption", "cmd": "screenshot", "name": "chat", "hud": true },
 
     // The middle finger (V): Teimo answers it, over his small talk.
-    { "label": "Kumpo gives him the finger", "cmd": "pr.key", "key": 118, "seconds": 1.5 },
-    { "cmd": "wait", "seconds": 1 },
+    { "label": "Kumpo gives him the finger", "cmd": "pr.key", "key": 118, "seconds": 0.6 },
     { "label": "Teimo answers the finger", "cmd": "pr.teimo", "expect": ["lines == 3", "lastTopic == finger", "caption contains Teimo:"] },
     { "label": "his answer's caption", "cmd": "screenshot", "name": "finger", "hud": true },
     { "cmd": "scene", "presets": "restore" }

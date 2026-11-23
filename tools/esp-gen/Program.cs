@@ -409,8 +409,8 @@ uint stationsNextId = nextId;
 // spot (a vanilla hold-position package) and runs from a fight instead of joining it. The stall's
 // frame: origin where Teimo stands, +Y the way he faces (toward the customers), heading stallHeading.
 // docs/DESIGN.md has the spots compared; move it by changing stallAt and stallHeading.
-var stallAt = (X: 24930f, Y: -41960f);
-const float stallHeading = 200f * MathF.PI / 180f;  // the way Teimo faces, clockwise from north
+var stallAt = (X: 24960f, Y: -41990f);
+const float stallHeading = 290f * MathF.PI / 180f;  // the way Teimo faces, clockwise from north: across the road
 (float X, float Y) StallWorld(float x, float y)
 {
     float c = MathF.Cos(stallHeading), s = MathF.Sin(stallHeading);
@@ -460,7 +460,7 @@ persistentCell.Persistent.Add(teimoRef);
 var stallPieces = new (string Piece, float X, float Y, float Z, float Rot)[]
 {
     ("RTMarketStall01", 0f, 40f, 0f, MathF.PI),
-    ("DBBrokenWagon", -60f, -260f, 0f, MathF.PI / 2 + 0.25f),
+    ("DBBrokenWagon", 330f, -50f, 0f, 1.75f),  // along the road, beside him
     ("CrateSmallLong01", 135f, 30f, 24f, 0f),
     ("CrateSmall01", 135f, 60f, 72f, 0.4f),
     ("CrateSmall03", 120f, -40f, 24f, 0.2f),

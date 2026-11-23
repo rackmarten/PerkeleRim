@@ -44,18 +44,23 @@ namespace PerkeleRim.Game
             return groups;
         }
 
-        // The shop's Teimo: the group under STORE (in his shop), else the biggest.
+        // The shop's Teimo, STORE/TeimoInShop (MSC also has TeimoInBike, him riding home, and the
+        // COPS' CopTeimo1..3): standing behind his counter.
+        public const string ShopTeimo = "TeimoInShop";
+
         public static Transform Find()
         {
-            Transform best = null;
-            int bestCount = 0;
             foreach (var g in Groups())
-            {
-                bool shop = Path(g.Key).StartsWith("STORE", StringComparison.OrdinalIgnoreCase);
-                int score = g.Value.Count + (shop ? 1000 : 0);
-                if (score > bestCount) { best = g.Key; bestCount = score; }
-            }
-            return best;
+                if (g.Key.name == ShopTeimo) return g.Key;
+            return null;
+        }
+
+        // His bicycle stands next to him in the shop: left out.
+        static bool Drawn(Transform root, Transform t)
+        {
+            for (; t != null && t != root; t = t.parent)
+                if (t.name.IndexOf("bicycle", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+            return true;
         }
 
         // ModelSender's build: null while MSC has no Teimo loaded.
@@ -74,7 +79,7 @@ namespace PerkeleRim.Game
             {
                 foreach (var r in root.GetComponentsInChildren<Renderer>(true))
                 {
-                    if (r == null || !r.enabled || !r.gameObject.activeSelf) continue;
+                    if (r == null || !r.enabled || !r.gameObject.activeSelf || !Drawn(root, r.transform)) continue;
                     var skinned = r as SkinnedMeshRenderer;
                     Mesh mesh;
                     Matrix4x4 m = ModelSender.RelativeTo(root, r.transform);

@@ -51,6 +51,7 @@ namespace PerkeleRim::Teimo
         float         heading = 0.0f;  // the way the model faces, radians
         float         home = 0.0f;     // the way his stall faces (his reference's angle), radians
         float         distance = -1.0f;  // flat units to the player
+        float         offPlayer = 0.0f;  // radians between the way he faces and the way to the player
         bool          visiting = false;  // Kumpo is at the stall (Talk::Visiting)
         std::string   lastClip;          // the last line he said, and when (seconds of his clock)
         std::string   lastTopic;

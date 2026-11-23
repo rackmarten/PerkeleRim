@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Teimo has come to Riverwood: he stands behind a makeshift stall of crates and a rough market stand, his broken cart behind it, out in the open just outside the north gate on the road from Whiterun (no load door). He looks like My Summer Car's own Teimo, read from your running My Summer Car and drawn in Skyrim, turns to face Kumpo when he comes close, and talks to him in Finnish with My Summer Car's own lines, captioned in English: a greeting when Kumpo walks up to the counter or talks to him (E), a remark instead when he's drunk, small talk while he hangs about, and an answer to the middle finger, the piss stream and a punch. Shopping at his stall comes next. The Riverwood Trader stays as it is (protocol v51).
+- Teimo has come to Riverwood: he stands behind a makeshift stall of crates and a rough market stand, his broken cart behind it, out in the open just outside the north gate on the road from Whiterun (no load door). He looks like My Summer Car's own Teimo, read from your running My Summer Car and drawn in Skyrim, turns to face Kumpo when he comes close, and talks to him in Finnish with My Summer Car's own lines, captioned in English: a greeting when Kumpo walks up to the counter or talks to him (E), a remark when he's drunk, stories while he hangs about, a goodbye when he leaves, and answers to the middle finger, the piss stream and a punch. Shopping at his stall comes next. The Riverwood Trader stays as it is (protocol v51).
 
 ## [0.2.1] - 2026-11-09
 

@@ -56,73 +56,105 @@ TEST_CASE("every line has a clip, a length that fits and captions in order")
     }
 }
 
-TEST_CASE("captions follow the clip and end with it")
+TEST_CASE("captions follow the clip, and a long story's last one goes after a while")
 {
-    const auto& five = Teimo::kLines[3];  // paivaa5: counting the till, then the greeting
-    REQUIRE(five.clip == "paivaa5");
-    CHECK(Teimo::CaptionAt(five, 0.0f).starts_with("Five hundred"));
-    CHECK(Teimo::CaptionAt(five, 2.5f).starts_with("Five hundred"));
-    CHECK(Teimo::CaptionAt(five, 2.7f).starts_with("Oh, good day"));
-    CHECK(Teimo::CaptionAt(five, 5.3f).starts_with("Oh, good day"));
-    CHECK(Teimo::CaptionAt(five, 5.4f).empty());
-    CHECK(Teimo::CaptionAt(five, -0.1f).empty());
+    const Teimo::Line* five = nullptr;
+    const Teimo::Line* story = nullptr;
+    for (const auto& line : Teimo::kLines) {
+        five = line.clip == "paivaa5" ? &line : five;  // counting the till, then the greeting
+        story = line.clip == "random2" ? &line : story;  // 58 s about the weather, two captions
+    }
+    REQUIRE(five != nullptr);
+    REQUIRE(story != nullptr);
+    CHECK(Teimo::CaptionAt(*five, 0.0f).starts_with("Five hundred"));
+    CHECK(Teimo::CaptionAt(*five, 2.5f).starts_with("Five hundred"));
+    CHECK(Teimo::CaptionAt(*five, 2.7f).starts_with("Oh, good day"));
+    CHECK(Teimo::CaptionAt(*five, 5.3f).starts_with("Oh, good day"));
+    CHECK(Teimo::CaptionAt(*five, 5.4f).empty());
+    CHECK(Teimo::CaptionAt(*five, -0.1f).empty());
+    CHECK(Teimo::CaptionAt(*story, 9.0f).starts_with("What a strange summer"));
+    CHECK(Teimo::CaptionAt(*story, 15.0f).empty());  // kCaptionHold after the first part
+    CHECK(Teimo::CaptionAt(*story, 26.0f).starts_with("Even at night"));
+    CHECK(Teimo::CaptionAt(*story, 40.0f).empty());
 }
 
-TEST_CASE("walking up to the counter greets Kumpo once a visit, drunk he gets a remark instead")
+TEST_CASE("walking up to the counter greets Kumpo once a visit, drunk he remarks on it after")
 {
     Talk talk;
     CHECK(Stay(talk, 0.0, 5.0, kFar).empty());
     CHECK(Stay(talk, 5.0, 6.0, Teimo::kAround).empty());  // near, not at the counter yet
-    CHECK(Stay(talk, 6.0, 8.0, 200.0f) == std::vector{ Topic::kGreet });
+    CHECK((Stay(talk, 6.0, 8.0, 200.0f) == std::vector{ Topic::kGreet }));
     CHECK(talk.Visiting());
     CHECK(Stay(talk, 8.0, 15.0, 200.0f).empty());  // no second greeting, small talk only after a while
 
-    // Off and back within kGreetAgain: no greeting; much later: a new one, drunk this time.
+    // Off and back within kGreetAgain: no greeting; much later: a new one, then the drunk remark.
     CHECK(Stay(talk, 15.0, 20.0, kFar).empty());
     CHECK_FALSE(talk.Visiting());
     CHECK(Stay(talk, 20.0, 21.0, 200.0f).empty());
     CHECK(Stay(talk, 21.0, 30.0, kFar).empty());
-    CHECK(Stay(talk, 200.0, 201.0, 200.0f, 1.2f) == std::vector{ Topic::kDrunk });
+    CHECK((Stay(talk, 200.0, 215.0, 200.0f, 1.2f) == std::vector{ Topic::kGreet, Topic::kDrunk }));
+    CHECK((Stay(talk, 215.0, 216.0, 200.0f, 1.2f).empty()));  // once a visit
+    // Just under MSC's line: no remark.
+    Talk sober;
+    CHECK((Stay(sober, 0.0, 10.0, 200.0f, Teimo::kDrunkAt - 0.01f) == std::vector{ Topic::kGreet }));
 }
 
 TEST_CASE("he makes small talk while Kumpo hangs about, and none once he walks off")
 {
     Talk talk;
-    const auto said = Stay(talk, 0.0, 120.0, 200.0f);
+    const auto said = Stay(talk, 0.0, 300.0, 200.0f);
     REQUIRE(said.size() >= 3);
     CHECK(said[0] == Topic::kGreet);
     CHECK(said[1] == Topic::kChat);
     CHECK(said[2] == Topic::kChat);
-    // The first chat kChatAfter after the greeting ended, the next kChatEvery after that one.
+    // The first story kChatAfter after the greeting ended, the next kChatEvery after that one began.
     Talk timing;
-    double greetEnd = 0.0, chat1 = -1.0;
-    for (double t = 0.0; t < 120.0; t += 0.1) {
+    double greetEnd = 0.0, chat1 = -1.0, chat2 = -1.0;
+    for (double t = 0.0; t < 300.0; t += 0.1) {
         if (const auto topic = timing.Tick(t, 200.0f, 0.0f)) {
             const auto* line = timing.Say(*topic, t, 0.0);
             if (*topic == Topic::kGreet) {
                 greetEnd = t + line->seconds;
             } else if (chat1 < 0.0) {
                 chat1 = t;
+            } else if (chat2 < 0.0) {
+                chat2 = t;
             }
         }
     }
     CHECK(chat1 == doctest::Approx(greetEnd + Teimo::kChatAfter).epsilon(0.01));
-    CHECK(Stay(talk, 120.0, 400.0, Teimo::kGone + 10.0f).empty());
+    CHECK(chat2 - chat1 >= Teimo::kChatEvery - 0.2);
+    CHECK(chat2 - chat1 <= Teimo::kChatEvery + 0.2);
+    CHECK(Stay(talk, 300.0, 600.0, Teimo::kGone + 10.0f).size() <= 1);  // at most the goodbye
+    CHECK(Stay(talk, 600.0, 900.0, Teimo::kGone + 10.0f).empty());
+}
+
+TEST_CASE("walking off after a visit gets his goodbye, once")
+{
+    Talk talk;
+    REQUIRE((Stay(talk, 0.0, 5.0, 200.0f) == std::vector{ Topic::kGreet }));
+    CHECK((Stay(talk, 5.0, 6.0, Teimo::kAround + 50.0f) == std::vector{ Topic::kBye }));
+    CHECK(Stay(talk, 6.0, 7.0, 200.0f).empty());                       // back to the counter: the same visit
+    CHECK(Stay(talk, 7.0, 9.0, Teimo::kAround + 50.0f).empty());        // no second goodbye
+    CHECK(Stay(talk, 9.0, 10.0, kFar).empty());
+    // A visit he didn't greet (back too soon) gets no goodbye either.
+    CHECK(Stay(talk, 10.0, 11.0, 200.0f).empty());
+    CHECK(Stay(talk, 11.0, 12.0, Teimo::kAround + 50.0f).empty());
 }
 
 TEST_CASE("insults cut in, one reply per outburst, never over another insult")
 {
     Talk talk;
-    REQUIRE(Stay(talk, 0.0, 1.0, 200.0f) == std::vector{ Topic::kGreet });
+    REQUIRE((Stay(talk, 0.0, 1.0, 200.0f) == std::vector{ Topic::kGreet }));
     CHECK(talk.Speaking());
     const auto finger = talk.OnInsult(Topic::kFinger, 1.5, 200.0f);
-    REQUIRE(finger == Topic::kFinger);  // over the greeting
+    REQUIRE((finger == Topic::kFinger));  // over the greeting
     const auto* reply = talk.Say(*finger, 1.5, 0.0);
     REQUIRE(reply != nullptr);
     CHECK_FALSE(talk.OnInsult(Topic::kPissed, 1.6, 200.0f));  // not over the finger's reply
     // The piss stream hits him every frame: one reply, then quiet until it's over and a little more.
     Talk piss;
-    REQUIRE(piss.OnInsult(Topic::kPissed, 10.0, 100.0f) == Topic::kPissed);
+    REQUIRE((piss.OnInsult(Topic::kPissed, 10.0, 100.0f) == Topic::kPissed));
     const auto* line = piss.Say(Topic::kPissed, 10.0, 0.0);
     int replies = 1;
     for (double t = 10.1; t < 10.0 + line->seconds + 1.0; t += 0.1) {
@@ -131,17 +163,17 @@ TEST_CASE("insults cut in, one reply per outburst, never over another insult")
         }
     }
     CHECK(replies == 1);
-    CHECK(piss.OnInsult(Topic::kPissed, 60.0, 100.0f) == Topic::kPissed);
+    CHECK((piss.OnInsult(Topic::kPissed, 60.0, 100.0f) == Topic::kPissed));
     CHECK_FALSE(piss.OnInsult(Topic::kHit, 100.0, Teimo::kHears + 1.0f));  // too far to care
 }
 
 TEST_CASE("talking to him greets Kumpo unless he is speaking")
 {
     Talk talk;
-    REQUIRE(talk.OnTalk(0.0, 0.0f) == Topic::kGreet);
+    REQUIRE((talk.OnTalk(0.0) == Topic::kGreet));
     talk.Say(Topic::kGreet, 0.0, 0.0);
-    CHECK_FALSE(talk.OnTalk(1.0, 0.0f));
-    CHECK(talk.OnTalk(10.0, 2.0f) == Topic::kDrunk);
+    CHECK_FALSE(talk.OnTalk(1.0));
+    CHECK((talk.OnTalk(10.0) == Topic::kGreet));
 }
 
 TEST_CASE("he never says the same line twice in a row")

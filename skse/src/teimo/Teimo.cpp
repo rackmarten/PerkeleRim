@@ -242,13 +242,13 @@ namespace PerkeleRim::Teimo
         }
         const float distance = FlatDistance(teimo->GetPosition(), a_player->GetPosition());
         if (talkedTo.exchange(false) && distance <= kAround) {
-            if (const auto topic = state.talk.OnTalk(state.clock, a_drunk)) {
+            if (const auto topic = state.talk.OnTalk(state.clock)) {
                 Say(a_player, teimo, *topic, "Kumpo talks to him");
                 return;
             }
         }
         if (const auto topic = state.talk.Tick(state.clock, distance, a_drunk)) {
-            Say(a_player, teimo, *topic, *topic == Topic::kChat ? "Kumpo hangs about" : "Kumpo walks up");
+            Say(a_player, teimo, *topic, *topic == Topic::kChat ? "Kumpo hangs about" : *topic == Topic::kBye ? "Kumpo walks off" : *topic == Topic::kDrunk ? "Kumpo is drunk" : "Kumpo walks up");
         }
     }
 
@@ -320,6 +320,8 @@ namespace PerkeleRim::Teimo
             s.position = teimo->GetPosition();
             if (auto* player = RE::PlayerCharacter::GetSingleton()) {
                 s.distance = FlatDistance(s.position, player->GetPosition());
+                const auto to = player->GetPosition();
+                s.offPlayer = std::abs(std::remainder(HeadingTo(to.x - s.position.x, to.y - s.position.y) - state.heading, 6.2831853f));
             }
         }
         s.heading = state.heading;
@@ -362,6 +364,8 @@ namespace PerkeleRim::Teimo
             return "drunk";
         case Topic::kChat:
             return "chat";
+        case Topic::kBye:
+            return "bye";
         case Topic::kFinger:
             return "finger";
         case Topic::kPissed:

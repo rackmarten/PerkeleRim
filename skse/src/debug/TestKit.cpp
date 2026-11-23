@@ -202,7 +202,7 @@ namespace PerkeleRim::TestKit
             const auto s = Teimo::Describe();
             return JsonObject{ { "found", s.found }, { "loaded", s.loaded }, { "drawn", s.drawn }, { "model", static_cast<double>(s.model) },
                 { "x", s.position.x }, { "y", s.position.y }, { "z", s.position.z }, { "heading", s.heading * 57.29578 },
-                { "distance", s.distance }, { "visiting", s.visiting }, { "lines", static_cast<double>(s.lines) }, { "lastClip", s.lastClip },
+                { "distance", s.distance }, { "offPlayer", s.offPlayer * 57.29578 }, { "visiting", s.visiting }, { "lines", static_cast<double>(s.lines) }, { "lastClip", s.lastClip },
                 { "lastTopic", s.lastTopic }, { "lastAt", s.lastAt }, { "caption", s.caption } };
         }
 
@@ -413,6 +413,12 @@ namespace PerkeleRim::TestKit
 
             SkseTestKit::AddCommand("pr.teimo", "", "Teimo at his stall in Riverwood: found, loaded, drawn as MSC's Teimo, where, which way he faces, how far Kumpo is, the last line he said and his caption now",
                 [](Call&) -> Json { return DescribeTeimo(); });
+
+            SkseTestKit::AddCommand("pr.teimo.reset", "", "Teimo forgets Kumpo's visit and his line count, as after a load (a scenario's fresh start)",
+                [](Call&) -> Json {
+                    Teimo::OnGameLoaded();
+                    return DescribeTeimo();
+                });
 
             SkseTestKit::AddTask("pr.teimo.say", "<topic>",
                 "Teimo says a line of a topic now (greet, drunk, chat, finger, pissed, hit), as if its event came; answers with the line and its caption",
