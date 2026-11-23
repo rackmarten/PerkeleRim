@@ -40,7 +40,7 @@ namespace PerkeleRim.Spike
     //   event <NAME>         broadcast a global PlayMaker event (DRINKBEER: the beer drinking animation)
     //   aim <words>          stand at the nearest control surface ("Use" FSM) with those words in its path, looking
     //                        at it (aim doorl Handle); a second later, what the crosshair is on and MSC's prompt.
-    //                        aim up: looks at the sky, where nothing has a prompt
+    //                        aim up: looks at the sky, where nothing has a prompt; aim stop: lets go of the look
     //   textures <name>      read an object's model (GameObject.Find) without sending it and log it
     //   shot                 MSC's view to <MSC>/PerkeleRim_shot.png, the way F11 saves it (ViewShot)
     //   override on|off      InputShim on/off with nothing pressed (on: the link no longer feeds it)
@@ -122,16 +122,16 @@ namespace PerkeleRim.Spike
             SpikeLog.Write("cmd: goto: nothing named " + text);
         }
 
-        // Stands the player at the nearest control surface (an active "Use" FSM with a collider, within
+        // Stands the player at the nearest control surface (an enabled "Use" FSM with an enabled collider, within
         // AimReach) whose path has every word of text, facing it: on the ground straight out from the
         // vehicle's side, 0.4 m from it (well within the 1 m reach of doors and switches), PLAYER turned to it,
         // the camera's MouseLook pitched at it; and keeps him looking at it for AimHold seconds, aiming again
         // from where the camera is as he settles. Logs the candidates, then a second on what the crosshair is
         // on and MSC's prompt (GUIuse, GUIinteraction): the test kit's look-at check (scenarios/look-at.json).
-        // "aim up" looks at the sky instead, where nothing has a prompt (and ends a hold). AimReach covers the
+        // "aim up" looks at the sky instead, where nothing has a prompt; "aim stop" ends a hold. AimReach covers the
         // van on the garage's pit seen from the shack.
         const float AimReach = 60f;
-        const int AimHold = 4;
+        const int AimHold = 10;  // longer than a scenario's wait for the hand and its look a moment later
         int aims;  // a new aim ends the last one's hold
 
         void Aim(string text)
@@ -140,6 +140,8 @@ namespace PerkeleRim.Spike
             var cam = Camera.main;
             if (player == null || cam == null) { SpikeLog.Write("cmd: aim: no PLAYER or no Camera.main"); return; }
             aims++;
+            if (text.Length == 0) { SpikeLog.Write("cmd: aim <words in a control surface's path> (aim doorl Handle), aim up or aim stop"); return; }
+            if (text.Equals("stop", StringComparison.OrdinalIgnoreCase)) { SpikeLog.Write("cmd: aim: stopped"); return; }
             if (text.Equals("up", StringComparison.OrdinalIgnoreCase))
             {
                 SpikeLog.Write("cmd: aim: up, " + Pitch(cam.transform, player.transform, 80f));
@@ -151,7 +153,8 @@ namespace PerkeleRim.Spike
             int n = 0;
             foreach (var fsm in FindObjectsOfType<PlayMakerFSM>())
             {
-                if (fsm.FsmName != "Use" || fsm.GetComponent<Collider>() == null) continue;
+                var collider = fsm.GetComponent<Collider>();
+                if (fsm.FsmName != "Use" || !fsm.enabled || collider == null || !collider.enabled) continue;
                 var path = FullPath(fsm.transform);
                 bool all = true;
                 foreach (var w in words) all &= path.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0;
@@ -177,14 +180,20 @@ namespace PerkeleRim.Spike
             if (away.sqrMagnitude < 0.01f) { away = player.position - at; away.y = 0f; }
             away.Normalize();
             // On the ground there, as high above it as the player stands now (the vehicle may be on other ground).
-            RaycastHit ground;
-            float feet = Physics.Raycast(player.position, Vector3.down, out ground, 5f) ? player.position.y - ground.point.y : 0f;
+            float below;
+            float feet = Ground(player.position, 5f, player, player, out below) ? below : 0f;
             var stand = at + away * 0.4f;
-            stand.y = Physics.Raycast(new Vector3(stand.x, at.y + 1.5f, stand.z), Vector3.down, out ground, 6f) ? ground.point.y + feet : player.position.y;
+            var top = new Vector3(stand.x, at.y + 1.5f, stand.z);
+            // Not the vehicle's own mirrors and doors (the whole vehicle when the root is one, a rigidbody; else
+            // the surface's own body), nor the player: a house's switch keeps the floor below it.
+            var body = target.GetComponent<Collider>().attachedRigidbody;
+            var skip = root.GetComponent<Rigidbody>() != null ? root : body != null ? body.transform : target.transform;
+            stand.y = Ground(top, 6f, skip, player, out below) ? top.y - below + feet : player.position.y;
             player.position = stand;
             int generation = ++aims;
             for (int pass = 0; pass < AimHold * 4 && generation == aims; pass++)
             {
+                if (target == null || !target.gameObject.activeInHierarchy) { SpikeLog.Write("cmd: aim: the target went away"); yield break; }
                 var cam = Camera.main;
                 if (cam == null) { SpikeLog.Write("cmd: aim: no Camera.main"); yield break; }
                 var look = at - cam.transform.position;
@@ -196,6 +205,19 @@ namespace PerkeleRim.Spike
                 if (pass == 4) AimReport(target, how);  // a second on
                 yield return new WaitForSeconds(0.25f);  // he settles, the camera sways: aim again from where it is
             }
+        }
+
+        // How far below from the ground is: the nearest solid hit down from there, not a trigger and nothing
+        // under skip or player.
+        static bool Ground(Vector3 from, float reach, Transform skip, Transform player, out float below)
+        {
+            below = float.MaxValue;
+            foreach (var hit in Physics.RaycastAll(from, Vector3.down, reach))
+            {
+                var t = hit.collider.transform;
+                if (!hit.collider.isTrigger && !t.IsChildOf(skip) && !t.IsChildOf(player) && hit.distance < below) below = hit.distance;
+            }
+            return below < float.MaxValue;
         }
 
         // What the crosshair is on (within the 1 m reach of doors and switches) and MSC's prompt.

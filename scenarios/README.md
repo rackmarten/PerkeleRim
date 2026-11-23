@@ -47,7 +47,7 @@ Start from the closest file. Steps are the kit's requests (`docs/COMMANDS.md` in
 | Command | What it does |
 |---|---|
 | `pr.msc [on=<bool>]` | Kumpo to MSC (the default) or back to Skyrim, as F10 does; answers once it's done (`msc`, `seated`) |
-| `pr.send <line>` | a line for MSC's debug commands (`msc/src/Spike/SpikeHost.cs`): `drunk 2`, `lightson 1`, `time 6`, `hold 0`, `aim doorl Handle` (Kumpo stood at that control surface, looking at it), ... |
+| `pr.send <line>` | a line for MSC's debug commands (`msc/src/Spike/SpikeHost.cs`): `drunk 2`, `lightson 1`, `time 6`, `hold 0`, `aim doorl Handle` (Kumpo stood at that control surface, looking at it; `aim stop` lets go), ... |
 | `pr.key <Unity KeyCode> [seconds=<s>]` | holds one of MSC's keys (93 is ] to call the van, 104 H to punch) |
 | `pr.shout [words] [shout=<hex>] [seconds=<s>]` | tells MSC the player shouted, as Combat does when a shout is released (Whirlwind Sprint unless `shout=`, 3 words by default), and answers 2 s later with how far Kumpo went, flat, in metres (`moved`) |
 | `pr.load <save>` | loads a save in the running game, as a quickload does (answers Skyrim's question about installed Creations), and answers once it's loaded; play mode hands Kumpo to MSC a little later, `pr.msc` waits for that |

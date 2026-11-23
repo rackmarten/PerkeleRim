@@ -460,7 +460,10 @@ namespace PerkeleRim::TestKit
                 "Loads a save in the running game, as a quickload does (pr.load PerkeleRim-Kumpo, the starter save); answers once it's "
                 "loaded. Play mode hands the player to MSC by itself a little later: pr.msc waits for that",
                 [](Call& a_call) -> Step {
-                    const auto name = a_call.Text("save");
+                    auto name = a_call.Text("save");
+                    if (name.size() > 4 && _stricmp(name.c_str() + name.size() - 4, ".ess") == 0) {
+                        name.resize(name.size() - 4);
+                    }
                     if (name.empty()) {
                         throw Error("no save to load");
                     }
@@ -478,29 +481,51 @@ namespace PerkeleRim::TestKit
                         throw Error(std::format("no save {} in {}", name, (logs->parent_path() / folder).string()));
                     }
                     a_call.DefaultTimeout(90.0);
-                    const auto before = g_loads;
+                    // A failed kPostLoadGame is provisional, as the kit's own start load treats it: with Creations
+                    // installed, Skyrim may report a failure and ask before loading, then load once it's answered.
+                    struct Pending
+                    {
+                        std::uint32_t loads;
+                        bool          answered = false;
+                        int           failures = 0;
+                        double        failedAt = -1.0;  // a_call.Seconds() of a failure no answer explains yet
+                    };
+                    auto pending = std::make_shared<Pending>(Pending{ .loads = g_loads });  // before Load: SKSE may send kPostLoadGame inside it
                     SKSE::log::info("test kit: loading the save {} (pr.load)", name);
-                    saves->Load(name.c_str(), false);
-                    return [before, name](Call&) -> std::optional<Json> {
-                        if (g_loads == before) {
-                            // With Creations installed, Skyrim asks before loading (the kit answers that only for its start).
-                            // Matched by the English game's text, as the kit's own answer is.
-                            if (auto* box = RE::MessageBoxMenu::GetCurrentMessageBoxData()) {
-                                const std::string_view body = box->bodyText.c_str();
+                    saves->Load(name.c_str(), false);  // returns nothing: kPostLoadGame says how it went
+                    return [pending, name](Call& a_call) -> std::optional<Json> {
+                        if (g_loads != pending->loads) {
+                            pending->loads = g_loads;
+                            if (g_loaded) {
+                                return JsonObject{ { "loaded", name } };
+                            }
+                            if (++pending->failures > 1) {  // twice: it really failed
+                                throw Error(std::format("the save {} didn't load", name));
+                            }
+                            if (!pending->answered) {
+                                pending->failedAt = a_call.Seconds();  // a question has 5 s to explain it
+                            }  // after the answer it was the question's: the load goes on (or times out)
+                        }
+                        // Skyrim's question about installed Creations (the kit answers that only for its start). Matched
+                        // by the English game's text, as the kit's own answer is; answered once.
+                        if (auto* box = RE::MessageBoxMenu::GetCurrentMessageBoxData(); box && !pending->answered) {
+                            const std::string_view body = box->bodyText.c_str();
+                            if (body.find("continue loading this save") != std::string_view::npos) {
                                 for (std::int32_t i = 0; i < static_cast<std::int32_t>(box->buttonText.size()); i++) {
-                                    if (body.find("continue loading this save") != std::string_view::npos && _stricmp(box->buttonText[i].c_str(), "Yes") == 0) {
+                                    if (_stricmp(box->buttonText[i].c_str(), "Yes") == 0) {
                                         SKSE::log::info("test kit: answering \"{}\" with \"Yes\" (pr.load)", body);
                                         RE::MessageBoxMenu::SelectOption(i);
+                                        pending->answered = true;
+                                        pending->failedAt = -1.0;  // a failure before it was this question
                                         break;
                                     }
                                 }
                             }
-                            return std::nullopt;
                         }
-                        if (!g_loaded) {
+                        if (pending->failedAt >= 0.0 && a_call.Seconds() - pending->failedAt > 5.0) {  // and no question came
                             throw Error(std::format("the save {} didn't load", name));
                         }
-                        return JsonObject{ { "loaded", name } };
+                        return std::nullopt;
                     };
                 });
 
