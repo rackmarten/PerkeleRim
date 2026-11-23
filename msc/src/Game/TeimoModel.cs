@@ -121,14 +121,11 @@ namespace PerkeleRim.Game
                 yield return "baking Teimo";
                 foreach (var part in parts)
                 {
-                    if (part.Renderer == null) continue;  // gone meanwhile
-                    int before = model.Meshes.Count;
+                    // A part of him gone meanwhile (MSC unloading him): no Teimo rather than part of
+                    // one, read whole at the next try.
+                    if (part.Renderer == null) yield break;
                     foreach (var step in sender.AddMesh(model, materials, part.Renderer, part.Mesh, part.M, part.Name, -1, null)) yield return step;
-                    if (materials.Cut)
-                    {
-                        model.Meshes.RemoveRange(before, model.Meshes.Count - before);
-                        materials.Cut = false;
-                    }
+                    if (materials.Cut) yield break;
                 }
             }
             finally
