@@ -1416,6 +1416,16 @@ namespace PerkeleRim::PlayerSync
         return state.generation;
     }
 
+    const std::string& PromptText()
+    {
+        return state.lookAt;
+    }
+
+    bool PromptHand()
+    {
+        return state.lookAtUse;
+    }
+
     void DebugHandOver()
     {
         if (!state.owned && !state.play.Waiting() && !state.garage) {  // play mode hands over by itself after a load
