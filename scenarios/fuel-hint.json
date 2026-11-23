@@ -1,8 +1,9 @@
 // Where to refuel (skse/src/fuel/Fuel.cpp, protocol/cpp/fuel_hint.h): with Kumpo at the van's wheel in Riverwood, a
 // low tank's line names the nearest Dwemer Oil pump with its distance and direction (Whiterun's, to the north), and
-// a dry one shows the one-time tip about the tow. scripts/skytest.ps1 run scenarios/fuel-hint.json in a running
-// session; the pictures (with the HUD) are in its results folder: the line bottom right above the gear, readable on
-// its box, the tip top left, neither over the needs or the money.
+// a dry one shows the one-time tip about the tow (once a save, so "tipped" stays true for a second run in the same
+// session). scripts/skytest.ps1 run scenarios/fuel-hint.json in a running session; the pictures (with the HUD) are in
+// its results folder: the line bottom right above the gear, readable on its box, the tip top left, neither over the
+// needs or the money.
 {
   "name": "fuel-hint",
   "steps": [
@@ -12,8 +13,10 @@
     { "cmd": "wait", "seconds": 10 },
     { "label": "Kumpo is in Riverwood", "cmd": "state", "ref": "player", "expect": ["dead == false"] },
     { "label": "MSC takes him there", "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
+    // Fuel first: a dry van called away from a pump wouldn't come.
+    { "cmd": "pr.send", "line": "fsmvar FuelTank Data FuelLevel 30" },
     { "label": "the van comes", "cmd": "pr.call", "vehicle": "van", "expect": ["drawn == true", "solid == true"] },
-    { "label": "a clear day", "cmd": "scene", "presets": "noon clear" },
+    { "label": "a clear day", "cmd": "scene", "presets": "12 clear" },
 
     // At the wheel: into the van's driving trigger, then Return, as a player gets in.
     { "cmd": "pr.send", "line": "drive HAYOSIKO" },
@@ -23,15 +26,13 @@
     { "label": "Kumpo drives the van", "cmd": "pr.vehicle", "vehicle": "van", "expect": ["driven == true"] },
 
     // A full tank: no line.
-    { "cmd": "pr.send", "line": "fsmvar FuelTank Data FuelLevel 30" },
-    { "cmd": "wait", "frames": 30 },
     { "label": "a full tank says nothing", "cmd": "pr.fuel", "expect": ["line.length == 0", "low == false", "dry == false"] },
 
     // Low: the line with the nearest pump.
     { "cmd": "pr.send", "line": "fsmvar FuelTank Data FuelLevel 6" },
     { "cmd": "wait", "frames": 30 },
     { "label": "a low tank names the nearest pump", "cmd": "pr.fuel",
-      "expect": ["low == true", "dry == false", "tipped == false", "line matches ^Fuel 6\\.0 / 40 L\\. Whiterun Dwemer Oil [0-9.]+ k?m [a-z-]+$"] },
+      "expect": ["low == true", "dry == false", "line matches ^Fuel 6\\.0 / 40 L\\. Whiterun Dwemer Oil [0-9.]+ k?m [a-z-]+$"] },
     { "label": "the low line on the HUD", "cmd": "screenshot", "name": "low-tank", "hud": true },
 
     // Dry: the tip once, the line still says where.

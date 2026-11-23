@@ -68,12 +68,14 @@ namespace PerkeleRim::Fuel
             }
             return RE::BSContainer::ForEachResult::kContinue;
         });
-        const auto names = MarkerNames(data);
+        const auto  names = MarkerNames(data);
+        std::size_t named = 0;
         for (std::uint32_t i = 0; i < state.message.count; ++i) {
             const auto& pump = state.message.pumps[i];
             state.hints.push_back({ pump.position[0], pump.position[1], i < names.size() ? names[i] : std::string() });
+            named += state.hints.back().name.empty() ? 0 : 1;
         }
-        SKSE::log::info("fuel: {} pumps, {} map marker names", state.message.count, names.size());
+        SKSE::log::info("fuel: {} pumps, {} with a map marker name", state.message.count, named);
     }
 
     void Update()
@@ -131,5 +133,12 @@ namespace PerkeleRim::Fuel
     void Revert()
     {
         state.tipped = false;
+        Clear();
+    }
+
+    void Clear()
+    {
+        state.lastLine.clear();
+        state.lastFlags = 0;
     }
 }

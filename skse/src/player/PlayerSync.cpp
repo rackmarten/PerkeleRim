@@ -276,6 +276,7 @@ namespace PerkeleRim::PlayerSync
             state.gear.clear();
             state.fuel.clear();
             state.fuelFlags = 0;
+            Fuel::Clear();
             state.hasNeeds = false;
             Hud::Set({});
             Drink::SetDrunk(0.0f, 0.0f);

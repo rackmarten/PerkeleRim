@@ -17,6 +17,8 @@ namespace PerkeleRim::Fuel
     // once a save.
     std::string Line(const std::string& a_msc, std::uint32_t a_flags, const RE::NiPoint3& a_player);
 
+    void Clear();  // Skyrim has the player back: no fuel line any more
+
     // For the test kit's pr.fuel: the last line Line made, the flags it had, and whether this save had the tip.
     const std::string& LastLine();
     std::uint32_t      LastFlags();
