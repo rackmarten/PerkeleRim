@@ -473,11 +473,11 @@ namespace PerkeleRim::TestKit
                 });
 
             SkseTestKit::AddTask("pr.teimo.say", "<topic>",
-                "Teimo says a line of a topic now (greet, drunk, chat, finger, pissed, hit), as if its event came; answers with the line and its caption",
+                "Teimo says a line of a topic now (greet, drunk, chat, bye, finger, pissed, hit), as if its event came; answers with the line and its caption",
                 [](Call& a_call) -> Step {
                     const auto topic = Teimo::TopicByName(a_call.Text("topic"));
                     if (!topic) {
-                        throw Error("topic is greet, drunk, chat, finger, pissed or hit");
+                        throw Error("topic is greet, drunk, chat, bye, finger, pissed or hit");
                     }
                     auto* player = RE::PlayerCharacter::GetSingleton();
                     if (!player || !Teimo::DebugSay(player, *topic)) {

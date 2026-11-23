@@ -19,7 +19,7 @@ namespace PerkeleRim::Teimo
     enum class Topic : std::uint8_t
     {
         kGreet,   // Kumpo walks up to the counter, or talks to him (E): MSC's Greetings HELLO
-        kDrunk,   // right after the greeting when Kumpo is drunk: Speak's "Is drunk"
+        kDrunk,   // after the greeting when Kumpo is drunk, once per greeted visit: Speak's "Is drunk"
         kChat,    // Kumpo hangs about the stall: Speak's random stories
         kBye,     // Kumpo walks off after a visit: Greetings GOODBYE
         kFinger,  // the middle finger at him: Speak's FINGER
@@ -164,14 +164,14 @@ namespace PerkeleRim::Teimo
                 }
                 visiting_ = true;
                 byeSaid_ = false;
-                drunkSaid_ = false;
-                greetedVisit_ = false;
                 nextChat_ = a_now + kChatAfter;
                 if (a_now - greeted_ < kGreetAgain) {
-                    return std::nullopt;  // back too soon: he greeted him a moment ago
+                    greetedVisit_ = true;  // back too soon, or he talked to him first: greeted a moment ago
+                    return std::nullopt;
                 }
                 greeted_ = a_now;
                 greetedVisit_ = true;
+                drunkSaid_ = false;
                 return Topic::kGreet;
             }
             if (!drunkSaid_ && a_drunk >= kDrunkAt) {
@@ -211,6 +211,7 @@ namespace PerkeleRim::Teimo
                 return std::nullopt;  // the piss stream hits him every frame: one reply per outburst
             }
             last = a_now;
+            byeSaid_ = true;  // no "thank you, come again" after that
             return a_topic;
         }
 
@@ -239,6 +240,10 @@ namespace PerkeleRim::Teimo
                                                   (std::max)(nextChat_, endsAt_ + kChatAfter);
             return line;
         }
+
+        // Kumpo is gone without walking off (Skyrim took the player back, Teimo unloaded): the
+        // next walk-up is a new visit, and this one gets no goodbye.
+        void EndVisit() { visiting_ = false; }
 
         bool   Speaking() const { return now_ < endsAt_; }
         double StartedAt() const { return startedAt_; }

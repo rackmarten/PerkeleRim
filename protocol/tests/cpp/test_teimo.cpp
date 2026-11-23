@@ -94,6 +94,8 @@ TEST_CASE("walking up to the counter greets Kumpo once a visit, drunk he remarks
     CHECK(Stay(talk, 21.0, 30.0, kFar).empty());
     CHECK((Stay(talk, 200.0, 215.0, 200.0f, 1.2f) == std::vector{ Topic::kGreet, Topic::kDrunk }));
     CHECK((Stay(talk, 215.0, 216.0, 200.0f, 1.2f).empty()));  // once a visit
+    CHECK(Stay(talk, 216.0, 220.0, kFar, 1.2f).size() <= 1);     // off (the goodbye)...
+    CHECK(Stay(talk, 220.0, 225.0, 200.0f, 1.2f).empty());       // ...and back too soon: no greeting, no second remark
     // Just under MSC's line: no remark.
     Talk sober;
     CHECK((Stay(sober, 0.0, 10.0, 200.0f, Teimo::kDrunkAt - 0.01f) == std::vector{ Topic::kGreet }));
@@ -125,8 +127,7 @@ TEST_CASE("he makes small talk while Kumpo hangs about, and none once he walks o
     CHECK(chat1 == doctest::Approx(greetEnd + Teimo::kChatAfter).epsilon(0.01));
     CHECK(chat2 - chat1 >= Teimo::kChatEvery - 0.2);
     CHECK(chat2 - chat1 <= Teimo::kChatEvery + 0.2);
-    CHECK(Stay(talk, 300.0, 600.0, Teimo::kGone + 10.0f).size() <= 1);  // at most the goodbye
-    CHECK(Stay(talk, 600.0, 900.0, Teimo::kGone + 10.0f).empty());
+    CHECK(Stay(talk, 300.0, 600.0, Teimo::kGone + 10.0f).empty());  // straight past kGone: no goodbye
 }
 
 TEST_CASE("walking off after a visit gets his goodbye, once")
@@ -137,9 +138,28 @@ TEST_CASE("walking off after a visit gets his goodbye, once")
     CHECK(Stay(talk, 6.0, 7.0, 200.0f).empty());                       // back to the counter: the same visit
     CHECK(Stay(talk, 7.0, 9.0, Teimo::kAround + 50.0f).empty());        // no second goodbye
     CHECK(Stay(talk, 9.0, 10.0, kFar).empty());
-    // A visit he didn't greet (back too soon) gets no goodbye either.
+    // Back too soon: no second greeting, but he greeted him a moment ago, so a goodbye again.
     CHECK(Stay(talk, 10.0, 11.0, 200.0f).empty());
-    CHECK(Stay(talk, 11.0, 12.0, Teimo::kAround + 50.0f).empty());
+    CHECK((Stay(talk, 11.0, 12.0, Teimo::kAround + 50.0f) == std::vector{ Topic::kBye }));
+    // Talked to (E) from the edge of the stall, then a walk-up: one greeting, and the goodbye.
+    Talk talked;
+    REQUIRE((talked.OnTalk(0.0) == Topic::kGreet));
+    talked.Say(Topic::kGreet, 0.0, 0.0);
+    CHECK(Stay(talked, 0.0, 10.0, 200.0f).empty());
+    CHECK((Stay(talked, 10.0, 11.0, Teimo::kAround + 50.0f) == std::vector{ Topic::kBye }));
+    // An insult during the visit: no goodbye after it.
+    Talk insulted;
+    REQUIRE((Stay(insulted, 0.0, 5.0, 200.0f) == std::vector{ Topic::kGreet }));
+    REQUIRE((insulted.OnInsult(Topic::kFinger, 5.0, 200.0f) == Topic::kFinger));
+    insulted.Say(Topic::kFinger, 5.0, 0.0);
+    CHECK(Stay(insulted, 5.0, 30.0, Teimo::kAround + 50.0f).empty());
+    // A visit that ended without walking off (Skyrim took the player back): no goodbye, and the
+    // next walk-up is a new visit.
+    Talk ended;
+    REQUIRE((Stay(ended, 0.0, 5.0, 200.0f) == std::vector{ Topic::kGreet }));
+    ended.EndVisit();
+    CHECK(Stay(ended, 5.0, 6.0, Teimo::kAround + 50.0f).empty());
+    CHECK((Stay(ended, 200.0, 201.0, 200.0f) == std::vector{ Topic::kGreet }));
 }
 
 TEST_CASE("insults cut in, one reply per outburst, never over another insult")

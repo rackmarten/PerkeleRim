@@ -187,7 +187,8 @@ namespace PerkeleRim::Teimo
     void Draw(RE::PlayerCharacter* a_player, float a_delta)
     {
         if (!PlayerSync::Owned()) {
-            talkedTo = false;  // E with Skyrim's own player: no Kumpo to greet, and no greeting saved for the next handover
+            talkedTo = false;        // E with Skyrim's own player: no Kumpo to greet
+            state.talk.EndVisit();   // whatever visit there was ended with the handover, without a goodbye
         }
         auto* teimo = Find();
         auto* root = teimo && !teimo->IsDisabled() && teimo->Is3DLoaded() ? teimo->Get3D(false) : nullptr;
@@ -238,6 +239,7 @@ namespace PerkeleRim::Teimo
         auto* teimo = Find();
         if (!teimo || !teimo->Is3DLoaded() || teimo->IsDisabled() || teimo->IsDead() || !LinkService::Get().IsUp()) {
             talkedTo = false;
+            state.talk.EndVisit();  // Kumpo went far away (or the link): a later walk-up is a new visit
             return;
         }
         const float distance = FlatDistance(teimo->GetPosition(), a_player->GetPosition());
@@ -290,7 +292,9 @@ namespace PerkeleRim::Teimo
         if (!a_actor || id == 0 || a_actor->GetFormID() != id) {
             return false;
         }
-        talkedTo = true;
+        if (PlayerSync::Owned()) {
+            talkedTo = true;  // only Kumpo gets the greeting, not Skyrim's own player pressing E
+        }
         return true;
     }
 
@@ -299,12 +303,13 @@ namespace PerkeleRim::Teimo
         if (!state.line) {
             return {};
         }
-        const auto text = CaptionAt(*state.line, static_cast<float>(state.clock - state.talk.StartedAt()));
-        if (text.empty()) {
-            state.line = nullptr;
+        const float into = static_cast<float>(state.clock - state.talk.StartedAt());
+        if (into >= state.line->seconds) {
+            state.line = nullptr;  // over; a story's gap between its captions is not
             return {};
         }
-        return "Teimo: " + std::string(text);
+        const auto text = CaptionAt(*state.line, into);
+        return text.empty() ? std::string{} : "Teimo: " + std::string(text);
     }
 
     Status Describe()

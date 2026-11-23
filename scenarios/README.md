@@ -62,7 +62,7 @@ Start from the closest file. Steps are the kit's requests (`docs/COMMANDS.md` in
 | `pr.hits [scenarios] [target=<hex>]` | the hit test, a row per attack |
 | `pr.hitbox` | the hitbox test, a row per line it logs |
 | `pr.teimo` | Teimo at his stall: found, loaded, drawn as MSC's Teimo, where, which way he faces, how far the player is, the last line he said (`lastClip`, `lastTopic`, `lines`) and his caption now; `pr.teimo:` is his camera and probe target (his middle, facing the way his model looks) |
-| `pr.teimo.say <topic>` | Teimo says a line of a topic now (`greet`, `drunk`, `chat`, `finger`, `pissed`, `hit`), as if its event came |
+| `pr.teimo.say <topic>` | Teimo says a line of a topic now (`greet`, `drunk`, `chat`, `bye`, `finger`, `pissed`, `hit`), as if its event came |
 | `pr.teimo.front [distance=<units>]` | moves the player (Skyrim has it) in front of the stall, facing Teimo |
 | `pr.teimo.reset` | Teimo forgets Kumpo's visit and his line count, as after a load |
 

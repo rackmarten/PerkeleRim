@@ -22,7 +22,7 @@
     { "label": "the stall from the front, Teimo behind the counter", "cmd": "screenshot", "name": "stall-front",
       "camera": "orbit pr.teimo: yaw=180 distance=650 pitch=12" },
     { "label": "Teimo up close", "cmd": "screenshot", "name": "teimo-close", "camera": "orbit pr.teimo: yaw=180 distance=230 pitch=5" },
-    { "label": "the stall from its side, the cart behind", "cmd": "screenshot", "name": "stall-side",
+    { "label": "the stall from its side, the cart beside it", "cmd": "screenshot", "name": "stall-side",
       "camera": "orbit pr.teimo: yaw=110 distance=750 pitch=15" },
     { "label": "the stall from above, the road and the gate beside it", "cmd": "screenshot", "name": "stall-top",
       "camera": "top pr.teimo: distance=2200" },

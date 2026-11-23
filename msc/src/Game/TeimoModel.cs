@@ -7,15 +7,15 @@ using UnityEngine;
 namespace PerkeleRim.Game
 {
     // MSC's Teimo as one of MSC's own models for Skyrim (ModelSender, by name, like the death
-    // overlay): the shopkeeper behind his counter, his skinned meshes baked in a standing pose (a
-    // frame of one of his own animation clips) and his plain meshes (glasses, cap) as they are,
+    // overlay): the shopkeeper behind his counter, his skinned mesh baked in the pose he stands in
+    // (or a frame of one of his own clips, PoseClip) and his plain meshes as they are,
     // relative to his root with his feet at 0. Read from the running game, nothing shipped. Skyrim
     // hangs it on its Teimo at the stall in Riverwood (skse/src/teimo/Teimo.cpp).
     public static class TeimoModel
     {
         public const string Name = "PerkeleRim.Teimo";
 
-        // The clip and the time in it his pose is baked from; null bakes him as he stands now. Set by
+        // The clip and the time in it his pose is baked from; empty bakes him as he stands now. Set by
         // the spike's "teimo pose <clip> <seconds>".
         public static string PoseClip = "";
         public static float PoseTime;
@@ -131,15 +131,23 @@ namespace PerkeleRim.Game
             {
                 var state = anim[PoseClip];
                 if (state == null) continue;
-                var playing = new List<string>();
-                foreach (AnimationState s in anim) if (anim.IsPlaying(s.name)) playing.Add(s.name);
-                anim.Stop();
+                // Sampled alone, then every state put back as it was: he carries on in his shop.
+                var saved = new List<KeyValuePair<AnimationState, Vector3>>();  // enabled, time, weight
+                foreach (AnimationState s in anim)
+                {
+                    saved.Add(new KeyValuePair<AnimationState, Vector3>(s, new Vector3(s.enabled ? 1f : 0f, s.time, s.weight)));
+                    s.enabled = false;
+                }
                 state.enabled = true;
                 state.weight = 1f;
                 state.time = PoseTime;
                 anim.Sample();
-                state.enabled = false;
-                foreach (var name in playing) anim.Play(name, PlayMode.StopSameLayer);  // he carries on in his shop
+                foreach (var s in saved)
+                {
+                    s.Key.enabled = s.Value.x > 0f;
+                    s.Key.time = s.Value.y;
+                    s.Key.weight = s.Value.z;
+                }
                 return;
             }
             log($"teimo: no clip {PoseClip} on his Animation, baked as he stands");
