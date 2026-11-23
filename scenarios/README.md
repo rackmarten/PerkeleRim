@@ -34,7 +34,6 @@ in a hidden session:
 - `van-lights.json` (5 runs): the low beams put out darkened the ground ahead by 42 luma (86 to 44, two thirds of its pixels), the
   ground beside the van rose by 0.9 (eye adaptation); MSC switching every lamp off darkened the ground ahead by 47 to 57.
 - `whirlwind-sprint.json` (23 November 2026, 3 runs, one right after `hitbox.json`): 15.0 and 30.0 m on open grass, 3.0 to 3.2 m into the van (MSC logs `stopped by a wall`), 0 for Fire Breath.
-
 - `fuel-hint.json` (23 November 2026, 1 run): 27 of 27 steps; with the van 481 m south of the Whiterun pump spot (bearing
   352 degrees) the line read "Fuel 6.0 / 40 L. Whiterun Dwemer Oil 480 m north", then "Fuel 0.1 / ..." with the tow tip top
   left, above the needs bars; the fuel line on its box above the gear, clear of everything else.
