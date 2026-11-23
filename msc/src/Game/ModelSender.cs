@@ -409,16 +409,23 @@ namespace PerkeleRim.Game
                     var texture = material != null ? material.mainTexture : null;
                     if (texture != null) key.Append(texture.name).Append('/').Append(texture.width).Append('x').Append(texture.height);
                     if (material != null)
-                        key.Append(material.name).Append(material.mainTextureScale).Append(material.shader != null ? material.shader.name : "")
+                        key.Append(material.name.Replace(" (Instance)", "")).Append(material.mainTextureScale).Append(material.shader != null ? material.shader.name : "")
                             .Append(Color(material, "_Color")).Append(Float(material, "_Mode")).Append(Float(material, "_Metallic"))
                             .Append(Float(material, "_Glossiness"));
                     key.Append(',');
                 }
-                var m = RelativeTo(root, renderer.transform);  // its scale only: the lengths of its axes
-                key.Append(Round(new Vector3(((Vector3)m.GetColumn(0)).magnitude, ((Vector3)m.GetColumn(1)).magnitude, ((Vector3)m.GetColumn(2)).magnitude)));
-                key.Append(';');
+                key.Append(Round(ScaleBelow(root, renderer.transform))).Append(';');
             }
             return key != null ? key.ToString() : null;
+        }
+
+        // t's scale in root's frame, its own and its parents' local scales times root's, leaving out
+        // rotations: a turning part keeps it, also under a stretched parent.
+        static Vector3 ScaleBelow(Transform root, Transform t)
+        {
+            var s = root.lossyScale;
+            for (var p = t; p != null && p != root; p = p.parent) s = Vector3.Scale(s, p.localScale);
+            return s;
         }
 
         static Vector3 Round(Vector3 v) => new Vector3(Mathf.Round(v.x * 1000f), Mathf.Round(v.y * 1000f), Mathf.Round(v.z * 1000f));
