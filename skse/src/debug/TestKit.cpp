@@ -7,6 +7,7 @@
 #include "look_at.h"
 #include "model/ModelView.h"
 #include "player/PlayerSync.h"
+#include "teimo/Teimo.h"
 #include "vehicle/Hitbox.h"
 #include "vehicle/HitboxTest.h"
 #include "vehicle/VehicleView.h"
@@ -194,6 +195,15 @@ namespace PerkeleRim::TestKit
                 out.Set("highLevel", parts->highLevel);
             }
             return out;
+        }
+
+        Json DescribeTeimo()
+        {
+            const auto s = Teimo::Describe();
+            return JsonObject{ { "found", s.found }, { "loaded", s.loaded }, { "drawn", s.drawn }, { "model", static_cast<double>(s.model) },
+                { "x", s.position.x }, { "y", s.position.y }, { "z", s.position.z }, { "heading", s.heading * 57.29578 },
+                { "distance", s.distance }, { "visiting", s.visiting }, { "lines", static_cast<double>(s.lines) }, { "lastClip", s.lastClip },
+                { "lastTopic", s.lastTopic }, { "lastAt", s.lastAt }, { "caption", s.caption } };
         }
 
         // A line for MSC's spike commands (msc/src/Spike/SpikeHost.cs: drunk 2, lightson 1, time 6, ...) over the link.
@@ -399,6 +409,57 @@ namespace PerkeleRim::TestKit
                         throw Error(std::format("MSC has no {} on the island now", kVehicles[id - 1]));
                     }
                     return DescribeVehicle(id, state);
+                });
+
+            SkseTestKit::AddCommand("pr.teimo", "", "Teimo at his stall in Riverwood: found, loaded, drawn as MSC's Teimo, where, which way he faces, how far Kumpo is, the last line he said and his caption now",
+                [](Call&) -> Json { return DescribeTeimo(); });
+
+            SkseTestKit::AddTask("pr.teimo.say", "<topic>",
+                "Teimo says a line of a topic now (greet, drunk, chat, finger, pissed, hit), as if its event came; answers with the line and its caption",
+                [](Call& a_call) -> Step {
+                    const auto topic = Teimo::TopicByName(a_call.Text("topic"));
+                    if (!topic) {
+                        throw Error("topic is greet, drunk, chat, finger, pissed or hit");
+                    }
+                    auto* player = RE::PlayerCharacter::GetSingleton();
+                    if (!player || !Teimo::DebugSay(player, *topic)) {
+                        throw Error("Teimo isn't loaded near the player, or MSC isn't linked");
+                    }
+                    a_call.DefaultTimeout(5.0);
+                    return [](Call&) -> std::optional<Json> { return DescribeTeimo(); };
+                });
+
+            SkseTestKit::AddCommand("pr.teimo.front", "[distance=<units>]",
+                "Moves the player (Skyrim has it: pr.msc on=false first) in front of Teimo's stall, distance (900) units out along the way it faces, "
+                "facing Teimo; answers with where",
+                [](Call& a_call) -> Json {
+                    if (PlayerSync::Owned()) {
+                        throw Error("MSC has the player: take it back first (pr.msc on=false)");
+                    }
+                    auto* teimo = Teimo::Actor();
+                    auto* player = RE::PlayerCharacter::GetSingleton();
+                    if (!teimo || !player) {
+                        throw Error("PerkeleRim.esp has no Teimo");
+                    }
+                    const auto  s = Teimo::Describe();
+                    const float distance = static_cast<float>(a_call.Number("distance", 900.0));
+                    const auto  at = teimo->GetPosition();
+                    const RE::NiPoint3 to{ at.x + distance * std::sin(s.home), at.y + distance * std::cos(s.home), at.z + 60.0f };
+                    const float facing = std::fmod(s.home + 3.14159265f, 6.2831853f);
+                    player->SetPosition(to, true);
+                    player->SetAngle(RE::NiPoint3(0.0f, 0.0f, facing));
+                    return JsonObject{ { "x", to.x }, { "y", to.y }, { "z", to.z }, { "heading", facing * 57.29578 } };
+                });
+
+            // pr.teimo: Teimo's feet, facing the way his model does, his drawn model as the root.
+            SkseTestKit::AddTarget("pr.teimo", "", "Teimo at his stall: his feet, facing the way he looks, MSC's Teimo inside",
+                [](std::string_view) {
+                    const auto s = Teimo::Describe();
+                    if (!s.loaded) {
+                        throw Error("Teimo isn't loaded (Riverwood isn't near, or PerkeleRim.esp has no Teimo)");
+                    }
+                    return SkseTestKit::Place{ .x = s.position.x, .y = s.position.y, .z = s.position.z + 90.0f, .heading = s.heading,
+                        .root = Teimo::Node(), .details = DescribeTeimo() };
                 });
 
             // The cameras' and the probes' pr.vehicle:<name>: the vehicle's origin facing its way, its drawn model as the

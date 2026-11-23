@@ -3,6 +3,7 @@
 #include "coords.h"
 #include "damage.h"
 #include "bystanders.h"
+#include "teimo/Teimo.h"
 
 #include <atomic>
 #include <chrono>
@@ -135,6 +136,9 @@ namespace PerkeleRim::People
         {
             static bool thunk(RE::Actor* a_actor, bool a_start, bool a_forceGreet, RE::TESTopicInfo* a_topic)
             {
+                if (a_start && Teimo::OnTalk(a_actor)) {
+                    return false;  // Teimo's talk is MSC's lines, not Skyrim's dialogue: he greets Kumpo next frame
+                }
                 if (a_start && !mayTalk) {
                     static std::atomic<RE::FormID>   lastId{ 0 };
                     static std::atomic<std::int64_t> lastAt{ 0 };

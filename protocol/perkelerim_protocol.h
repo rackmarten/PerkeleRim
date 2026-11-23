@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 50;
+    inline constexpr std::uint32_t kProtocolVersion = 51;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -427,6 +427,7 @@ namespace PerkeleRim::Protocol
         JunkBack = 33,         // MSC -> Skyrim
         Blackout = 34,         // MSC -> Skyrim
         HeldDrink = 35,        // MSC -> Skyrim
+        TeimoLine = 36,        // Skyrim -> MSC
     };
 
     struct MessageHeader
@@ -836,6 +837,20 @@ namespace PerkeleRim::Protocol
         float         grip[3];    // on the bottle's axis, where the fist is
     };
 
+    // TeimoLine (v51): Teimo at his stall in Riverwood (PerkeleRim.esp, skse/src/teimo/Teimo.cpp)
+    // says one of MSC's own Teimo lines to Kumpo (protocol/cpp/teimo_talk.h): clip is the MasterAudio
+    // variation's name in MSC's Teimo group (UTF-8, length bytes, no terminator), position where
+    // his head is in Skyrim world space, for MSC to play it from there on its island. Sent only
+    // while MSC has the player; Skyrim captions it itself.
+    inline constexpr std::uint32_t kTeimoClipMax = 48;
+
+    struct TeimoLine
+    {
+        float         position[3];          // Skyrim world units
+        std::uint32_t length;               // bytes of clip used, <= kTeimoClipMax
+        char          clip[kTeimoClipMax];  // UTF-8
+    };
+
     // ---- Models (MSC -> Skyrim) ----
     //
     // MSC sends its own meshes and textures, read from the running game, and Skyrim builds them in
@@ -1115,6 +1130,9 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ConsumeEvent, drink) == 16);
     static_assert(offsetof(ConsumeEvent, form) == 20);
     static_assert(sizeof(HeldDrink) == 56);
+    static_assert(sizeof(TeimoLine) == 64);
+    static_assert(offsetof(TeimoLine, length) == 12);
+    static_assert(offsetof(TeimoLine, clip) == 16);
     static_assert(offsetof(HeldDrink, grip) == 44);
     static_assert(offsetof(HeldDrink, bottom) == 8);
     static_assert(offsetof(HeldDrink, top) == 20);

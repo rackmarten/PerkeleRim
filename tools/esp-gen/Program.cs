@@ -400,6 +400,92 @@ foreach (var p in stationMarkers.Concat(stationPieces))
 }
 uint stationsNextId = nextId;
 
+// ---- Teimo's stall in Riverwood ----
+//
+// Teimo just got to Riverwood and is starting from scratch: a makeshift stall of vanilla pieces in the
+// open (no load door), his cart behind it, crates and a barrel around, Teimo behind the counter. The
+// SKSE plugin draws him as My Summer Car's own Teimo (skse/src/teimo/Teimo.cpp) and finds him at a
+// fixed id. His own voice type has no lines, so Skyrim never speaks for him (MSC does); he holds his
+// spot (a vanilla hold-position package) and runs from a fight instead of joining it. The stall's
+// frame: origin where Teimo stands, +Y the way he faces (toward the customers), heading stallHeading.
+// docs/DESIGN.md has the spots compared; move it by changing stallAt and stallHeading.
+var stallAt = (X: 24930f, Y: -41960f);
+const float stallHeading = 200f * MathF.PI / 180f;  // the way Teimo faces, clockwise from north
+(float X, float Y) StallWorld(float x, float y)
+{
+    float c = MathF.Cos(stallHeading), s = MathF.Sin(stallHeading);
+    // Local +Y is the heading's direction (sin h, cos h); local +X is 90 degrees clockwise of it.
+    return (stallAt.X + x * c + y * s, stallAt.Y - x * s + y * c);
+}
+float StallGround(float x, float y) { var w = StallWorld(x, y); return terrain.HeightAt(w.X, w.Y); }
+
+nextId = 0xB00;
+var teimoVoice = new VoiceType(new FormKey(mod.ModKey, nextId++), SkyrimRelease.SkyrimSE) { EditorID = "PerkeleRimTeimoVoice" };  // 0xB00: no lines
+mod.VoiceTypes.Add(teimoVoice);
+var farmer = skyrim.Npcs.First(n => n.EditorID == "WEFarmerMale");
+var teimo = farmer.Duplicate(new FormKey(mod.ModKey, nextId++));  // 0xB01
+teimo.EditorID = "PerkeleRimTeimo";
+teimo.Name = "Teimo";
+teimo.Template.Clear();
+teimo.Configuration.TemplateFlags = 0;
+teimo.Configuration.Flags = NpcConfiguration.Flag.Essential | NpcConfiguration.Flag.Unique | NpcConfiguration.Flag.AutoCalcStats;
+teimo.Voice.SetTo(teimoVoice);
+teimo.Class.SetTo(Base(skyrim.Classes, "Citizen"));
+teimo.DefaultOutfit.SetTo(Base(skyrim.Outfits, "FarmClothesOutfit02"));
+teimo.Factions.Clear();
+teimo.Packages.Clear();
+teimo.Packages.Add(new FormLink<IPackageGetter>(Base(skyrim.Packages, "DefaultHoldPositionEditorLoc128")));
+teimo.Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>> { skyrim.Keywords.First(k => k.EditorID == "ActorTypeNPC").ToLink() };
+teimo.AIData.Aggression = Aggression.Unaggressive;
+teimo.AIData.Confidence = Confidence.Cowardly;
+teimo.AIData.Assistance = Assistance.HelpsNobody;
+mod.Npcs.Add(teimo);
+var teimoRef = new PlacedNpc(new FormKey(mod.ModKey, nextId++), SkyrimRelease.SkyrimSE)  // 0xB02, skse/src/teimo/Teimo.cpp
+{
+    EditorID = "PerkeleRimTeimoRef",
+    Base = new FormLinkNullable<INpcGetter>(teimo.FormKey),
+    Placement = new Placement
+    {
+        Position = new P3Float(stallAt.X, stallAt.Y, StallGround(0f, 0f) + 4f),
+        Rotation = new P3Float(0f, 0f, Normalize(stallHeading)),
+    },
+};
+teimoRef.MajorRecordFlagsRaw |= (int)PlacedNpc.MajorFlag.Persistent;
+persistentCell.Persistent.Add(teimoRef);
+
+// The stall, in its frame (x across, y toward the customers, rot about z from facing +Y). z is
+// from the ground under the piece; pieces whose origin is at their middle carry their half
+// height. RTMarketStall01: Riften's rough market stall (144 wide, 155 deep, 215 tall, its roof
+// over the counter); DBBrokenWagon: a cart with a broken wheel (181 x 564), his ride here.
+var stallPieces = new (string Piece, float X, float Y, float Z, float Rot)[]
+{
+    ("RTMarketStall01", 0f, 40f, 0f, MathF.PI),
+    ("DBBrokenWagon", -60f, -260f, 0f, MathF.PI / 2 + 0.25f),
+    ("CrateSmallLong01", 135f, 30f, 24f, 0f),
+    ("CrateSmall01", 135f, 60f, 72f, 0.4f),
+    ("CrateSmall03", 120f, -40f, 24f, 0.2f),
+    ("Barrel02Static", -125f, 20f, 0f, 0f),
+    ("CrateSmall02", -120f, -50f, 21f, 1.1f),
+    ("CommonBench01STATIC", 220f, 120f, 0f, -0.3f),
+};
+var stallRefs = new List<PlacedObject>();
+foreach (var (piece, x, y, z, rot) in stallPieces)
+{
+    var w = StallWorld(x, y);
+    var placed = new PlacedObject(new FormKey(mod.ModKey, nextId++), SkyrimRelease.SkyrimSE)
+    {
+        Base = new FormLinkNullable<IPlaceableObjectGetter>(Base(skyrim.Statics, piece)),
+        Placement = new Placement { Position = new P3Float(w.X, w.Y, StallGround(x, y) + z), Rotation = new P3Float(0f, 0f, Normalize(rot + stallHeading)) },
+    };
+    stallRefs.Add(placed);
+    Override(ExteriorAt(w.X, w.Y)).Temporary.Add(placed);
+}
+Console.WriteLine($"  {teimoVoice.FormKey.ID:X3} {teimoVoice.EditorID}, {teimo.FormKey.ID:X3} {teimo.EditorID}, {teimoRef.FormKey.ID:X3} {teimoRef.EditorID} " +
+    $"({stallAt.X:0},{stallAt.Y:0},{teimoRef.Placement.Position.Z:0}) facing {stallHeading * 180f / MathF.PI:0}");
+foreach (var p in stallRefs)
+    Console.WriteLine($"  {p.FormKey.ID:X3} {cache.Resolve<IPlaceableObjectGetter>(p.Base.FormKey).EditorID,-20} ({p.Placement!.Position.X:0},{p.Placement.Position.Y:0},{p.Placement.Position.Z:0})");
+uint teimoNextId = nextId;
+
 // ---- Drinks ----
 //
 // Fixed ids the SKSE plugin looks up (skse/src/drink/Drink.cpp), clear of the garage's. 0x900 was
@@ -710,7 +796,7 @@ foreach (var spot in pumpSpots)
 mod.FormLists.Add(pumpList);
 Console.WriteLine($"  980 {pumpList.EditorID} ({pumpList.Items.Count} pumps)");
 
-mod.ModHeader.Stats.NextFormID = stationsNextId;  // after the gas stations (0xA00 on), past every record id
+mod.ModHeader.Stats.NextFormID = teimoNextId;  // after Teimo's stall (0xB00 on), past every record id
 // Header 1.70, not Mutagen's 1.71: Skyrim SE 1.5.97 skips 1.71 plugins, AE loads both.
 mod.ModHeader.Stats.Version = 1.7f;
 

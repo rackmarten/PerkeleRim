@@ -16,6 +16,7 @@ either game.
 | `test-kit-smoke.json` | MSC has Kumpo, the player is in the world, MSC's debug commands reach it, PerkeleRim's commands are there | under 1 s |
 | `hits.json` | the hit test (`scripts/hit-test.ps1`): punches sober and drunk, a thrown bottle, thrown junk, bottles drunk and drunker at a Whiterun guard with its AI off, each attack's damage against `protocol/cpp/damage.h` and the guard's health; a row per attack in `step-9-rows.csv` | 73 to 92 s |
 | `hitbox.json` | the hitbox test (`scripts/hitbox-test.ps1`): the van called in front of Kumpo, 8 arrows shot at him through it (all stop at the van), 4 from his side (they reach him), a melee bandit behind it who walks round it to him, never through; every line of the test in `step-8-rows.csv` | 65 s |
+| `teimo.json` | Teimo at his stall in Riverwood: drawn as MSC's Teimo behind the counter (pictures from the front, close up, the side and above), Kumpo walking up to the counter and Teimo greeting him with a caption, turning to him, small talk while he hangs about, and his answer to the middle finger; which line he said each time (`pr.teimo`'s `lastClip`, `PerkeleRim.log`'s `teimo: says`) | about 45 s |
 | `van-lights.json` | the van's lights at night: MSC switches them on and Skyrim's lamps follow (both low beams, the rear lamps, the cabin); pictures from behind, in front and above; an A/B pair of one paused frame with the low beams put out (the ground ahead goes dark, the ground beside doesn't change); MSC switching every lamp off | 9 s |
 
 ## What the numbers were
@@ -50,6 +51,9 @@ Start from the closest file. Steps are the kit's requests (`docs/COMMANDS.md` in
 | `pr.vehicle [vehicle]` | a vehicle MSC has on the island: where, how fast, drawn, solid, which of its lights are on (`lightRolesOn`: 1 low, 2 high, 3 tail, 4 brake, 5 reverse, 6 cabin, 7 work, 8 beacon) |
 | `pr.hits [scenarios] [target=<hex>]` | the hit test, a row per attack |
 | `pr.hitbox` | the hitbox test, a row per line it logs |
+| `pr.teimo` | Teimo at his stall: found, loaded, drawn as MSC's Teimo, where, which way he faces, how far the player is, the last line he said (`lastClip`, `lastTopic`, `lines`) and his caption now; `pr.teimo:` is his camera and probe target (his middle, facing the way his model looks) |
+| `pr.teimo.say <topic>` | Teimo says a line of a topic now (`greet`, `drunk`, `chat`, `finger`, `pissed`, `hit`), as if its event came |
+| `pr.teimo.front [distance=<units>]` | moves the player (Skyrim has it) in front of the stall, facing Teimo |
 
 The cameras and probes take `pr.vehicle:<van|moped|kekmet|gifu>`: the vehicle's origin, facing its way, with its
 drawn model and lamps inside (`probe lights pr.vehicle:van`, `light off pr.vehicle:van name=LowBeam`; the lamps are
