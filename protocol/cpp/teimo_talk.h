@@ -195,11 +195,11 @@ namespace PerkeleRim::Teimo
             if (!visiting_) {
                 visiting_ = true;
                 byeSaid_ = false;
+                drunkSaid_ = false;
                 nextChat_ = a_now + kChatAfter;
             }
             greeted_ = a_now;
             greetedVisit_ = true;
-            drunkSaid_ = false;
             return Topic::kGreet;
         }
 

@@ -203,6 +203,15 @@ TEST_CASE("talking to him greets Kumpo unless he is speaking")
     CHECK((Stay(asked, 0.0, 20.0, 350.0f) == std::vector{ Topic::kChat }));
     CHECK(Stay(asked, 20.0, 45.0, 350.0f).empty());  // the story runs, the next is a while off
     REQUIRE((asked.OnInsult(Topic::kFinger, 45.0, 350.0f) == Topic::kFinger));
+    // E again during the visit: another greeting, but the drunk remark stays once a visit, and the
+    // stories and the goodbye keep their place.
+    Talk again;
+    REQUIRE((Stay(again, 0.0, 12.0, 200.0f, 1.2f) == std::vector{ Topic::kGreet, Topic::kDrunk }));
+    REQUIRE((again.OnTalk(12.0, 200.0f) == Topic::kGreet));
+    again.Say(Topic::kGreet, 12.0, 0.0);
+    const auto after = Stay(again, 12.0, 40.0, 200.0f, 1.2f);
+    CHECK((after == std::vector{ Topic::kChat }));
+    CHECK((Stay(again, 40.0, 41.0, Teimo::kAround + 50.0f, 1.2f) == std::vector{ Topic::kBye }));
     Talk leaving;
     REQUIRE((leaving.OnTalk(0.0, 350.0f) == Topic::kGreet));
     leaving.Say(Topic::kGreet, 0.0, 0.0);

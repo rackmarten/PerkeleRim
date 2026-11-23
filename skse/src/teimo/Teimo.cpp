@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstring>
 #include <random>
+#include <vector>
 
 namespace PerkeleRim::Teimo
 {
@@ -26,13 +27,14 @@ namespace PerkeleRim::Teimo
             std::uint32_t             model = 0;
             bool                      shown = false;
             RE::NiAVObject*           hiddenRoot = nullptr;  // the 3D his body was hidden in
+            std::vector<RE::NiPointer<RE::NiAVObject>> culled;  // the shapes of it we culled (others the game culled stay so)
             float                     hideIn = 0.0f;
             float                     heading = 0.0f;
             bool                      headingSet = false;
             float                     home = 0.0f;  // his stall's heading: his reference's angle z
             RE::NiPoint3              homeAt;       // and his spot behind the counter
             Talk                      talk;
-            double                    clock = 0.0;  // seconds of game time MSC had the player, his talk's clock
+            double                    clock = 0.0;  // seconds of game time since the load, his talk's clock
             const Line*               line = nullptr;  // the line he says, while its caption runs
             std::string               lastClip;
             std::string               lastTopic;
@@ -47,6 +49,8 @@ namespace PerkeleRim::Teimo
         constexpr float         kOffSpot = 210.0f;  // units off his spot (3 m) from which he's shown as Skyrim's actor: pushed, or running from a fight
         constexpr float         kFacesFor = 1.3f;   // radians either side of where he looks that he sees the finger in
 
+        bool Fleeing(RE::Actor* a_actor);  // below
+
         // Times his MSC model can't show what his Skyrim actor does: down, ragdolled, fighting or
         // running from a fight, or off his spot. His Skyrim body shows instead, until he's back.
         const char* Busy(RE::Actor* a_teimo)
@@ -59,6 +63,9 @@ namespace PerkeleRim::Teimo
             }
             if (a_teimo->IsInCombat()) {
                 return "in a fight";
+            }
+            if (Fleeing(a_teimo)) {
+                return "running off";  // the horn or a vehicle coming at him (People::Flee)
             }
             if (a_teimo->GetPosition().GetDistance(state.homeAt) > kOffSpot) {
                 return "off his spot";
@@ -86,22 +93,41 @@ namespace PerkeleRim::Teimo
             return RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
         }
 
-        // Culls every shape of his Skyrim body (and its head, gear) so only MSC's Teimo shows; a_show
-        // brings them back.
-        void ShowBody(RE::NiAVObject* a_object, bool a_show)
+        // Culls every shape of his Skyrim body (and its head, gear) that shows, so only MSC's Teimo
+        // does; remembered in state.culled.
+        void HideBody(RE::NiAVObject* a_object)
         {
             if (!a_object) {
                 return;
             }
             if (a_object->AsGeometry()) {
-                a_object->SetAppCulled(!a_show);
+                if (!a_object->GetAppCulled()) {
+                    a_object->SetAppCulled(true);
+                    state.culled.emplace_back(a_object);
+                }
                 return;
             }
             if (auto* node = a_object->AsNode()) {
                 for (auto& child : node->GetChildren()) {
-                    ShowBody(child.get(), a_show);
+                    HideBody(child.get());
                 }
             }
+        }
+
+        // Shows again what HideBody culled, nothing else.
+        void ShowBody()
+        {
+            for (auto& shape : state.culled) {
+                shape->SetAppCulled(false);
+            }
+            state.culled.clear();
+        }
+
+        bool Fleeing(RE::Actor* a_actor)
+        {
+            auto* process = a_actor->GetActorRuntimeData().currentProcess;
+            auto* package = process ? process->GetRunningPackage() : nullptr;
+            return package && package->packData.packType == RE::PACKAGE_TYPE::kFlee;
         }
 
         bool LoadModel()
@@ -204,6 +230,7 @@ namespace PerkeleRim::Teimo
         state.lines = 0;
         state.lastAt = -1.0;
         state.hiddenRoot = nullptr;
+        state.culled.clear();
         state.headingSet = false;
         talkedTo = false;
     }
@@ -228,7 +255,7 @@ namespace PerkeleRim::Teimo
             }
             HideModel();
             if (state.hiddenRoot) {
-                ShowBody(root, true);
+                ShowBody();
                 state.hiddenRoot = nullptr;
             }
             return;
@@ -242,8 +269,11 @@ namespace PerkeleRim::Teimo
         }
         // His body hidden once his model is up, and again now and then (a head or gear loading late).
         state.hideIn -= a_delta;
+        if (root != state.hiddenRoot) {
+            state.culled.clear();  // a new 3D: the old one's shapes are gone with it
+        }
         if (root != state.hiddenRoot || state.hideIn <= 0.0f) {
-            ShowBody(root, false);
+            HideBody(root);
             state.hiddenRoot = root;
             state.hideIn = kHideEvery;
         }

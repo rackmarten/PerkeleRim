@@ -22,7 +22,7 @@ namespace PerkeleRim::Teimo
     // toward Kumpo or his stall (his Skyrim body instead while he's down, fighting or off his spot).
     void Draw(RE::PlayerCharacter* a_player, float a_delta);
 
-    // Every frame MSC has the player, after the frame's Draw: what Teimo says to him. a_drunk is
+    // Every frame MSC has the player, before that frame's Draw: what Teimo says to him. a_drunk is
     // MSC's drunk level; a_inVehicle: Kumpo sits in a vehicle or has climbed into one (no talk, and
     // the visit ends: driving past isn't a visit).
     void Update(RE::PlayerCharacter* a_player, float a_drunk, bool a_inVehicle);
