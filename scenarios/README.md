@@ -16,6 +16,7 @@ either game.
 | `test-kit-smoke.json` | MSC has Kumpo, the player is in the world, MSC's debug commands reach it, PerkeleRim's commands are there | under 1 s |
 | `hits.json` | the hit test (`scripts/hit-test.ps1`): punches sober and drunk, a thrown bottle, thrown junk, bottles drunk and drunker at a Whiterun guard with its AI off, each attack's damage against `protocol/cpp/damage.h` and the guard's health; a row per attack in `step-9-rows.csv` | 73 to 92 s |
 | `hitbox.json` | the hitbox test (`scripts/hitbox-test.ps1`): the van called in front of Kumpo, 8 arrows shot at him through it (all stop at the van), 4 from his side (they reach him), a melee bandit behind it who walks round it to him, never through; every line of the test in `step-8-rows.csv` | 65 s |
+| `model-read.json` | MSC's frames while it reads and sends its models (`scripts/model-read-test.ps1`): every model read again with new ids, as after MSC starts (`pr.send models again cold`), then again under the same ids, as after Skyrim restarts (`models again`), each waited out with `pr.models`; MSC logs each stretch's worst frame (`model: models again cold: ... worst <n> ms`) and the script fails a frame over 200 ms. Then the van, the moped, the Kekmet and the Gifu called one by one and pictured from outside | 66 s |
 | `van-lights.json` | the van's lights at night: MSC switches them on and Skyrim's lamps follow (both low beams, the rear lamps, the cabin); pictures from behind, in front and above; an A/B pair of one paused frame with the low beams put out (the ground ahead goes dark, the ground beside doesn't change); MSC switching every lamp off | 9 s |
 
 ## What the numbers were
@@ -29,6 +30,13 @@ in a hidden session:
 - `hitbox.json` (5 runs, the same each time): 8 of 8 arrows through the van stopped at it (on the hitbox's layer, about 142 units from the van's
   middle, its back end), none came nearer Kumpo than 559 units; 4 of 4 control arrows reached him; the bandit stood for
   about 26 s, then walked round the van's side to within 90 units of Kumpo, never inside its box.
+- `model-read.json` (23 November 2026, 11 models: the four vehicles, the blood overlay and six items, 3924 chunks, 193 MB):
+  MSC's worst frame reading every model again was 2009 ms with the old reader (5 frames over 200 ms: a vehicle each and
+  one more), 2018 ms sending them again under the same ids (4 over 200 ms); with the stepped reader 146 to 172 ms and
+  150 to 151 ms over two runs (none over 200 ms, 3 over 100 ms each), the van read in 0.3 to 0.5 s of steps over about 40 frames instead of 1.7 to
+  2.5 s in one, and the whole stretch over in 16 s instead of 25. The longest steps (120 to 150 ms) are a few that take 3 to
+  15 ms in other runs, most likely Mono's garbage collector stopping in them; the gaps between chunks stay under 1.3 s. A session start's own link-up also holds a
+  9.3 s frame, MSC loading its game (logged as `no model read in it`), with either reader. All four vehicles look as before.
 - `van-lights.json` (5 runs): the low beams put out darkened the ground ahead by 42 luma (86 to 44, two thirds of its pixels), the
   ground beside the van rose by 0.9 (eye adaptation); MSC switching every lamp off darkened the ground ahead by 47 to 57.
 
@@ -50,6 +58,7 @@ Start from the closest file. Steps are the kit's requests (`docs/COMMANDS.md` in
 | `pr.vehicle [vehicle]` | a vehicle MSC has on the island: where, how fast, drawn, solid, which of its lights are on (`lightRolesOn`: 1 low, 2 high, 3 tail, 4 brake, 5 reverse, 6 cabin, 7 work, 8 beacon) |
 | `pr.hits [scenarios] [target=<hex>]` | the hit test, a row per attack |
 | `pr.hitbox` | the hitbox test, a row per line it logs |
+| `pr.models [quiet=<s>]` | waits until MSC's model chunks have come and then stopped for quiet seconds (8), with how many came |
 
 The cameras and probes take `pr.vehicle:<van|moped|kekmet|gifu>`: the vehicle's origin, facing its way, with its
 drawn model and lamps inside (`probe lights pr.vehicle:van`, `light off pr.vehicle:van name=LowBeam`; the lamps are

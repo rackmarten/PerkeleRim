@@ -35,7 +35,7 @@
     { "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
     { "label": "the moped comes", "cmd": "pr.call", "vehicle": "moped", "expect": ["drawn == true", "solid == true"] },
     { "cmd": "wait", "frames": 30 },
-    { "cmd": "screenshot", "name": "moped", "camera": "orbit pr.vehicle:moped yaw=220 distance=350 pitch=20" },
+    { "cmd": "screenshot", "name": "moped", "camera": "orbit pr.vehicle:moped yaw=220 distance=350 pitch=35" },
 
     { "cmd": "pr.msc", "on": false, "expect": "msc == false" },
     { "cmd": "console", "command": "player.setangle z 90" },
