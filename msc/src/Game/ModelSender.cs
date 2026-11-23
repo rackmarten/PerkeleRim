@@ -259,9 +259,15 @@ namespace PerkeleRim.Game
         // root), named name and "name#<n>" from the second submesh on.
         public void AddRenderer(ModelData model, Materials materials, MeshRenderer renderer, Matrix4x4 m, string name, int node, Look look)
         {
-            LinkHost.KeepAlive();  // a big vehicle's read outlasts the link's timeout
             var filter = renderer.GetComponent<MeshFilter>();
-            var mesh = filter != null ? filter.sharedMesh : null;
+            AddMesh(model, materials, renderer, filter != null ? filter.sharedMesh : null, m, name, node, look);
+        }
+
+        // The same for a mesh drawn with renderer's materials that isn't its MeshFilter's: a
+        // SkinnedMeshRenderer's, baked in its current pose (TeimoModel).
+        public void AddMesh(ModelData model, Materials materials, Renderer renderer, Mesh mesh, Matrix4x4 m, string name, int node, Look look)
+        {
+            LinkHost.KeepAlive();  // a big vehicle's read outlasts the link's timeout
             if (mesh == null) return;
             var vertices = mesh.vertices;
             var normals = mesh.normals;

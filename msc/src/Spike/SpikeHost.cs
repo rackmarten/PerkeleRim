@@ -563,6 +563,21 @@ namespace PerkeleRim.Spike
                         if (reader != null) reader.InspectModel(lines[0].Trim().Substring(8).Trim());
                         else SpikeLog.Write("cmd: no PlayerLink");
                         break;
+                    case "teimo":  // "teimo" lists every Teimo MSC has and what he's made of; "teimo pose idle 0.5" bakes him from that clip and time again; "teimo say paivaa1" plays a line
+                        if (words.Length > 2 && words[1].ToLower() == "pose")
+                        {
+                            PerkeleRim.Game.TeimoModel.PoseClip = words[2] == "-" ? "" : words[2];
+                            PerkeleRim.Game.TeimoModel.PoseTime = words.Length > 3 ? float.Parse(words[3], CultureInfo.InvariantCulture) : 0f;
+                            SpikeLog.Write($"cmd: Teimo's pose {PerkeleRim.Game.TeimoModel.PoseClip} at {PerkeleRim.Game.TeimoModel.PoseTime}");
+                        }
+                        else if (words.Length > 2 && words[1].ToLower() == "say")
+                        {
+                            var talker = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                            if (talker != null) talker.TeimoSay(words[2]);
+                            else SpikeLog.Write("cmd: no PlayerLink");
+                        }
+                        else PerkeleRim.Game.TeimoModel.Dump(SpikeLog.Write);
+                        break;
                     case "shot":  // MSC's own view, next to the game, as F11 saves it (ViewShot)
                         PerkeleRim.Game.ViewShot.Save(Path.Combine(SpikeLog.GameDir, "PerkeleRim_shot.png"), 0, 0, SpikeLog.Write);
                         break;
