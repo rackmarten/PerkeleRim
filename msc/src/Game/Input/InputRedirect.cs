@@ -10,6 +10,8 @@ namespace PerkeleRim.Game
     // UnityEngine.Input's methods are engine internal calls, which Harmony can't patch. Instead,
     // find every method in the game's assemblies that calls Input.* and transpile those call
     // sites to InputShim. cInput is included, so its key bindings resolve through the shim too.
+    // In a test session, the cursor lock and the volume calls go to QuietSession's stand-ins the same way, in
+    // these assemblies and in MSCLoader's (its SetMouseCursorFix locks the player's cursor), whose Input calls stay.
     public static class InputRedirect
     {
         static readonly string[] TargetAssemblies =
@@ -18,7 +20,8 @@ namespace PerkeleRim.Game
             "Assembly-UnityScript-firstpass", "cInput", "PlayMaker",
         };
 
-        static int callSitesReplaced;
+        static int callSitesReplaced, quietSitesReplaced;
+        static Dictionary<MethodBase, MethodInfo> quiet = new Dictionary<MethodBase, MethodInfo>();
         static readonly Dictionary<string, int> unshimmed = new Dictionary<string, int>();
 
         static bool applied;
@@ -31,6 +34,7 @@ namespace PerkeleRim.Game
             if (applied) return;
             applied = true;
             Log = log;
+            quiet = QuietSession.Redirects();
             var harmony = HarmonyInstance.Create("PerkeleRim.InputRedirect");
             var transpiler = new HarmonyMethod(typeof(InputRedirect).GetMethod(nameof(Transpiler), BindingFlags.Static | BindingFlags.NonPublic));
             int scanned = 0, patched = 0, failed = 0;
@@ -52,7 +56,7 @@ namespace PerkeleRim.Game
                     {
                         if (m.IsAbstract || m.ContainsGenericParameters) continue;
                         scanned++;
-                        if (!CallsInput(m, tokenCache)) continue;
+                        if (!CallsInput(m, tokenCache, true)) continue;
                         try { harmony.Patch(m, null, null, transpiler); patched++; }
                         catch (Exception e)
                         {
@@ -77,6 +81,29 @@ namespace PerkeleRim.Game
             }
 
             Log($"redirect: scanned {scanned} methods, patched {patched}, failed {failed}, call sites {callSitesReplaced}, {(DateTime.Now - start).TotalMilliseconds:0} ms");
+            if (quiet.Count > 0)
+            {
+                var quietTranspiler = new HarmonyMethod(typeof(InputRedirect).GetMethod(nameof(QuietTranspiler), BindingFlags.Static | BindingFlags.NonPublic));
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    if (asm.GetName().Name != "MSCLoader") continue;
+                    Type[] types;
+                    try { types = asm.GetTypes(); }
+                    catch (ReflectionTypeLoadException e) { types = e.Types; }
+                    var tokenCache = new Dictionary<int, bool>();
+                    foreach (var type in types)
+                    {
+                        if (type == null || type.ContainsGenericParameters) continue;
+                        foreach (var m in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
+                        {
+                            if (m.IsAbstract || m.ContainsGenericParameters || !CallsInput(m, tokenCache, false)) continue;
+                            try { harmony.Patch(m, null, null, quietTranspiler); Log($"redirect: test session, {type.FullName}.{m.Name}"); }
+                            catch (Exception e) { Log($"redirect: failed {type.FullName}.{m.Name}: {e.Message}"); }
+                        }
+                    }
+                }
+                Log($"redirect: test session, cursor lock and volume call sites {quietSitesReplaced}");
+            }
             foreach (var kv in unshimmed) Log($"redirect: left unshimmed Input.{kv.Key} x{kv.Value}");
         }
 
@@ -85,9 +112,10 @@ namespace PerkeleRim.Game
 
         static void CountMouseEvents() => MouseEventCalls++;
 
-        // Cheap pre-filter: look for call/callvirt opcodes whose token resolves to UnityEngine.Input.
+        // Cheap pre-filter: look for call/callvirt opcodes whose token resolves to UnityEngine.Input
+        // (when input) or, in a test session, to one of QuietSession's calls.
         // Stray 0x28/0x6F operand bytes only cost a failed resolve; the transpiler does the real match.
-        static bool CallsInput(MethodInfo m, Dictionary<int, bool> tokenCache)
+        static bool CallsInput(MethodInfo m, Dictionary<int, bool> tokenCache, bool input)
         {
             byte[] il;
             try { il = m.GetMethodBody()?.GetILAsByteArray(); }
@@ -103,7 +131,11 @@ namespace PerkeleRim.Game
 
                 if (!tokenCache.TryGetValue(token, out bool isInput))
                 {
-                    try { isInput = m.Module.ResolveMethod(token)?.DeclaringType == typeof(Input); }
+                    try
+                    {
+                        var called = m.Module.ResolveMethod(token);
+                        isInput = called != null && ((input && called.DeclaringType == typeof(Input)) || quiet.ContainsKey(called));
+                    }
                     catch { isInput = false; }
                     tokenCache[token] = isInput;
                 }
@@ -131,7 +163,28 @@ namespace PerkeleRim.Game
                         unshimmed[mi.Name] = n + 1;
                     }
                 }
+                else Quiet(ci);
                 yield return ci;
+            }
+        }
+
+        // MSCLoader's methods: only QuietSession's calls.
+        static IEnumerable<CodeInstruction> QuietTranspiler(IEnumerable<CodeInstruction> instructions)
+        {
+            foreach (var ci in instructions)
+            {
+                Quiet(ci);
+                yield return ci;
+            }
+        }
+
+        static void Quiet(CodeInstruction ci)
+        {
+            if ((ci.opcode == OpCodes.Call || ci.opcode == OpCodes.Callvirt) && ci.operand is MethodInfo called && quiet.TryGetValue(called, out var stand))
+            {
+                ci.opcode = OpCodes.Call;
+                ci.operand = stand;
+                quietSitesReplaced++;
             }
         }
 

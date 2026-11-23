@@ -339,6 +339,9 @@ if ($mscRunning) {
     if (Test-Path -LiteralPath $MscScreenBackup) { Start-MscScreenWatcher $PSCommandPath }
 } else {
     Write-Host 'Starting My Summer Car (it minimizes itself once its menu is up)'
+    # A developer's test session marker (scripts/launch-msc.ps1 -Hidden) that MSC never read: the player's MSC keeps
+    # its sound and its mouse.
+    Remove-Item -LiteralPath (Join-Path $msc 'PerkeleRim_test_session.txt') -ErrorAction SilentlyContinue
     # MSC runs in a small window at its lowest quality, and Unity keeps that as MSC's own screen
     # settings when it quits: the player's are saved now and put back once MSC has closed.
     [void] (Save-MscScreenSettings $MscRegistryKey $MscScreenBackup)
