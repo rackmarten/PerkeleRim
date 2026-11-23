@@ -41,7 +41,7 @@ in a hidden session:
   long frame's share; and frames of 203 to 374 ms in two runs while other sessions loaded the desktop, with 0 to 16 ms of
   model work in them. The longest steps (120 to 170 ms) are a few that take 3 to 15 ms in other runs: a garbage
   collection stopping in them (MSC logs the count per long frame) or a texture's read back waiting for the GPU. The gaps
-  between chunks stay under 1.5 s, 4.7 s on the loaded desktop. A session start's own link-up also holds a
+  between chunks stay under 1.5 s, 4.7 s on the loaded desktop (the session's readiness and the hit test take 8 s without one as MSC done). A session start's own link-up also holds a
   9.3 s frame, MSC loading its game (logged as `no model read in it`), with either reader. All four vehicles look as before.
 - `van-lights.json` (5 runs): the low beams put out darkened the ground ahead by 42 luma (86 to 44, two thirds of its pixels), the
   ground beside the van rose by 0.9 (eye adaptation); MSC switching every lamp off darkened the ground ahead by 47 to 57.

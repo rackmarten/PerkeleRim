@@ -341,7 +341,8 @@ namespace PerkeleRim
             size += Materials.Count * 40L;
             size += Nodes.Count * (Wire.ModelNodeNameMax + 4 + 7 * 4L);
             size += Lights.Count * 40L;
-            foreach (var m in Meshes) size += Wire.ModelNameMax + 6 * 4 + m.VertexCount * 32L + m.Indices.Length * 2L;
+            foreach (var m in Meshes)
+                size += Wire.ModelNameMax + 6 * 4 + (m.Positions != null ? m.VertexCount * 32L : 0) + (m.Indices != null ? m.Indices.Length * 2L : 0);
             return size;
         }
 
@@ -404,7 +405,7 @@ namespace PerkeleRim
             {
                 if (m.Material < -1 || m.Material >= Materials.Count) throw new ArgumentException($"{Name}: mesh {m.Name} has material {m.Material}");
                 if (m.Node < -1 || m.Node >= Nodes.Count) throw new ArgumentException($"{Name}: mesh {m.Name} has node {m.Node}");
-                if (m.Positions.Length % 3 != 0 || m.Normals == null || m.Normals.Length < m.Positions.Length || m.Uvs == null ||
+                if (m.Positions == null || m.Positions.Length % 3 != 0 || m.Normals == null || m.Normals.Length < m.Positions.Length || m.Uvs == null ||
                     m.Uvs.Length < m.VertexCount * 2 || m.Indices == null)
                     throw new ArgumentException($"{Name}: mesh {m.Name} has {m.Positions.Length / 3} positions but not as many normals and uvs");
                 WriteName(w, m.Name);

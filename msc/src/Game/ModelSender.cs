@@ -49,6 +49,8 @@ namespace PerkeleRim.Game
         readonly Dictionary<string, uint> ids = new Dictionary<string, uint>();  // model key -> id
         readonly HashSet<uint> sent = new HashSet<uint>();    // this link session
         readonly HashSet<uint> queued = new HashSet<uint>();  // waiting, being read or being sent
+        readonly Dictionary<uint, double> failed = new Dictionary<uint, double>();  // a read that threw -> when
+        const double RetryMs = 10000;  // a failed read is tried again this long after
         readonly Queue<Job> jobs = new Queue<Job>();
         readonly Queue<ChunkCursor> outgoing = new Queue<ChunkCursor>();  // read models on their way out, a chunk at a time as the ring has room
         long outgoingBytes;
@@ -101,7 +103,7 @@ namespace PerkeleRim.Game
         {
             var key = Key(root, include);
             if (key == null) return 0;
-            return Queue(key, () => Read(root, include, key), () => root == null, root.name);
+            return Queue(key, () => Read(root, include, true), () => root == null, root.name);
         }
 
         // The id of a model build puts together in one go (an overlay, a particle), known by key and
@@ -121,8 +123,11 @@ namespace PerkeleRim.Game
                 id = nextId++;
                 ids[key] = id;
             }
+            double failedAt;
+            if (failed.TryGetValue(id, out failedAt) && frameClock.Elapsed.TotalMilliseconds - failedAt < RetryMs) return id;
             if (!sent.Contains(id) && !queued.Contains(id))
             {
+                failed.Remove(id);
                 queued.Add(id);
                 jobs.Enqueue(new Job { Steps = steps, Gone = gone, What = what, Id = id, Session = session });
             }
@@ -242,8 +247,10 @@ namespace PerkeleRim.Game
                 catch (Exception e)
                 {
                     log($"model: reading {job.What} FAILED: {e}");
-                    current = null;  // stays queued, so it isn't retried on every scan
+                    current = null;
                     currentSteps = null;
+                    queued.Remove(job.Id);  // asked again, after RetryMs
+                    failed[job.Id] = frameClock.Elapsed.TotalMilliseconds;
                     continue;
                 }
                 finally { currentClock.Stop(); }
@@ -254,11 +261,7 @@ namespace PerkeleRim.Game
                     currentSteps = null;
                 }
             }
-            if (any && current != null)
-            {
-                currentFrames++;
-                lastWork = frameClock.Elapsed.TotalMilliseconds;
-            }
+            if (any && current != null) currentFrames++;
         }
 
         // Starts reading the next queued model, unless enough waits to be sent already.
@@ -346,10 +349,10 @@ namespace PerkeleRim.Game
             lastCollections = collections;
             ownClock.Reset();
             lastStep = "";  // the end of this frame's reading says what it did
-            // A build that keeps finding nothing (asked again every frame) is no work; a read under way
-            // is, however long a frame took.
-            if (outgoing.Count > 0 || current != null) lastWork = now;
-            bool settled = now - lastWork >= IdleMs;
+            // Work is a model read or a chunk sent: a read that keeps finding nothing (asked again every
+            // frame) isn't. Not while a read is under way, though, however long a frame took.
+            if (outgoing.Count > 0) lastWork = now;
+            bool settled = current == null && now - lastWork >= IdleMs;
             if (settled && textures.Count > 0)
             {
                 log($"model: nothing left to read, letting go of {textures.Count} textures kept ({textures.Size >> 20} MB, {textures.Hits} reused, {textures.Misses} read)");
@@ -413,48 +416,75 @@ namespace PerkeleRim.Game
             return Matrix4x4.Scale(root.lossyScale) * m;
         }
 
+        // Over frames like any read (a vehicle's read in one frame would go past the link's timeout).
         IEnumerator InspectAtEndOfFrame(Transform root)
         {
             inspecting = true;
-            yield return new WaitForEndOfFrame();
-            inspecting = false;
-            if (root == null) yield break;
+            string name = root.name;
             ModelData model = null;
-            try
+            var steps = Read(root, t => true, false).GetEnumerator();
+            var clock = new Stopwatch();
+            bool more = true;
+            while (more)
             {
-                foreach (var step in Read(root, t => true, null))
-                    if (step is ModelData) model = (ModelData)step;
+                yield return new WaitForEndOfFrame();
+                clock.Reset();
+                clock.Start();
+                try
+                {
+                    while ((more = steps.MoveNext()) && clock.ElapsedMilliseconds < BudgetMs)
+                        if (steps.Current is ModelData) model = (ModelData)steps.Current;
+                    if (more && steps.Current is ModelData) model = (ModelData)steps.Current;
+                }
+                catch (Exception e)
+                {
+                    log("model: reading " + name + " FAILED: " + e);
+                    inspecting = false;
+                    yield break;
+                }
             }
-            catch (Exception e)
-            {
-                log("model: reading " + root.name + " FAILED: " + e);
-                yield break;
-            }
+            inspecting = false;
             if (model == null) yield break;
             log($"model: {model.Name} has {model.Meshes.Count} meshes, {model.VertexCount} vertices, {model.Textures.Count} textures");
             for (int i = 0; i < model.Textures.Count; i++) SavePng(model.Textures[i], $"PerkeleRim_texture_{i}.png");
             foreach (var mesh in model.Meshes) log($"model: mesh {mesh.Name} {UvRange(mesh.Uvs)}");
         }
 
-        // key: what the scan saw (Key), null not to check it.
-        IEnumerable Read(Transform root, Predicate<Transform> include, string key)
+        // whole: drop the model should the renderers it is made of change while it is read.
+        IEnumerable Read(Transform root, Predicate<Transform> include, bool whole)
         {
-            // Read over several frames: should the item or a part of it go or change meanwhile (eaten,
-            // drunk, despawned, a bottle out of its case), there is no model, rather than another one
-            // under the scanned item's id; the next scan asks again.
+            // Read over several frames: should the item or a part of it go meanwhile (eaten, drunk,
+            // despawned, a bottle out of its case), there is no model, rather than part of one under
+            // the item's id; the next scan asks again. What only moves or scrolls (a part turning, a
+            // texture's offset) is read as it is at its step.
             var model = new ModelData { Name = root.name };
             var materials = new Materials();
+            var read = new List<int>();  // the renderers drawn, by instance id
             foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
             {
                 if (root == null || renderer == null) yield break;
-                var filter = renderer.GetComponent<MeshFilter>();
-                if (!renderer.enabled || filter == null || filter.sharedMesh == null || !include(renderer.transform)) continue;
+                if (!Drawn(renderer, include)) continue;
+                read.Add(renderer.GetInstanceID());
                 foreach (var step in AddRenderer(model, materials, renderer, RelativeTo(root, renderer.transform), PathBelow(root, renderer.transform), -1, null))
                     yield return step;
                 if (renderer == null || materials.Cut) yield break;
             }
-            if (root == null || (key != null && Key(root, include) != key)) yield break;
+            if (root == null) yield break;
+            if (whole)
+            {
+                var now = new List<int>();
+                foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
+                    if (Drawn(renderer, include)) now.Add(renderer.GetInstanceID());
+                if (now.Count != read.Count) yield break;
+                for (int i = 0; i < now.Count; i++) if (now[i] != read[i]) yield break;
+            }
             yield return model;
+        }
+
+        static bool Drawn(MeshRenderer renderer, Predicate<Transform> include)
+        {
+            var filter = renderer.GetComponent<MeshFilter>();
+            return renderer.enabled && filter != null && filter.sharedMesh != null && include(renderer.transform);
         }
 
         // The MSC materials and textures already in a model being read.
@@ -485,11 +515,14 @@ namespace PerkeleRim.Game
             var filter = renderer.GetComponent<MeshFilter>();
             var mesh = filter != null ? filter.sharedMesh : null;
             if (mesh == null) yield break;
+            // Everything of the mesh at once, so a mesh changed meanwhile can't mix with it.
             var vertices = mesh.vertices;
             var normals = mesh.normals;
             var uvs = mesh.uv;
             var shared = renderer.sharedMaterials;
-            int subMeshes = mesh.subMeshCount;
+            var triangleLists = new int[mesh.subMeshCount][];
+            for (int sub = 0; sub < triangleLists.Length; sub++) triangleLists[sub] = mesh.GetTriangles(sub);
+            int subMeshes = triangleLists.Length;
             yield return name;
             for (int sub = 0; sub < subMeshes; sub++)
             {
@@ -500,7 +533,7 @@ namespace PerkeleRim.Game
                 }
                 var material = sub < shared.Length ? shared[sub] : null;
                 if (look != null && look.Keep != null && !look.Keep(material)) continue;
-                var triangles = mesh.GetTriangles(sub);
+                var triangles = triangleLists[sub];
                 if (triangles.Length == 0) continue;
                 if (material != null)
                     foreach (var step in AddMaterial(model, materials, material, look)) yield return step;

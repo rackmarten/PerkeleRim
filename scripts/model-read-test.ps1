@@ -9,7 +9,7 @@
     the pictures. A session this script started is stopped at the end (-Keep leaves it up).
     Exit code: 0 passed, both stretches logged and no frame over 200 ms with over 100 ms of reading and sending models
     in it; 1 a check failed, a stretch is missing or such a frame; 2 Skyrim crashed, exited or hung. Frames over 200 ms
-    that were something else in MSC (its own scene load, the machine busy) and gaps over 4 s between chunks are reported.
+    that were something else in MSC (its own scene load, the machine busy) and gaps over 8 s between chunks are reported.
 .EXAMPLE
     scripts/model-read-test.ps1
     scripts/model-read-test.ps1 -Build -Keep
@@ -65,8 +65,8 @@ try {
         else { Write-Host "A $ms ms frame, but only $own ms of it reading and sending models: something else in MSC." -ForegroundColor Yellow }
     }
     foreach ($s in $stretches) {
-        # The session's readiness and the hit test take 4 s without a chunk as MSC done sending (skse/src/debug).
-        if ([int]$s.Matches[0].Groups[3].Value -gt 4000) { Write-Host 'A gap between chunks was over 4 s: a test could start while MSC still reads.' -ForegroundColor Yellow }
+        # The session's readiness and the hit test take 8 s without a chunk as MSC done sending (kModelQuiet, skse/src/debug).
+        if ([int]$s.Matches[0].Groups[3].Value -gt 8000) { Write-Host 'A gap between chunks was over 8 s: a test could start while MSC still reads.' -ForegroundColor Yellow }
     }
     foreach ($f in ($failed | Select-Object -Unique)) { Write-Host $f -ForegroundColor Yellow }
     if ($failed -and $code -eq 0) { $code = 1 }

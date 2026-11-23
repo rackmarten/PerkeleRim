@@ -33,7 +33,7 @@ namespace PerkeleRim::TestKit
         using SkseTestKit::JsonObject;
         using SkseTestKit::Step;
 
-        constexpr float kModelQuiet = 4.0f;    // seconds without a ModelChunk: MSC has sent its models
+        constexpr float kModelQuiet = 8.0f;    // seconds without a ModelChunk: MSC has sent its models (gaps measured up to 4.7 s)
         constexpr float kModelWait = 60.0f;    // and ready anyway after this long standing
         constexpr float kHandAgain = 5.0f;     // seconds between handovers asked for while play mode hasn't done it
         constexpr std::uint32_t kWhirlwindSprint = 0x2F7BA;  // Skyrim.esm's shout (pr.shout's default)

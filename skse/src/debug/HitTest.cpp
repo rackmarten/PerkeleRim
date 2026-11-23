@@ -22,7 +22,7 @@ namespace PerkeleRim::HitTest
         constexpr float         kPlayerRadius = 0.3f;  // meters, MSC's player capsule (Actors.Touching)
         constexpr float         kHandoverTimeout = 120.0f;  // the first handover of a save walks to the garage
         constexpr float         kOwnedSettle = 4.0f;       // MSC's island gets built under the player
-        constexpr float         kModelQuiet = 4.0f;        // seconds without a ModelChunk: MSC has sent its models
+        constexpr float         kModelQuiet = 8.0f;        // seconds without a ModelChunk: MSC has sent its models (gaps measured up to 4.7 s)
         constexpr float         kModelWait = 60.0f;        // and starting anyway after this long handed over
         constexpr float         kLevelTimeout = 8.0f;
         constexpr float         kLevelPitch = 0.05f;  // radians, about 3 degrees: level enough

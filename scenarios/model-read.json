@@ -1,6 +1,6 @@
 // MSC's frames while it reads and sends its models (msc/src/Game/ModelSender.cs): every model read again with new ids,
 // as after MSC starts ("models again cold"), then read and sent again under the same ids, as after Skyrim restarts
-// ("models again"; only the textures may still be kept from the cold read). MSC logs each stretch's frames ("model: models again cold: ... worst <n> ms"); scripts/model-read-test.ps1
+// ("models again"; nothing kept from the cold read: MSC lets go of its textures 5 s after it, pr.models waits 8). MSC logs each stretch's frames ("model: models again cold: ... worst <n> ms"); scripts/model-read-test.ps1
 // runs this and prints those lines. Then the van, the moped, the Kekmet and the Gifu called one by one and pictured,
 // to see they still draw right.
 {
