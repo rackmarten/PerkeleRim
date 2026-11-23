@@ -49,8 +49,15 @@ namespace PerkeleRim.Game
         readonly Dictionary<string, uint> ids = new Dictionary<string, uint>();  // model key -> id
         readonly HashSet<uint> sent = new HashSet<uint>();    // this link session
         readonly HashSet<uint> queued = new HashSet<uint>();  // waiting, being read or being sent
-        readonly Dictionary<uint, double> failed = new Dictionary<uint, double>();  // a read that threw -> when
-        const double RetryMs = 10000;  // a failed read is tried again this long after
+        readonly Dictionary<uint, Failure> failed = new Dictionary<uint, Failure>();  // reads that threw
+
+        // A read that threw is tried again 10 s after, then 20, 40, ... up to 10 minutes.
+        class Failure
+        {
+            public int Count;
+            public double At;
+            public double WaitMs => Math.Min(600000, 10000 * Math.Pow(2, Count - 1));
+        }
         readonly Queue<Job> jobs = new Queue<Job>();
         readonly Queue<ChunkCursor> outgoing = new Queue<ChunkCursor>();  // read models on their way out, a chunk at a time as the ring has room
         long outgoingBytes;
@@ -123,11 +130,10 @@ namespace PerkeleRim.Game
                 id = nextId++;
                 ids[key] = id;
             }
-            double failedAt;
-            if (failed.TryGetValue(id, out failedAt) && frameClock.Elapsed.TotalMilliseconds - failedAt < RetryMs) return id;
+            Failure f;
+            if (failed.TryGetValue(id, out f) && frameClock.Elapsed.TotalMilliseconds - f.At < f.WaitMs) return id;
             if (!sent.Contains(id) && !queued.Contains(id))
             {
-                failed.Remove(id);
                 queued.Add(id);
                 jobs.Enqueue(new Job { Steps = steps, Gone = gone, What = what, Id = id, Session = session });
             }
@@ -203,6 +209,7 @@ namespace PerkeleRim.Game
                 outgoingBytes -= o.Length;
                 sent.Add(o.Id);
                 queued.Remove(o.Id);
+                failed.Remove(o.Id);
                 watchModels++;
             }
         }
@@ -246,11 +253,15 @@ namespace PerkeleRim.Game
                 try { ended = budget.Run(currentSteps); }
                 catch (Exception e)
                 {
-                    log($"model: reading {job.What} FAILED: {e}");
+                    Failure f;
+                    if (!failed.TryGetValue(job.Id, out f)) f = new Failure();
+                    f.Count++;
+                    f.At = frameClock.Elapsed.TotalMilliseconds;
+                    failed[job.Id] = f;
+                    log($"model: reading {job.What} FAILED ({f.Count} times, again in {f.WaitMs / 1000:0} s): " + (f.Count == 1 ? e.ToString() : e.Message));
                     current = null;
                     currentSteps = null;
-                    queued.Remove(job.Id);  // asked again, after RetryMs
-                    failed[job.Id] = frameClock.Elapsed.TotalMilliseconds;
+                    queued.Remove(job.Id);  // asked again later
                     continue;
                 }
                 finally { currentClock.Stop(); }
@@ -294,6 +305,7 @@ namespace PerkeleRim.Game
             }
             if (model == null || model.Meshes.Count == 0)
             {
+                if (currentFrames > 1) lastWork = frameClock.Elapsed.TotalMilliseconds;  // it took a while, even though nothing came of it
                 queued.Remove(job.Id);  // not there yet, or its renderers went off since the scan: asked again
                 yield break;
             }
@@ -352,7 +364,7 @@ namespace PerkeleRim.Game
             // Work is a model read or a chunk sent: a read that keeps finding nothing (asked again every
             // frame) isn't. Not while a read is under way, though, however long a frame took.
             if (outgoing.Count > 0) lastWork = now;
-            bool settled = current == null && now - lastWork >= IdleMs;
+            bool settled = current == null && !inspecting && now - lastWork >= IdleMs;
             if (settled && textures.Count > 0)
             {
                 log($"model: nothing left to read, letting go of {textures.Count} textures kept ({textures.Size >> 20} MB, {textures.Hits} reused, {textures.Misses} read)");
@@ -425,25 +437,28 @@ namespace PerkeleRim.Game
             var steps = Read(root, t => true, false).GetEnumerator();
             var clock = new Stopwatch();
             bool more = true;
-            while (more)
+            try
             {
-                yield return new WaitForEndOfFrame();
-                clock.Reset();
-                clock.Start();
-                try
+                while (more)
                 {
-                    while ((more = steps.MoveNext()) && clock.ElapsedMilliseconds < BudgetMs)
-                        if (steps.Current is ModelData) model = (ModelData)steps.Current;
-                    if (more && steps.Current is ModelData) model = (ModelData)steps.Current;
-                }
-                catch (Exception e)
-                {
-                    log("model: reading " + name + " FAILED: " + e);
-                    inspecting = false;
-                    yield break;
+                    yield return new WaitForEndOfFrame();
+                    clock.Reset();
+                    clock.Start();
+                    try
+                    {
+                        while ((more = steps.MoveNext()) && clock.ElapsedMilliseconds < BudgetMs)
+                            if (steps.Current is ModelData) model = (ModelData)steps.Current;
+                        if (more && steps.Current is ModelData) model = (ModelData)steps.Current;
+                    }
+                    catch (Exception e)
+                    {
+                        log("model: reading " + name + " FAILED: " + e);
+                        model = null;
+                        more = false;
+                    }
                 }
             }
-            inspecting = false;
+            finally { inspecting = false; }  // however the read ends
             if (model == null) yield break;
             log($"model: {model.Name} has {model.Meshes.Count} meshes, {model.VertexCount} vertices, {model.Textures.Count} textures");
             for (int i = 0; i < model.Textures.Count; i++) SavePng(model.Textures[i], $"PerkeleRim_texture_{i}.png");
@@ -459,12 +474,12 @@ namespace PerkeleRim.Game
             // texture's offset) is read as it is at its step.
             var model = new ModelData { Name = root.name };
             var materials = new Materials();
-            var read = new List<int>();  // the renderers drawn, by instance id
+            var read = new List<int>();  // the renderers drawn and what with (Parts)
             foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
             {
                 if (root == null || renderer == null) yield break;
                 if (!Drawn(renderer, include)) continue;
-                read.Add(renderer.GetInstanceID());
+                Parts(renderer, read);
                 foreach (var step in AddRenderer(model, materials, renderer, RelativeTo(root, renderer.transform), PathBelow(root, renderer.transform), -1, null))
                     yield return step;
                 if (renderer == null || materials.Cut) yield break;
@@ -474,11 +489,21 @@ namespace PerkeleRim.Game
             {
                 var now = new List<int>();
                 foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
-                    if (Drawn(renderer, include)) now.Add(renderer.GetInstanceID());
+                    if (Drawn(renderer, include)) Parts(renderer, now);
                 if (now.Count != read.Count) yield break;
                 for (int i = 0; i < now.Count; i++) if (now[i] != read[i]) yield break;
             }
             yield return model;
+        }
+
+        // A renderer as instance ids: itself, its mesh, its materials (what it draws, not where).
+        static void Parts(MeshRenderer renderer, List<int> to)
+        {
+            to.Add(renderer.GetInstanceID());
+            to.Add(renderer.GetComponent<MeshFilter>().sharedMesh.GetInstanceID());
+            var materials = renderer.sharedMaterials;
+            to.Add(materials.Length);
+            foreach (var material in materials) to.Add(material != null ? material.GetInstanceID() : 0);
         }
 
         static bool Drawn(MeshRenderer renderer, Predicate<Transform> include)

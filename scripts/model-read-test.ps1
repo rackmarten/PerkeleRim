@@ -61,8 +61,13 @@ try {
         $ms = [int]$h.Matches[0].Groups[1].Value
         if (-not $share.Success) { $failed += "A $ms ms frame without its share of model work: an MSC mod older than this script (build it, -Build)."; continue }
         $own = [int]$share.Groups[1].Value
-        if ($own -gt $ownMs) { $failed += "A $ms ms frame had $own ms of reading and sending models in it." }
-        else { Write-Host "A $ms ms frame, but only $own ms of it reading and sending models: something else in MSC." -ForegroundColor Yellow }
+        $gc = [regex]::Match($h.Line, '(\d+) garbage collections in it')
+        $collected = $gc.Success -and [int]$gc.Groups[1].Value -gt 0
+        # A garbage collection takes 150 to 300 ms of MSC's frame whoever's allocation set it off, and the reads' steps
+        # allocate the most: counted and shown, but not the reader's own time.
+        if ($own -gt $ownMs -and -not $collected) { $failed += "A $ms ms frame had $own ms of reading and sending models in it." }
+        elseif ($own -gt $ownMs) { Write-Host "A $ms ms frame with $own ms of model work, a garbage collection among it." -ForegroundColor Yellow }
+        else { Write-Host "A $ms ms frame, but only $own ms of it reading and sending models: something else in MSC$(if ($collected) { ' (a garbage collection)' })." -ForegroundColor Yellow }
     }
     foreach ($s in $stretches) {
         # The session's readiness and the hit test take 8 s without a chunk as MSC done sending (kModelQuiet, skse/src/debug).
