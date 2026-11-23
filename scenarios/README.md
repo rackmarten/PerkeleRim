@@ -16,6 +16,7 @@ either game.
 | `test-kit-smoke.json` | MSC has Kumpo, the player is in the world, MSC's debug commands reach it, PerkeleRim's commands are there | under 1 s |
 | `hits.json` | the hit test (`scripts/hit-test.ps1`): punches sober and drunk, a thrown bottle, thrown junk, bottles drunk and drunker at a Whiterun guard with its AI off, each attack's damage against `protocol/cpp/damage.h` and the guard's health; a row per attack in `step-9-rows.csv` | 73 to 92 s |
 | `hitbox.json` | the hitbox test (`scripts/hitbox-test.ps1`): the van called in front of Kumpo, 8 arrows shot at him through it (all stop at the van), 4 from his side (they reach him), a melee bandit behind it who walks round it to him, never through; every line of the test in `step-8-rows.csv` | 65 s |
+| `look-at.json` | MSC's hand on the van's driver door handle, with Kumpo stood there by MSC's `aim` debug command: right after the start (the van on the garage's pit), after a load of the starter save (`pr.load`, as a quickload does), and with the van called on open grass; MSC's prompt as Skyrim got it (`pr.lookat`), a screenshot with the HUD each time | about 40 s |
 | `van-lights.json` | the van's lights at night: MSC switches them on and Skyrim's lamps follow (both low beams, the rear lamps, the cabin); pictures from behind, in front and above; an A/B pair of one paused frame with the low beams put out (the ground ahead goes dark, the ground beside doesn't change); MSC switching every lamp off | 9 s |
 
 ## What the numbers were
@@ -44,8 +45,10 @@ Start from the closest file. Steps are the kit's requests (`docs/COMMANDS.md` in
 | Command | What it does |
 |---|---|
 | `pr.msc [on=<bool>]` | Kumpo to MSC (the default) or back to Skyrim, as F10 does; answers once it's done (`msc`, `seated`) |
-| `pr.send <line>` | a line for MSC's debug commands (`msc/src/Spike/SpikeHost.cs`): `drunk 2`, `lightson 1`, `time 6`, `hold 0`, ... |
+| `pr.send <line>` | a line for MSC's debug commands (`msc/src/Spike/SpikeHost.cs`): `drunk 2`, `lightson 1`, `time 6`, `hold 0`, `aim doorl Handle` (Kumpo stood at that control surface, looking at it), ... |
 | `pr.key <Unity KeyCode> [seconds=<s>]` | holds one of MSC's keys (93 is ] to call the van, 104 H to punch) |
+| `pr.load <save>` | loads a save in the running game, as a quickload does (answers Skyrim's question about installed Creations), and answers once it's loaded; play mode hands Kumpo to MSC a little later, `pr.msc` waits for that |
+| `pr.lookat` | MSC's look-at prompt as Skyrim last got it: `hand` (MSC's hand on a door handle, switch or knob), `text`, and `msc` (whether MSC has Kumpo) |
 | `pr.call [vehicle]` | calls the van (]) or the moped ([) and answers once it stands solid in Skyrim, with where it is |
 | `pr.vehicle [vehicle]` | a vehicle MSC has on the island: where, how fast, drawn, solid, which of its lights are on (`lightRolesOn`: 1 low, 2 high, 3 tail, 4 brake, 5 reverse, 6 cabin, 7 work, 8 beacon) |
 | `pr.hits [scenarios] [target=<hex>]` | the hit test, a row per attack |

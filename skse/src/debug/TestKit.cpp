@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <functional>
 #include <cmath>
+#include <filesystem>
 #include <memory>
 #include <optional>
 
@@ -37,6 +38,8 @@ namespace PerkeleRim::TestKit
 
         bool g_active = false;
         bool g_exiting = false;  // the process is tearing down: the game can't be driven any more
+        std::uint32_t g_loads = 0;  // kPostLoadGame messages so far, for pr.load
+        bool          g_loaded = false;  // ...and whether the last one loaded
 
         // Runs once when the last copy of a step goes: a request that ends, times out or whose client goes (the kit
         // drops its step then). For what a task started that would outlive it: a test driver, a held key. Harmless
@@ -401,6 +404,59 @@ namespace PerkeleRim::TestKit
                     return DescribeVehicle(id, state);
                 });
 
+            SkseTestKit::AddTask("pr.load", "<save>",
+                "Loads a save in the running game, as a quickload does (pr.load PerkeleRim-Kumpo, the starter save); answers once it's "
+                "loaded. Play mode hands the player to MSC by itself a little later: pr.msc waits for that",
+                [](Call& a_call) -> Step {
+                    const auto name = a_call.Text("save");
+                    if (name.empty()) {
+                        throw Error("no save to load");
+                    }
+                    auto* saves = RE::BGSSaveLoadManager::GetSingleton();
+                    if (!saves) {
+                        throw Error("no save manager");
+                    }
+                    // A save that isn't there never sends kPostLoadGame: say so now rather than time out.
+                    std::string folder = "Saves";
+                    auto*       ini = RE::INISettingCollection::GetSingleton();
+                    if (auto* setting = ini ? ini->GetSetting("sLocalSavePath:General") : nullptr; setting && setting->GetString() && *setting->GetString()) {
+                        folder = setting->GetString();
+                    }
+                    if (const auto logs = SKSE::log::log_directory(); logs && !std::filesystem::exists(logs->parent_path() / folder / (name + ".ess"))) {
+                        throw Error(std::format("no save {} in {}", name, (logs->parent_path() / folder).string()));
+                    }
+                    a_call.DefaultTimeout(90.0);
+                    const auto before = g_loads;
+                    SKSE::log::info("test kit: loading the save {} (pr.load)", name);
+                    saves->Load(name.c_str(), false);
+                    return [before, name](Call&) -> std::optional<Json> {
+                        if (g_loads == before) {
+                            // With Creations installed, Skyrim asks before loading (the kit answers that only for its start).
+                            // Matched by the English game's text, as the kit's own answer is.
+                            if (auto* box = RE::MessageBoxMenu::GetCurrentMessageBoxData()) {
+                                const std::string_view body = box->bodyText.c_str();
+                                for (std::int32_t i = 0; i < static_cast<std::int32_t>(box->buttonText.size()); i++) {
+                                    if (body.find("continue loading this save") != std::string_view::npos && _stricmp(box->buttonText[i].c_str(), "Yes") == 0) {
+                                        SKSE::log::info("test kit: answering \"{}\" with \"Yes\" (pr.load)", body);
+                                        RE::MessageBoxMenu::SelectOption(i);
+                                        break;
+                                    }
+                                }
+                            }
+                            return std::nullopt;
+                        }
+                        if (!g_loaded) {
+                            throw Error(std::format("the save {} didn't load", name));
+                        }
+                        return JsonObject{ { "loaded", name } };
+                    };
+                });
+
+            SkseTestKit::AddCommand("pr.lookat", "", "MSC's look-at prompt as Skyrim last got it: whether MSC shows its hand (doors, switches, knobs) and its text",
+                [](Call&) -> Json {
+                    return JsonObject{ { "msc", PlayerSync::Owned() }, { "hand", PlayerSync::PromptHand() }, { "text", PlayerSync::PromptText() } };
+                });
+
             // The cameras' and the probes' pr.vehicle:<name>: the vehicle's origin facing its way, its drawn model as the
             // root (its lamps' lights hang under it, so probe lights finds them).
             SkseTestKit::AddTarget("pr.vehicle", "[vehicle]", "A vehicle PerkeleRim draws from MSC (van, the default; moped, kekmet, gifu): its origin, facing its way, its model and lamps inside",
@@ -433,6 +489,10 @@ namespace PerkeleRim::TestKit
 
     void OnMessage(SKSE::MessagingInterface::Message* a_message)
     {
+        if (a_message->type == SKSE::MessagingInterface::kPostLoadGame) {
+            g_loaded = a_message->data != nullptr;
+            g_loads++;
+        }
         SkseTestKit::OnMessage(a_message);
     }
 
