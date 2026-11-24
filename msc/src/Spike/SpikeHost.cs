@@ -50,6 +50,7 @@ namespace PerkeleRim.Spike
     //   tighten <words>      every bolt with those words in its path turned all the way in by MSC's TIGHTEN, for setups
     //   offer <trigger>      the part in MSC's hand counted as come into that place on the car (offer trigger_door_left):
     //                        MSC checks it, shows its assemble icon and waits for the left click
+    //   open <words>         that Use FSM goes where the use key over it leads (open spanner set(itemx) top: its lid)
     //   spanner <words>      the player at the spanner in the open spanner set that fits that part's bolts, looking at
     //                        it, for the left click with the tools out that takes it (spanner door left(Clone))
     //   wrench <words>       MSC's wrench size set to the nearest bolt's with those words in its path (wrench door left(Clone))
@@ -285,6 +286,35 @@ namespace PerkeleRim.Spike
             best.velocity = Vector3.zero;
             best.angularVelocity = Vector3.zero;
             SpikeLog.Write($"cmd: fetch: {FullPath(best.transform)} from {bestDistance:0} m away, now at {at}");
+        }
+
+        // "open <words>": the nearest active "Use" FSM whose path has every word put where the use key (F) over it leads,
+        // its "Bool test" state: the spanner set's lid opens (Bool test flips Open, then Open shows the tools). A
+        // scenario's stand-in for aiming at the lid exactly: lying on the floor, the set's own collider is hit first.
+        static void OpenUse(string text)
+        {
+            var player = GameObject.Find("PLAYER");
+            var words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            PlayMakerFSM best = null;
+            float bestDistance = float.MaxValue;
+            foreach (var f in FindObjectsOfType<PlayMakerFSM>())
+            {
+                if (f.FsmName != "Use" || !f.enabled || player == null || words.Length == 0) continue;
+                var path = FullPath(f.transform);
+                bool all = true;
+                foreach (var w in words) all &= path.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!all) continue;
+                float d = Vector3.Distance(player.transform.position, f.transform.position);
+                if (d < bestDistance) { best = f; bestDistance = d; }
+            }
+            if (best == null) { SpikeLog.Write($"cmd: open: no Use FSM with '{text}' in its path"); return; }
+            var open = best.FsmVariables.FindFsmBool("Open");
+            if (open != null && open.Value) { SpikeLog.Write($"cmd: open: {FullPath(best.transform)} is open already"); return; }
+            // USE is only heard in "Wait button" (the crosshair on it): straight to where it leads, "Bool test".
+            var state = best.Fsm.GetState("Bool test");
+            if (state == null || PerkeleRim.Game.SaveSync.SwitchState == null) { SpikeLog.Write($"cmd: open: {FullPath(best.transform)} has no Bool test state"); return; }
+            PerkeleRim.Game.SaveSync.SwitchState.Invoke(best.Fsm, new object[] { state });
+            SpikeLog.Write($"cmd: open: {FullPath(best.transform)} opened (its Bool test, as after the use key)");
         }
 
         // "spanner <words>": the spanner in MSC's spanner set (ITEMS/spanner set(itemx), opened with a left click on its lid)
@@ -1114,6 +1144,9 @@ namespace PerkeleRim.Spike
                         break;
                     case "offer":  // "offer trigger_door_left": the part in MSC's hand counted as come into its place on the car
                         Offer(lines[0].Trim().Substring(5).Trim());
+                        break;
+                    case "open":  // "open spanner set(itemx) top": that Use FSM sent MSC's USE, as the use key (F) over it does
+                        OpenUse(lines[0].Trim().Substring(4).Trim());
                         break;
                     case "spanner":  // "spanner door left(Clone)": the player at the spanner in the open spanner set that fits that part's bolts, looking at it
                         Spanner(lines[0].Trim().Substring(7).Trim());
