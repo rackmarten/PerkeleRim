@@ -25,12 +25,17 @@ namespace PerkeleRim.Game
         // ModelChunk.model of the model these nodes are of, 0 until it was asked for.
         public uint Id;
 
-        // Yields what it is doing after each bit of work, the model last.
-        public IEnumerable Read(string name, Transform car, Transform player, ModelSender sender, Action<string> log)
+        // The van's rules for what isn't a light (glass blended, MSC's default material left out): also
+        // the Satsuma's parts, each a model of its own (SatsumaParts).
+        public static readonly ModelSender.Look Plain = new ModelSender.Look { Key = "van", Keep = KeepMaterial, Adjust = Blend };
+
+        // Yields what it is doing after each bit of work, the model last. exclude (optional) leaves
+        // objects out that are drawn otherwise: the Satsuma's attached parts, each a model of its own.
+        public IEnumerable Read(string name, Transform car, Transform player, ModelSender sender, Action<string> log, Predicate<Transform> exclude = null)
         {
             if (car == null) yield break;  // gone since it was asked for
             var model = new ModelData { Name = name };
-            var plain = new ModelSender.Look { Key = "van", Keep = KeepMaterial, Adjust = Blend };
+            var plain = Plain;
             var lit = new ModelSender.Look { Key = "lit", Keep = KeepMaterial, Diffuse = GlowTexture, Adjust = (m, data) => VanModel.Lit(Blend(m, data)) };
             var materials = new ModelSender.Materials();
             var found = new List<Transform>();
@@ -41,7 +46,7 @@ namespace PerkeleRim.Game
                 if (renderer == null || car == null) continue;  // destroyed since
                 var t = renderer.transform;
                 var path = ModelSender.PathBelow(car, t);
-                if ((player != null && t.IsChildOf(player)) || path.Contains("(itemx)") || VanModel.Skipped(path)) { left++; continue; }
+                if ((player != null && t.IsChildOf(player)) || path.Contains("(itemx)") || VanModel.Skipped(path) || (exclude != null && exclude(t))) { left++; continue; }
                 if (found.Count == Wire.VehiclePartCapacity)
                 {
                     log($"vehicle model: more than {Wire.VehiclePartCapacity} objects, {path} left out");

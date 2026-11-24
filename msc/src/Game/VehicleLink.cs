@@ -70,7 +70,7 @@ namespace PerkeleRim.Game
         float spotHeading;    // Skyrim radians
 
         public VehicleLink(string objectName, string driverName, Vector3 parkOffset, uint wireId, bool onCall, string keyVariable,
-            VehicleTune.Settings tuning, Island island, Func<Vector3, Vector3?> findGround, Action<string> log, Vector3? callOffset = null)
+            VehicleTune.Settings? tuning, Island island, Func<Vector3, Vector3?> findGround, Action<string> log, Vector3? callOffset = null)
         {
             this.callOffset = callOffset;
             this.objectName = objectName;
@@ -82,7 +82,7 @@ namespace PerkeleRim.Game
             this.island = island;
             this.findGround = findGround;
             this.log = log;
-            tune = new VehicleTune(tuning, driverName, log);
+            tune = tuning.HasValue ? new VehicleTune(tuning.Value, driverName, log) : null;  // null: as MSC has it (the Satsuma, not driven yet)
         }
 
         // The ground the vehicle stood on before it was first moved, for the island chunks: the
@@ -108,9 +108,14 @@ namespace PerkeleRim.Game
         // Half width and half length (meters) of the ground that must be flat where it parks, around
         // its origin: van sized unless set (the Gifu's is longer).
         public Vector2 ParkHalfSize { get; set; } = VanHalfSize;
-        public string Contact(float within) => tune.Contact(within);
+        // Objects its model leaves out, drawn otherwise (the Satsuma's attached parts); null = none.
+        public Predicate<Transform> Exclude { get; set; }
+        // Left where MSC has it until something places it (Summon): the Satsuma stays in MSC's garage
+        // with its loose parts, not on the island, until a debug command (and later the garage) moves it.
+        public bool LeftAlone { get; set; }
+        public string Contact(float within) => tune != null ? tune.Contact(within) : "";
         // The driven vehicle's impacts this physics step (CrashSensor), for the engine's stall guard.
-        public void Impacts(bool inImpact, float impact) => tune.Impacts(inImpact, impact);
+        public void Impacts(bool inImpact, float impact) { if (tune != null) tune.Impacts(inImpact, impact); }
 
         bool PlayerDriving
         {
@@ -145,7 +150,7 @@ namespace PerkeleRim.Game
             float rest;
             Ground = ColliderBelow(car, out rest);
             clearance = Ground != null ? Mathf.Clamp(rest + RestMargin, ParkClearance, 3f) : ParkClearance;
-            tune.Attach(car, body);
+            if (tune != null) tune.Attach(car, body);
             wheels = new Transform[WheelModels.Length];
             int found = 0;
             for (int i = 0; i < wheels.Length; i++)
@@ -170,7 +175,8 @@ namespace PerkeleRim.Game
         {
             if (car == null) return;
             var at = car;
-            model.Id = models.IdForRead(driverName, () => model.Read(driverName, at, player, models, log));
+            var exclude = Exclude;
+            model.Id = models.IdForRead(driverName, () => model.Read(driverName, at, player, models, log, exclude));
         }
 
         // The tank's level and capacity (<vehicle>/FuelTank :: Data); either may be null.
@@ -383,6 +389,9 @@ namespace PerkeleRim.Game
 
         // The player calls the vehicle: it is parked in front of the player wherever it was (another
         // worldspace, put away, far behind). Not while the player sits in it.
+        // Called or not, whether Skyrim has it now (on the current island).
+        public bool OnIsland => car != null && !away;
+
         public void Summon(Transform player, Vector3 feet)
         {
             if (car == null || player == null) return;
@@ -718,6 +727,7 @@ namespace PerkeleRim.Game
                 // A driven vehicle came along in PlayerLink.Settle already.
                 if (driven) away = false;
                 else if (spotGeneration == island.Generation) Park(player, playerFeet);
+                else if (home == null && LeftAlone) away = true;
                 else if (home == null && onCall) Stash();
                 else if (home == null) Park(player, playerFeet);
                 else if (InHomeSpace()) PutHome();
@@ -735,7 +745,7 @@ namespace PerkeleRim.Game
                 return;
             }
             Remember();
-            tune.Update(driven);
+            if (tune != null) tune.Update(driven);
             if (EndlessFuel && Time.realtimeSinceStartup >= nextTopUp)
             {
                 nextTopUp = Time.realtimeSinceStartup + 1f;

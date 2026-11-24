@@ -1,0 +1,43 @@
+// The Satsuma drawn in Skyrim as MSC has it built (msc/src/Game/SatsumaParts.cs, skse/src/vehicle/VehicleView.cpp,
+// docs/PROTOCOL.md "The Satsuma"): brought in front of Kumpo on the grass south of the garage's shack as the starter
+// save has it (a bare body), then half its parts put on through MSC's own assembly. Each state is pictured from
+// Kumpo's eyes in both games (MSC's view as PerkeleRim_shot_<name>.png in MSC's folder, Skyrim's as <name>-kumpo.png
+// in the results) and from outside. scripts/satsuma-test.ps1 runs it and copies MSC's pictures next to Skyrim's.
+// MSC's car keeps the parts in memory only: a session's MSC is closed without saving.
+{
+  "name": "satsuma",
+  "steps": [
+    { "label": "Skyrim takes Kumpo", "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "cmd": "console", "command": "player.setpos x 15700" },
+    { "cmd": "console", "command": "player.setpos y -15300" },
+    { "cmd": "console", "command": "player.setpos z -4650" },
+    { "cmd": "console", "command": "player.setangle z 180" },
+    { "cmd": "wait", "seconds": 2 },
+    { "label": "MSC takes him there", "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
+    { "label": "a clear day", "cmd": "scene", "presets": "day clear" },
+
+    // Bare, as the starter save has it.
+    { "label": "the Satsuma comes, as MSC has it", "cmd": "pr.satsuma", "what": "here",
+      "expect": ["drawn == true", "partsDrawn == attached", "unread == 0"] },
+    { "cmd": "wait", "seconds": 2 },
+    { "label": "MSC's view of it", "cmd": "pr.send", "line": "shot bare" },
+    { "label": "Skyrim's view of it, the same moment", "cmd": "screenshot", "name": "bare-kumpo" },
+    "pause",
+    { "cmd": "screenshot", "name": "bare-side", "camera": "orbit pr.vehicle:satsuma yaw=120 distance=500 pitch=20" },
+    { "cmd": "screenshot", "name": "bare-front", "camera": "orbit pr.vehicle:satsuma yaw=200 distance=500 pitch=15" },
+    "resume",
+
+    // Half built: body panels, front seats, the dashboard and the radiator put on.
+    { "label": "half its parts go on", "cmd": "pr.satsuma", "what": "half",
+      "expect": ["drawn == true", "attached > 8", "partsDrawn == attached", "unread == 0"] },
+    { "cmd": "wait", "seconds": 2 },
+    { "label": "MSC's view of it", "cmd": "pr.send", "line": "shot half" },
+    { "label": "Skyrim's view of it, the same moment", "cmd": "screenshot", "name": "half-kumpo" },
+    "pause",
+    { "cmd": "screenshot", "name": "half-side", "camera": "orbit pr.vehicle:satsuma yaw=120 distance=500 pitch=20" },
+    { "cmd": "screenshot", "name": "half-front", "camera": "orbit pr.vehicle:satsuma yaw=200 distance=500 pitch=15" },
+    "resume",
+    { "cmd": "pr.send", "line": "satsuma" },
+    { "cmd": "scene", "presets": "restore" }
+  ]
+}
