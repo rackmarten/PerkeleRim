@@ -235,10 +235,16 @@ namespace PerkeleRim::Garage
         return true;
     }
 
-    void UpdateBay(const RE::NiPoint3& a_player, bool a_owned, std::uint32_t a_generation)
+    void UpdateBay(RE::TESObjectREFR* a_player, bool a_owned, std::uint32_t a_generation)
     {
-        if (!a_owned || !state.bay || a_generation == 0 || a_generation == state.bayGeneration || Now() < state.retryAt ||
-            a_player.GetDistance(state.bay->GetPosition()) > kBayRadius) {
+        if (!a_player || !a_owned || !state.bay || a_generation == 0 || a_generation == state.bayGeneration || Now() < state.retryAt) {
+            return;
+        }
+        // Outside, in the bay's own worldspace: an interior's (or another worldspace's) coordinates can
+        // fall within reach of the marker's too.
+        const auto* cell = a_player->GetParentCell();
+        if (!cell || cell->IsInteriorCell() || a_player->GetWorldspace() != state.bay->GetWorldspace() ||
+            a_player->GetPosition().GetDistance(state.bay->GetPosition()) > kBayRadius) {
             return;
         }
         const auto what = state.moved ? Protocol::kBayStand : Protocol::kBayMoveSatsuma;

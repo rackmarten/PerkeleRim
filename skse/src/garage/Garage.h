@@ -45,7 +45,7 @@ namespace PerkeleRim::Garage
     // Every later anchor near the bay tells MSC the body lives on its stand (kBayStand).
     std::optional<Spot> Bay();           // the bay marker: its floor in the middle, the way it opens
     bool                SatsumaMoved();  // this save had the move
-    void UpdateBay(const RE::NiPoint3& a_player, bool a_owned, std::uint32_t a_generation);  // every frame
+    void UpdateBay(RE::TESObjectREFR* a_player, bool a_owned, std::uint32_t a_generation);  // every frame
     bool RequestBay(std::uint32_t a_what, std::uint32_t a_generation, const char* a_why);    // kBay*, now; false: no bay or the ring is full
     void OnGarageDone(const std::uint8_t* a_data, std::uint32_t a_size);                    // MSC's GarageDone
 

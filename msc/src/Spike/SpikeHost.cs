@@ -547,6 +547,11 @@ namespace PerkeleRim.Spike
                         if (satsumaLink != null) satsumaLink.SatsumaCommand(words.Length > 1 ? words[1].ToLower() : "");
                         else SpikeLog.Write("cmd: no PlayerLink");
                         break;
+                    case "garage":  // "garage restart": the Satsuma bay as after MSC restarted with parts in it
+                        var garageLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (garageLink != null) garageLink.GarageCommand(words.Length > 1 ? words[1].ToLower() : "");
+                        else SpikeLog.Write("cmd: no PlayerLink");
+                        break;
                     case "tree":  // "tree SATSUMA(557kg, 248)" writes its whole hierarchy to PerkeleRim_tree_<name>.txt; "tree roots" every root rigidbody
                         TreeDump.Run(lines[0].Trim().Substring(4).Trim());
                         break;

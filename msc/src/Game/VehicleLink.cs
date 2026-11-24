@@ -110,8 +110,9 @@ namespace PerkeleRim.Game
         public Vector2 ParkHalfSize { get; set; } = VanHalfSize;
         // Objects its model leaves out, drawn otherwise (the Satsuma's attached parts); null = none.
         public Predicate<Transform> Exclude { get; set; }
-        // Left where MSC has it until something places it (Summon): the Satsuma stays in MSC's garage
-        // with its loose parts, not on the island, until a debug command (and later the garage) moves it.
+        // Left where MSC has it until something places it (SetDown, Summon): the Satsuma stays in MSC's
+        // garage with its loose parts, not on the island, until the Satsuma bay's move (GarageMover) or
+        // the debug command "satsuma here" brings it.
         public bool LeftAlone { get; set; }
         // Held still where it was set down (SetDown: the Satsuma's body on its stand in the garage), its
         // body kinematic, until something moves it on (Summon).

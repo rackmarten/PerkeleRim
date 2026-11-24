@@ -65,6 +65,10 @@ switch ($Mode) {
     }
     { $_ -in 'restore', 'restore-anyway' } {
         if (Restore-MscDoorstop $msc) { Write-Host "Put back My Summer Car's doorstop_config.ini (a hidden start hadn't)." }
+        # A session that played its own MSC save: what MSC wrote there that neither save had goes too.
+        $mscKept = @(Read-SessionList $store | Where-Object { $_.path -like (Join-Path $mscSaveDir '*') } | ForEach-Object { $_.path })
+        $stray = Remove-MscStrayFiles $mscSaveDir $mscKept
+        if ($stray) { Write-Host "Deleted what My Summer Car wrote beside the session's save: $($stray -join ', ')." }
         $back = Restore-SessionFiles $store -Force:($Mode -eq 'restore-anyway')
         if ($back) { Write-Host "Put back the game's own files ($(@($back).Count))." } else { Write-Host 'Nothing kept to put back.' }
         # A hidden start's test session marker (launch-msc.ps1) that MSC never read: the player's next start keeps its

@@ -122,6 +122,8 @@ namespace PerkeleRim.Game
         // Puts items back where a snapshot had them, on the current island, by instance id (so only
         // within the MSC session that took it). Items in the player's hands now stay there; ones
         // without ground yet are held until it arrives. Beer cases get their bottle count back.
+        public Action<Rigidbody> KeptRestored;  // GarageMover.Restored: the Satsuma's parts and the spanner set
+
         public void Restore(List<Snapshot.Body> saved, Transform player)
         {
             var byId = new Dictionary<int, Snapshot.Body>();
@@ -139,6 +141,12 @@ namespace PerkeleRim.Game
                 t.rotation = new Quaternion(b.Rotation.x, b.Rotation.y, b.Rotation.z, b.Rotation.w);
                 body.position = t.position;
                 body.rotation = t.rotation;
+                if (KeptRestored != null && (t.root.name == "CARPARTS" || GarageMover.IsSpannerSet(t)))
+                {
+                    KeptRestored(body);  // GarageMover keeps these (and holds them for their ground)
+                    moved++;
+                    continue;
+                }
                 if (findGround(t.position).HasValue)
                 {
                     if (!body.isKinematic)
