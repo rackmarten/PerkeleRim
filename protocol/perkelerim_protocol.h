@@ -883,9 +883,9 @@ namespace PerkeleRim::Protocol
     };
 
     // TeimoStall: where the stall's goods go and where its counter is, for the anchor generation
-    // (sent after each anchor while MSC has the player within reach of the stall, and when MSC asks
-    // by losing them: see PROTOCOL.md). MSC sets a good out on each spot whose good is gone (bought,
-    // stolen, or carried off its spot) while Kumpo is away from the stall.
+    // (sent once per anchor while MSC has the player within 50 m of Teimo, and again after a load or
+    // a link flap). MSC sets a good out on every spot at once, and again on a spot whose good is
+    // gone (bought, stolen, or moved and left about) once Kumpo is away from the stall.
     struct TeimoStall
     {
         std::uint32_t generation;      // the anchor (WorldspaceChange) these are for
