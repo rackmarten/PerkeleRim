@@ -87,11 +87,16 @@ namespace PerkeleRim.Tests
             var door = Door();
             Assert.That(PartReport.ShouldSend(null, door), Is.True);
             Assert.That(PartReport.ShouldSend(door, door), Is.False);
-            var moved = door;
+            var carried = door;  // a loose part in the hand
+            carried.Flags &= ~Wire.PartInstalled;
+            var moved = carried;
             moved.Position = new Vec3(door.Position.x + 10f, door.Position.y, door.Position.z);
-            Assert.That(PartReport.ShouldSend(door, moved), Is.False);  // 14 cm
+            Assert.That(PartReport.ShouldSend(carried, moved), Is.False);  // 14 cm
             moved.Position = new Vec3(door.Position.x + 20f, door.Position.y, door.Position.z);
-            Assert.That(PartReport.ShouldSend(door, moved), Is.True);   // 29 cm
+            Assert.That(PartReport.ShouldSend(carried, moved), Is.True);   // 29 cm
+            var fittedMoved = door;  // on the car: rides with it, not sent
+            fittedMoved.Position = new Vec3(door.Position.x + 500f, door.Position.y, door.Position.z);
+            Assert.That(PartReport.ShouldSend(door, fittedMoved), Is.False);
             var other = door;
             other.Object = 1;
             Assert.That(PartReport.ShouldSend(door, other), Is.True);  // the part's object swapped (the radiator's two)

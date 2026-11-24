@@ -17,7 +17,7 @@ namespace PerkeleRim.Game
         static readonly string[] Sections = { "DatabaseBody", "DatabaseMotor", "DatabaseMechanics" };
         const float FindEvery = 10f;    // seconds between looking for database entries again
         const float ReadEvery = 0.25f;  // and between reading them
-        const int SendMax = 24;         // reports a frame at most: a handover sends all of them, the ring has models too
+        const int SendMax = 24;         // reports a read at most (four reads a second): a handover sends all of them, the ring has models too
         const float PlacedRadius = 200f;  // meters from the player: a part further off isn't on Skyrim's ground there
 
         class Entry
@@ -40,6 +40,7 @@ namespace PerkeleRim.Game
         float nextFind, nextRead;
         bool wasPlaying;
         GameObject database;  // MSC's Database root, found once (a full scan of MSC's objects is costly)
+        int scans;            // looks for it so far, for the full scan's backoff
         int shape = -1;       // the sections' child counts added up when the entries were made
         int[] stages = new int[8];
         int foundCount = -1;
@@ -121,8 +122,10 @@ namespace PerkeleRim.Game
             if (database == null)
             {
                 // Through a section: an empty object elsewhere is also named Database, and GameObject.Find took that.
+                // The full scan of MSC's objects only every sixth look: it costs, and an MSC without one won't grow one.
                 var body = GameObject.Find("Database/DatabaseBody");
-                database = body != null && body.transform.parent != null ? body.transform.parent.gameObject : RootWith("Database", "DatabaseBody");
+                database = body != null && body.transform.parent != null ? body.transform.parent.gameObject
+                         : (scans++ % 6 == 0 ? RootWith("Database", "DatabaseBody") : null);
             }
             if (database == null) { entries.Clear(); shape = -1; return; }
             int now = 0;
@@ -131,7 +134,7 @@ namespace PerkeleRim.Game
                 var t = database.transform.Find(section);
                 if (t != null) now += t.childCount;
             }
-            if (now == shape && entries.Count > 0 && wheels.Count > 0) return;  // MSC never adds an entry: nothing new to find
+            if (now == shape && entries.Count > 0 && WheelsIn()) return;  // MSC never adds an entry: nothing new to find
             shape = now;
             var known = new Dictionary<PlayMakerFSM, Entry>();
             foreach (var e in entries) if (e.Data != null) known[e.Data] = e;
@@ -213,12 +216,13 @@ namespace PerkeleRim.Game
         {
             var car = GameObject.Find("SATSUMA(557kg, 248)");
             if (car == null) return;
+            var found = new Dictionary<string, Transform>();
+            foreach (var t in car.GetComponentsInChildren<Transform>(true))  // one walk of the car for all four corners
+                if (t.name.Length == 7 && t.name.StartsWith("wheel") && !found.ContainsKey(t.name)) found[t.name] = t;
             foreach (var corner in Corners)
             {
-                Transform wheel = null;
-                foreach (var t in car.GetComponentsInChildren<Transform>(true))
-                    if (t.name == "wheel" + corner) { wheel = t; break; }
-                if (wheel == null) continue;
+                Transform wheel;
+                if (!found.TryGetValue("wheel" + corner, out wheel)) continue;
                 var old = wheels.Find(w => w.Corner == wheel);
                 var e = old ?? new Entry { Name = "Wheel" + corner, Corner = wheel };
                 if (old == null) wheels.Add(e);
@@ -227,6 +231,13 @@ namespace PerkeleRim.Game
         }
 
         readonly List<Entry> wheels = new List<Entry>();
+
+        // Whether the wheels are among the entries: a rebuild while the car was away leaves them out until it is back.
+        bool WheelsIn()
+        {
+            foreach (var w in wheels) if (entries.Contains(w)) return true;
+            return false;
+        }
 
         PartReport? ReadWheel(Entry e, Vector3 feet)
         {

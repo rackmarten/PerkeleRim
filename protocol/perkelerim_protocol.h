@@ -908,7 +908,8 @@ namespace PerkeleRim::Protocol
     // PartState (v55): one of the Satsuma's parts as MSC's own database has it (Database/Database*/<name> :: Data,
     // protocol/cpp/parts.h): fitted to the car or not, its bolts and how tight they are, and where it is. name is the
     // database entry's (Door_Left, Radiator, WheelFL). Sent while MSC has the player, when anything but the position
-    // changes or it moved more than kPartMoved, and every part again each time MSC gets the player. Skyrim keeps the
+    // changes or, loose, it moved more than kPartMoved (a fitted part rides with the car), and every part again each
+    // time MSC gets the player. Skyrim keeps the
     // latest per name (the bolt-state probe, pr.part) and forgets one on kPartGone (MSC never drops a database entry, so
     // nothing sends it today).
     inline constexpr std::uint32_t kPartNameMax = 40;
@@ -917,7 +918,7 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kPartPlaced = 0x4;     // position is valid: the part is on the current anchor's island
     inline constexpr std::uint32_t kPartDamaged = 0x8;    // Data.Damaged
     inline constexpr std::uint32_t kPartGone = 0x10;      // the entry is gone: forget it
-    inline constexpr float         kPartMoved = 17.5f;    // Skyrim units (25 cm) a part moves before it is sent again
+    inline constexpr float         kPartMoved = 17.5f;    // Skyrim units (25 cm) a loose part moves before it is sent again
 
     struct PartState
     {

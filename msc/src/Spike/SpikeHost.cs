@@ -238,13 +238,14 @@ namespace PerkeleRim.Spike
             {
                 var t = body.transform;
                 if (!t.CompareTag("PART") || t.IsChildOf(player) || !t.name.StartsWith(name, StringComparison.OrdinalIgnoreCase)) continue;
+                if (t.parent != null && t.root.name != "CARPARTS") continue;  // loose only: a fitted door keeps its rigidbody
                 float d = Vector3.Distance(player.position, t.position);
                 if (d < bestDistance) { best = body; bestDistance = d; }
             }
             return best;
         }
 
-        // "fetch <name>": the nearest loose part (a root rigidbody tagged PART, active) named so, or starting so, put
+        // "fetch <name>": the nearest loose part (a rigidbody tagged PART, at a scene root or under CARPARTS) named so, or starting so, put
         // down 1.2 m in front of the player on the ground, still: for scenarios that need one of the Satsuma's parts
         // MSC keeps elsewhere (its home garage, before the Skyrim garage has it).
         void Fetch(string name)
@@ -257,6 +258,7 @@ namespace PerkeleRim.Spike
             {
                 var t = body.transform;
                 if (!t.CompareTag("PART") || t.IsChildOf(player.transform) || !t.name.StartsWith(name, StringComparison.OrdinalIgnoreCase)) continue;
+                if (t.parent != null && t.root.name != "CARPARTS") continue;  // loose only: a fitted door keeps its rigidbody
                 float d = Vector3.Distance(player.transform.position, t.position);
                 if (d < bestDistance) { best = body; bestDistance = d; }
             }

@@ -28,8 +28,10 @@ namespace PerkeleRim
                    (placed ? Wire.PartPlaced : 0u);
         }
 
-        // Whether now has to go out after last went: anything but the position changed, a new anchor, or it moved
-        // more than PartMoved while placed. last null: never sent (or sent again from scratch).
+        // Whether now has to go out after last went: anything but the position changed, a new anchor, or a loose part
+        // moved more than PartMoved while placed. A fitted part rides with the car: the car's own pose covers that, and
+        // a driven car would otherwise send each of its hundred parts again every read. last null: never sent (or sent
+        // again from scratch).
         public static bool ShouldSend(PartReport? last, PartReport now)
         {
             if (last == null) return true;
@@ -37,7 +39,7 @@ namespace PerkeleRim
             if (l.Flags != now.Flags || l.Bolts != now.Bolts || l.BoltsTight != now.BoltsTight || l.Stages != now.Stages ||
                 l.Generation != now.Generation || l.Name != now.Name || l.Object != now.Object)
                 return true;
-            if ((now.Flags & Wire.PartPlaced) == 0) return false;
+            if ((now.Flags & Wire.PartPlaced) == 0 || (now.Flags & Wire.PartInstalled) != 0) return false;
             float dx = now.Position.x - l.Position.x, dy = now.Position.y - l.Position.y, dz = now.Position.z - l.Position.z;
             return dx * dx + dy * dy + dz * dz > Wire.PartMoved * Wire.PartMoved;
         }

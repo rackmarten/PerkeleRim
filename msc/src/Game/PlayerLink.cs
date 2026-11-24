@@ -1335,7 +1335,19 @@ namespace PerkeleRim.Game
         // A part under the crosshair whose Removal FSM is in "Mouse over", where a right click takes it off. MSC sets
         // GUIdisassemble only as that state starts, and its GUI/Icons clears every GUI flag each time it cycles (every 5 s
         // while a door's own use hand is up), so the flag alone came and went while the part stayed removable.
+        static int removalFrame = -1;
+        static bool removalUnder;
+
+        // Once a frame (HandsFree and SendLookAt both ask): a raycast and Camera.main's tag search.
         static bool RemovalUnder()
+        {
+            if (removalFrame == Time.frameCount) return removalUnder;
+            removalFrame = Time.frameCount;
+            removalUnder = RemovalUnderNow();
+            return removalUnder;
+        }
+
+        static bool RemovalUnderNow()
         {
             var cam = Camera.main;
             RaycastHit hit;

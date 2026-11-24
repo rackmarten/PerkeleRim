@@ -519,9 +519,11 @@ namespace PerkeleRim::TestKit
                         throw Error("MSC's view couldn't be asked for (not linked, or no screenshot folder)");
                     }
                     a_call.DefaultTimeout(15.0);
-                    return [path](Call&) -> std::optional<Json> {
+                    return [path, last = std::uintmax_t{ 0 }](Call&) mutable -> std::optional<Json> {
                         std::error_code error;
-                        if (!std::filesystem::exists(path, error) || std::filesystem::file_size(path, error) == 0 || error) {
+                        const auto size = std::filesystem::exists(path, error) ? std::filesystem::file_size(path, error) : 0;
+                        if (error || size == 0 || size != last) {  // not there yet, or still being written
+                            last = error ? 0 : size;
                             return std::nullopt;
                         }
                         const auto text = path.u8string();
