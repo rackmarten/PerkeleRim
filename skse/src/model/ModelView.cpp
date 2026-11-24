@@ -48,6 +48,10 @@ namespace PerkeleRim::ModelView
             // Textures built here are never destroyed: the game's NiSourceTexture destructor expects
             // one it loaded itself. A model sent again keeps its old textures alive here.
             std::vector<RE::NiPointer<RE::NiSourceTexture>>    textures;
+            // Textures several models share, by MSC's id (v56): built from the model that brought them,
+            // named by id in the models after it (the Satsuma's paint on every part). Kept in textures too.
+            std::unordered_map<std::uint32_t, RE::NiSourceTexture*> shared;
+            std::uint64_t                                           sharedUses = 0;  // textures named by id instead of sent, for the log
             RE::NiSourceTexture*                               flatNormal = nullptr;
             RE::NiSourceTexture*                               shinyNormal = nullptr;
             // Hand-built like the textures, so never destroyed either; shared by every shape.
@@ -436,16 +440,51 @@ namespace PerkeleRim::ModelView
             cached->blob = a_blob;
             auto model = Model::Parse(cached->blob.data(), cached->blob.size());
             if (!model) {
-                SKSE::log::warn("model view: model {:08X} is malformed ({} bytes)", a_id, a_blob.size());
+                // MSC counts the shared textures it brought as sent all the same: keep them for the models
+                // that name them, as far as they read.
+                std::uint32_t kept = 0;
+                for (const auto& texture : Model::SharedTextures(cached->blob.data(), cached->blob.size())) {
+                    state.shared[texture.id] = MakeTexture(texture, std::format("PerkeleRim\\T{:08X}", texture.id));
+                    kept++;
+                }
+                SKSE::log::warn("model view: model {:08X} is malformed ({} bytes), {} shared textures of it kept", a_id, a_blob.size(), kept);
                 return;
             }
             cached->model = std::move(*model);
+            std::uint32_t built = 0, named = 0;
+            cached->textures.resize(cached->model.textures.size(), nullptr);
+            // Its own and shared textures first, so a model dropped below still leaves the shared ones it
+            // brought for the models that name them (MSC counts them sent).
             for (std::size_t i = 0; i < cached->model.textures.size(); i++) {
-                cached->textures.push_back(MakeTexture(cached->model.textures[i], std::format("PerkeleRim\\{:08X}\\{}", a_id, i)));
+                const auto& texture = cached->model.textures[i];
+                if (!texture.rgba) {
+                    continue;
+                }
+                auto* made = MakeTexture(texture, texture.id ? std::format("PerkeleRim\\T{:08X}", texture.id) : std::format("PerkeleRim\\{:08X}\\{}", a_id, i));
+                if (texture.id) {
+                    state.shared[texture.id] = made;  // a resend replaces it; one that failed to build (null) draws untextured like here
+                }
+                cached->textures[i] = made;
+                built++;
             }
+            for (std::size_t i = 0; i < cached->model.textures.size(); i++) {
+                const auto& texture = cached->model.textures[i];
+                if (texture.rgba) {
+                    continue;
+                }
+                const auto it = state.shared.find(texture.id);  // named by id: an earlier model brought it
+                if (it == state.shared.end()) {
+                    SKSE::log::warn("model view: model {:08X} {} names texture {:08X}, which never came: model dropped", a_id,
+                        cached->model.name, texture.id);
+                    return;
+                }
+                cached->textures[i] = it->second;
+                named++;
+            }
+            state.sharedUses += named;
             const auto ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-            SKSE::log::info("model view: {:08X} {} received ({} bytes, {} meshes, {} textures built in {:.1f} ms)", a_id,
-                cached->model.name, a_blob.size(), cached->model.meshes.size(), cached->textures.size(), ms);
+            SKSE::log::info("model view: {:08X} {} received ({} bytes, {} meshes, {} textures built in {:.1f} ms, {} named by id; {} shared textures, named {} times)",
+                a_id, cached->model.name, a_blob.size(), cached->model.meshes.size(), built, ms, named, state.shared.size(), state.sharedUses);
             state.byName[cached->model.name] = a_id;
             state.models[a_id] = std::move(cached);
             MarkBuild();

@@ -43,6 +43,9 @@ namespace PerkeleRim.Game
         }
         readonly Dictionary<Transform, Looks> looks = new Dictionary<Transform, Looks>();
         Transform lastPlayer;
+        // When a spike command putting parts on or taking them off last stepped (PartSetBuilding while
+        // within a second): a coroutine stopped from outside never runs its finally, so no counter.
+        float buildingAt = -10f;
         int idEpoch;
         List<AttachedParts.Entry> entries = new List<AttachedParts.Entry>();
         List<AttachedParts.Entry> lastEntries = new List<AttachedParts.Entry>();
@@ -145,6 +148,7 @@ namespace PerkeleRim.Game
                 });
             }
             int left = AttachedParts.Encode(entries, Wire.VehicleSatsuma, generation, (uint)Time.frameCount, ref set);
+            if (Time.realtimeSinceStartup - buildingAt < 1f) set.flags |= Wire.PartSetBuilding;
             link.WritePartSet(ref set);
             if (!AttachedParts.SameSet(entries, lastEntries))
             {
@@ -251,13 +255,28 @@ namespace PerkeleRim.Game
         // (ItemPivot), the FSM to its Find correct part state, then its ASSEMBLE event, one part a few
         // frames. MSC does the rest (its copy switched on or the part hung on its pivot, the loose one
         // gone). A part that didn't go on goes back where it lay.
-        public IEnumerator Assemble(string[] triggers)
+        public IEnumerator Assemble(string[] triggers) => Building(AssembleSteps(triggers));
+
+        // A spike command's steps with PartSetBuilding set meanwhile, however it ends.
+        IEnumerator Building(IEnumerator steps)
+        {
+            buildingAt = Time.realtimeSinceStartup;
+            while (steps.MoveNext())
+            {
+                buildingAt = Time.realtimeSinceStartup;
+                yield return steps.Current;
+            }
+            buildingAt = -10f;
+        }
+
+        IEnumerator AssembleSteps(string[] triggers)
         {
             if (car == null) { log("satsuma: not found"); yield break; }
             var pivotVar = HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmGameObject("ItemPivot");
             var pivot = pivotVar != null && pivotVar.Value != null ? pivotVar.Value.transform : null;
             if (pivot == null) { log("satsuma: no ItemPivot"); yield break; }
             int on = 0;
+            var loosePart = LooseParts();
             foreach (var name in triggers)
             {
                 var trigger = FindBelow(car, name);
@@ -267,45 +286,110 @@ namespace PerkeleRim.Game
                     log($"satsuma: {name}: {(trigger == null ? "no such trigger" : fsm == null ? "no Assembly FSM" : "off (on already)")}");
                     continue;
                 }
-                var handChild = fsm.FsmVariables.FindFsmString("HandChild");
-                var part = handChild != null ? FindLoose(handChild.Value) : null;
-                if (part == null)
-                {
-                    log($"satsuma: {name}: no loose {(handChild != null ? handChild.Value : "part")}");
-                    continue;
-                }
-                var parent = part.parent;
-                var position = part.position;
-                var rotation = part.rotation;
-                var body = part.GetComponent<Rigidbody>();
-                bool kinematic = body != null && body.isKinematic;
-                if (body != null) body.isKinematic = true;
-                part.SetParent(pivot, false);
-                part.localPosition = Vector3.zero;
-                var state = fsm.Fsm.GetState("Find correct part") ?? fsm.Fsm.GetState("Wait for assembly");
-                if (state != null && SaveSync.SwitchState != null) SaveSync.SwitchState.Invoke(fsm.Fsm, new object[] { state });
-                yield return null;
-                fsm.SendEvent("ASSEMBLE");
-                for (int i = 0; i < 10; i++) yield return null;
-                // Gone from the hand: destroyed (its copy switched on) or hung on its pivot.
-                bool went = part == null || !part.IsChildOf(pivot);
-                if (went) on++;
-                else
-                {
-                    part.SetParent(parent, true);
-                    part.position = position;
-                    part.rotation = rotation;
-                    if (body != null) body.isKinematic = kinematic;
-                }
-                log($"satsuma: {name}: {(handChild != null ? handChild.Value : "")} {(went ? "on" : "didn't go on (FSM in " + fsm.ActiveStateName + ")")}");
+                var went = new bool[1];
+                foreach (var step in Put(fsm, pivot, went, loosePart)) yield return step;
+                if (went[0]) on++;
             }
             log($"satsuma: {on} of {triggers.Length} parts put on");
             nextScan = 0f;
         }
 
+        // Spike command "satsuma full": every part MSC has loose put on, trigger by trigger as in "satsuma
+        // half", over and over until a pass puts nothing on (a part's own triggers, the cylinder head's on
+        // the block, only show once it is on): the triggers on the car and on the loose parts
+        // (CARPARTS), so the engine is built on its block before the block goes in. Parts MSC wants bolted
+        // first (the suspension, the steering, the trail arms: their FSM's Requirements and Check bolts) are
+        // dropped by MSC and stay off: bolting isn't driven here (MSC's global TIGHTEN didn't satisfy them).
+        public IEnumerator AssembleAll() => Building(AssembleAllSteps());
+
+        IEnumerator AssembleAllSteps()
+        {
+            if (car == null) { log("satsuma: not found"); yield break; }
+            var pivotVar = HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmGameObject("ItemPivot");
+            var pivot = pivotVar != null && pivotVar.Value != null ? pivotVar.Value.transform : null;
+            if (pivot == null) { log("satsuma: no ItemPivot"); yield break; }
+            var loose = GameObject.Find("CARPARTS");
+            int total = 0;
+            for (int pass = 1; pass <= 8; pass++)
+            {
+                var loosePart = LooseParts();  // once a pass: a lookup per trigger was hundreds of scene scans a frame
+                var fsms = new List<PlayMakerFSM>();
+                foreach (var f in car.GetComponentsInChildren<PlayMakerFSM>()) if (f.FsmName == "Assembly") fsms.Add(f);
+                if (loose != null)
+                    foreach (var f in loose.GetComponentsInChildren<PlayMakerFSM>()) if (f.FsmName == "Assembly") fsms.Add(f);
+                int on = 0, tried = 0;
+                foreach (var fsm in fsms)
+                {
+                    if (fsm == null || !fsm.gameObject.activeInHierarchy) continue;
+                    var handChild = fsm.FsmVariables.FindFsmString("HandChild");
+                    if (handChild == null || Loose(loosePart, handChild.Value) == null) continue;
+                    tried++;
+                    var went = new bool[1];
+                    foreach (var step in Put(fsm, pivot, went, loosePart)) yield return step;
+                    if (went[0]) on++;
+                }
+                total += on;
+                log($"satsuma: full, pass {pass}: {on} of {tried} parts put on");
+                if (on == 0) break;
+            }
+            nextScan = 0f;
+            for (int i = 0; i < 5; i++) yield return null;
+            var onCar = new List<Transform>();
+            if (car != null) Find(onCar, lastPlayer);
+            log($"satsuma: full: {total} parts put on, {onCar.Count} on the car");
+        }
+
+        // One part on through its trigger's Assembly FSM: the loose part (HandChild) into the hand, the
+        // FSM to Find correct part, then ASSEMBLE. went[0]: it left the hand (destroyed, its copy switched
+        // on, or hung on its pivot); else it goes back where it lay.
+        IEnumerable Put(PlayMakerFSM fsm, Transform pivot, bool[] went, Dictionary<string, List<Transform>> loose)
+        {
+            var handChild = fsm.FsmVariables.FindFsmString("HandChild");
+            var part = handChild != null ? Loose(loose, handChild.Value) : null;
+            if (part == null)
+            {
+                log($"satsuma: {fsm.name}: no loose {(handChild != null ? handChild.Value : "part")}");
+                yield break;
+            }
+            var parent = part.parent;
+            var position = part.position;
+            var rotation = part.rotation;
+            var body = part.GetComponent<Rigidbody>();
+            bool kinematic = body != null && body.isKinematic;
+            if (body != null) body.isKinematic = true;
+            part.SetParent(pivot, false);
+            part.localPosition = Vector3.zero;
+            var state = fsm.Fsm.GetState("Find correct part") ?? fsm.Fsm.GetState("Wait for assembly");
+            if (state != null && SaveSync.SwitchState != null) SaveSync.SwitchState.Invoke(fsm.Fsm, new object[] { state });
+            yield return null;
+            if (fsm != null) fsm.SendEvent("ASSEMBLE");
+            // Until it left the hand or its FSM is back to waiting for a part: some go through Wait states
+            // (the bootlid, the rear seat and panels) for longer than a few frames. 3 s at most.
+            float until = Time.realtimeSinceStartup + 3f;
+            for (int i = 0; ; i++)
+            {
+                yield return null;
+                if (part == null || !part.IsChildOf(pivot) || fsm == null) break;
+                if (i >= 10 && (fsm.ActiveStateName == "Check for Part collision" || Time.realtimeSinceStartup >= until)) break;
+            }
+            // On: destroyed (its copy switched on) or hung somewhere (a pivot of the car or of a loose block).
+            // Out of the hand onto nothing is MSC dropping it (its Requirements: what it hangs on isn't bolted).
+            went[0] = part == null || (!part.IsChildOf(pivot) && part.parent != null);
+            if (!went[0] && part != null)
+            {
+                part.SetParent(parent, true);
+                part.position = position;
+                part.rotation = rotation;
+                if (body != null) body.isKinematic = kinematic;
+            }
+            log($"satsuma: {(fsm != null ? fsm.name : "trigger")}: {handChild.Value} {(went[0] ? "on" : "didn't go on (FSM in " + (fsm != null ? fsm.ActiveStateName : "") + ")")}");
+        }
+
         // Spike command "satsuma bare": takes every part with a Removal FSM off as MSC's Remove part state
         // does (the copy switched off and the loose part back, or the part unhung), deepest first.
-        public IEnumerator Strip()
+        public IEnumerator Strip() => Building(StripSteps());
+
+        IEnumerator StripSteps()
         {
             if (car == null) { log("satsuma: not found"); yield break; }
             var on = new List<Transform>();  // its own list: the half-second scan refills parts meanwhile
@@ -345,12 +429,34 @@ namespace PerkeleRim.Game
         }
 
         // A loose part by name: active, tagged PART, not on a vehicle.
-        Transform FindLoose(string name)
+        // The loose parts by name, looked up once per pass (Loose checks each is still loose when taken).
+        Dictionary<string, List<Transform>> LooseParts()
         {
+            var byName = new Dictionary<string, List<Transform>>();
             foreach (var body in UnityEngine.Object.FindObjectsOfType<Rigidbody>())
             {
                 var t = body.transform;
-                if (t.name == name && t.CompareTag("PART") && !t.IsChildOf(car) && t.gameObject.activeInHierarchy) return t;
+                if (!t.CompareTag("PART")) continue;
+                List<Transform> list;
+                if (!byName.TryGetValue(t.name, out list)) byName[t.name] = list = new List<Transform>();
+                list.Add(t);
+            }
+            return byName;
+        }
+
+        // A loose part by name: active, tagged PART, not on the car and not mounted on another part (the
+        // engine's parts on its block in CARPARTS: two triggers wanting the same part mustn't take it
+        // from each other).
+        Transform Loose(Dictionary<string, List<Transform>> loose, string name)
+        {
+            List<Transform> list;
+            if (loose == null || !loose.TryGetValue(name, out list)) return null;
+            foreach (var t in list)
+            {
+                if (t == null || !t.gameObject.activeInHierarchy || t.name != name || (car != null && t.IsChildOf(car))) continue;
+                bool mounted = false;
+                for (var p = t.parent; p != null && !mounted; p = p.parent) mounted = p.CompareTag("PART");
+                if (!mounted) return t;
             }
             return null;
         }

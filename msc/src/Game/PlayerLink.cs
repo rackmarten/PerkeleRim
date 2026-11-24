@@ -256,6 +256,7 @@ namespace PerkeleRim.Game
                     else satsuma.Summon(player, Feet());
                     break;
                 case "half": StartCoroutine(satsumaParts.Assemble(SatsumaModel.HalfBuilt)); break;
+                case "full": StartCoroutine(satsumaParts.AssembleAll()); break;
                 case "bare": StartCoroutine(satsumaParts.Strip()); break;
                 default: satsumaParts.Dump(); break;
             }

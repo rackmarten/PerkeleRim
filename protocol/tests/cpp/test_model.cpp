@@ -19,7 +19,7 @@ namespace
     // One 2x1 texture, one cutout material, a node under a node and one triangle using them all, the
     // way msc/src/Link/Model.cs writes them.
     std::vector<std::uint8_t> Blob(std::uint16_t a_lastIndex = 2, std::int32_t a_texture = 0, std::int32_t a_material = 0,
-        std::int32_t a_node = 1, std::int32_t a_parent = 0)
+        std::int32_t a_node = 1, std::int32_t a_parent = 0, Protocol::ModelTexture a_texHeader = { 2, 1, Protocol::kModelTextureRgba8, 0 })
     {
         std::vector<std::uint8_t> blob;
         Protocol::ModelHeader     header{};
@@ -30,9 +30,11 @@ namespace
         header.nodeCount = 2;
         Put(blob, header);
 
-        Put(blob, Protocol::ModelTexture{ 2, 1, Protocol::kModelTextureRgba8, 0 });
-        for (std::uint8_t b : std::initializer_list<std::uint8_t>{ 255, 0, 0, 255, 0, 255, 0, 255 }) {
-            blob.push_back(b);
+        Put(blob, a_texHeader);
+        if (a_texHeader.format == Protocol::kModelTextureRgba8) {
+            for (std::uint8_t b : std::initializer_list<std::uint8_t>{ 255, 0, 0, 255, 0, 255, 0, 255 }) {
+                blob.push_back(b);
+            }
         }
         Put(blob, Protocol::ModelMaterial{ Protocol::kMaterialCutout, 0.5f, { 0.2f, 0.2f, 0.2f }, 0.7f, { 0, 0, 0 }, 0 });
         Protocol::ModelNode wheel{};
@@ -148,4 +150,56 @@ TEST_CASE("chunks put a model back together in order")
     const auto whole = Chunk(9, blob, 0, blob.size());
     CHECK(assembler.Add(whole.data(), static_cast<std::uint32_t>(whole.size())) == Model::Assembler::Result::Complete);
     CHECK(assembler.Blob() == blob);
+}
+
+TEST_CASE("a shared texture goes inline once with its id, then by id without pixels")
+{
+    const auto first = Blob(2, 0, 0, 1, 0, { 2, 1, Protocol::kModelTextureRgba8, 7 });
+    const auto model = Model::Parse(first.data(), first.size());
+    REQUIRE(model);
+    CHECK(model->textures[0].id == 7u);
+    REQUIRE(model->textures[0].rgba != nullptr);
+    CHECK(model->textures[0].rgba[1] == 0);
+
+    const auto later = Blob(2, 0, 0, 1, 0, { 2, 1, Protocol::kModelTextureShared, 7 });
+    CHECK(later.size() == first.size() - 8);  // the 2x1 pixels aren't there
+    const auto again = Model::Parse(later.data(), later.size());
+    REQUIRE(again);
+    CHECK(again->textures[0].id == 7u);
+    CHECK(again->textures[0].rgba == nullptr);
+    CHECK(again->textures[0].width == 2u);
+    CHECK(again->meshes[0].texture == 0);
+}
+
+TEST_CASE("a model's own texture has id 0")
+{
+    const auto blob = Blob();
+    const auto model = Model::Parse(blob.data(), blob.size());
+    REQUIRE(model);
+    CHECK(model->textures[0].id == 0u);
+}
+
+TEST_CASE("a shared texture without an id, or an unknown format, is refused")
+{
+    const auto noId = Blob(2, 0, 0, 1, 0, { 2, 1, Protocol::kModelTextureShared, 0 });
+    CHECK_FALSE(Model::Parse(noId.data(), noId.size()));
+    auto unknown = Blob();
+    unknown[sizeof(Protocol::ModelHeader) + 8] = 3;  // ModelTexture.format
+    CHECK_FALSE(Model::Parse(unknown.data(), unknown.size()));
+    const auto tooBig = Blob(2, 0, 0, 1, 0, { Protocol::kModelTextureSizeMax + 1, 1, Protocol::kModelTextureShared, 7 });
+    CHECK_FALSE(Model::Parse(tooBig.data(), tooBig.size()));
+}
+
+TEST_CASE("a malformed model still gives up the shared textures it brought")
+{
+    auto blob = Blob(7, 0, 0, 1, 0, { 2, 1, Protocol::kModelTextureRgba8, 9 });  // index 7: out of the triangle's 3 vertices
+    CHECK_FALSE(Model::Parse(blob.data(), blob.size()));
+    const auto kept = Model::SharedTextures(blob.data(), blob.size());
+    REQUIRE(kept.size() == 1);
+    CHECK(kept[0].id == 9u);
+    CHECK(kept[0].rgba[0] == 255);
+    const auto own = Blob(7);
+    CHECK(Model::SharedTextures(own.data(), own.size()).empty());  // a model's own texture isn't shared
+    const auto named = Blob(2, 0, 0, 1, 0, { 2, 1, Protocol::kModelTextureShared, 9 });
+    CHECK(Model::SharedTextures(named.data(), named.size()).empty());  // naming one brings nothing
 }
