@@ -24,6 +24,7 @@ $ErrorActionPreference = 'Stop'
 $skytest = Join-Path $PSScriptRoot 'skytest.ps1'
 $file = Join-Path $RepoRoot 'scenarios/satsuma.json'
 if ($Build) { & "$PSScriptRoot/build.ps1" }
+$msc = Get-RequiredSetting (Get-LocalConfig) 'MscPath'  # before the session: a missing setting mustn't leave it holding the lock
 
 $json = & $skytest session -Json -WaitForLock $WaitForLock
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
@@ -31,7 +32,6 @@ $session = $json | ConvertFrom-Json
 $ours = -not $session.Reused
 Write-Host "$(if ($ours) { 'Started' } else { 'Reusing' }) the test session (Skyrim pid $($session.Pid), $($session.Start))."
 $code = 1
-$msc = Get-RequiredSetting (Get-LocalConfig) 'MscPath'
 try {
     $ranAt = Get-Date
     & $skytest run $file -Timeout $TimeoutSeconds

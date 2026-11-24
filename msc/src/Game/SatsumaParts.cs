@@ -14,12 +14,18 @@ namespace PerkeleRim.Game
     //
     // The parts are looked for every half second (a part going on or coming off shows within that);
     // their content keys are asked a few a frame, so a fully built car coming up never asks for 150 at
-    // once, and again in turn, so a part that changed its look (painted, a bulb in) gets its new model.
+    // once, and again in turn, so a part that changed its look (painted, a bulb in, its bolts showing
+    // once it is on) gets its new model. A new look is a new read (a door is 20 MB with its textures)
+    // and a new node in Skyrim that is never freed, so a part is asked again at most every RekeyEvery
+    // seconds, that times its changes, and not after MaxLooks changes: one whose material keeps
+    // changing (MSC fading it) stays as it last looked.
     public sealed class SatsumaParts
     {
         const float ScanEvery = 0.5f;
         const int KeysPerFrame = 4;   // while parts haven't been asked yet
         const int RekeysPerFrame = 1; // once they all were: each in turn, for a changed look
+        const float RekeyEvery = 10f; // seconds between a part's asks, times the looks it had
+        const int MaxLooks = 4;       // a part's models in a session at most
 
         readonly Action<string> log;
         readonly List<Transform> parts = new List<Transform>();  // on the car, in hierarchy order
@@ -29,6 +35,14 @@ namespace PerkeleRim.Game
         readonly Dictionary<Transform, uint> models = new Dictionary<Transform, uint>();
         readonly Dictionary<Transform, Predicate<Transform>> includes = new Dictionary<Transform, Predicate<Transform>>();
         readonly Dictionary<Transform, bool> isPart = new Dictionary<Transform, bool>();  // every object below the car seen so far
+        // A part's looks so far (models it had) and when it may be asked again.
+        sealed class Looks
+        {
+            public int Count;
+            public float Next;
+        }
+        readonly Dictionary<Transform, Looks> looks = new Dictionary<Transform, Looks>();
+        Transform lastPlayer;
         List<AttachedParts.Entry> entries = new List<AttachedParts.Entry>();
         List<AttachedParts.Entry> lastEntries = new List<AttachedParts.Entry>();
         Transform car;
@@ -73,6 +87,7 @@ namespace PerkeleRim.Game
             models.Clear();
             includes.Clear();
             isPart.Clear();
+            looks.Clear();
             nextScan = 0f;
         }
 
@@ -87,10 +102,21 @@ namespace PerkeleRim.Game
                 link.WritePartSet(ref set);
                 return;
             }
+            lastPlayer = player;
             if (Time.realtimeSinceStartup >= nextScan)
             {
                 nextScan = Time.realtimeSinceStartup + ScanEvery;
-                Scan(player);
+                Find(parts, player);
+                partSet.Clear();
+                foreach (var t in parts) partSet.Add(t);
+                var gone = new List<Transform>();
+                foreach (var t in models.Keys) if (t == null || !partSet.Contains(t)) gone.Add(t);
+                foreach (var t in gone)
+                {
+                    models.Remove(t);
+                    includes.Remove(t);
+                    looks.Remove(t);
+                }
             }
             AskModels(sender);
             entries.Clear();
@@ -129,25 +155,13 @@ namespace PerkeleRim.Game
             }
         }
 
-        // The parts on the car right now: active part objects below it, not the player or what he
-        // holds (a part in the hand of a player sitting in it).
-        void Scan(Transform player)
+        // The parts on the car right now into list: active part objects below it, not the player or
+        // what he holds (a part in the hand of a player sitting in it).
+        void Find(List<Transform> list, Transform player)
         {
-            parts.Clear();
-            partSet.Clear();
+            list.Clear();
             foreach (var t in car.GetComponentsInChildren<Transform>())  // active ones only
-            {
-                if (t == car || !IsPartObject(t) || (player != null && t.IsChildOf(player))) continue;
-                parts.Add(t);
-                partSet.Add(t);
-            }
-            var gone = new List<Transform>();
-            foreach (var t in models.Keys) if (t == null || !partSet.Contains(t)) gone.Add(t);
-            foreach (var t in gone)
-            {
-                models.Remove(t);
-                includes.Remove(t);
-            }
+                if (t != car && IsPartObject(t) && (player == null || !t.IsChildOf(player))) list.Add(t);
         }
 
         // A few content keys a frame: parts without a model first, then each in turn.
@@ -162,10 +176,15 @@ namespace PerkeleRim.Game
                 asked++;
             }
             if (asked > 0 || parts.Count == 0) return;
-            for (int i = 0; i < RekeysPerFrame; i++)
+            float now = Time.realtimeSinceStartup;
+            for (int i = 0; i < parts.Count && asked < RekeysPerFrame; i++)
             {
                 keyCursor = (keyCursor + 1) % parts.Count;
-                if (parts[keyCursor] != null) Ask(sender, parts[keyCursor]);
+                var t = parts[keyCursor];
+                Looks l;
+                if (t == null || (looks.TryGetValue(t, out l) && (l.Count >= MaxLooks || now < l.Next))) continue;
+                Ask(sender, t);
+                asked++;
             }
         }
 
@@ -178,16 +197,30 @@ namespace PerkeleRim.Game
                 include = t => PartOf(t) == root;
                 includes[part] = include;
             }
-            models[part] = sender.IdFor(part, include, VehicleModel.Plain);
+            uint before;
+            bool had = models.TryGetValue(part, out before);
+            uint id = sender.IdFor(part, include, VehicleModel.Plain);
+            models[part] = id;
+            Looks l;
+            if (!looks.TryGetValue(part, out l)) looks[part] = l = new Looks { Count = 1 };
+            if (had && id != before)
+            {
+                l.Count++;
+                log(l.Count >= MaxLooks
+                    ? $"satsuma: {part.name} looks different again (model {before:X8} -> {id:X8}), {l.Count} looks: kept as it is from now on"
+                    : $"satsuma: {part.name} looks different now (model {before:X8} -> {id:X8}), look {l.Count}");
+            }
+            l.Next = Time.realtimeSinceStartup + RekeyEvery * l.Count;
         }
 
         // Spike command "satsuma": every part on the car with its model.
         public void Dump()
         {
             if (car == null) { log("satsuma: not found"); return; }
-            Scan(null);
-            log($"satsuma: {parts.Count} parts on the car at {car.position}");
-            foreach (var t in parts)
+            var on = new List<Transform>();
+            Find(on, lastPlayer);
+            log($"satsuma: {on.Count} parts on the car at {car.position}");
+            foreach (var t in on)
             {
                 uint model;
                 models.TryGetValue(t, out model);
@@ -257,12 +290,13 @@ namespace PerkeleRim.Game
         public IEnumerator Strip()
         {
             if (car == null) { log("satsuma: not found"); yield break; }
-            Scan(null);
+            var on = new List<Transform>();  // its own list: the half-second scan refills parts meanwhile
+            Find(on, lastPlayer);
             int off = 0;
-            for (int i = parts.Count - 1; i >= 0; i--)
+            for (int i = on.Count - 1; i >= 0; i--)
             {
-                var t = parts[i];
-                if (t == null || !t.gameObject.activeInHierarchy) continue;
+                var t = on[i];
+                if (t == null || car == null || !t.IsChildOf(car) || !t.gameObject.activeInHierarchy) continue;
                 var fsm = Fsm(t, "Removal");
                 var state = fsm != null ? fsm.Fsm.GetState("Remove part") : null;
                 if (state == null || SaveSync.SwitchState == null) continue;
@@ -273,8 +307,9 @@ namespace PerkeleRim.Game
             }
             nextScan = 0f;
             for (int i = 0; i < 5; i++) yield return null;
-            Scan(null);
-            log($"satsuma: took {off} parts off, {parts.Count} still on (without a Removal FSM: wiring, the halfshafts, as MSC has them)");
+            if (car == null) yield break;
+            Find(on, lastPlayer);
+            log($"satsuma: took {off} parts off, {on.Count} still on (without a Removal FSM: wiring, the halfshafts, as MSC has them)");
         }
 
         static PlayMakerFSM Fsm(Transform t, string name)
