@@ -216,40 +216,87 @@ namespace PerkeleRim.Game
                     log($"satsuma: {name}: {(trigger == null ? "no such trigger" : fsm == null ? "no Assembly FSM" : "off (on already)")}");
                     continue;
                 }
-                var handChild = fsm.FsmVariables.FindFsmString("HandChild");
-                var part = handChild != null ? FindLoose(handChild.Value) : null;
-                if (part == null)
-                {
-                    log($"satsuma: {name}: no loose {(handChild != null ? handChild.Value : "part")}");
-                    continue;
-                }
-                var parent = part.parent;
-                var position = part.position;
-                var rotation = part.rotation;
-                var body = part.GetComponent<Rigidbody>();
-                bool kinematic = body != null && body.isKinematic;
-                if (body != null) body.isKinematic = true;
-                part.SetParent(pivot, false);
-                part.localPosition = Vector3.zero;
-                var state = fsm.Fsm.GetState("Find correct part") ?? fsm.Fsm.GetState("Wait for assembly");
-                if (state != null && SaveSync.SwitchState != null) SaveSync.SwitchState.Invoke(fsm.Fsm, new object[] { state });
-                yield return null;
-                fsm.SendEvent("ASSEMBLE");
-                for (int i = 0; i < 10; i++) yield return null;
-                // Gone from the hand: destroyed (its copy switched on) or hung on its pivot.
-                bool went = part == null || !part.IsChildOf(pivot);
-                if (went) on++;
-                else
-                {
-                    part.SetParent(parent, true);
-                    part.position = position;
-                    part.rotation = rotation;
-                    if (body != null) body.isKinematic = kinematic;
-                }
-                log($"satsuma: {name}: {(handChild != null ? handChild.Value : "")} {(went ? "on" : "didn't go on (FSM in " + fsm.ActiveStateName + ")")}");
+                var went = new bool[1];
+                foreach (var step in Put(fsm, pivot, went)) yield return step;
+                if (went[0]) on++;
             }
             log($"satsuma: {on} of {triggers.Length} parts put on");
             nextScan = 0f;
+        }
+
+        // Spike command "satsuma full": every part MSC has loose put on, trigger by trigger as in "satsuma
+        // half", over and over until a pass puts nothing on (a part's own triggers, the cylinder head's on
+        // the block, only show once it is on): the triggers on the car and on the loose parts
+        // (CARPARTS), so the engine is built on its block before the block goes in.
+        public IEnumerator AssembleAll()
+        {
+            if (car == null) { log("satsuma: not found"); yield break; }
+            var pivotVar = HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmGameObject("ItemPivot");
+            var pivot = pivotVar != null && pivotVar.Value != null ? pivotVar.Value.transform : null;
+            if (pivot == null) { log("satsuma: no ItemPivot"); yield break; }
+            var loose = GameObject.Find("CARPARTS");
+            int total = 0;
+            for (int pass = 1; pass <= 8; pass++)
+            {
+                var fsms = new List<PlayMakerFSM>();
+                foreach (var f in car.GetComponentsInChildren<PlayMakerFSM>()) if (f.FsmName == "Assembly") fsms.Add(f);
+                if (loose != null)
+                    foreach (var f in loose.GetComponentsInChildren<PlayMakerFSM>()) if (f.FsmName == "Assembly") fsms.Add(f);
+                int on = 0, tried = 0;
+                foreach (var fsm in fsms)
+                {
+                    if (fsm == null || !fsm.gameObject.activeInHierarchy) continue;
+                    var handChild = fsm.FsmVariables.FindFsmString("HandChild");
+                    if (handChild == null || FindLoose(handChild.Value) == null) continue;
+                    tried++;
+                    var went = new bool[1];
+                    foreach (var step in Put(fsm, pivot, went)) yield return step;
+                    if (went[0]) on++;
+                }
+                total += on;
+                log($"satsuma: full, pass {pass}: {on} of {tried} parts put on");
+                if (on == 0) break;
+            }
+            nextScan = 0f;
+            for (int i = 0; i < 5; i++) yield return null;
+            Scan(null);
+            log($"satsuma: full: {total} parts put on, {parts.Count} on the car");
+        }
+
+        // One part on through its trigger's Assembly FSM: the loose part (HandChild) into the hand, the
+        // FSM to Find correct part, then ASSEMBLE. went[0]: it left the hand (destroyed, its copy switched
+        // on, or hung on its pivot); else it goes back where it lay.
+        IEnumerable Put(PlayMakerFSM fsm, Transform pivot, bool[] went)
+        {
+            var handChild = fsm.FsmVariables.FindFsmString("HandChild");
+            var part = handChild != null ? FindLoose(handChild.Value) : null;
+            if (part == null)
+            {
+                log($"satsuma: {fsm.name}: no loose {(handChild != null ? handChild.Value : "part")}");
+                yield break;
+            }
+            var parent = part.parent;
+            var position = part.position;
+            var rotation = part.rotation;
+            var body = part.GetComponent<Rigidbody>();
+            bool kinematic = body != null && body.isKinematic;
+            if (body != null) body.isKinematic = true;
+            part.SetParent(pivot, false);
+            part.localPosition = Vector3.zero;
+            var state = fsm.Fsm.GetState("Find correct part") ?? fsm.Fsm.GetState("Wait for assembly");
+            if (state != null && SaveSync.SwitchState != null) SaveSync.SwitchState.Invoke(fsm.Fsm, new object[] { state });
+            yield return null;
+            if (fsm != null) fsm.SendEvent("ASSEMBLE");
+            for (int i = 0; i < 10; i++) yield return null;
+            went[0] = part == null || !part.IsChildOf(pivot);
+            if (!went[0])
+            {
+                part.SetParent(parent, true);
+                part.position = position;
+                part.rotation = rotation;
+                if (body != null) body.isKinematic = kinematic;
+            }
+            log($"satsuma: {(fsm != null ? fsm.name : "trigger")}: {handChild.Value} {(went[0] ? "on" : "didn't go on (FSM in " + (fsm != null ? fsm.ActiveStateName : "") + ")")}");
         }
 
         // Spike command "satsuma bare": takes every part with a Removal FSM off as MSC's Remove part state

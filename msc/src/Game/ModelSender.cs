@@ -398,7 +398,7 @@ namespace PerkeleRim.Game
         {
             log($"model: {watchWhat}: sent {watchModels} models, {watchChunks} chunks, {watchBytes} bytes in {(now - watchStart - (done ? IdleMs : 0)) / 1000:0.0} s" +
                 $"{(done ? "" : " (cut short)")}: {watch.Summary()}; reading took {watchReadMs:0} ms, longest step {longestStepMs:0.0} ms ({longestStep}), " +
-                $"longest gap between chunks {longestGap:0} ms");
+                $"longest gap between chunks {longestGap:0} ms; {shared.Count} shared textures, {shared.BytesSaved >> 20} MB of them named by id instead of sent");
             watch = null;
         }
 

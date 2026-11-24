@@ -500,7 +500,7 @@ namespace PerkeleRim::TestKit
 
             SkseTestKit::AddTask("pr.satsuma", "[what]",
                 "The Satsuma (MSC has it on foot): here brings it in front of Kumpo as MSC has it built, half puts half its parts on through "
-                "MSC's own assembly (body panels, front seats, dashboard, radiator), bare takes every part with a Removal FSM off; answers once "
+                "MSC's own assembly (body panels, front seats, dashboard, radiator), full every part MSC has loose, bare takes every part with a Removal FSM off; answers once "
                 "it is drawn and its parts have settled (every part on it drawn from its model, nothing changed for 2 s), as pr.vehicle satsuma",
                 [](Call& a_call) -> Step {
                     RequireMsc();
@@ -508,10 +508,10 @@ namespace PerkeleRim::TestKit
                     if (what.empty()) {
                         what = "here";
                     }
-                    if (what != "here" && what != "half" && what != "bare") {
-                        throw Error("what is here, half or bare");
+                    if (what != "here" && what != "half" && what != "full" && what != "bare") {
+                        throw Error("what is here, half, full or bare");
                     }
-                    a_call.DefaultTimeout(180.0);
+                    a_call.DefaultTimeout(what == "full" ? 900.0 : 180.0);
                     struct Seen
                     {
                         bool          sent = false;
