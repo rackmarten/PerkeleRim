@@ -30,8 +30,8 @@ namespace PerkeleRim
 
         // The shelves: three against the back wall (inner face at x -341, as the garage's) and four
         // along the far side wall (+Y, inner face at y 223), all facing into the bay. Along is also
-        // the rotation esp-gen places the shelf with (at 0 its width runs along +X and its front
-        // faces +Y, as the garage's shelves).
+        // the rotation esp-gen places the shelf with (at 0 its width runs along +X and its open front
+        // faces -Y; seen in game).
         public struct Shelf
         {
             public float X, Y;      // its middle, bay frame
@@ -42,8 +42,8 @@ namespace PerkeleRim
         const float Quarter = (float)(Math.PI / 2), Half = (float)Math.PI;
         public static readonly Shelf[] Shelves =
         {
-            new Shelf(-311f, -150f, Quarter), new Shelf(-311f, 0f, Quarter), new Shelf(-311f, 150f, Quarter),  // back wall
-            new Shelf(-150f, 193f, Half), new Shelf(-10f, 193f, Half), new Shelf(130f, 193f, Half), new Shelf(270f, 193f, Half),  // far wall
+            new Shelf(-311f, -150f, -Quarter), new Shelf(-311f, 0f, -Quarter), new Shelf(-311f, 150f, -Quarter),  // back wall
+            new Shelf(-150f, 193f, 0f), new Shelf(-10f, 193f, 0f), new Shelf(130f, 193f, 0f), new Shelf(270f, 193f, 0f),  // far wall
         };
 
         // The stand: two long crates (CrateSmallLong01: 50 x 142 x 48, its origin in its middle) across

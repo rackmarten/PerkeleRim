@@ -174,6 +174,7 @@ namespace PerkeleRim.Game
             foreach (var t in items)
             {
                 if (t == null || t.IsChildOf(player) || (t.position + delta - feet).sqrMagnitude > keep) continue;
+                if (t.root.name == "CARPARTS") continue;  // the Satsuma's parts keep their place in Skyrim themselves (GarageMover)
                 t.position += delta;
                 var body = t.GetComponent<Rigidbody>();
                 if (body != null)
@@ -299,7 +300,7 @@ namespace PerkeleRim.Game
             if (t.GetComponent<CarDynamics>() != null) return false;
             if (t.name.Contains("(itemx)") || t.root.name == "ITEMS") return true;
             // The Satsuma's loose parts, the engine block (95 kg) too: they lie in the garage's bay.
-            if (t.root.name == "CARPARTS" && t.CompareTag("PART") && !t.IsChildOf(player)) return true;
+            if (t.root.name == "CARPARTS" && t.CompareTag("PART") && !t.IsChildOf(player) && !body.isKinematic) return true;
             if (t.parent != null && t.parent.name == "ItemPivot") return true;  // in MSC's hand (an empty bottle out of the pocket never lay loose)
             if (t.IsChildOf(player) || body.isKinematic || body.mass > LooseMassMax) return false;
             var rootBody = t.root != t ? t.root.GetComponent<Rigidbody>() : null;

@@ -12,9 +12,18 @@ namespace PerkeleRim.Game
     //    or at MSC's home back onto its slot, every vehicle to its spot by the garage (the body too);
     //  - BayStand: a save that had the move, with an MSC that hasn't placed the body this session
     //    (restarted since): the body back on its stand;
-    //  - BayCheck: counts the parts on and off their slots, for the test kit.
-    // Waits for the island's ground at the stand (20 s at most), then does it all in one frame and
-    // answers GarageDone. MSC's shops and junkyard keep their parts: only home and the island count.
+    //  - BayCheck: counts the Satsuma's parts on the island on and off their slots, for the test kit.
+    // Waits for the island's ground under the whole bay (20 s at most), then does it all in one frame
+    // and answers GarageDone. MSC's shops and junkyard keep their parts: only home and the island count.
+    //
+    // It also keeps the Satsuma's loose parts on the island where they lie in Skyrim (Keep): the
+    // island is only Skyrim's ground around Kumpo, so a part left behind (on the bay's shelves while he
+    // drives to Riverwood) would lose the ground under it and fall, and a new anchor would move it. A
+    // kept part's Skyrim pose and space are noted while it lies on ground; without ground it is held
+    // kinematic there, in another worldspace or interior it waits far below, and on each new anchor it
+    // goes back to its pose. After MSC starts again its parts on the island are where its own save had
+    // them for an anchor long gone: held where they are, and the first stand request of the session
+    // (Kumpo near the bay of a save that had the move) lays them all on their slots again.
     public unsafe class GarageMover
     {
         const float GroundWait = 20f;
@@ -23,6 +32,9 @@ namespace PerkeleRim.Game
         const float IslandBelow = 300f;  // Unity y: above it is the island (at y 1000), below MSC's own map
         const float OnSlot = 0.35f;      // meters from its slot (flat) a part still counts as on it
         const float BodyDrop = 0.03f;    // meters above the stand the body is set down at
+        const float LostBelow = -200f;   // Unity y: below MSC's own map, fallen (or put away by Keep)
+        const float AwayHeight = -5000f; // Unity y kept parts in another space wait at
+        const float KeepScan = 1f;       // seconds between looking for parts to keep
 
         readonly Island island;
         readonly Func<Vector3, Vector3?> findGround;
@@ -33,6 +45,20 @@ namespace PerkeleRim.Game
         readonly List<GarageMessages.Request> pending = new List<GarageMessages.Request>();
         float since;
         bool bodyPlaced;  // this MSC session has set the body down on its stand (or seen it placed)
+
+        class Kept
+        {
+            public Rigidbody Body;
+            public bool Known;          // Position, Rotation and the space are noted (it lay on ground)
+            public Vec3 Position;       // Skyrim world space
+            public Quaternion Rotation; // Unity's (the island only moves, never turns)
+            public uint Worldspace, Cell;
+            public bool Held;           // kinematic by Keep
+            public bool Away;           // waiting below, in another space than the island's
+        }
+        readonly Dictionary<Rigidbody, Kept> kept = new Dictionary<Rigidbody, Kept>();
+        float nextKeepScan;
+        uint keptGeneration;
 
         public GarageMover(Island island, Func<Vector3, Vector3?> findGround, Func<VehicleLink> satsuma, Func<VehicleLink[]> vehicles, Func<Transform> player, Action<string> log)
         {
@@ -60,6 +86,7 @@ namespace PerkeleRim.Game
         // Every LateUpdate. playing: MSC owns the player and it stands on the current island.
         public void Update(Link link, bool playing)
         {
+            Keep(playing);
             if (pending.Count == 0 || !playing || link == null) return;
             var r = pending[0];
             if (r.Generation != island.Generation)
@@ -68,9 +95,7 @@ namespace PerkeleRim.Game
                 Answer(link, GarageMessages.Done(r, false, false, 0, 0, 0, 0));
                 return;
             }
-            float sx, sy, sz;
-            SatsumaBay.ToWorld(SatsumaBay.BodyX, SatsumaBay.BodyY, SatsumaBay.StandTop, r.Position.x, r.Position.y, r.Position.z, r.Heading, out sx, out sy, out sz);
-            if (!findGround(Island(sx, sy, sz)).HasValue)
+            if (!BayGround(r))
             {
                 if (Time.realtimeSinceStartup - since < GroundWait) return;
                 log($"garage: no ground at the bay after {GroundWait} s, {What(r.What)} not done");
@@ -81,11 +106,14 @@ namespace PerkeleRim.Game
             bool body = false;
             int slotted = 0, floor = 0, brought = 0, missed = 0;
             var car = satsuma();
-            if ((r.What & (Wire.BayMoveSatsuma | Wire.BayVehiclesHome)) != 0 || ((r.What & Wire.BayStand) != 0 && !bodyPlaced))
+            // The first stand request since MSC started: its parts on the island are where its save had
+            // them for another anchor; the bay is laid out again, as by the board.
+            bool restarted = (r.What & Wire.BayStand) != 0 && !bodyPlaced;
+            if ((r.What & (Wire.BayMoveSatsuma | Wire.BayVehiclesHome)) != 0 || restarted)
                 body = SetBodyDown(car, r);
             else body = car != null && car.Car != null && OnStand(car.Car, r);
-            if ((r.What & (Wire.BayMoveSatsuma | Wire.BayPartsHome)) != 0)
-                PutParts(r, (r.What & Wire.BayPartsHome) != 0, out slotted, out floor);
+            if ((r.What & (Wire.BayMoveSatsuma | Wire.BayPartsHome)) != 0 || restarted)
+                PutParts(r, (r.What & Wire.BayPartsHome) != 0 || restarted, out slotted, out floor);
             if ((r.What & Wire.BayVehiclesHome) != 0)
                 brought = BringVehicles(r);
             if ((r.What & Wire.BayCheck) != 0)
@@ -118,6 +146,19 @@ namespace PerkeleRim.Game
         {
             var at = island.SkyrimToIsland(new Vec3(x, y, z));
             return new Vector3(at.x, at.y, at.z);
+        }
+
+        // Whether the island has its ground under the whole bay: the stand, every shelf and the
+        // floor's corners (the bay spans more than one collision chunk).
+        bool BayGround(GarageMessages.Request r)
+        {
+            if (!findGround(BayPoint(r, SatsumaBay.BodyX, SatsumaBay.BodyY, SatsumaBay.StandTop)).HasValue) return false;
+            foreach (var shelf in SatsumaBay.Shelves)
+                if (!findGround(BayPoint(r, shelf.X, shelf.Y, SatsumaBay.BoardHeights[SatsumaBay.BoardHeights.Length - 1])).HasValue) return false;
+            float fx = SatsumaBay.FloorX[SatsumaBay.FloorX.Length - 1] + SatsumaBay.FloorHalf - 40f, fy = SatsumaBay.FloorHalf - 40f;
+            foreach (var c in new[] { new Vector2(fx, fy), new Vector2(fx, -fy), new Vector2(-fx, fy), new Vector2(-fx, -fy) })
+                if (!findGround(BayPoint(r, c.x, c.y, 0f)).HasValue) return false;
+            return true;
         }
 
         Vector3 BayPoint(GarageMessages.Request r, float bx, float by, float bz)
@@ -154,6 +195,7 @@ namespace PerkeleRim.Game
             car.position = at;
             float bottom;
             if (Bottom(car, out bottom)) at.y += top + BodyDrop - bottom;
+            link.Pinned = true;  // held still on its stand: on two crates it slid off
             link.SetDown(at, rotation);
             bodyPlaced = true;
             log($"garage: the Satsuma's body on its stand at ({at.x:0.00},{at.y:0.00},{at.z:0.00}), stand top {top:0.00}");
@@ -180,8 +222,10 @@ namespace PerkeleRim.Game
         }
 
         // The Satsuma's loose parts: MSC keeps them under CARPARTS (PartsCar, PartsMotor, PartsGT, ...)
-        // tagged PART while off the car, named like a part (SatsumaModel.IsPart, as SatsumaParts has them); at home (within HomeRadius of it, in MSC's own map) or, with
-        // island, on the island too. Not the ones in Kumpo's hands, nor the parts' own triggers.
+        // tagged PART while off the car, named like a part (SatsumaModel.IsPart, as SatsumaParts has
+        // them); at home (within HomeRadius of it, in MSC's own map) or, with island, on the island
+        // too, and the lost ones (fallen below MSC's map, or waiting below for another space). Not the
+        // ones in Kumpo's hands, nor the parts' own triggers.
         List<Rigidbody> LooseParts(bool island)
         {
             var list = new List<Rigidbody>();
@@ -193,7 +237,7 @@ namespace PerkeleRim.Game
                 var t = body.transform;
                 if (!body.gameObject.activeInHierarchy || !t.CompareTag("PART") || t.root.name != "CARPARTS" || !SatsumaModel.IsPart(t.name, HasRemoval(t))) continue;
                 if ((p != null && t.IsChildOf(p)) || (car != null && t.IsChildOf(car))) continue;
-                bool onIsland = t.position.y > IslandBelow;
+                bool onIsland = t.position.y > IslandBelow || t.position.y < LostBelow;
                 bool atHome = !onIsland && home.HasValue && Flat(t.position - home.Value) < HomeRadius;
                 if (atHome || (island && onIsland)) list.Add(body);
             }
@@ -248,11 +292,16 @@ namespace PerkeleRim.Game
                 {
                     float x, y, z;
                     SatsumaBay.PileSpot(placed[i].Pile, out x, out y, out z);
-                    spot = BayPoint(r, x, y, z);
+                    spot = BayPoint(r, x, y, 0f);
                     along = 0f;
                     floor++;
+                    // On the floor's apron, then a layer up for each grid full.
+                    var g = findGround(spot);
+                    if (g.HasValue) spot = g.Value;
+                    spot += Vector3.up * (z / 70f);
                 }
                 Place(bodies[i], spot, Yaw(r, along));
+                Forget(bodies[i]);  // Keep notes its new place once it lies there
             }
             log($"garage: {bodies.Count} loose parts {(fromIsland ? "at home and on the island" : "at home")} put in the bay");
         }
@@ -270,6 +319,7 @@ namespace PerkeleRim.Game
             float b = Extent(t, along);
             if (a >= b) t.rotation = yaw;
             var ground = findGround(spot);
+            if (ground.HasValue && spot.y - ground.Value.y > 0.1f) ground = spot;  // a pile's upper layer: on the parts below
             float bottom;
             if (Bottom(t, out bottom) && ground.HasValue) t.position += Vector3.up * (ground.Value.y + Clearance - bottom);
             body.position = t.position;
@@ -284,14 +334,11 @@ namespace PerkeleRim.Game
         void Count(GarageMessages.Request r, out int on, out int off)
         {
             on = off = 0;
+            // Every one on the island (and the lost ones): a part left in a dungeon is off its slot too.
             var bodies = LooseParts(true);
-            // Only the ones in the bay count.
             var inBay = new List<Rigidbody>();
             foreach (var b in bodies)
-            {
-                var local = ToBay(r, b.transform.position);
-                if (Mathf.Abs(local.x) < 460f && Mathf.Abs(local.y) < 270f) inBay.Add(b);
-            }
+                if (b.transform.position.y > IslandBelow || b.transform.position.y < LostBelow) inBay.Add(b);
             var placed = SatsumaBay.Assign(Describe(inBay));
             for (int i = 0; i < inBay.Count; i++)
             {
@@ -310,6 +357,117 @@ namespace PerkeleRim.Game
             float dx = s.x - r.Position.x, dy = s.y - r.Position.y;
             float sh = (float)Math.Sin(r.Heading), ch = (float)Math.Cos(r.Heading);
             return new Vector2(dx * sh + dy * ch, -dx * ch + dy * sh);
+        }
+
+        // ---- Keeping the parts in Skyrim ----
+
+        // Every LateUpdate. Parts on the island keep their place in Skyrim (see the top).
+        void Keep(bool playing)
+        {
+            var p = player();
+            var car = satsuma() != null ? satsuma().Car : null;
+            if (Time.realtimeSinceStartup >= nextKeepScan)
+            {
+                nextKeepScan = Time.realtimeSinceStartup + KeepScan;
+                foreach (Rigidbody body in UnityEngine.Object.FindObjectsOfType(typeof(Rigidbody)))
+                {
+                    var t = body.transform;
+                    if (kept.ContainsKey(body) || !body.gameObject.activeInHierarchy || !t.CompareTag("PART") || t.root.name != "CARPARTS") continue;
+                    if (t.position.y < IslandBelow || !SatsumaModel.IsPart(t.name, HasRemoval(t))) continue;  // MSC's own map (home, shops), or lost
+                    kept[body] = new Kept { Body = body };
+                }
+            }
+            var gone = new List<Rigidbody>();
+            bool newAnchor = playing && island.HasAnchor && island.Generation != keptGeneration;
+            if (newAnchor) keptGeneration = island.Generation;
+            foreach (var k in kept.Values)
+            {
+                var body = k.Body;
+                if (body == null || !body.gameObject.activeInHierarchy) { gone.Add(body); continue; }
+                var t = body.transform;
+                // In Kumpo's hands, or on the car: not ours until it lies loose again.
+                if ((p != null && t.IsChildOf(p)) || (car != null && t.IsChildOf(car)) || t.root.name != "CARPARTS")
+                {
+                    if (k.Held) { body.isKinematic = false; k.Held = false; }
+                    gone.Add(body);
+                    continue;
+                }
+                if (!playing || !island.HasAnchor)
+                {
+                    // MSC on its own, or no island yet (MSC just started): held where it is.
+                    if (t.position.y > IslandBelow && !k.Held) Hold(k, true);
+                    continue;
+                }
+                if (newAnchor && k.Known) { PutBack(k); continue; }
+                if (k.Away) continue;
+                var ground = findGround(t.position);
+                if (ground.HasValue)
+                {
+                    if (k.Held) Hold(k, false);
+                    if (!k.Known || !body.isKinematic)
+                    {
+                        // Where it lies in Skyrim, and in which space.
+                        k.Position = island.IslandToSkyrim(new Vec3(t.position.x, t.position.y, t.position.z));
+                        k.Rotation = t.rotation;
+                        k.Worldspace = island.Worldspace;
+                        k.Cell = island.Cell;
+                        k.Known = true;
+                    }
+                }
+                else if (!k.Held)
+                {
+                    if (k.Known) PutBack(k);  // it may have dropped a little: back where it lay
+                    Hold(k, true);
+                }
+            }
+            foreach (var b in gone) kept.Remove(b);
+        }
+
+        // Back to its noted pose on the current island, held until its ground is there; in another
+        // space, put away far below.
+        void PutBack(Kept k)
+        {
+            var t = k.Body.transform;
+            if (k.Worldspace != island.Worldspace || k.Cell != island.Cell)
+            {
+                k.Away = true;
+                t.position = new Vector3(t.position.x, AwayHeight, t.position.z);
+            }
+            else
+            {
+                k.Away = false;
+                var at = island.SkyrimToIsland(k.Position);
+                t.position = new Vector3(at.x, at.y, at.z);
+                t.rotation = k.Rotation;
+            }
+            k.Body.position = t.position;
+            k.Body.rotation = t.rotation;
+            Hold(k, true);
+        }
+
+        static void Hold(Kept k, bool hold)
+        {
+            k.Held = hold;
+            if (!hold)
+            {
+                k.Body.isKinematic = false;
+                return;
+            }
+            if (!k.Body.isKinematic)
+            {
+                k.Body.velocity = Vector3.zero;
+                k.Body.angularVelocity = Vector3.zero;
+            }
+            k.Body.isKinematic = true;
+        }
+
+        // A part GarageMover just put somewhere: released, and noted again once it lies there.
+        void Forget(Rigidbody body)
+        {
+            Kept k;
+            if (!kept.TryGetValue(body, out k)) return;
+            if (k.Held) body.isKinematic = false;
+            kept.Remove(body);
         }
 
         // ---- The vehicles ----

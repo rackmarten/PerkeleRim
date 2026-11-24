@@ -59,7 +59,9 @@ switch ($Mode) {
             Use-MscSave $mscSaveDir $mscSave
             Write-Host "My Summer Car plays the save in $mscSave (the player's own comes back on restore)."
         }
-        Save-DeployStamps $store -Skip (@($pluginsTxt) + $mscPaths)  # Skyrim rewrites plugins.txt as it runs, MSC its save
+        # Skyrim rewrites plugins.txt as it runs, MSC its save (kept by this or an earlier deploy of the session).
+        $mscKept = @(Read-SessionList $store | Where-Object { $_.path -like (Join-Path $mscSaveDir '*') } | ForEach-Object { $_.path })
+        Save-DeployStamps $store -Skip (@($pluginsTxt) + $mscPaths + $mscKept)
     }
     { $_ -in 'restore', 'restore-anyway' } {
         if (Restore-MscDoorstop $msc) { Write-Host "Put back My Summer Car's doorstop_config.ini (a hidden start hadn't)." }

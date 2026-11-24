@@ -267,11 +267,15 @@ namespace PerkeleRim::Garage
             RE::SendHUDMessage::ShowHUDMessage(std::format("{} {} home by the garage.", d.vehicles, d.vehicles == 1 ? "vehicle is" : "vehicles are").c_str());
         }
         if ((d.request & Protocol::kBayPartsHome) != 0) {
-            RE::SendHUDMessage::ShowHUDMessage(std::format("{} car parts back on their shelves, {} on the bay's floor.", d.slotted, d.floor).c_str());
+            RE::SendHUDMessage::ShowHUDMessage(std::format("{} car parts back on their own slots, {} elsewhere in the bay.", d.slotted, d.floor).c_str());
         }
-        if (d.request == 0 && (d.generation != 0)) {
-            SKSE::log::info("garage: MSC couldn't do it (no ground at the bay in time)");
-        } else if (d.request == 0 && !state.moved) {
+        if (d.request == 0) {
+            SKSE::log::info("garage: MSC couldn't do {:X} (no ground under the bay in time, or a new anchor)", d.asked);
+            if ((d.asked & (Protocol::kBayVehiclesHome | Protocol::kBayPartsHome)) != 0) {
+                RE::SendHUDMessage::ShowHUDMessage("The garage board couldn't bring them home: try again in a moment.");
+            }
+        }
+        if (d.request == 0 && (d.asked & (Protocol::kBayMoveSatsuma | Protocol::kBayStand)) != 0) {
             state.bayGeneration = 0;  // ask again in a while
             state.retryAt = Now() + kBayRetry;
         }

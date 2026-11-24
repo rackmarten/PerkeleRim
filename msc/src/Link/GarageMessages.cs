@@ -49,6 +49,7 @@ namespace PerkeleRim
             floor = (uint)Math.Max(0, floor),
             vehicles = (uint)Math.Max(0, vehicles),
             missed = (uint)Math.Max(0, missed),
+            asked = request.What,
         };
 
         static void Put(byte[] bytes, int at, uint v) => Array.Copy(BitConverter.GetBytes(v), 0, bytes, at, 4);

@@ -46,7 +46,7 @@
     "wait frames=45",
     "pause",
     { "cmd": "screenshot", "name": "van-home", "camera": "orbit pr.vehicle:van yaw=200 distance=700 pitch=20" },
-    { "cmd": "screenshot", "name": "parts-home", "camera": "orbit pr.bay yaw=120 distance=450 pitch=12" },
+    { "cmd": "screenshot", "name": "parts-home", "camera": "orbit pr.bay: yaw=120 distance=450 pitch=12" },
     "resume",
     { "cmd": "scene", "presets": "restore" }
   ]

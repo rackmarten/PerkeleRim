@@ -37,7 +37,10 @@ namespace PerkeleRim.Tests
             Assert.That(done.body, Is.EqualTo(1u));
             Assert.That(done.slotted, Is.EqualTo(80u));
             Assert.That(done.missed, Is.EqualTo(0u));
-            Assert.That(GarageMessages.Done(asked, false, false, 0, 0, 0, 0).request, Is.EqualTo(0u));
+            Assert.That(done.asked, Is.EqualTo(Wire.BayPartsHome));
+            var failed = GarageMessages.Done(asked, false, false, 0, 0, 0, 0);
+            Assert.That(failed.request, Is.EqualTo(0u));
+            Assert.That(failed.asked, Is.EqualTo(Wire.BayPartsHome));
         }
     }
 }

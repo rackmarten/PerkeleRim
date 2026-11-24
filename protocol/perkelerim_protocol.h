@@ -926,8 +926,8 @@ namespace PerkeleRim::Protocol
         std::uint32_t slotted;     // Satsuma parts on their slots (put there, or kBayCheck: lying there)
         std::uint32_t floor;       // parts laid on the bay's floor or its pile (no slot of their own free, or not the Satsuma's)
         std::uint32_t vehicles;    // vehicles brought to their spots
-        std::uint32_t missed;      // kBayCheck: Satsuma parts in the bay off their slots
-        std::uint32_t reserved;
+        std::uint32_t missed;      // kBayCheck: the Satsuma's parts on the island off their slots
+        std::uint32_t asked;       // the request as asked (kBay*), done or not
     };
 
     // ---- Models (MSC -> Skyrim) ----

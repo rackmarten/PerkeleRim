@@ -906,10 +906,6 @@ namespace PerkeleRim.Game
     }
 }";
 
-        // Spike "island steps [radius]": the island triangles within radius (m, default 8) of the
-        // player steeper than 30 degrees with their top within 1 m of the feet, steepest first, with
-        // the top relative to the feet and their height, so a bridge lip
-        // or road hole can be read from the log.
         // Spike "surfaces x y": every upward-facing island surface at Skyrim world (x, y), in Skyrim
         // units, top first: a shelf's boards, the stand under the Satsuma.
         public void LogSurfaces(float x, float y)
@@ -921,6 +917,10 @@ namespace PerkeleRim.Game
             log($"player: island surfaces at ({x:0},{y:0}): {(heights.Count > 0 ? string.Join(", ", heights.ToArray()) : "none")}");
         }
 
+        // Spike "island steps [radius]": the island triangles within radius (m, default 8) of the
+        // player steeper than 30 degrees with their top within 1 m of the feet, steepest first, with
+        // the top relative to the feet and their height, so a bridge lip
+        // or road hole can be read from the log.
         public void LogSteps(float radius)
         {
             if (player == null) { log("player: island steps: no player"); return; }

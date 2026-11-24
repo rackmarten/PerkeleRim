@@ -79,8 +79,7 @@ namespace PerkeleRim.Spike
             }
         }
 
-        // Tag, layer, physics and FSMs of every object whose name contains text (prefabs and inactive
-        // templates included), at most 20.
+        // Spike "fetch <part>": that loose part of the Satsuma's dropped 1 m in front of the player.
         static void Fetch(string name)
         {
             var player = GameObject.Find("PLAYER");
@@ -99,6 +98,8 @@ namespace PerkeleRim.Spike
             SpikeLog.Write("cmd: fetch: no loose part named " + name);
         }
 
+        // Tag, layer, physics and FSMs of every object whose name contains text (prefabs and inactive
+        // templates included), at most 20.
         static void Inspect(string text)
         {
             int n = 0;

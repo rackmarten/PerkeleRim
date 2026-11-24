@@ -176,8 +176,6 @@ namespace PerkeleRim::TestKit
             return JsonObject{ { "x", a_point[0] }, { "y", a_point[1] }, { "z", a_point[2] } };
         }
 
-        // What the kit says about a vehicle MSC has on the island: where, how fast, drawn or not, which of its
-        // model's lights are on.
         Json DescribeBay()
         {
             const auto& last = Garage::LastBay();
@@ -187,12 +185,14 @@ namespace PerkeleRim::TestKit
                 json["bay"] = JsonObject{ { "x", bay->position.x }, { "y", bay->position.y }, { "z", bay->position.z }, { "heading", bay->heading } };
             }
             if (last.count > 0) {
-                json["last"] = JsonObject{ { "request", static_cast<double>(d.request) }, { "generation", static_cast<double>(d.generation) }, { "body", d.body != 0 }, { "slotted", static_cast<double>(d.slotted) },
+                json["last"] = JsonObject{ { "request", static_cast<double>(d.request) }, { "asked", static_cast<double>(d.asked) }, { "generation", static_cast<double>(d.generation) }, { "body", d.body != 0 }, { "slotted", static_cast<double>(d.slotted) },
                     { "floor", static_cast<double>(d.floor) }, { "missed", static_cast<double>(d.missed) }, { "vehicles", static_cast<double>(d.vehicles) } };
             }
             return json;
         }
 
+        // What the kit says about a vehicle MSC has on the island: where, how fast, drawn or not, which of its
+        // model's lights are on.
         Json DescribeVehicle(std::uint32_t a_id, const Protocol::VehicleState& a_state, bool a_parts = true)
         {
             const float speed = std::sqrt(a_state.velocity[0] * a_state.velocity[0] + a_state.velocity[1] * a_state.velocity[1] +
@@ -607,6 +607,7 @@ namespace PerkeleRim::TestKit
                         std::uint32_t before = 0;
                     };
                     return [request, seen = std::make_shared<Seen>()](Call&) -> std::optional<Json> {
+                        // An automatic stand request's answer may still be on its way: only this one's counts.
                         if (!seen->sent) {
                             seen->before = Garage::LastBay().count;
                             if (!Garage::RequestBay(request, PlayerSync::Generation(), "test kit")) {
@@ -614,7 +615,7 @@ namespace PerkeleRim::TestKit
                             }
                             seen->sent = true;
                         }
-                        if (Garage::LastBay().count == seen->before) {
+                        if (Garage::LastBay().count == seen->before || Garage::LastBay().done.asked != request) {
                             return std::nullopt;
                         }
                         return DescribeBay();
@@ -650,7 +651,8 @@ namespace PerkeleRim::TestKit
                             seen->phase = 2;
                             return std::nullopt;
                         }
-                        if (Garage::LastBay().count == seen->before) {
+                        const auto asked = button == 0 ? Protocol::kBayVehiclesHome : Protocol::kBayPartsHome;
+                        if (Garage::LastBay().count == seen->before || Garage::LastBay().done.asked != asked) {
                             return std::nullopt;
                         }
                         return DescribeBay();

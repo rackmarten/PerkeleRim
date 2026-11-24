@@ -838,7 +838,7 @@ namespace PerkeleRim.Protocol
         public uint floor;
         public uint vehicles;
         public uint missed;
-        public uint reserved;
+        public uint asked;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

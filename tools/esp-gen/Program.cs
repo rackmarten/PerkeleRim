@@ -300,7 +300,8 @@ pieces.Add(Place(Base(skyrim.Statics, SatsumaBay.TablePiece), SatsumaBay.TableX,
 foreach (var x in SatsumaBay.StandX)  // CrateSmallLong01's origin is in its middle; its 142 run across the body
     pieces.Add(Place(Base(skyrim.Statics, SatsumaBay.StandPiece), SatsumaBay.BodyX + x, bayY + SatsumaBay.BodyY, bayFloor + SatsumaBay.StandTop / 2f, 0f));
 uint bayNextId = nextId;
-if (bayNextId > 0xE00) throw new InvalidOperationException($"the Satsuma bay's ids reach {bayNextId:X3}");
+if (bayNextId >= 0xDFF) throw new InvalidOperationException($"the Satsuma bay's ids reach {bayNextId:X3}, into the board's base at 0xDFF");
+bayNextId = 0xE00;  // past the board's base
 nextId = garageNextId;
 mod.ModHeader.Stats.NextFormID = nextId;
 
