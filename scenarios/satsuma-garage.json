@@ -17,9 +17,10 @@
     "wait frames=45",
     "pause",
     { "cmd": "screenshot", "name": "bay-front", "camera": "orbit pr.bay: yaw=180 distance=900 pitch=20" },
-    { "cmd": "screenshot", "name": "bay-shelves", "camera": "orbit pr.bay: yaw=120 distance=450 pitch=12" },
-    { "cmd": "screenshot", "name": "bay-back", "camera": "orbit pr.bay: yaw=-60 distance=420 pitch=15" },
-    { "cmd": "screenshot", "name": "body-on-stand", "camera": "orbit pr.vehicle:satsuma yaw=150 distance=420 pitch=15" },
+    { "cmd": "screenshot", "name": "bay-shelves", "camera": "orbit pr.bay: yaw=-90 distance=210 pitch=12" },
+    { "cmd": "screenshot", "name": "bay-back", "camera": "orbit pr.bay: yaw=180 distance=210 pitch=12" },
+    { "cmd": "screenshot", "name": "bay-top", "camera": "top pr.bay: distance=900 near=620" },
+    { "cmd": "screenshot", "name": "body-on-stand", "camera": "orbit pr.vehicle:satsuma yaw=135 distance=230 pitch=20" },
     "resume",
 
     // A reload never moves anything again.
@@ -32,7 +33,7 @@
     { "label": "still every part on its slot", "cmd": "pr.garage.ask", "what": "check",
       "expect": ["last.missed == 0", "last.slotted > 40"] },
     "pause",
-    { "cmd": "screenshot", "name": "after-load", "camera": "orbit pr.bay: yaw=180 distance=900 pitch=20" },
+    { "cmd": "screenshot", "name": "after-load", "camera": "top pr.bay: distance=900 near=620" },
     "resume",
     { "cmd": "scene", "presets": "restore" }
   ]
