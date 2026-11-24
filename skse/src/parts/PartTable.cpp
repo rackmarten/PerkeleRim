@@ -25,6 +25,12 @@ namespace PerkeleRim::PartTable
         }
     }
 
+    void Clear()
+    {
+        table.Clear();
+        first = true;
+    }
+
     const Parts::Table& Get()
     {
         return table;

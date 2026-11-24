@@ -399,6 +399,7 @@ namespace PerkeleRim::PlayerSync
                 camera->ForceFirstPerson();
             }
             state.owned = true;
+            PartTable::Clear();  // MSC sends every part again now; one a restarted MSC no longer has goes
             Death::Hide();
             Death::OnHandover();
             state.statTime = 0.0f;

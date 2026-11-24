@@ -22,6 +22,7 @@ either game.
 | `teimo-drunk.json` | Kumpo walking up drunk (MSC drunk 2): Teimo greets him, then remarks on the drink with a caption; backing off past 8 m gets his goodbye | 26 s |
 | `look-at.json` | MSC's hand on the van's driver door handle, with Kumpo stood there by MSC's `aim` debug command: right after the start (the van on the garage's pit), after a load of the starter save (`pr.load`, as a quickload does), and with the van called on open grass; MSC's prompt as Skyrim got it (`pr.lookat`), a screenshot with the HUD each time | about 40 s |
 | `whirlwind-sprint.json` | Whirlwind Sprint while MSC has Kumpo: the van called in front of him stops a dash, one word dashes him about 15 m the way he faces, three about 30 m, Fire Breath doesn't move him (`pr.shout`, so not the Z key itself) | 15 to 17 s |
+| `satsuma-bolting.json` | building the Satsuma on its stand in the garage the way MSC does it: the left door, the front left wheel and the radiator each picked up off its shelf (MSC's `look`, a left click), held to its place (MSC's assemble icon has to reach Skyrim, `pr.lookat`), clicked on, bolted with MSC's wrench (2, `wrench` for the size as if picked from the spanner set, `look ... BoltPM #n` at each bolt, `pr.wheel 8`), unbolted (`pr.wheel -8`) and taken off with a right click on the disassemble icon; MSC's bolt state checked at each step through the probe (`pr.part`), pictures of both games (`screenshot`, and MSC's own view by `pr.mscshot` in Documents/My Games/PerkeleRim/Screenshots). Needs the garage's Satsuma bay | not measured yet |
 | `van-lights.json` | the van's lights at night: MSC switches them on and Skyrim's lamps follow (both low beams, the rear lamps, the cabin); pictures from behind, in front and above; an A/B pair of one paused frame with the low beams put out (the ground ahead goes dark, the ground beside doesn't change); MSC switching every lamp off | 9 s |
 
 ## What the numbers were
@@ -77,11 +78,14 @@ Start from the closest file. Steps are the kit's requests (`docs/COMMANDS.md` in
 | Command | What it does |
 |---|---|
 | `pr.msc [on=<bool>]` | Kumpo to MSC (the default) or back to Skyrim, as F10 does; answers once it's done (`msc`, `seated`) |
-| `pr.send <line>` | a line for MSC's debug commands (`msc/src/Spike/SpikeHost.cs`): `drunk 2`, `lightson 1`, `time 6`, `hold 0`, `drive HAYOSIKO` (into the van's driving trigger; `pr.key 13`, Return, then gets in), `fsmvar FuelTank Data FuelLevel 6` (every tank's level), `aim doorl Handle` (Kumpo stood at that control surface, looking at it; `aim stop` lets go), ... |
+| `pr.send <line>` | a line for MSC's debug commands (`msc/src/Spike/SpikeHost.cs`): `drunk 2`, `lightson 1`, `time 6`, `hold 0`, `drive HAYOSIKO` (into the van's driving trigger; `pr.key 13`, Return, then gets in), `fsmvar FuelTank Data FuelLevel 6` (every tank's level), `aim doorl Handle` (Kumpo stood at that control surface, looking at it; `aim stop` lets go), `look trigger_door_left` (the same at any collider, `#2` the second nearest), `wrench door left(Clone)` (MSC's wrench the size of that part's bolts), `parts door` (the Satsuma's parts into MSC's log), ... |
 | `pr.key <Unity KeyCode> [seconds=<s>]` | holds one of MSC's keys (93 is ] to call the van, 104 H to punch) |
 | `pr.shout [words] [shout=<hex>] [seconds=<s>]` | tells MSC the player shouted, as Combat does when a shout is released (Whirlwind Sprint unless `shout=`, 3 words by default), and answers 2 s later with how far Kumpo went, flat, in metres (`moved`) |
 | `pr.load <save>` | loads a save in the running game, as a quickload does (answers Skyrim's question about installed Creations), and answers once it's loaded; play mode hands Kumpo to MSC a little later, `pr.msc` waits for that |
-| `pr.lookat` | MSC's look-at prompt as Skyrim last got it: `hand` (MSC's hand on a door handle, switch or knob), `text`, and `msc` (whether MSC has Kumpo) |
+| `pr.lookat` | MSC's look-at prompt as Skyrim last got it: `hand` (MSC's hand on a door handle, switch or knob), `assemble` (a held part in its place on the car), `disassemble` (a fitted part with its bolts out), `icon` (the one Skyrim draws: `hand`, `assemble`, `disassemble` or `none`), `text`, and `msc` (whether MSC has Kumpo) |
+| `pr.part [name]` | one of the Satsuma's parts as MSC's database has it (any spelling: `door_left`, `radiator`): `installed`, `bolted`, `damaged`, `placed`, `bolts`, `boltsTight`, `stages`, `allTight`, `boltsOut`, `tightness`, `tightnessFull`, where; without a name, how many MSC reported and how many are on the car |
+| `pr.wheel <notches> [every=<s>]` | turns MSC's scroll wheel (positive away from you: MSC's wrench tightens the bolt it is on), a notch every 0.35 s |
+| `pr.mscshot <name>` | MSC's own view as `<name>_msc.png` in the folder F11 saves to, and its path once saved |
 | `pr.call [vehicle]` | calls the van (]) or the moped ([) and answers once it stands solid in Skyrim, with where it is |
 | `pr.fuel` | the fuel line as Skyrim shows it (`line`, with the nearest pump on a low tank), MSC's `low` and `dry` flags for it, and whether this save had the tow tip (`tipped`) |
 | `pr.vehicle [vehicle]` | a vehicle MSC has on the island: where, how fast, drawn, solid, which of its lights are on (`lightRolesOn`: 1 low, 2 high, 3 tail, 4 brake, 5 reverse, 6 cabin, 7 work, 8 beacon) |
@@ -93,7 +97,7 @@ Start from the closest file. Steps are the kit's requests (`docs/COMMANDS.md` in
 | `pr.teimo.front [distance=<units>]` | moves the player (Skyrim has it) in front of the stall, facing Teimo |
 | `pr.teimo.reset` | Teimo forgets Kumpo's visit and his line count, as after a load |
 
-The cameras and probes take `pr.vehicle:<van|moped|kekmet|gifu>`: the vehicle's origin, facing its way, with its
+The cameras and probes also take `pr.part:<name>` (a Satsuma part where MSC has it, its bolt state as the details), and `pr.vehicle:<van|moped|kekmet|gifu>`: the vehicle's origin, facing its way, with its
 drawn model and lamps inside (`probe lights pr.vehicle:van`, `light off pr.vehicle:van name=LowBeam`; the lamps are
 named `PerkeleRimLowBeam`, `PerkeleRimHighBeam`, `PerkeleRimTailLight`, `PerkeleRimBrakeLight`,
 `PerkeleRimReverseLight`, `PerkeleRimCabinLight`, `PerkeleRimWorkLight`, `PerkeleRimBeacon`). After a `light off` at

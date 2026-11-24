@@ -37,6 +37,9 @@ namespace PerkeleRim.Game
         readonly List<Entry> entries = new List<Entry>();
         float nextFind, nextRead;
         bool wasPlaying;
+        GameObject database;  // MSC's Database root, found once (a full scan of MSC's objects is costly)
+        int shape = -1;       // the sections' child counts added up when the entries were made
+        int[] stages = new int[8];
         int foundCount = -1;
         int cursor;
 
@@ -104,8 +107,16 @@ namespace PerkeleRim.Game
 
         void Find()
         {
-            var database = Root("Database");
-            if (database == null) { entries.Clear(); return; }
+            if (database == null) database = GameObject.Find("Database") ?? Root("Database");
+            if (database == null) { entries.Clear(); shape = -1; return; }
+            int now = 0;
+            foreach (var section in Sections)
+            {
+                var t = database.transform.Find(section);
+                if (t != null) now += t.childCount;
+            }
+            if (now == shape && entries.Count > 0) return;  // MSC never adds an entry: nothing new to find
+            shape = now;
             var known = new Dictionary<PlayMakerFSM, Entry>();
             foreach (var e in entries) if (e.Data != null) known[e.Data] = e;
             entries.Clear();
@@ -148,10 +159,10 @@ namespace PerkeleRim.Game
             var part = e.ThisPart != null ? e.ThisPart.Value : null;
             if (part != e.Part) Bind(e, part);
             int count = e.Stages.Count;
-            var stages = new int[count];
+            if (stages.Length < count) stages = new int[count];
             for (int i = 0; i < count; i++) stages[i] = e.Stages[i] != null ? e.Stages[i].Value : 0;
             int bolts, tight, sum;
-            PartReport.CountBolts(stages, out bolts, out tight, out sum);
+            PartReport.CountBolts(stages, count, out bolts, out tight, out sum);
             bool placed = part != null && part.activeInHierarchy && (part.transform.position - feet).sqrMagnitude < PlacedRadius * PlacedRadius;
             var at = part != null ? part.transform.position : Vector3.zero;
             return new PartReport

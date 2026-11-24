@@ -481,7 +481,8 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kLookAtAssemble = 0x2;
     inline constexpr std::uint32_t kLookAtDisassemble = 0x4;
     // v55: the text is MSC's part name line, not a prompt (global PickedPart, a part or tool under the crosshair, shown
-    // while MSC's option OptionsPartNames is on), sent only while GUIinteraction is empty. It doesn't keep E with MSC.
+    // while MSC's option OptionsPartNames is on; MSC's own GUI/Indicators/Partname clears it 5 s after it was set), sent
+    // only while GUIinteraction is empty. It doesn't keep E with MSC.
     inline constexpr std::uint32_t kLookAtPartName = 0x8;
 
     struct LookAtText

@@ -44,7 +44,13 @@ namespace PerkeleRim
         // Counts of a part's bolts from their stages (0..8 each).
         public static void CountBolts(int[] stages, out int bolts, out int tight, out int sum)
         {
-            bolts = stages != null ? stages.Length : 0;
+            CountBolts(stages, stages != null ? stages.Length : 0, out bolts, out tight, out sum);
+        }
+
+        // The first count of stages (a buffer kept between reads).
+        public static void CountBolts(int[] stages, int count, out int bolts, out int tight, out int sum)
+        {
+            bolts = stages != null ? Math.Min(count, stages.Length) : 0;
             tight = 0;
             sum = 0;
             for (int i = 0; i < bolts; i++)

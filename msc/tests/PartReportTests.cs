@@ -110,6 +110,8 @@ namespace PerkeleRim.Tests
             Assert.That(new[] { bolts, tight, sum }, Is.EqualTo(new[] { 4, 2, 19 }));
             PartReport.CountBolts(new[] { 12, -1 }, out bolts, out tight, out sum);
             Assert.That(new[] { bolts, tight, sum }, Is.EqualTo(new[] { 2, 1, 8 }));
+            PartReport.CountBolts(new[] { 8, 3, 8, 8 }, 2, out bolts, out tight, out sum);  // a buffer longer than the part's bolts
+            Assert.That(new[] { bolts, tight, sum }, Is.EqualTo(new[] { 2, 1, 11 }));
             PartReport.CountBolts(null, out bolts, out tight, out sum);
             Assert.That(new[] { bolts, tight, sum }, Is.EqualTo(new[] { 0, 0, 0 }));
         }

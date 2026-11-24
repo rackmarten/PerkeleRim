@@ -9,5 +9,8 @@ namespace PerkeleRim::PartTable
     // MSC's PartState message (PlayerSync reads MSC's messages only while MSC has the player).
     void OnMessage(const std::uint8_t* a_data, std::uint32_t a_size);
 
+    // Forgets every part: at each handover, when MSC sends them all again from scratch.
+    void Clear();
+
     const Parts::Table& Get();
 }

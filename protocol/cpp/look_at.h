@@ -42,7 +42,7 @@ namespace PerkeleRim::LookAt
     }
 
     // Whether MSC's crosshair is on something of its own (a prompt's text or any icon): E is MSC's then. MSC's part name
-    // line (kLookAtPartName) alone isn't a prompt: it stays up a few seconds after the look.
+    // line (kLookAtPartName) alone isn't a prompt: MSC keeps it up to 5 s after the look.
     inline bool Claims(std::string_view a_text, std::uint32_t a_flags)
     {
         const bool prompt = !a_text.empty() && (a_flags & Protocol::kLookAtPartName) == 0;

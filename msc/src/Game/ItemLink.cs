@@ -86,9 +86,9 @@ namespace PerkeleRim.Game
                 if (focus == null || focus.Transform != bolt)
                 {
                     var only = bolt;
-                    // Its own id (an item's is its instance id: never the same as a mesh object's), the model read with
+                    // Its own id (the mesh's instance id with the top bit set, apart from the items' own), the model read with
                     // MSC's highlight material, which keys it apart from the plain bolts.
-                    focus = new Entry { Transform = bolt, Id = unchecked((uint)bolt.GetInstanceID()) ^ 0x80000000u,
+                    focus = new Entry { Transform = bolt, Id = unchecked((uint)bolt.GetInstanceID()) | 0x80000000u,
                         Model = models.IdFor(bolt, t => t == only), Renderers = new[] { bolt.GetComponent<Renderer>() } };
                 }
                 state.Set(n++, Pose(focus, player));
