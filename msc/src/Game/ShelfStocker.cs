@@ -128,9 +128,10 @@ namespace PerkeleRim.Game
                 log($"shelves: no Spawner/CreateItems :: {fsmName}");
                 return null;
             }
-            spawner.SendEvent("SPAWNITEM");
             var made = spawner.FsmVariables.FindFsmGameObject("New");
-            if (made == null || made.Value == null)
+            var before = made != null ? made.Value : null;
+            spawner.SendEvent("SPAWNITEM");
+            if (made == null || made.Value == null || made.Value == before)
             {
                 log($"shelves: Spawner/CreateItems :: {fsmName} made nothing");
                 return null;

@@ -24,18 +24,23 @@
     { "cmd": "wait", "seconds": 1.5 },
     { "label": "sober: Teimo thanks him", "cmd": "pr.teimo", "expect": ["paid == 1", "lastTopic == paid"] },
 
-    // Drunk, beer: a drunk-ordering line.
+    // Drunk, two beer cases at once: two real cases, a drunk-ordering line.
     { "cmd": "wait", "seconds": 4 },
     { "label": "Kumpo is drunk (MSC's drunk level 2)", "cmd": "pr.send", "line": "drunk 2" },
     { "cmd": "wait", "seconds": 3 },
     { "label": "Kumpo takes a beer case", "cmd": "pr.send", "line": "shop take beer" },
     { "cmd": "wait", "seconds": 1 },
     { "cmd": "pr.send", "line": "shop counter" },
-    { "cmd": "wait", "seconds": 2 },
-    { "cmd": "pr.teimo", "expect": ["billCount == 1"] },
-    { "label": "he pays", "cmd": "pr.teimo.talk" },
     { "cmd": "wait", "seconds": 1.5 },
-    { "label": "drunk, beer: Teimo's line for a drunk ordering", "cmd": "pr.teimo", "expect": ["paid == 2", "lastTopic == drunkbuy", "caption contains Teimo:"] },
+    { "label": "and another", "cmd": "pr.send", "line": "shop take beer" },
+    { "cmd": "wait", "seconds": 1 },
+    { "cmd": "pr.send", "line": "shop counter" },
+    { "cmd": "wait", "seconds": 2 },
+    { "cmd": "pr.teimo", "expect": ["billCount == 2", "billTotal ~ 298 +- 0.01"] },
+    { "label": "he pays for both", "cmd": "pr.teimo.talk" },
+    { "cmd": "wait", "seconds": 1.5 },
+    { "label": "drunk, beer: both paid, Teimo's line for a drunk ordering (msc.log: two paid for ..., now beercase<n>, each its own)", "cmd": "pr.teimo",
+      "expect": ["paid == 3", "paidTotal ~ 313.09 +- 0.01", "lastTopic == drunkbuy", "caption contains Teimo:"] },
     { "label": "his line's caption", "cmd": "screenshot", "name": "drunk-buy", "hud": true },
     { "label": "sober again", "cmd": "pr.send", "line": "drunk 0" }
   ]

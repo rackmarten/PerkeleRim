@@ -22,6 +22,9 @@ namespace PerkeleRim.Game
         const float Clearance = 0.02f;  // meters between a good's bottom and what it's set on
         const float GroundWait = 20f;   // seconds the spots wait for their ground
         const float OffSpot = 0.3f;     // meters from its spot an unpaid good counts as moved
+        const float Fallen = 1f;        // meters below its spot an untouched good counts as fallen
+        const float Retry = 2f;         // seconds before a spot that couldn't be set out is tried again
+        const float Occupied = 0.15f;   // meters around a spot where a physics item means it's taken
 
         readonly Island island;
         readonly Func<Vector3, Vector3?> findGround;
@@ -42,8 +45,10 @@ namespace PerkeleRim.Game
         }
 
         StallShop.Stall stall;
+        Vec3 anchor;  // the island's anchor the goods were set out on
         Live[] spots = new Live[0];
         bool[] filled = new bool[0];
+        float[] retryAt = new float[0];  // a spot that couldn't be set out waits till then
         float since;
         readonly float[] prices = new float[StallShop.Products.Length];
         readonly string[] labels = new string[StallShop.Products.Length];
@@ -72,15 +77,12 @@ namespace PerkeleRim.Game
                 log($"stall: malformed TeimoStall ({size} bytes)");
                 return;
             }
-            if (stall != null && stall.Generation == got.Generation && spots.Length == got.Goods.Count)
-            {
-                stall = got;  // the same anchor again (a link flap): keep the goods that are out
-                return;
-            }
-            Clear("a new stall");
+            Clear("a new stall");  // even for the same generation: a restarted Skyrim counts its anchors from 1 again
             stall = got;
+            anchor = island.Anchor;
             spots = new Live[got.Goods.Count];
             filled = new bool[got.Goods.Count];
+            retryAt = new float[got.Goods.Count];
             since = Time.realtimeSinceStartup;
             ReadPrices();
             log($"stall: {got.Goods.Count} goods to set out for gen {got.Generation}, Teimo at ({got.Teimo.x:0},{got.Teimo.y:0},{got.Teimo.z:0})");
@@ -97,7 +99,7 @@ namespace PerkeleRim.Game
         public void Update(Link link, bool playing, Vector3 feet)
         {
             if (stall == null) return;
-            if (island.Generation != stall.Generation)
+            if (island.Generation != stall.Generation || island.Anchor.x != anchor.x || island.Anchor.y != anchor.y || island.Anchor.z != anchor.z)
             {
                 Clear($"the island moved on to gen {island.Generation}");
                 stall = null;
@@ -137,24 +139,47 @@ namespace PerkeleRim.Game
                         spots[i] = null;
                     }
                 }
+            // An untouched good that fell well below its spot (its ground gone, knocked off) is set out again.
+            for (int i = 0; i < spots.Length; i++)
+            {
+                var live = spots[i];
+                if (live == null || live.Go == null || live.Touched || live.Stolen) continue;
+                if (live.Home.y - live.Go.transform.position.y > Fallen)
+                {
+                    log($"stall: {live.Go.name} fell off spot {i}, Teimo sets out another");
+                    Destroy(live);
+                    spots[i] = null;
+                    filled[i] = false;
+                }
+            }
             // One a frame: a spot never set out this anchor at once, a gone one only behind his back.
+            float now = Time.realtimeSinceStartup;
             for (int i = 0; i < spots.Length; i++)
             {
                 if (spots[i] != null && spots[i].Go != null) continue;
                 if (filled[i] && !away) continue;
+                if (now < retryAt[i]) continue;
                 var at = Spot(i);
                 if (!at.HasValue) continue;
                 var ground = findGround(at.Value);
                 if (!ground.HasValue)
                 {
-                    if (Time.realtimeSinceStartup - since > GroundWait && !filled[i])
+                    if (now - since > GroundWait && !filled[i])
                     {
-                        log($"stall: no ground at spot {i} after {GroundWait} s, left empty");
+                        log($"stall: no ground at spot {i} after {GroundWait} s, left empty for now");
                         filled[i] = true;
                     }
-                    return;
+                    retryAt[i] = now + Retry;
+                    continue;
                 }
-                SetOut(i, at.Value, ground.Value.y);
+                var taken = ItemAt(new Vector3(at.Value.x, ground.Value.y, at.Value.z));
+                if (taken != null)
+                {
+                    filled[i] = true;  // something lies there (a good Kumpo bought and left): later
+                    retryAt[i] = now + Retry;
+                    continue;
+                }
+                if (!SetOut(i, at.Value, ground.Value.y)) retryAt[i] = now + Retry;
                 return;
             }
         }
@@ -166,13 +191,21 @@ namespace PerkeleRim.Game
             return new Vector3(p.x, p.y, p.z);
         }
 
-        void SetOut(int i, Vector3 at, float board)
+        // A physics item (anything with a rigidbody: the island's own chunks have none) on the spot.
+        static Rigidbody ItemAt(Vector3 spot)
+        {
+            foreach (var c in Physics.OverlapSphere(spot + Vector3.up * (Occupied + 0.02f), Occupied))
+                if (c.attachedRigidbody != null) return c.attachedRigidbody;
+            return null;
+        }
+
+        bool SetOut(int i, Vector3 at, float board)
         {
             filled[i] = true;
             var good = stall.Goods[i];
-            if (!StallShop.Known(good.Product)) { log($"stall: spot {i} has an unknown product {good.Product}"); return; }
+            if (!StallShop.Known(good.Product)) { log($"stall: spot {i} has an unknown product {good.Product}"); return false; }
             var prefab = Prefab(StallShop.Products[good.Product].Name);
-            if (prefab == null) return;
+            if (prefab == null) return false;
             var go = MakeLook(prefab, $"{StallShop.Products[good.Product].Name.ToLowerInvariant()}(Teimo's)");
             go.transform.position = at;
             go.transform.rotation = Quaternion.Euler(0f, Coords.SkyrimAngleToUnity(good.Heading), 0f);
@@ -183,6 +216,7 @@ namespace PerkeleRim.Game
             body.rotation = go.transform.rotation;
             spots[i] = new Live { Spot = i, Product = good.Product, Go = go, Price = prices[good.Product], Home = go.transform.position };
             log($"stall: {go.name} set out on spot {i} for {prices[good.Product]:0.00} mk");
+            return true;
         }
 
         // The product's own look without its FSMs: its renderers' meshes and materials under the
@@ -259,11 +293,13 @@ namespace PerkeleRim.Game
         }
 
         readonly Dictionary<string, GameObject> prefabs = new Dictionary<string, GameObject>();
+        float prefabRetry;
 
         GameObject Prefab(string product)
         {
             GameObject prefab;
-            if (prefabs.TryGetValue(product, out prefab) && prefab != null) return prefab;
+            if (prefabs.TryGetValue(product, out prefab) && (prefab != null || Time.realtimeSinceStartup < prefabRetry)) return prefab;
+            prefabRetry = Time.realtimeSinceStartup + 10f;
             var go = GameObject.Find("Spawner/CreateItems");
             if (go != null)
                 foreach (var f in go.GetComponents<PlayMakerFSM>())
@@ -353,18 +389,28 @@ namespace PerkeleRim.Game
                 log($"stall: {due.Total:0.00} mk due, Kumpo has {has:0.00}: not enough money");
                 return;
             }
-            if (money != null) money.Value = has - due.Total;
-            voice.Till("cash_register_2", stall.Counter);
+            // Each good turns real first; he pays only for those MSC's spawner made (a good it didn't
+            // stays a look-alike on the counter).
+            var paid = new StallShop.Bill();
             foreach (var live in on)
             {
                 string was = live.Go.name;
-                var real = MakeReal(live);
+                var real = MakeReal(live, false);
+                if (real == null)
+                {
+                    log($"stall: MSC's spawner made no {StallShop.Products[live.Product].Name} for {was}, not charged");
+                    continue;
+                }
                 spots[live.Spot] = null;
-                log($"stall: paid for {was}, now {(real != null ? real.name : "nothing: the spawner made none")}");
+                paid.Add(live.Product, live.Price);
+                log($"stall: paid for {was}, now {real.name}");
             }
-            paidCount += due.Count;
-            Send(link, Wire.ShopPaid, due, Money(), seq);
-            log($"stall: Kumpo paid {due.Total:0.00} mk for {due.Count} goods, {Money():0.00} mk left");
+            if (paid.Count == 0) return;
+            if (money != null) money.Value = has - paid.Total;
+            voice.Till("cash_register_2", stall.Counter);
+            paidCount += paid.Count;
+            Send(link, Wire.ShopPaid, paid, Money(), seq);
+            log($"stall: Kumpo paid {paid.Total:0.00} mk for {paid.Count} goods, {Money():0.00} mk left");
         }
 
         // Goods past 8 m from Teimo unpaid are stolen: each becomes a real item where it is (in the
@@ -375,7 +421,7 @@ namespace PerkeleRim.Game
             foreach (var live in spots)
             {
                 if (live == null || live.Go == null) continue;
-                if (!live.Stolen && StallShop.TakenAway(SkyrimAt(live.Go), stall))
+                if (!live.Stolen && (live.Touched || live.Go == held) && StallShop.TakenAway(SkyrimAt(live.Go), stall))
                 {
                     live.Stolen = true;
                     taken.Add(live.Product, live.Price);
@@ -399,7 +445,7 @@ namespace PerkeleRim.Game
                 if (live.Go == HeldObject(hand)) continue;  // still letting go
                 if (live.WasInHand && hand != null && hand.ActiveStateName != "Look for object") continue;  // its drop's short wait
                 string was = live.Go.name;
-                var real = MakeReal(live);
+                var real = MakeReal(live, true);
                 spots[i] = null;
                 log($"stall: {was} stolen, now {(real != null ? real.name : "nothing: the spawner made none")}{(live.WasInHand ? ", back in the hand" : "")}");
                 if (real != null && live.WasInHand && hand != null && hand.ActiveStateName == "Look for object")
@@ -411,11 +457,17 @@ namespace PerkeleRim.Game
             }
         }
 
-        GameObject MakeReal(Live live)
+        // The good as a real item from MSC's spawner, where the look-alike is and moving as it did;
+        // null when the spawner made nothing new (the look-alike stays, unless dropAnyway).
+        GameObject MakeReal(Live live, bool dropAnyway)
         {
             var at = live.Go.transform.position;
             var turn = live.Go.transform.rotation;
+            var own = live.Go.GetComponent<Rigidbody>();
+            var velocity = own != null ? own.velocity : Vector3.zero;
+            var spin = own != null ? own.angularVelocity : Vector3.zero;
             var real = ShelfStocker.Spawn(StallShop.Products[live.Product].Name, log);
+            if (real == null && !dropAnyway) return null;
             Destroy(live);
             if (real == null) return null;
             real.transform.position = at;
@@ -425,8 +477,8 @@ namespace PerkeleRim.Game
             {
                 body.position = at;
                 body.rotation = turn;
-                body.velocity = Vector3.zero;
-                body.angularVelocity = Vector3.zero;
+                body.velocity = velocity;
+                body.angularVelocity = spin;
             }
             return real;
         }
@@ -499,7 +551,9 @@ namespace PerkeleRim.Game
             }
             spots = new Live[0];
             filled = new bool[0];
+            retryAt = new float[0];
             bill = new StallShop.Bill();
+            pays.Clear();
             if (n > 0) log($"stall: {n} goods taken back in ({why})");
         }
 

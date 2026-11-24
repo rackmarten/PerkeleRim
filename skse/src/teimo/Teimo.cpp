@@ -53,7 +53,6 @@ namespace PerkeleRim::Teimo
             std::uint32_t             stallSent = 0;
             std::uint32_t             paySeq = 0;
             float                     drunk = 0.0f;
-            bool                      linkUp = false;
         } state;
 
         constexpr RE::FormID kWhiterunCrime = 0x000267EA;  // Skyrim.esm CrimeFactionWhiterun: Riverwood is in Whiterun Hold
@@ -256,7 +255,7 @@ namespace PerkeleRim::Teimo
         state.bounty = 0;
         state.shorts = 0;
         state.money = -1.0f;
-        state.stallSent = 0;  // a load may hand over on the same anchor: send the stall again
+        state.stallSent = 0;  // a load hands over again: send the stall for that anchor (MSC starts the stall over)
     }
 
     void Draw(RE::PlayerCharacter* a_player, float a_delta)
@@ -327,13 +326,7 @@ namespace PerkeleRim::Teimo
     void Update(RE::PlayerCharacter* a_player, float a_drunk, bool a_inVehicle, std::uint32_t a_generation)
     {
         state.drunk = a_drunk;
-        const bool up = LinkService::Get().IsUp();
-        if (up != state.linkUp) {
-            state.linkUp = up;
-            state.stallSent = 0;  // a new link session: MSC may have lost the goods, send them again
-            state.billCount = 0;
-            state.billTotal = 0.0f;
-        }
+        const bool up = LinkService::Get().IsUp();  // a link that comes back re-anchors, and the new generation sends the stall again
         auto* teimo = Find();
         if (teimo && teimo->Is3DLoaded() && !teimo->IsDisabled() && up && a_generation != 0 && a_generation != state.stallSent &&
             FlatDistance(teimo->GetPosition(), a_player->GetPosition()) <= kStallReach) {
