@@ -419,6 +419,13 @@ namespace PerkeleRim.Game
                     continue;
                 }
                 if (newAnchor && k.Known) { PutBack(k); continue; }
+                if (k.Away && t.position.y > LostBelow)
+                {
+                    // Taken from its waiting spot (by MSC, or the spike's fetch): noted anew where it lies.
+                    k.Away = false;
+                    k.Known = false;
+                    Hold(k, false);
+                }
                 if (k.Away) continue;
                 var ground = findGround(t.position);
                 if (ground.HasValue)

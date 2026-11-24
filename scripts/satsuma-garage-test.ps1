@@ -59,9 +59,11 @@ foreach ($name in $Saves) {
     Initialize-Save $name
     try { & $skytest stop | Out-Null } catch { }  # ours, up for another save, would be reused; another's is left alone
     $env:PERKELERIM_MSC_SAVE = "satsuma-$name"
+    $started = $false
     try {
         & $skytest session -WaitForLock $WaitForLock
         if ($LASTEXITCODE) { if (-not $code) { $code = $LASTEXITCODE }; continue }
+        $started = $true
         Write-Host "== satsuma-garage, $name MSC save" -ForegroundColor Cyan
         & $skytest run (Join-Path $RepoRoot 'scenarios/satsuma-garage.json') -Timeout $TimeoutSeconds
         if ($LASTEXITCODE -and -not $code) { $code = $LASTEXITCODE }
@@ -75,6 +77,14 @@ foreach ($name in $Saves) {
         Write-Host "satsuma-$name`: $_" -ForegroundColor Red
         if (-not $code) { $code = 1 }
     } finally {
+        if ($started) {
+            # MSC's log (the mod's "garage:" lines), before the next game start overwrites it.
+            $mscLog = Join-Path (Get-RequiredSetting (Get-LocalConfig) 'MscPath') 'output_log.txt'
+            $kept = Join-Path $RepoRoot "out/satsuma-garage-$name-msc.log"
+            New-Item -ItemType Directory -Force (Split-Path -Parent $kept) | Out-Null
+            Copy-Item $mscLog $kept -ErrorAction SilentlyContinue
+            Write-Host "MSC's log: $kept"
+        }
         try { & $skytest stop } catch { Write-Host $_ -ForegroundColor Yellow }  # another session's lock is left alone
         Remove-Item Env:PERKELERIM_MSC_SAVE -ErrorAction SilentlyContinue
     }
