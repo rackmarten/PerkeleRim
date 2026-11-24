@@ -45,6 +45,7 @@ namespace PerkeleRim.Spike
     //   fetch <name> [eyes]  the nearest loose part named so put down by the player (fetch wheel_regula), or with eyes
     //                        held in front of his eyes until a left click picks it up (fetch door left eyes)
     //   fit <trigger...>     those parts put on through MSC's own Assembly (fit trigger_discbrake_fl), for setups
+    //   freeze <root> [off]  a vehicle's body held still (kinematic) as on a stand, or let go (freeze SATSUMA)
     //   tighten <words>      every bolt with those words in its path turned all the way in by MSC's TIGHTEN, for setups
     //   offer <trigger>      the part in MSC's hand counted as come into that place on the car (offer trigger_door_left):
     //                        MSC checks it, shows its assemble icon and waits for the left click
@@ -485,6 +486,22 @@ namespace PerkeleRim.Spike
             foreach (var f in c.GetComponents<PlayMakerFSM>())
                 if (f.FsmName == "Assembly") return true;
             return false;
+        }
+
+        // "freeze <root> [on|off]": the root rigidbody whose name starts so held still (kinematic, no velocity) or let go,
+        // for a scenario working on the Satsuma's body as if it stood on its stand: a part's joint set up while the player
+        // stood against the body once flung the whole car off.
+        static void Freeze(string prefix, bool on)
+        {
+            foreach (var body in FindObjectsOfType<Rigidbody>())
+            {
+                if (body.transform.parent != null || prefix.Length == 0 || !body.name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                if (on) { body.velocity = Vector3.zero; body.angularVelocity = Vector3.zero; }
+                body.isKinematic = on;
+                SpikeLog.Write($"cmd: freeze: {body.name} {(on ? "held still" : "let go")}");
+                return;
+            }
+            SpikeLog.Write("cmd: freeze: no root rigidbody named " + prefix);
         }
 
         // "tighten <words>": every active bolt (BoltPM :: Screw) whose path has the words sent MSC's TIGHTEN event eight
@@ -983,6 +1000,9 @@ namespace PerkeleRim.Spike
                         var fitter = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
                         if (fitter != null && words.Length > 1) fitter.FitParts(lines[0].Trim().Substring(3).Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
                         else SpikeLog.Write("cmd: fit <trigger names>, with PlayerLink");
+                        break;
+                    case "freeze":  // "freeze SATSUMA on": that vehicle's body held still (kinematic), as on a stand; "off" lets it go
+                        Freeze(words.Length > 1 ? words[1] : "", words.Length < 3 || words[2] != "off");
                         break;
                     case "tighten":  // "tighten spindle": every bolt of that part turned all the way in by MSC's own TIGHTEN, for setups
                         StartCoroutine(Tighten(lines[0].Trim().Substring(7).Trim()));
