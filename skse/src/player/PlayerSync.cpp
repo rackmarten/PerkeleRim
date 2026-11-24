@@ -971,6 +971,10 @@ namespace PerkeleRim::PlayerSync
                 const bool hasParts = hasVehicle[i] && link.ReadVehicleParts(i + 1, parts);
                 VehicleView::Update(i + 1, hasVehicle[i] ? &vehicles[i] : nullptr, hasParts ? &parts : nullptr, state.generation);
             }
+            static Protocol::PartSet partSet{};  // 10 KiB, kept off the stack
+            if (link.ReadPartSet(partSet)) {     // a torn read keeps last frame's parts
+                VehicleView::UpdateParts(partSet, state.generation);
+            }
             HitboxTest::Update(a_player, a_delta);
             Protocol::ItemState items{};
             if (link.ReadItems(items)) {  // a torn read keeps last frame's items; link down releases

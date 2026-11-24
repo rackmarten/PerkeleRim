@@ -307,6 +307,33 @@ namespace PerkeleRim
             return false;
         }
 
+        // One slot: the Satsuma's (value.vehicle says whose; Skyrim checks it).
+        public void WritePartSet(ref PartSet value)
+        {
+            if (basePtr == null || !attached) return;
+            var slot = (PartSetSlot*)(basePtr + Wire.OffsetPartSetSlot);
+            BeginWrite(&slot->seq, out uint n);
+            slot->value = value;
+            EndWrite(&slot->seq, n);
+        }
+
+        public bool ReadPartSet(out PartSet value)
+        {
+            value = default(PartSet);
+            if (!IsUp) return false;
+            var slot = (PartSetSlot*)(basePtr + Wire.OffsetPartSetSlot);
+            for (int attempt = 0; attempt < 64; attempt++)
+            {
+                uint before = (uint)Thread.VolatileRead(ref *(int*)&slot->seq);
+                if (before == 0) return false;
+                if ((before & 1) != 0) continue;
+                value = slot->value;
+                Thread.MemoryBarrier();
+                if ((uint)Thread.VolatileRead(ref *(int*)&slot->seq) == before) return true;
+            }
+            return false;
+        }
+
         static void BeginWrite(uint* seq, out uint n)
         {
             n = *seq;
