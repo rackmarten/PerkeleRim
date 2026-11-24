@@ -72,6 +72,10 @@ namespace PerkeleRim
 
         public static bool SkipMaterial(string name) => Array.IndexOf(SkipMaterials, MaterialName(name)) >= 0;
 
+        // Shaders MSC draws nothing visible with: the Satsuma's body has a white copy of itself with
+        // Transparent/InvisibleShadowCaster that only casts its shadow (drawn, it covered the paint).
+        public static bool SkipShader(string shader) => shader != null && shader.EndsWith("InvisibleShadowCaster");
+
         public static bool BlendMaterial(string name) => Any(blend, MaterialName(name) ?? "");
 
         // A light's material: glows over its own lighting.

@@ -60,6 +60,9 @@ namespace PerkeleRim.Tests
             Assert.That(VanModel.SkipMaterial("Default-Material"));
             Assert.That(VanModel.SkipMaterial("Default-Material (Instance)"));
             Assert.That(VanModel.SkipMaterial("van_body"), Is.False);
+            Assert.That(VanModel.SkipShader("Transparent/InvisibleShadowCaster"), "only casts a shadow");
+            Assert.That(VanModel.SkipShader("Standard (Specular setup)"), Is.False);
+            Assert.That(VanModel.SkipShader(null), Is.False);
             Assert.That(VanModel.BlendMaterial("WINDOWS"));
             Assert.That(VanModel.BlendMaterial("Glass (Instance)"));
             Assert.That(VanModel.BlendMaterial("lights_alpha"));
