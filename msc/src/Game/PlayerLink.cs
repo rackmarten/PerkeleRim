@@ -874,6 +874,17 @@ namespace PerkeleRim.Game
         // player steeper than 30 degrees with their top within 1 m of the feet, steepest first, with
         // the top relative to the feet and their height, so a bridge lip
         // or road hole can be read from the log.
+        // Spike "surfaces x y": every upward-facing island surface at Skyrim world (x, y), in Skyrim
+        // units, top first: a shelf's boards, the stand under the Satsuma.
+        public void LogSurfaces(float x, float y)
+        {
+            var at = island.SkyrimToIsland(new Vec3(x, y, island.Anchor.z));
+            var list = IslandSurfaces(new Vector3(at.x, at.y, at.z));
+            var heights = new List<string>();
+            foreach (var h in list) heights.Add(island.IslandToSkyrim(new Vec3(at.x, h, at.z)).z.ToString("0"));
+            log($"player: island surfaces at ({x:0},{y:0}): {(heights.Count > 0 ? string.Join(", ", heights.ToArray()) : "none")}");
+        }
+
         public void LogSteps(float radius)
         {
             if (player == null) { log("player: island steps: no player"); return; }

@@ -116,3 +116,38 @@ Describe 'Restore-MscDoorstop' {
         Restore-MscDoorstop $msc | Should -BeFalse
     }
 }
+
+Describe 'A session''s own My Summer Car save' {
+    BeforeEach {
+        $root = Join-Path $TestDrive ([guid]::NewGuid())
+        $saves = Join-Path $root 'My Summer Car'
+        $chosen = Join-Path $root 'half-built'
+        $store = Join-Path $root 'store'
+        New-Item -ItemType Directory -Force $saves, $chosen | Out-Null
+        foreach ($f in 'defaultES2File.txt', 'items.txt', 'meshsave.txt', 'options.txt') { [IO.File]::WriteAllText((Join-Path $saves $f), "player $f") }
+        foreach ($f in 'defaultES2File.txt', 'items.txt', 'options.txt') { [IO.File]::WriteAllText((Join-Path $chosen $f), "test $f") }
+    }
+
+    It 'covers the save files of both, never the settings' {
+        $names = @(Get-MscSavePaths $saves $chosen | ForEach-Object { Split-Path -Leaf $_ })
+        $names | Should -Be @('defaultES2File.txt', 'items.txt', 'meshsave.txt')
+    }
+
+    It 'plays the chosen save and puts the player''s back on restore' {
+        Save-SessionFiles $store -Keep @(Get-MscSavePaths $saves $chosen) | Should -BeTrue
+        Use-MscSave $saves $chosen
+        [IO.File]::ReadAllText((Join-Path $saves 'defaultES2File.txt')) | Should -Be 'test defaultES2File.txt'
+        Test-Path (Join-Path $saves 'meshsave.txt') | Should -BeFalse  # not in the chosen save
+        [IO.File]::ReadAllText((Join-Path $saves 'options.txt')) | Should -Be 'player options.txt'
+        [void] (Restore-SessionFiles $store)
+        foreach ($f in 'defaultES2File.txt', 'items.txt', 'meshsave.txt', 'options.txt') {
+            [IO.File]::ReadAllText((Join-Path $saves $f)) | Should -Be "player $f"
+        }
+    }
+
+    It 'takes a folder, and refuses one without a save' {
+        Resolve-MscSave $chosen | Should -Be (Resolve-Path $chosen).Path
+        Resolve-MscSave '' | Should -BeNullOrEmpty
+        { Resolve-MscSave (Join-Path $root 'nothing') } | Should -Throw '*no My Summer Car save*'
+    }
+}

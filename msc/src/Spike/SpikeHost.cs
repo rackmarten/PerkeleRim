@@ -546,6 +546,14 @@ namespace PerkeleRim.Spike
                     case "hands":
                         HandsDump.Run();
                         break;
+                    case "satsuma":  // the Satsuma, its loose parts and MSC's part database, to PerkeleRim_satsuma.txt
+                        SatsumaDump.Run();
+                        break;
+                    case "surfaces":  // "surfaces 15000 -14500": the island's surfaces at that Skyrim x, y (a shelf's boards)
+                        var surfaceLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (surfaceLink == null || words.Length < 3) { SpikeLog.Write("cmd: surfaces <x> <y>, with PlayerLink"); break; }
+                        surfaceLink.LogSurfaces(float.Parse(words[1], CultureInfo.InvariantCulture), float.Parse(words[2], CultureInfo.InvariantCulture));
+                        break;
                     case "handlayer":
                         string mode = words.Length > 1 ? words[1].ToLower() : "on";
                         if (mode == "tint") PerkeleRim.Game.HandLayerSender.Tint = !PerkeleRim.Game.HandLayerSender.Tint;

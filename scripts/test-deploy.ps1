@@ -41,15 +41,23 @@ $ours = @(
     ($pluginsTxt = Join-Path $env:LOCALAPPDATA 'Skyrim Special Edition\plugins.txt'),
     (Join-Path $mods 'PerkeleRim.dll'))
 $others = @($Aside | Where-Object { $_ } | ForEach-Object { (Join-Path $plugins "$_.dll"), (Join-Path $plugins "$_.pdb") })
+# A session's own My Summer Car save (PERKELERIM_MSC_SAVE: a snapshot name or folder), the player's kept meanwhile.
+$mscSaveDir = Join-Path $env:USERPROFILE 'AppData\LocalLow\Amistech\My Summer Car'
 
 switch ($Mode) {
     'deploy' {
-        if (Save-SessionFiles $store -Keep $ours -Move $others) {
+        $mscSave = Resolve-MscSave $env:PERKELERIM_MSC_SAVE
+        $keep = $ours + $(if ($mscSave) { Get-MscSavePaths $mscSaveDir $mscSave } else { @() })
+        if (Save-SessionFiles $store -Keep $keep -Move $others) {
             Write-Host "Kept the game's own files in $store$(if ($others) { "; set aside $(@($Aside) -join ', ')" })."
         } else {
             Write-Host "The game's own files from before this session are still kept in $store."
         }
         & "$PSScriptRoot/deploy-local.ps1"
+        if ($mscSave) {
+            Use-MscSave $mscSaveDir $mscSave
+            Write-Host "My Summer Car plays the save in $mscSave (the player's own comes back on restore)."
+        }
         Save-DeployStamps $store -Skip $pluginsTxt  # Skyrim rewrites it as it runs
     }
     { $_ -in 'restore', 'restore-anyway' } {
