@@ -47,7 +47,8 @@ $mscSaveDir = Join-Path $env:USERPROFILE 'AppData\LocalLow\Amistech\My Summer Ca
 switch ($Mode) {
     'deploy' {
         $mscSave = Resolve-MscSave $env:PERKELERIM_MSC_SAVE
-        $keep = $ours + $(if ($mscSave) { Get-MscSavePaths $mscSaveDir $mscSave } else { @() })
+        $mscPaths = @(if ($mscSave) { Get-MscSavePaths $mscSaveDir $mscSave })
+        $keep = $ours + $mscPaths
         if (Save-SessionFiles $store -Keep $keep -Move $others) {
             Write-Host "Kept the game's own files in $store$(if ($others) { "; set aside $(@($Aside) -join ', ')" })."
         } else {
@@ -58,7 +59,7 @@ switch ($Mode) {
             Use-MscSave $mscSaveDir $mscSave
             Write-Host "My Summer Car plays the save in $mscSave (the player's own comes back on restore)."
         }
-        Save-DeployStamps $store -Skip $pluginsTxt  # Skyrim rewrites it as it runs
+        Save-DeployStamps $store -Skip (@($pluginsTxt) + $mscPaths)  # Skyrim rewrites plugins.txt as it runs, MSC its save
     }
     { $_ -in 'restore', 'restore-anyway' } {
         if (Restore-MscDoorstop $msc) { Write-Host "Put back My Summer Car's doorstop_config.ini (a hidden start hadn't)." }
