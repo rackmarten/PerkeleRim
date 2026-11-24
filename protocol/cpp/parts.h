@@ -29,6 +29,7 @@ namespace PerkeleRim::Parts
         std::uint16_t stages = 0;
         float         tightness = 0.0f;
         float         tightnessFull = 0.0f;
+        std::uint32_t object = 0;      // the part's object as AttachedPart.part has it, 0 = none
 
         bool Installed() const { return (flags & Protocol::kPartInstalled) != 0; }
         bool Bolted() const { return (flags & Protocol::kPartBolted) != 0; }
@@ -51,6 +52,7 @@ namespace PerkeleRim::Parts
         m.stages = a_part.stages;
         m.tightness = a_part.tightness;
         m.tightnessFull = a_part.tightnessFull;
+        m.object = a_part.object;
         std::size_t length = std::min<std::size_t>(a_part.name.size(), Protocol::kPartNameMax);
         while (length > 0 && length < a_part.name.size() && (static_cast<std::uint8_t>(a_part.name[length]) & 0xC0) == 0x80) {
             length--;
@@ -84,6 +86,7 @@ namespace PerkeleRim::Parts
         p.stages = m.stages;
         p.tightness = m.tightness;
         p.tightnessFull = m.tightnessFull;
+        p.object = m.object;
         return p;
     }
 

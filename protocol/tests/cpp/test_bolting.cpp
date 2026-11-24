@@ -57,6 +57,7 @@ namespace
         p.stages = 13;
         p.tightness = 13.0f;
         p.tightnessFull = 28.0f;
+        p.object = 0xABCD1234u;
         return p;
     }
 }
@@ -77,6 +78,7 @@ TEST_CASE("a part's state survives the wire")
     CHECK(p->boltsTight == 1);
     CHECK(p->stages == 13);
     CHECK(p->tightnessFull == doctest::Approx(28.0f));
+    CHECK(p->object == 0xABCD1234u);
     CHECK_FALSE(p->AllTight());
     CHECK_FALSE(p->BoltsOut());
 }

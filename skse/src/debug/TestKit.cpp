@@ -73,10 +73,31 @@ namespace PerkeleRim::TestKit
             return std::make_shared<OnDrop>(std::move(a_what));
         }
 
-        // One of the Satsuma's parts as MSC last reported it (PartState): the bolt-state probe's answer.
+        // Whether the Satsuma's PartSet has the part's object on the car now, with a model (Skyrim draws it there),
+        // and whether it is there at all.
+        std::pair<bool, bool> OnCar(std::uint32_t a_object)
+        {
+            if (a_object == 0) {
+                return { false, false };
+            }
+            auto set = std::make_unique<Protocol::PartSet>();  // 10 KB
+            if (!LinkService::Get().ReadPartSet(*set) || set->vehicle != Protocol::kVehicleSatsuma) {
+                return { false, false };
+            }
+            for (std::uint32_t i = 0; i < set->count && i < Protocol::kPartSetCapacity; i++) {
+                if (set->parts[i].part == a_object) {
+                    return { true, set->parts[i].model != 0 && (set->parts[i].flags & Protocol::kPartVisible) != 0 };
+                }
+            }
+            return { false, false };
+        }
+
+        // One of the Satsuma's parts as MSC last reported it (PartState): the bolt-state probe's answer, and whether
+        // Skyrim has it on the car it draws (the Satsuma's PartSet).
         Json DescribePart(const Parts::Part& a_part)
         {
-            return JsonObject{ { "name", a_part.name }, { "installed", a_part.Installed() }, { "bolted", a_part.Bolted() },
+            const auto [attached, drawn] = OnCar(a_part.object);
+            return JsonObject{ { "name", a_part.name }, { "attached", attached }, { "drawnOnCar", drawn }, { "installed", a_part.Installed() }, { "bolted", a_part.Bolted() },
                 { "damaged", (a_part.flags & Protocol::kPartDamaged) != 0 }, { "placed", a_part.Placed() }, { "bolts", a_part.bolts },
                 { "boltsTight", a_part.boltsTight }, { "stages", a_part.stages }, { "allTight", a_part.AllTight() },
                 { "boltsOut", a_part.BoltsOut() }, { "tightness", a_part.tightness }, { "tightnessFull", a_part.tightnessFull },

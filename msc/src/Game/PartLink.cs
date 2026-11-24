@@ -85,8 +85,17 @@ namespace PerkeleRim.Game
         // Every part's state, for the spike command "parts [word]".
         public void Dump(string word)
         {
+            shape = -1;  // look again from scratch
             Find();
-            log($"parts: {entries.Count} database entries");
+            log($"parts: {entries.Count} database entries, Database {(database != null ? (database.activeInHierarchy ? "active" : "inactive") + ", " + database.transform.childCount + " children" : "not found")}");
+            if (database != null && entries.Count == 0)
+                foreach (Transform section in database.transform)
+                {
+                    var first = section.childCount > 0 ? section.GetChild(0) : null;
+                    var fsms = new List<string>();
+                    if (first != null) foreach (var f in first.GetComponents<PlayMakerFSM>()) fsms.Add(f.FsmName);
+                    log($"parts: {section.name}: {section.childCount} children, the first {(first != null ? first.name : "-")} has [{string.Join(", ", fsms.ToArray())}]");
+                }
             foreach (var e in entries)
             {
                 if (!string.IsNullOrEmpty(word) && e.Name.IndexOf(word, StringComparison.OrdinalIgnoreCase) < 0) continue;
@@ -177,6 +186,7 @@ namespace PerkeleRim.Game
                 Stages = sum,
                 Tightness = e.Tightness != null ? e.Tightness.Value : 0f,
                 TightnessFull = e.Full != null ? e.Full.Value : 0f,
+                Object = part != null ? unchecked((uint)part.transform.GetInstanceID()) : 0u,
             };
         }
 

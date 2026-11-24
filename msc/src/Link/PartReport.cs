@@ -17,9 +17,10 @@ namespace PerkeleRim
         public int Stages;           // all their stages added up
         public float Tightness;      // BoltCheck.Tightness
         public float TightnessFull;  // BoltCheck.BoltedYES
+        public uint Object;          // the part's object, as SatsumaParts ids it (its instance id), 0 = none
 
-        public const int Size = 80;  // sizeof(PartState)
-        const int NameAt = 40;
+        public const int Size = 84;  // sizeof(PartState)
+        const int NameAt = 44;
 
         public static uint FlagsFor(bool installed, bool bolted, bool damaged, bool placed)
         {
@@ -34,7 +35,7 @@ namespace PerkeleRim
             if (last == null) return true;
             var l = last.Value;
             if (l.Flags != now.Flags || l.Bolts != now.Bolts || l.BoltsTight != now.BoltsTight || l.Stages != now.Stages ||
-                l.Generation != now.Generation || l.Name != now.Name)
+                l.Generation != now.Generation || l.Name != now.Name || l.Object != now.Object)
                 return true;
             if ((now.Flags & Wire.PartPlaced) == 0) return false;
             float dx = now.Position.x - l.Position.x, dy = now.Position.y - l.Position.y, dz = now.Position.z - l.Position.z;
@@ -74,10 +75,11 @@ namespace PerkeleRim
             BitConverter.GetBytes(Clamp16(Math.Min(Stages, 8 * Bolts))).CopyTo(payload, 24);
             BitConverter.GetBytes(Tightness).CopyTo(payload, 28);
             BitConverter.GetBytes(TightnessFull).CopyTo(payload, 32);
+            BitConverter.GetBytes(Object).CopyTo(payload, 36);
             var bytes = Encoding.UTF8.GetBytes(Name ?? "");
             int length = Math.Min(bytes.Length, (int)Wire.PartNameMax);
             while (length > 0 && length < bytes.Length && (bytes[length] & 0xC0) == 0x80) length--;  // inside a character
-            BitConverter.GetBytes((uint)length).CopyTo(payload, 36);
+            BitConverter.GetBytes((uint)length).CopyTo(payload, 40);
             Array.Copy(bytes, 0, payload, NameAt, length);
             return payload;
         }
@@ -86,7 +88,7 @@ namespace PerkeleRim
         public static PartReport? Decode(byte[] payload, int size)
         {
             if (payload == null || size < Size || payload.Length < Size) return null;
-            uint length = BitConverter.ToUInt32(payload, 36);
+            uint length = BitConverter.ToUInt32(payload, 40);
             int bolts = BitConverter.ToUInt16(payload, 20), tight = BitConverter.ToUInt16(payload, 22), stages = BitConverter.ToUInt16(payload, 24);
             if (length == 0 || length > Wire.PartNameMax || tight > bolts || stages > 8 * bolts) return null;
             return new PartReport
@@ -99,6 +101,7 @@ namespace PerkeleRim
                 Stages = stages,
                 Tightness = BitConverter.ToSingle(payload, 28),
                 TightnessFull = BitConverter.ToSingle(payload, 32),
+                Object = BitConverter.ToUInt32(payload, 36),
                 Name = Encoding.UTF8.GetString(payload, NameAt, (int)length),
             };
         }

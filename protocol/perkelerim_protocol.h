@@ -925,6 +925,7 @@ namespace PerkeleRim::Protocol
         std::uint16_t reserved;
         float         tightness;     // BoltCheck.Tightness, 0 without one
         float         tightnessFull; // BoltCheck.BoltedYES: bolted from there
+        std::uint32_t object;        // the part's object as AttachedPart.part has it (its instance id), 0 = none
         std::uint32_t length;        // bytes of name used, <= kPartNameMax
         char          name[kPartNameMax];  // UTF-8
     };
@@ -1219,7 +1220,7 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ConsumeEvent, form) == 20);
     static_assert(sizeof(HeldDrink) == 56);
     static_assert(sizeof(TeimoLine) == 64);
-    static_assert(sizeof(PartState) == 80);
+    static_assert(sizeof(PartState) == 84);
     static_assert(offsetof(PartState, flags) == 12);
     static_assert(offsetof(PartState, generation) == 16);
     static_assert(offsetof(PartState, bolts) == 20);
@@ -1227,8 +1228,9 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(PartState, stages) == 24);
     static_assert(offsetof(PartState, tightness) == 28);
     static_assert(offsetof(PartState, tightnessFull) == 32);
-    static_assert(offsetof(PartState, length) == 36);
-    static_assert(offsetof(PartState, name) == 40);
+    static_assert(offsetof(PartState, object) == 36);
+    static_assert(offsetof(PartState, length) == 40);
+    static_assert(offsetof(PartState, name) == 44);
     static_assert(offsetof(TeimoLine, length) == 12);
     static_assert(offsetof(TeimoLine, clip) == 16);
     static_assert(offsetof(HeldDrink, grip) == 44);

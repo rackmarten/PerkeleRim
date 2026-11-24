@@ -834,6 +834,7 @@ namespace PerkeleRim.Protocol
         public ushort reserved;
         public float tightness;
         public float tightnessFull;
+        public uint @object;
         public uint length;
         public fixed byte name[40];
     }

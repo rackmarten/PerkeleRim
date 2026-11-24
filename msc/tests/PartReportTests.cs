@@ -17,6 +17,7 @@ namespace PerkeleRim.Tests
             Stages = 13,
             Tightness = 13f,
             TightnessFull = 28f,
+            Object = 0xABCD1234u,
         };
 
         [Test]
@@ -34,6 +35,7 @@ namespace PerkeleRim.Tests
             Assert.That(back.Value.BoltsTight, Is.EqualTo(1));
             Assert.That(back.Value.Stages, Is.EqualTo(13));
             Assert.That(back.Value.TightnessFull, Is.EqualTo(28f));
+            Assert.That(back.Value.Object, Is.EqualTo(0xABCD1234u));
         }
 
         [Test]
@@ -42,8 +44,9 @@ namespace PerkeleRim.Tests
             var payload = Door().Encode();
             Assert.That(BitConverter.ToUInt32(payload, 12), Is.EqualTo(Wire.PartInstalled | Wire.PartPlaced));
             Assert.That(BitConverter.ToUInt16(payload, 20), Is.EqualTo(4));
-            Assert.That(BitConverter.ToUInt32(payload, 36), Is.EqualTo(9u));
-            Assert.That((char)payload[40], Is.EqualTo('D'));
+            Assert.That(BitConverter.ToUInt32(payload, 36), Is.EqualTo(0xABCD1234u));
+            Assert.That(BitConverter.ToUInt32(payload, 40), Is.EqualTo(9u));
+            Assert.That((char)payload[44], Is.EqualTo('D'));
         }
 
         [Test]
@@ -66,7 +69,7 @@ namespace PerkeleRim.Tests
             var nameless = Door();
             nameless.Name = "";
             Assert.That(PartReport.Decode(nameless.Encode(), PartReport.Size), Is.Null);
-            BitConverter.GetBytes(Wire.PartNameMax + 1).CopyTo(payload, 36);
+            BitConverter.GetBytes(Wire.PartNameMax + 1).CopyTo(payload, 40);
             Assert.That(PartReport.Decode(payload, PartReport.Size), Is.Null);
         }
 
@@ -89,6 +92,9 @@ namespace PerkeleRim.Tests
             Assert.That(PartReport.ShouldSend(door, moved), Is.False);  // 14 cm
             moved.Position = new Vec3(door.Position.x + 20f, door.Position.y, door.Position.z);
             Assert.That(PartReport.ShouldSend(door, moved), Is.True);   // 29 cm
+            var other = door;
+            other.Object = 1;
+            Assert.That(PartReport.ShouldSend(door, other), Is.True);  // the part's object swapped (the radiator's two)
             var tighter = door;
             tighter.Stages = 14;
             Assert.That(PartReport.ShouldSend(door, tighter), Is.True);
