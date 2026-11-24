@@ -1,4 +1,4 @@
-// The PartState message (MSC -> Skyrim, v55): the Satsuma's parts as MSC's own database has them, fitted or not
+// The PartState message (MSC -> Skyrim, v58): the Satsuma's parts as MSC's own database has them, fitted or not
 // and how tight their bolts are. Header-only, mirrored by msc/src/Link/PartReport.cs; the protocol tests cover both.
 // Skyrim keeps the latest state per part (Table) for the bolt-state probe (pr.part) and its log.
 

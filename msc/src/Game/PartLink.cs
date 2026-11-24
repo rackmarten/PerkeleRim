@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace PerkeleRim.Game
 {
-    // The Satsuma's parts as MSC's own database has them, for Skyrim's bolt-state probe (PartState, v55). MSC keeps a
+    // The Satsuma's parts as MSC's own database has them, for Skyrim's bolt-state probe (PartState, v58). MSC keeps a
     // "Data" FSM per part under Database/DatabaseBody, DatabaseMotor and DatabaseMechanics (Installed, Bolted, Damaged,
     // ThisPart: the part's object). The part's own BoltCheck FSM has Tightness and BoltedYES, and each bolt below it a
     // Screw FSM with its Stage (0..8; docs/FSM_MAP.md, "Building the Satsuma"). MSC itself does all the assembling and

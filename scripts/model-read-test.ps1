@@ -17,7 +17,7 @@
 #>
 param(
     [switch] $Build,
-    [int] $TimeoutSeconds = 600,
+    [int] $TimeoutSeconds = 1500,  # building the Satsuma whole takes a few minutes
     [switch] $Keep,
     [int] $WaitForLock = 1800  # seconds to wait for another session's games lock
 )

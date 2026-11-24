@@ -4,7 +4,7 @@ using PerkeleRim.Protocol;
 
 namespace PerkeleRim
 {
-    // The PartState message (v55): one of the Satsuma's parts as MSC's database has it, for Skyrim's bolt-state probe.
+    // The PartState message (v58): one of the Satsuma's parts as MSC's database has it, for Skyrim's bolt-state probe.
     // Unity-free, so the tests cover it; mirrored by protocol/cpp/parts.h. MSC's side that reads it is Game/PartLink.cs.
     public struct PartReport
     {
