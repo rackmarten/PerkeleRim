@@ -46,8 +46,9 @@ namespace PerkeleRim.Game
                 return;
             }
             if (source == null) source = MakeSource("PerkeleRim.TeimoVoice");
-            Play(source, clip, skyrim);
-            log($"teimo: says {name} ({clip.name}, {clip.length:0.0} s)");
+            float meters;
+            bool placed = Play(source, clip, skyrim, out meters);
+            log($"teimo: says {name} ({clip.name}, {clip.length:0.0} s){(placed ? $", {meters:0.0} m from the player" : ", in 2D")}");
         }
 
         // MSC's till sound (Store group: cash_register_1 as a good goes on the bill, cash_register_2
@@ -61,7 +62,8 @@ namespace PerkeleRim.Game
                 return;
             }
             if (till == null) till = MakeSource("PerkeleRim.TeimoTill");
-            Play(till, clip, skyrim);
+            float unused;
+            Play(till, clip, skyrim, out unused);
         }
 
         static AudioSource MakeSource(string name)
@@ -77,7 +79,8 @@ namespace PerkeleRim.Game
             return made;
         }
 
-        void Play(AudioSource source, AudioClip clip, Vec3? skyrim)
+        // True when it plays from a point on the island (meters from the listener), false in 2D.
+        bool Play(AudioSource source, AudioClip clip, Vec3? skyrim, out float meters)
         {
             var listener = UnityEngine.Object.FindObjectOfType<AudioListener>();
             bool placed = skyrim.HasValue && island.HasAnchor;
@@ -90,6 +93,8 @@ namespace PerkeleRim.Game
             source.spatialBlend = placed ? 1f : 0f;
             source.clip = clip;
             source.Play();
+            meters = listener != null && placed ? Vector3.Distance(listener.transform.position, source.transform.position) : 0f;
+            return placed;
         }
 
         // The clip of MasterAudio/<group>/<name> (a variation: paivaa1, whose clip is päivää), else a

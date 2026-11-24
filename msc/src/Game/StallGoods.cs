@@ -25,6 +25,9 @@ namespace PerkeleRim.Game
         const float Fallen = 1f;        // meters below its spot an untouched good counts as fallen
         const float Retry = 2f;         // seconds before a spot that couldn't be set out is tried again
         const float Occupied = 0.15f;   // meters around a spot where a physics item means it's taken
+        const float Regrip = 1f;        // seconds a stolen good in the hand may take to let go and be taken again as the real item
+        const float Reach = 1.5f;       // meters from the camera the real item may be to go back in the hand
+        const float GiveUp = 3f;        // seconds a stolen good waits for MSC's spawner before it's gone with no bounty
 
         readonly Island island;
         readonly Func<Vector3, Vector3?> findGround;
@@ -37,11 +40,11 @@ namespace PerkeleRim.Game
             public int Spot;
             public uint Product;
             public GameObject Go;
-            public float Price;
             public bool Stolen;      // carried off: turns real once the hand has let go of it
             public bool WasInHand;   // and it was in the hand then: the real item goes back in
             public Vector3 Home;     // where it was set out
             public bool Touched;     // Kumpo has had it in his hand: Teimo puts it back once he's away
+            public float StolenAt;   // when it was carried off
         }
 
         StallShop.Stall stall;
@@ -49,11 +52,16 @@ namespace PerkeleRim.Game
         Live[] spots = new Live[0];
         bool[] filled = new bool[0];
         float[] retryAt = new float[0];  // a spot that couldn't be set out waits till then
+        bool[] noGroundLogged = new bool[0];
         float since;
+        bool wasAway = true;
         readonly float[] prices = new float[StallShop.Products.Length];
         readonly string[] labels = new string[StallShop.Products.Length];
         readonly List<uint> pays = new List<uint>();
-        StallShop.Bill bill;
+        StallShop.Bill bill;          // what lies on the counter now
+        StallShop.Bill billSent;      // the bill Skyrim last got (kShopBill); resent until they match
+        bool billKnown;               // billSent is what Skyrim has (false: send the bill whatever it is)
+        readonly List<byte[]> outbox = new List<byte[]>();  // TeimoShop answers and thefts, in order, kept until sent
         float notEnoughUntil;
         string promptSet;
         FsmString interaction;
@@ -83,7 +91,9 @@ namespace PerkeleRim.Game
             spots = new Live[got.Goods.Count];
             filled = new bool[got.Goods.Count];
             retryAt = new float[got.Goods.Count];
+            noGroundLogged = new bool[got.Goods.Count];
             since = Time.realtimeSinceStartup;
+            wasAway = true;
             ReadPrices();
             log($"stall: {got.Goods.Count} goods to set out for gen {got.Generation}, Teimo at ({got.Teimo.x:0},{got.Teimo.y:0},{got.Teimo.z:0})");
         }
@@ -108,14 +118,17 @@ namespace PerkeleRim.Game
             if (!playing) return;
             var kumpo = island.IslandToSkyrim(new Vec3(feet.x, feet.y, feet.z));
             bool away = StallShop.KumpoAway(kumpo, stall);
+            if (wasAway && !away) ReadPrices();  // a new visit: MSC's prices as they are now (its inflation)
+            wasAway = away;
             var hand = PocketLink.PickUp();
             var held = HeldObject(hand);
 
             Restock(away, held);
-            TakeOff(link, hand, held);
-            foreach (var seq in pays) Pay(link, seq, held);
+            TakeOff(hand, held);
+            foreach (var seq in pays) Pay(seq, held);
             pays.Clear();
-            UpdateBill(link, held);
+            UpdateBill(held);
+            Flush(link);
             Prompt(hand);
         }
 
@@ -152,7 +165,9 @@ namespace PerkeleRim.Game
                     filled[i] = false;
                 }
             }
-            // One a frame: a spot never set out this anchor at once, a gone one only behind his back.
+            // One a frame: a spot not yet set out this anchor as soon as it can be (tried again every
+            // Retry seconds: no ground yet, something lying there, no prefab), one whose good is gone
+            // (bought, stolen, put back) only behind Kumpo's back.
             float now = Time.realtimeSinceStartup;
             for (int i = 0; i < spots.Length; i++)
             {
@@ -164,22 +179,21 @@ namespace PerkeleRim.Game
                 var ground = findGround(at.Value);
                 if (!ground.HasValue)
                 {
-                    if (now - since > GroundWait && !filled[i])
+                    if (now - since > GroundWait && !noGroundLogged[i])
                     {
-                        log($"stall: no ground at spot {i} after {GroundWait} s, left empty for now");
-                        filled[i] = true;
+                        log($"stall: no ground at spot {i} after {GroundWait} s, trying again every {Retry} s");
+                        noGroundLogged[i] = true;
                     }
                     retryAt[i] = now + Retry;
                     continue;
                 }
-                var taken = ItemAt(new Vector3(at.Value.x, ground.Value.y, at.Value.z));
-                if (taken != null)
+                if (ItemAt(new Vector3(at.Value.x, ground.Value.y, at.Value.z)) != null)
                 {
-                    filled[i] = true;  // something lies there (a good Kumpo bought and left): later
-                    retryAt[i] = now + Retry;
+                    retryAt[i] = now + Retry;  // something lies there (a good Kumpo bought and left): later
                     continue;
                 }
-                if (!SetOut(i, at.Value, ground.Value.y)) retryAt[i] = now + Retry;
+                if (SetOut(i, at.Value, ground.Value.y)) filled[i] = true;
+                else retryAt[i] = now + Retry;
                 return;
             }
         }
@@ -201,7 +215,6 @@ namespace PerkeleRim.Game
 
         bool SetOut(int i, Vector3 at, float board)
         {
-            filled[i] = true;
             var good = stall.Goods[i];
             if (!StallShop.Known(good.Product)) { log($"stall: spot {i} has an unknown product {good.Product}"); return false; }
             var prefab = Prefab(StallShop.Products[good.Product].Name);
@@ -214,7 +227,7 @@ namespace PerkeleRim.Game
             var body = go.GetComponent<Rigidbody>();
             body.position = go.transform.position;
             body.rotation = go.transform.rotation;
-            spots[i] = new Live { Spot = i, Product = good.Product, Go = go, Price = prices[good.Product], Home = go.transform.position };
+            spots[i] = new Live { Spot = i, Product = good.Product, Go = go, Home = go.transform.position };
             log($"stall: {go.name} set out on spot {i} for {prices[good.Product]:0.00} mk");
             return true;
         }
@@ -359,33 +372,59 @@ namespace PerkeleRim.Game
             {
                 if (live == null || live.Go == null || live.Stolen || live.Go == held) continue;
                 if (!StallShop.OnCounter(SkyrimAt(live.Go), stall)) continue;
-                b.Add(live.Product, live.Price);
+                b.Add(live.Product, prices[live.Product]);
                 if (on != null) on.Add(live);
             }
             return b;
         }
 
-        void UpdateBill(Link link, GameObject held)
+        void UpdateBill(GameObject held)
         {
             var now = Counted(held, null);
             if (now.Same(bill)) return;
             if (now.Count > bill.Count) voice.Till("cash_register_1", stall.Counter);  // MSC's register as a good goes on the bill
             bill = now;
-            Send(link, Wire.ShopBill, bill, Money(), 0);
             log($"stall: {bill.Count} goods on the counter, {bill.Total:0.00} mk");
         }
 
-        void Pay(Link link, uint seq, GameObject held)
+        // The answers and thefts in order, each kept until the ring takes it (it is full for a while
+        // as MSC sends its models when the link comes up); then the bill, whenever Skyrim's differs.
+        void Flush(Link link)
+        {
+            while (outbox.Count > 0)
+            {
+                if (link == null || !link.Send(MessageType.TeimoShop, outbox[0], outbox[0].Length)) return;
+                outbox.RemoveAt(0);
+            }
+            if (billKnown && bill.Same(billSent)) return;
+            var payload = StallShop.EncodeShop(Wire.ShopBill, bill, Money(), 0);
+            if (link == null || !link.Send(MessageType.TeimoShop, payload, payload.Length)) return;
+            billSent = bill;
+            billKnown = true;
+        }
+
+        void Queue(uint kind, StallShop.Bill b, float has, uint seq) => outbox.Add(StallShop.EncodeShop(kind, b, has, seq));
+
+        // Every TeimoPay gets an answer: kShopPaid, kShopShort, or, when nothing could be paid for
+        // (the counter emptied meanwhile, MSC's spawner made nothing), the bill as it is now, so
+        // Skyrim's bill is right again and the next E greets or pays as it should.
+        void Pay(uint seq, GameObject held)
         {
             var on = new List<Live>();
             var due = Counted(held, on);
-            if (due.Count == 0) { log($"stall: Kumpo asks to pay ({seq}), but nothing lies on the counter"); return; }
+            if (due.Count == 0)
+            {
+                log($"stall: Kumpo asks to pay ({seq}), but nothing lies on the counter");
+                Queue(Wire.ShopBill, due, Money(), seq);
+                billKnown = false;
+                return;
+            }
             float has = Money();
             if (!StallShop.CanPay(due.Total, has))
             {
                 notEnoughUntil = Time.realtimeSinceStartup + StallShop.NotEnoughSeconds;
                 swear("not enough money at Teimo's");
-                Send(link, Wire.ShopShort, due, has, seq);
+                Queue(Wire.ShopShort, due, has, seq);
                 log($"stall: {due.Total:0.00} mk due, Kumpo has {has:0.00}: not enough money");
                 return;
             }
@@ -402,29 +441,37 @@ namespace PerkeleRim.Game
                     continue;
                 }
                 spots[live.Spot] = null;
-                paid.Add(live.Product, live.Price);
+                paid.Add(live.Product, prices[live.Product]);
                 log($"stall: paid for {was}, now {real.name}");
             }
-            if (paid.Count == 0) return;
+            if (paid.Count == 0)
+            {
+                Queue(Wire.ShopBill, Counted(held, null), has, seq);
+                billKnown = false;
+                return;
+            }
             if (money != null) money.Value = has - paid.Total;
             voice.Till("cash_register_2", stall.Counter);
             paidCount += paid.Count;
-            Send(link, Wire.ShopPaid, paid, Money(), seq);
+            Queue(Wire.ShopPaid, paid, Money(), seq);
+            billKnown = false;  // Skyrim empties its bill on kShopPaid: send what's left on the counter after it
             log($"stall: Kumpo paid {paid.Total:0.00} mk for {paid.Count} goods, {Money():0.00} mk left");
         }
 
-        // Goods past 8 m from Teimo unpaid are stolen: each becomes a real item where it is (in the
-        // hand again once the hand has let go of the look-alike).
-        void TakeOff(Link link, PlayMakerFSM hand, GameObject held)
+        // Goods past 8 m from Teimo unpaid, that Kumpo has had in his hand, are stolen: each becomes
+        // a real item where it is, and only then goes to Skyrim (the bounty, Teimo's shout). One in
+        // the hand is let go first and taken again as the real item if the hand is free within
+        // Regrip seconds and it's within reach; otherwise it turns real where it lies.
+        void TakeOff(PlayMakerFSM hand, GameObject held)
         {
-            var taken = new StallShop.Bill();
+            float now = Time.realtimeSinceStartup;
             foreach (var live in spots)
             {
                 if (live == null || live.Go == null) continue;
                 if (!live.Stolen && (live.Touched || live.Go == held) && StallShop.TakenAway(SkyrimAt(live.Go), stall))
                 {
                     live.Stolen = true;
-                    taken.Add(live.Product, live.Price);
+                    live.StolenAt = now;
                     if (live.Go == held && hand != null)
                     {
                         live.WasInHand = true;
@@ -433,27 +480,45 @@ namespace PerkeleRim.Game
                     log($"stall: {live.Go.name} carried off unpaid");
                 }
             }
-            if (taken.Count > 0)
-            {
-                stolenCount += taken.Count;
-                Send(link, Wire.ShopStolen, taken, Money(), 0);
-            }
+            var taken = new StallShop.Bill();
             for (int i = 0; i < spots.Length; i++)
             {
                 var live = spots[i];
                 if (live == null || !live.Stolen || live.Go == null) continue;
-                if (live.Go == HeldObject(hand)) continue;  // still letting go
-                if (live.WasInHand && hand != null && hand.ActiveStateName != "Look for object") continue;  // its drop's short wait
+                bool waiting = now - live.StolenAt < Regrip;
+                if (live.Go == HeldObject(hand))
+                {
+                    if (!waiting && hand != null) hand.SendEvent("DROP_PART");  // still held: let go again
+                    continue;
+                }
+                if (live.WasInHand && waiting && hand != null && hand.ActiveStateName != "Look for object") continue;  // its drop's short wait
                 string was = live.Go.name;
-                var real = MakeReal(live, true);
+                var real = MakeReal(live, false);
+                if (real == null)
+                {
+                    if (now - live.StolenAt < GiveUp) continue;  // the spawner again next frame
+                    log($"stall: {was} carried off, but MSC's spawner made none: gone, no bounty");
+                    Destroy(live);
+                    spots[i] = null;
+                    continue;
+                }
                 spots[i] = null;
-                log($"stall: {was} stolen, now {(real != null ? real.name : "nothing: the spawner made none")}{(live.WasInHand ? ", back in the hand" : "")}");
-                if (real != null && live.WasInHand && hand != null && hand.ActiveStateName == "Look for object")
+                taken.Add(live.Product, prices[live.Product]);
+                var cam = Camera.main;
+                bool regrip = live.WasInHand && waiting && hand != null && hand.ActiveStateName == "Look for object" &&
+                              cam != null && Vector3.Distance(cam.transform.position, real.transform.position) <= Reach;
+                log($"stall: {was} stolen, now {real.name}{(regrip ? ", back in the hand" : live.WasInHand ? ", left where it fell" : "")}");
+                if (regrip)
                 {
                     // What a click on the item does (PocketLink): Look for object -> State 1 -> ... -> Part picked.
                     hand.FsmVariables.FindFsmGameObject("RaycastHitObject").Value = real;
                     hand.SendEvent("FINISHED");
                 }
+            }
+            if (taken.Count > 0)
+            {
+                stolenCount += taken.Count;
+                Queue(Wire.ShopStolen, taken, Money(), 0);
             }
         }
 
@@ -495,11 +560,6 @@ namespace PerkeleRim.Game
             return money != null ? money.Value : 0f;
         }
 
-        void Send(Link link, uint kind, StallShop.Bill b, float has, uint seq)
-        {
-            var payload = StallShop.EncodeShop(kind, b, has, seq);
-            if (link == null || !link.Send(MessageType.TeimoShop, payload, payload.Length)) log($"stall: TeimoShop {kind} didn't go to Skyrim");
-        }
 
         // ---- The prompt ----
 
@@ -515,7 +575,7 @@ namespace PerkeleRim.Game
             {
                 var aimed = hand.FsmVariables.FindFsmGameObject("RaycastHitObject");
                 var live = aimed != null ? Find(aimed.Value) : null;
-                if (live != null) text = StallShop.Prompt(live.Product, live.Price);
+                if (live != null) text = StallShop.Prompt(live.Product, prices[live.Product]);
             }
             if (text != null)
             {
@@ -552,7 +612,9 @@ namespace PerkeleRim.Game
             spots = new Live[0];
             filled = new bool[0];
             retryAt = new float[0];
+            noGroundLogged = new bool[0];
             bill = new StallShop.Bill();
+            billKnown = false;  // Skyrim empties its bill as it sends a stall: tell it what's on this one
             pays.Clear();
             if (n > 0) log($"stall: {n} goods taken back in ({why})");
         }
@@ -569,7 +631,7 @@ namespace PerkeleRim.Game
                 var live = spots[i];
                 if (live == null || live.Go == null) { lines.Add($"  {i}: empty"); continue; }
                 var at = SkyrimAt(live.Go);
-                lines.Add($"  {i}: {live.Go.name} {live.Price:0.00} mk at ({at.x:0},{at.y:0},{at.z:0}){(StallShop.OnCounter(at, stall) ? " on the counter" : "")}");
+                lines.Add($"  {i}: {live.Go.name} {prices[live.Product]:0.00} mk at ({at.x:0},{at.y:0},{at.z:0}){(StallShop.OnCounter(at, stall) ? " on the counter" : "")}");
             }
             return string.Join("\n", lines.ToArray());
         }
