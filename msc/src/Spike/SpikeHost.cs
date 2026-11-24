@@ -456,6 +456,7 @@ namespace PerkeleRim.Spike
             }
             // A bolt (a trigger that isn't a part's place): of a few spots around the first, within MSC's 1 m reach,
             // the first from where the eye's ray meets this bolt before any other (a hinge's bolts sit in pairs).
+            var boltSpots = new List<Vector3>();
             if (a_fsm == null && target.isTrigger && !IsPlace(target) && eyeCam != null)
             {
                 var eyeUp = eyeCam.transform.position - player.position;
@@ -474,13 +475,14 @@ namespace PerkeleRim.Spike
                         foreach (var h in Physics.RaycastAll(eye, ray.normalized, ray.magnitude + 0.05f, 1 << target.gameObject.layer))
                             if (h.distance < nearest) { first = h; nearest = h.distance; }
                         if (nearest == float.MaxValue || first.collider != target) continue;
-                        stand = spot;
-                        goto chosen;
+                        if (!Room(spot, player)) continue;  // the player put into the door pushed it off its hinge
+                        boltSpots.Add(spot);
                     }
                 }
-                SpikeLog.Write("cmd: aim: no spot within reach sees this bolt first, standing at the first");
+                if (boltSpots.Count > 0) stand = boltSpots[0];
+                else SpikeLog.Write("cmd: aim: no spot within reach sees this bolt first, standing at the first");
             }
-            chosen:
+            int spotIndex = 0;
             player.position = stand;
             int generation = ++aims;
             for (int pass = 0; pass < AimHold * 4 && generation == aims; pass++)
@@ -494,6 +496,15 @@ namespace PerkeleRim.Spike
                 // At a trigger only the first two aims: at a part's place every turn after moves the held part, and MSC's
                 // Assembly only arms again when the part comes into the trigger anew; at a bolt a turn moved the
                 // crosshair off a small wheel nut while the wheel was turning it.
+                if (pass == 2 && boltSpots.Count > 0 && FirstOnLayer(cam, target.gameObject.layer) != target && spotIndex + 1 < boltSpots.Count)
+                {
+                    // The real eye's ray met another bolt first (the predicted eye was off): the next spot, aimed anew.
+                    player.position = boltSpots[++spotIndex];
+                    SpikeLog.Write($"cmd: aim: another bolt was under the crosshair, spot {spotIndex + 1} of {boltSpots.Count}");
+                    pass = -1;
+                    yield return new WaitForSeconds(0.25f);
+                    continue;
+                }
                 bool still = a_fsm == null && target.isTrigger && pass >= 2;
                 if (!still) player.rotation = Quaternion.Euler(0f, yaw, 0f);
                 var how = $"player at {player.position}, eye {look.magnitude:0.00} m away, yaw {yaw:0}, {(still ? "held still" : Pitch(cam.transform, player, pitch))}";
@@ -524,6 +535,27 @@ namespace PerkeleRim.Spike
             if (state == null || PerkeleRim.Game.SaveSync.SwitchState == null) { SpikeLog.Write($"cmd: offer: {name} has no Find correct part state"); return; }
             PerkeleRim.Game.SaveSync.SwitchState.Invoke(assembly.Fsm, new object[] { state });
             SpikeLog.Write($"cmd: offer: {FullPath(assembly.transform)} [{state.Name}], the hand holds {(held != null ? held.name : "nothing")}, it wants {(want != null ? want.Value : "?")}");
+        }
+
+        // Room for the player at feet: nothing that can be pushed (a moving body, not a trigger, not the player) within 0.3 m of two points of its
+        // body, at its knees and its chest. Teleporting the player into a fitted door broke the door's hinge joint, and
+        // MSC took the door off the car.
+        static bool Room(Vector3 feet, Transform player)
+        {
+            foreach (float up in new[] { 0.4f, 1.0f })
+                foreach (var c in Physics.OverlapSphere(feet + Vector3.up * up, 0.3f))
+                    if (!c.isTrigger && !c.transform.IsChildOf(player) && c.attachedRigidbody != null && !c.attachedRigidbody.isKinematic) return false;  // pushable: a hinged door, a loose part
+            return true;
+        }
+
+        // The first collider on layer the camera's center ray meets within MSC's 1 m reach (MousePick's), or null.
+        static Collider FirstOnLayer(Camera cam, int layer)
+        {
+            Collider first = null;
+            float nearest = float.MaxValue;
+            foreach (var h in Physics.RaycastAll(cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f)), 1f, 1 << layer))
+                if (h.distance < nearest) { first = h.collider; nearest = h.distance; }
+            return first;
         }
 
         // A part's place on the car: a trigger with an Assembly FSM (a bolt's trigger has a Screw one).
