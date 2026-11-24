@@ -366,6 +366,8 @@ namespace PerkeleRim.Game
             {
                 body.velocity = Vector3.zero;
                 body.angularVelocity = Vector3.zero;
+                // Still until something touches it: a halfshaft woken on its board rolled off onto the floor.
+                body.Sleep();
             }
         }
 

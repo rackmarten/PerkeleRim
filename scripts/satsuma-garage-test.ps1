@@ -61,6 +61,8 @@ foreach ($name in $Saves) {
     $env:PERKELERIM_MSC_SAVE = "satsuma-$name"
     $started = $false
     try {
+        # The kit's session sets no exit code of its own: the last run's would read as a failed start.
+        $global:LASTEXITCODE = 0
         & $skytest session -WaitForLock $WaitForLock
         if ($LASTEXITCODE) { if (-not $code) { $code = $LASTEXITCODE }; continue }
         $started = $true
