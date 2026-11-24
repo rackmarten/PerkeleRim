@@ -71,8 +71,11 @@ foreach ($name in $Saves) {
             if ($LASTEXITCODE -and -not $code) { $code = $LASTEXITCODE }
         }
         $first = $false
+    } catch {
+        Write-Host "satsuma-$name`: $_" -ForegroundColor Red
+        if (-not $code) { $code = 1 }
     } finally {
-        & $skytest stop
+        try { & $skytest stop } catch { Write-Host $_ -ForegroundColor Yellow }  # another session's lock is left alone
         Remove-Item Env:PERKELERIM_MSC_SAVE -ErrorAction SilentlyContinue
     }
 }
