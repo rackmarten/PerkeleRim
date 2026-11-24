@@ -148,6 +148,7 @@ namespace PerkeleRim.Tests
                 Assert.That(onBody, Is.False, $"({x}, {y}) under the body");
                 foreach (var shelf in SatsumaBay.Shelves)
                     Assert.That(InShelf(shelf, x, y, margin), Is.False, $"({x}, {y}) in a shelf");
+                Assert.That(InShelf(new SatsumaBay.Shelf(SatsumaBay.TableX, SatsumaBay.TableY, 0f), x, y, margin), Is.False, $"({x}, {y}) on the board's table");
             }
         }
 

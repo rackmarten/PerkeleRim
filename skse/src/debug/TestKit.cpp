@@ -6,6 +6,7 @@
 #include "debug/HitTest.h"
 #include "fuel/Fuel.h"
 #include "garage/Garage.h"
+#include "garage/GarageBoard.h"
 #include "link/LinkService.h"
 #include "look_at.h"
 #include "model/ModelView.h"
@@ -609,6 +610,42 @@ namespace PerkeleRim::TestKit
                                 return std::nullopt;  // the ring is full: next frame
                             }
                             seen->sent = true;
+                        }
+                        if (Garage::LastBay().count == seen->before) {
+                            return std::nullopt;
+                        }
+                        return DescribeBay();
+                    };
+                });
+
+            SkseTestKit::AddTask("pr.garage.board", "<what>",
+                "Uses the garage board as Kumpo does (its question, then the answer clicked): vehicles (bring all vehicles home) or parts "
+                "(bring loose car parts home); answers with MSC's GarageDone, as pr.garage",
+                [](Call& a_call) -> Step {
+                    RequireMsc();
+                    const auto what = a_call.Text("what");
+                    if (what != "vehicles" && what != "parts") {
+                        throw Error("what is vehicles or parts");
+                    }
+                    a_call.DefaultTimeout(40.0);
+                    struct Seen
+                    {
+                        int           phase = 0;  // 0 open it, 1 answer it, 2 wait for MSC
+                        std::uint32_t before = 0;
+                    };
+                    return [button = what == "vehicles" ? 0 : 1, seen = std::make_shared<Seen>()](Call&) -> std::optional<Json> {
+                        if (seen->phase == 0) {
+                            seen->before = Garage::LastBay().count;
+                            GarageBoard::Open();
+                            seen->phase = 1;
+                            return std::nullopt;
+                        }
+                        if (seen->phase == 1) {
+                            if (!GarageBoard::Choose(button)) {
+                                return std::nullopt;  // the box isn't up yet
+                            }
+                            seen->phase = 2;
+                            return std::nullopt;
                         }
                         if (Garage::LastBay().count == seen->before) {
                             return std::nullopt;

@@ -261,6 +261,16 @@ namespace PerkeleRim::Garage
         if ((d.request & Protocol::kBayMoveSatsuma) != 0) {
             state.moved = true;
             SKSE::log::info("garage: the Satsuma moved over, this save remembers it");
+        }
+        // The garage board's answers, on Skyrim's HUD.
+        if ((d.request & Protocol::kBayVehiclesHome) != 0) {
+            RE::SendHUDMessage::ShowHUDMessage(std::format("{} {} home by the garage.", d.vehicles, d.vehicles == 1 ? "vehicle is" : "vehicles are").c_str());
+        }
+        if ((d.request & Protocol::kBayPartsHome) != 0) {
+            RE::SendHUDMessage::ShowHUDMessage(std::format("{} car parts back on their shelves, {} on the bay's floor.", d.slotted, d.floor).c_str());
+        }
+        if (d.request == 0 && (d.generation != 0)) {
+            SKSE::log::info("garage: MSC couldn't do it (no ground at the bay in time)");
         } else if (d.request == 0 && !state.moved) {
             state.bayGeneration = 0;  // ask again in a while
             state.retryAt = Now() + kBayRetry;

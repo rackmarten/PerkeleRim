@@ -54,6 +54,13 @@ namespace PerkeleRim
         public const float BodyX = 30f, BodyY = 10f;  // the body's middle; nose toward +X (out of the front)
         public const float BodyHalfLength = 130f, BodyHalfWidth = 56f;
 
+        // The garage board (#780's menu): an activator (Skyrim's war map, CivilWarMap01: 136 x 100, flat)
+        // lying on a low table (CommonShelf04: 134 x 54, 63 tall) in the near back corner, long side
+        // along X.
+        public const string TablePiece = "CommonShelf04";
+        public const string BoardStatic = "CivilWarMap01";  // its model is the board's
+        public const float TableX = -215f, TableY = -208f, TableTop = 63f;
+
         // ---- Slots ----
 
         public enum Kind { Small, Medium, Floor }
@@ -131,12 +138,12 @@ namespace PerkeleRim
         // (x, y, along) in the bay frame.
         static readonly float[][] FloorSpots =
         {
-            // near side, panels lying flat, long side along X (clear of the back shelves, x -284 on)
-            new[] { -220f, -195f, 0f }, new[] { -150f, -195f, 0f }, new[] { -80f, -195f, 0f }, new[] { -10f, -195f, 0f },
-            new[] { 60f, -195f, 0f }, new[] { 130f, -195f, 0f }, new[] { 200f, -195f, 0f }, new[] { 270f, -195f, 0f },
-            new[] { 340f, -195f, 0f },
+            // near side, panels lying flat, long side along X (past the board's table)
+            new[] { -100f, -195f, 0f }, new[] { -30f, -195f, 0f }, new[] { 40f, -195f, 0f }, new[] { 110f, -195f, 0f },
+            new[] { 180f, -195f, 0f }, new[] { 250f, -195f, 0f }, new[] { 320f, -195f, 0f }, new[] { 390f, -195f, 0f },
             // a second row nearer the stand
-            new[] { -230f, -115f, 0f }, new[] { -150f, -115f, 0f }, new[] { 120f, -115f, 0f }, new[] { 200f, -115f, 0f },
+            new[] { -230f, -115f, 0f }, new[] { -150f, -115f, 0f }, new[] { -70f, -115f, 0f }, new[] { 40f, -115f, 0f },
+            new[] { 120f, -115f, 0f }, new[] { 200f, -115f, 0f },
             // behind the body, in front of the back shelves
             new[] { -200f, -30f, Quarter }, new[] { -200f, 60f, Quarter },
             // the open front corner, beside the nose
