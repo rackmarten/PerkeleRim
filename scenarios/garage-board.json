@@ -32,7 +32,7 @@
     { "cmd": "wait", "seconds": 5 },
     { "label": "MSC takes him at the garage", "cmd": "pr.msc", "expect": ["msc == true"] },
     { "cmd": "wait", "seconds": 10 },
-    { "label": "the gearbox isn't on its slot", "cmd": "pr.garage.ask", "what": "check", "expect": ["last.slotted > 40"] },
+    { "label": "the gearbox isn't on its slot", "cmd": "pr.garage.ask", "what": "check", "expect": ["last.missed >= 1", "last.slotted > 40"] },
 
     // The board: vehicles, then parts.
     { "label": "the board brings the vehicles home", "cmd": "pr.garage.board", "what": "vehicles", "expect": ["last.vehicles >= 1"] },
