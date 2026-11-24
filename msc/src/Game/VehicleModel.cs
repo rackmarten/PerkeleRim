@@ -178,7 +178,7 @@ namespace PerkeleRim.Game
             return Coords.UnityToSkyrim(new Quat(r.x, r.y, r.z, r.w));
         }
 
-        static bool KeepMaterial(Material m) => m != null && !VanModel.SkipMaterial(m.name);
+        static bool KeepMaterial(Material m) => m != null && !VanModel.SkipMaterial(m.name) && !VanModel.SkipShader(m.shader != null ? m.shader.name : null);
 
         static ModelMaterialData Blend(Material m, ModelMaterialData data)
         {

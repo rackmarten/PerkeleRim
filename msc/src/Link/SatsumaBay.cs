@@ -54,7 +54,7 @@ namespace PerkeleRim
         public const float BodyX = 30f, BodyY = 10f;  // the body's middle; nose toward +X (out of the front)
         public const float BodyHalfLength = 130f, BodyHalfWidth = 56f;
 
-        // The garage board (#780's menu): an activator (Skyrim's war map, CivilWarMap01: 136 x 100, flat)
+        // The garage board: an activator (Skyrim's war map, CivilWarMap01: 136 x 100, flat)
         // lying on a low table (CommonShelf04: 134 x 54, 63 tall) in the near back corner, long side
         // along X.
         public const string TablePiece = "CommonShelf04";

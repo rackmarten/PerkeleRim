@@ -622,7 +622,7 @@ namespace PerkeleRim.Spike
                         else PerkeleRim.Game.TeimoModel.Dump(SpikeLog.Write);
                         break;
                     case "shot":  // MSC's own view, next to the game, as F11 saves it (ViewShot); "shot bare" saves PerkeleRim_shot_bare.png
-                        PerkeleRim.Game.ViewShot.Save(Path.Combine(SpikeLog.GameDir, words.Length > 1 ? "PerkeleRim_shot_" + words[1] + ".png" : "PerkeleRim_shot.png"), 0, 0, SpikeLog.Write);
+                        PerkeleRim.Game.ViewShot.Save(Path.Combine(SpikeLog.GameDir, words.Length > 1 ? "PerkeleRim_shot_" + System.Text.RegularExpressions.Regex.Replace(words[1], "[^A-Za-z0-9_-]", "_") + ".png" : "PerkeleRim_shot.png"), 0, 0, SpikeLog.Write);
                         break;
                     case "event":  // a global PlayMaker event, e.g. "event DRINKBEER" plays the beer drinking animation
                         if (words.Length > 1) PlayMakerFSM.BroadcastEvent(words[1]);
