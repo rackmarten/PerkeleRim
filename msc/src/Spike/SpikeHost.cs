@@ -92,25 +92,6 @@ namespace PerkeleRim.Spike
             }
         }
 
-        // Spike "fetch <part>": that loose part of the Satsuma's dropped 1 m in front of the player.
-        static void Fetch(string name)
-        {
-            var player = GameObject.Find("PLAYER");
-            if (player == null) { SpikeLog.Write("cmd: fetch: no PLAYER"); return; }
-            foreach (Rigidbody body in FindObjectsOfType(typeof(Rigidbody)))
-            {
-                var t = body.transform;
-                if (t.root.name != "CARPARTS" || !t.CompareTag("PART") || !t.name.Equals(name, StringComparison.OrdinalIgnoreCase)) continue;
-                var at = player.transform.position + player.transform.forward * 1f + Vector3.up * 0.5f;
-                t.position = at;
-                body.position = at;
-                body.velocity = Vector3.zero;
-                SpikeLog.Write($"cmd: fetch: {t.name} dropped at {at}");
-                return;
-            }
-            SpikeLog.Write("cmd: fetch: no loose part named " + name);
-        }
-
         // Tag, layer, physics and FSMs of every object whose name contains text (prefabs and inactive
         // templates included), at most 20.
         static void Inspect(string text)
@@ -301,7 +282,7 @@ namespace PerkeleRim.Spike
                 found = true;
                 break;
             }
-            if (!found) { SpikeLog.Write("cmd: fetch: no free ground around the player"); return; }
+            if (!found) at = p.position + p.forward * 1f + Vector3.up * 0.5f;  // nowhere free (a narrow interior): just in front, as before
             best.transform.position = at;
             best.transform.rotation = Quaternion.Euler(0f, p.eulerAngles.y, 0f);
             best.velocity = Vector3.zero;
@@ -888,9 +869,6 @@ namespace PerkeleRim.Spike
                         break;
                     case "hands":
                         HandsDump.Run();
-                        break;
-                    case "fetch":  // "fetch gearbox(Clone)": that loose part of the Satsuma's (under CARPARTS) dropped 1 m in front of the player
-                        Fetch(lines[0].Trim().Substring(5).Trim());
                         break;
                     case "satsumadump":  // the Satsuma, its loose parts and MSC's part database, to PerkeleRim_satsuma.txt
                         SatsumaDump.Run();
