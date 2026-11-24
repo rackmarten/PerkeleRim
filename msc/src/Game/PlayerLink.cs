@@ -91,6 +91,7 @@ namespace PerkeleRim.Game
         JunkLink junk;
         ModelSender models;
         TeimoVoice teimo;
+        StallGoods stall;
         ItemLink items;
         ParticleLink particles;
         ActorLink actors;
@@ -188,6 +189,7 @@ namespace PerkeleRim.Game
             finger = new FingerLink(log);
             voice = new PlayerVoice(log);
             teimo = new TeimoVoice(island, log);
+            stall = new StallGoods(island, ground, teimo, what => voice.Swear(what), log);
             horn = new VehicleHorn(log);
             chase = new ChaseCamera(log);
             debugView = new DebugView(SetIslandVisible, log);
@@ -221,6 +223,7 @@ namespace PerkeleRim.Game
 
         // Spike "teimo say <variation>": one of Teimo's lines, from where the player stands.
         public void TeimoSay(string name) => teimo.Say(name, null);
+        public StallGoods Stall => stall;  // the spike's "shop"
 
         // Spike commands "textures" (read an object's model and log it) and "items" (what Skyrim gets).
         public void InspectModel(string name) => models.Inspect(name);
@@ -396,6 +399,7 @@ namespace PerkeleRim.Game
             fuel.Update(link, playing, player != null ? Feet() : Vector3.zero, playing ? Driven() : null, vehicles);
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             shelves.Update(playing);
+            stall.Update(link, playing, player != null ? Feet() : Vector3.zero);
             pocket.Paused = input.Paused;
             junk.Update(link, playing, player);
             pocket.Update(link, playing, player != null);
@@ -514,6 +518,10 @@ namespace PerkeleRim.Game
                 voice.OnIntro(payload, size);
             else if (type == MessageType.TeimoLine)
                 teimo.OnLine(payload, size);
+            else if (type == MessageType.TeimoStall)
+                stall.OnStall(payload, size);
+            else if (type == MessageType.TeimoPay)
+                stall.OnPay(payload, size);
             else if (type == MessageType.StockShelves)
                 shelves.OnMessage(payload, size);
             else if (type == MessageType.FuelStations)

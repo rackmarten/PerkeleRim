@@ -76,7 +76,7 @@ namespace PerkeleRim.Game
                 log($"shelves: spot {next - 1} already holds {taken.name}" + (next == spots.Count ? ", shelves stocked" : ""));
                 return;
             }
-            var item = Spawn(spot.Item);
+            var item = Spawn(spot.Item, log);
             if (item == null) return;
             // Set down just above the board by its own shape: food dropped from a fixed height
             // sometimes started inside the board and fell through it.
@@ -114,7 +114,9 @@ namespace PerkeleRim.Game
             return null;
         }
 
-        GameObject Spawn(string fsmName)
+        // A new store item from its Spawner/CreateItems FSM, as buying it makes one (also Teimo's
+        // stall, StallGoods), loose in the world: some spawners hang it under the shopping bag.
+        internal static GameObject Spawn(string fsmName, Action<string> log)
         {
             var go = GameObject.Find("Spawner/CreateItems");
             PlayMakerFSM spawner = null;
@@ -133,6 +135,8 @@ namespace PerkeleRim.Game
                 log($"shelves: Spawner/CreateItems :: {fsmName} made nothing");
                 return null;
             }
+            if (made.Value.transform.parent != null) made.Value.transform.parent = null;
+            if (!made.Value.activeSelf) made.Value.SetActive(true);
             return made.Value;
         }
     }

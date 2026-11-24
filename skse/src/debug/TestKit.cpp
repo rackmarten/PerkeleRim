@@ -210,7 +210,10 @@ namespace PerkeleRim::TestKit
             return JsonObject{ { "found", s.found }, { "loaded", s.loaded }, { "drawn", s.drawn }, { "model", static_cast<double>(s.model) },
                 { "x", s.position.x }, { "y", s.position.y }, { "z", s.position.z }, { "heading", s.heading * 57.29578 },
                 { "distance", s.distance }, { "offPlayer", s.offPlayer * 57.29578 }, { "visiting", s.visiting }, { "lines", static_cast<double>(s.lines) }, { "lastClip", s.lastClip },
-                { "lastTopic", s.lastTopic }, { "lastAt", s.lastAt }, { "caption", s.caption } };
+                { "lastTopic", s.lastTopic }, { "lastAt", s.lastAt }, { "caption", s.caption }, { "billCount", static_cast<double>(s.billCount) },
+                { "billTotal", s.billTotal }, { "paid", static_cast<double>(s.paid) }, { "paidTotal", s.paidTotal }, { "stolen", static_cast<double>(s.stolen) },
+                { "bounty", static_cast<double>(s.bounty) }, { "shorts", static_cast<double>(s.shorts) }, { "money", s.money },
+                { "stallSent", static_cast<double>(s.stallSent) } };
         }
 
         // A line for MSC's spike commands (msc/src/Spike/SpikeHost.cs: drunk 2, lightson 1, time 6, ...) over the link.
@@ -601,6 +604,15 @@ namespace PerkeleRim::TestKit
                     }
                     a_call.DefaultTimeout(5.0);
                     return [](Call&) -> std::optional<Json> { return DescribeTeimo(); };
+                });
+
+            SkseTestKit::AddCommand("pr.teimo.talk", "",
+                "As E on Teimo while MSC has Kumpo: his greeting, or with goods on his counter, paying for them (TeimoPay); answers with Teimo's state",
+                [](Call&) -> Json {
+                    if (!Teimo::DebugTalk()) {
+                        throw Error("Teimo isn't there, or MSC doesn't have the player");
+                    }
+                    return DescribeTeimo();
                 });
 
             SkseTestKit::AddCommand("pr.teimo.front", "[distance=<units>]",

@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "perkelerim_protocol.h"
+#include "../perkelerim_protocol.h"
 
 #include <algorithm>
 #include <array>
@@ -54,7 +54,7 @@ namespace PerkeleRim::Teimo
         float x, y, z;
         float halfX, halfY, halfZ;
     };
-    inline constexpr Box kCounter{ 0.0f, 55.0f, 80.0f, 40.0f, 25.0f, 40.0f };
+    inline constexpr Box kCounterTop{ 0.0f, 55.0f, 80.0f, 40.0f, 25.0f, 40.0f };
 
     inline constexpr float kStallReach = 3500.0f;  // units (50 m) from Teimo within which MSC gets the stall's goods
 
@@ -81,13 +81,13 @@ namespace PerkeleRim::Teimo
         stall.teimo[1] = a_at.y;
         stall.teimo[2] = a_at.z;
         stall.heading = a_heading;
-        const auto counter = StallToWorld(a_at, a_heading, kCounter.x, kCounter.y, kCounter.z);
+        const auto counter = StallToWorld(a_at, a_heading, kCounterTop.x, kCounterTop.y, kCounterTop.z);
         stall.counter[0] = counter.x;
         stall.counter[1] = counter.y;
         stall.counter[2] = counter.z;
-        stall.counterHalf[0] = kCounter.halfX;
-        stall.counterHalf[1] = kCounter.halfY;
-        stall.counterHalf[2] = kCounter.halfZ;
+        stall.counterHalf[0] = kCounterTop.halfX;
+        stall.counterHalf[1] = kCounterTop.halfY;
+        stall.counterHalf[2] = kCounterTop.halfZ;
         for (std::size_t i = 0; i < kStallSpots.size(); i++) {
             const auto& spot = kStallSpots[i];
             const auto  at = StallToWorld(a_at, a_heading, spot.x, spot.y, spot.z);
