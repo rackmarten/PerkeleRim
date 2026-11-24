@@ -1,5 +1,6 @@
 #pragma once
 
+#include "teimo_shop.h"
 #include "teimo_talk.h"
 
 #include <optional>
@@ -24,8 +25,12 @@ namespace PerkeleRim::Teimo
 
     // Every frame MSC has the player, before that frame's Draw: what Teimo says to him. a_drunk is
     // MSC's drunk level; a_inVehicle: Kumpo sits in a vehicle or has climbed into one (no talk, and
-    // the visit ends: driving past isn't a visit).
-    void Update(RE::PlayerCharacter* a_player, float a_drunk, bool a_inVehicle);
+    // the visit ends: driving past isn't a visit). a_generation is the island's anchor: the stall's
+    // goods go to MSC once per anchor while Kumpo is within kStallReach (TeimoStall).
+    void Update(RE::PlayerCharacter* a_player, float a_drunk, bool a_inVehicle, std::uint32_t a_generation);
+
+    // MSC's TeimoShop: what lies on his counter, a payment, money short, goods carried off.
+    void OnShop(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size);
 
     bool IsTeimo(const RE::TESObjectREFR* a_ref);
 
@@ -60,6 +65,15 @@ namespace PerkeleRim::Teimo
         double        lastAt = -1.0;
         std::uint32_t lines = 0;  // lines said since the game loaded
         std::string   caption;
+        std::uint32_t billCount = 0;   // goods on his counter (MSC's last kShopBill)
+        float         billTotal = 0.0f;
+        std::uint32_t paid = 0;        // goods paid for since the game loaded
+        float         paidTotal = 0.0f;
+        std::uint32_t stolen = 0;      // goods carried off unpaid since the game loaded
+        std::uint32_t bounty = 0;      // gold of bounty they cost
+        std::uint32_t shorts = 0;      // payments he couldn't make
+        float         money = -1.0f;   // MSC's money after the last payment, or when short
+        std::uint32_t stallSent = 0;   // the anchor generation the stall's goods last went to MSC for, 0 = none
     };
     Status       Describe();
     RE::NiNode*  Node();  // what he's drawn with, while he is
@@ -67,6 +81,8 @@ namespace PerkeleRim::Teimo
     // Says a line of a_topic now, as if its event came (the scenario's caption shot). False while
     // he can't (not loaded, MSC not linked).
     bool         DebugSay(RE::PlayerCharacter* a_player, Topic a_topic);
+    // As E on him (the dialogue hook): his greeting, or paying for what lies on the counter.
+    bool         DebugTalk();
     std::string_view TopicName(Topic a_topic);
     std::optional<Topic> TopicByName(std::string_view a_name);
 }

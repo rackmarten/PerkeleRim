@@ -622,6 +622,13 @@ namespace PerkeleRim.Spike
                         }
                         else PerkeleRim.Game.TeimoModel.Dump(SpikeLog.Write);
                         break;
+                    case "shop":  // Teimo's stall: "shop" lists its goods, "shop take beer" puts one into the hand, "shop counter" puts the held one on the counter
+                        var shopLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (shopLink == null || shopLink.Stall == null) { SpikeLog.Write("cmd: shop: no PlayerLink"); break; }
+                        if (words.Length > 2 && words[1].ToLower() == "take") shopLink.Stall.Take(words[2]);
+                        else if (words.Length > 1 && words[1].ToLower() == "counter") shopLink.Stall.ToCounter();
+                        SpikeLog.Write("cmd: " + shopLink.Stall.Describe());
+                        break;
                     case "shot":  // MSC's own view, next to the game, as F11 saves it (ViewShot); "shot bare" saves PerkeleRim_shot_bare.png
                         PerkeleRim.Game.ViewShot.Save(Path.Combine(SpikeLog.GameDir, words.Length > 1 ? "PerkeleRim_shot_" + System.Text.RegularExpressions.Regex.Replace(words[1], "[^A-Za-z0-9_-]", "_") + ".png" : "PerkeleRim_shot.png"), 0, 0, SpikeLog.Write);
                         break;
