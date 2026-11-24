@@ -19,7 +19,7 @@
     // The Satsuma on the island and built with every part MSC has loose, so its body and each part's
     // model are among those read (each part's paint and atlases named by id after the first, v56).
     { "label": "the Satsuma comes", "cmd": "pr.satsuma", "what": "here", "expect": ["drawn == true"] },
-    { "label": "every part goes on", "cmd": "pr.satsuma", "what": "full", "expect": ["attached > 30", "allDrawn == true"] },
+    { "label": "every part goes on", "cmd": "pr.satsuma", "what": "full", "expect": ["attached > 20", "allDrawn == true"] },
 
     // As after MSC starts: every model read and sent again, under new ids.
     { "label": "MSC reads every model again", "cmd": "pr.send", "line": "models again cold" },

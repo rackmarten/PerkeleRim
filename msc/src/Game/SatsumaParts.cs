@@ -293,7 +293,9 @@ namespace PerkeleRim.Game
         // Spike command "satsuma full": every part MSC has loose put on, trigger by trigger as in "satsuma
         // half", over and over until a pass puts nothing on (a part's own triggers, the cylinder head's on
         // the block, only show once it is on): the triggers on the car and on the loose parts
-        // (CARPARTS), so the engine is built on its block before the block goes in.
+        // (CARPARTS), so the engine is built on its block before the block goes in. Parts MSC wants bolted
+        // first (the suspension, the steering, the trail arms: their FSM's Requirements and Check bolts) are
+        // dropped by MSC and stay off: bolting isn't driven here (MSC's global TIGHTEN didn't satisfy them).
         public IEnumerator AssembleAll() => Building(AssembleAllSteps());
 
         IEnumerator AssembleAllSteps()
@@ -324,11 +326,6 @@ namespace PerkeleRim.Game
                 total += on;
                 log($"satsuma: full, pass {pass}: {on} of {tried} parts put on");
                 if (on == 0) break;
-                // Parts that need what they hang on bolted (struts, wishbones, the steering: their FSM's
-                // Requirements and Check bolts) go on in the next pass once every bolt is tight: MSC's own
-                // global TIGHTEN, which every bolt's Screw FSM takes (a test session's MSC is never saved).
-                PlayMakerFSM.BroadcastEvent("TIGHTEN");
-                for (int i = 0; i < 10; i++) yield return null;
             }
             nextScan = 0f;
             for (int i = 0; i < 5; i++) yield return null;
@@ -370,8 +367,10 @@ namespace PerkeleRim.Game
                 if (part == null || !part.IsChildOf(pivot) || fsm == null) break;
                 if (i >= 10 && (fsm.ActiveStateName == "Check for Part collision" || Time.realtimeSinceStartup >= until)) break;
             }
-            went[0] = part == null || !part.IsChildOf(pivot);
-            if (!went[0])
+            // On: destroyed (its copy switched on) or hung somewhere (a pivot of the car or of a loose block).
+            // Out of the hand onto nothing is MSC dropping it (its Requirements: what it hangs on isn't bolted).
+            went[0] = part == null || (!part.IsChildOf(pivot) && part.parent != null);
+            if (!went[0] && part != null)
             {
                 part.SetParent(parent, true);
                 part.position = position;
