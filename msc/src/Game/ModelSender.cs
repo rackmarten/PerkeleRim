@@ -798,9 +798,10 @@ namespace PerkeleRim.Game
                 bool direct;
                 data = Pixels(texture, log, out direct);
                 // Only what can't change: MSC may draw into a RenderTexture or write a texture it can
-                // read, so only a texture with no CPU copy at all (GetPixels32 refused it) is kept, and
-                // shared with other models by id (stable).
-                if (!direct && !(texture is RenderTexture) && !Readable(texture as Texture2D))
+                // read, so only a texture with no usable CPU copy (GetPixels32 refused it, or gave the
+                // debug fill: MSC's textures) is kept and shared with other models by id (stable). One too
+                // big for that read wasn't tried, so it may have a copy: never kept.
+                if (!direct && !(texture is RenderTexture) && texture.width <= Wire.ModelTextureSizeMax && texture.height <= Wire.ModelTextureSizeMax)
                 {
                     textures.Put(id, data, data.Rgba.LongLength);
                     stable.Add(id);
@@ -899,19 +900,6 @@ namespace PerkeleRim.Game
             log($"model: texture {texture.name} {(t2 != null ? t2.format.ToString() : texture.GetType().Name)} {texture.width}x{texture.height} -> " +
                 $"{data.Width}x{data.Height} average {Average(data.Rgba)}");
             return data;
-        }
-
-        // Whether a texture has a CPU copy MSC could write (a big one Direct skips, one reading back as
-        // the debug fill): not a Texture2D, or one that refuses GetPixel, has none.
-        static bool Readable(Texture2D texture)
-        {
-            if (texture == null) return false;
-            try
-            {
-                texture.GetPixel(0, 0);
-                return true;
-            }
-            catch (Exception) { return false; }
         }
 
         static ModelTextureData Direct(Texture2D texture)
