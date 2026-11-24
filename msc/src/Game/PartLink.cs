@@ -26,6 +26,8 @@ namespace PerkeleRim.Game
             public PlayMakerFSM Data;
             public FsmBool Installed, Bolted, Damaged;
             public FsmGameObject ThisPart;
+            public FsmGameObject Fitted, Loose;  // parts MSC swaps objects for (the radiator): ActivateThis and SpawnThis
+            public Transform Corner;             // a wheel (no database entry): the car's wheelFL..wheelRR it hangs below
             public GameObject Part;              // ThisPart as the bolts below were read from
             public FsmFloat Tightness, Full;     // its BoltCheck, or null
             public readonly List<FsmInt> Stages = new List<FsmInt>();
@@ -129,7 +131,7 @@ namespace PerkeleRim.Game
                 var t = database.transform.Find(section);
                 if (t != null) now += t.childCount;
             }
-            if (now == shape && entries.Count > 0) return;  // MSC never adds an entry: nothing new to find
+            if (now == shape && entries.Count > 0 && wheels.Count > 0) return;  // MSC never adds an entry: nothing new to find
             shape = now;
             var known = new Dictionary<PlayMakerFSM, Entry>();
             foreach (var e in entries) if (e.Data != null) known[e.Data] = e;
@@ -156,6 +158,8 @@ namespace PerkeleRim.Game
                                 Bolted = vars.FindFsmBool("Bolted"),
                                 Damaged = vars.FindFsmBool("Damaged"),
                                 ThisPart = vars.FindFsmGameObject("ThisPart"),
+                                Fitted = vars.FindFsmGameObject("ActivateThis"),
+                                Loose = vars.FindFsmGameObject("SpawnThis"),
                             };
                         }
                         if (e.Installed != null) entries.Add(e);
@@ -163,14 +167,19 @@ namespace PerkeleRim.Game
                     }
                 }
             }
-            if (entries.Count != foundCount) log($"parts: {entries.Count} Satsuma parts in MSC's database");
+            FindWheels(known);
+            if (entries.Count != foundCount) log($"parts: {entries.Count} Satsuma parts in MSC's database and its wheels");
             foundCount = entries.Count;
         }
 
         PartReport? Read(Entry e, Vector3 feet)
         {
+            if (e.Corner != null) return ReadWheel(e, feet);
             if (e.Data == null) return null;
+            bool installed = e.Installed != null && e.Installed.Value;
             var part = e.ThisPart != null ? e.ThisPart.Value : null;
+            if (part == null && (e.Fitted != null || e.Loose != null))  // one object on the car, another loose
+                part = installed ? (e.Fitted != null ? e.Fitted.Value : null) : (e.Loose != null ? e.Loose.Value : null);
             if (part != e.Part) Bind(e, part);
             int count = e.Stages.Count;
             if (stages.Length < count) stages = new int[count];
@@ -182,7 +191,7 @@ namespace PerkeleRim.Game
             return new PartReport
             {
                 Name = e.Name,
-                Flags = PartReport.FlagsFor(e.Installed != null && e.Installed.Value, e.Bolted != null && e.Bolted.Value,
+                Flags = PartReport.FlagsFor(installed, e.Bolted != null && e.Bolted.Value,
                     e.Damaged != null && e.Damaged.Value, placed),
                 Generation = island.Generation,
                 Position = placed ? island.IslandToSkyrim(new Vec3(at.x, at.y, at.z)) : new Vec3(0f, 0f, 0f),
@@ -191,6 +200,58 @@ namespace PerkeleRim.Game
                 Stages = sum,
                 Tightness = e.Tightness != null ? e.Tightness.Value : 0f,
                 TightnessFull = e.Full != null ? e.Full.Value : 0f,
+                Object = part != null ? unchecked((uint)part.transform.GetInstanceID()) : 0u,
+            };
+        }
+
+        static readonly string[] Corners = { "FL", "FR", "RL", "RR" };
+
+        // The stock wheels have no database entry: one entry per corner of the car (WheelFL..WheelRR), the wheel
+        // fitted there being the part object with a Removal FSM below the car's wheelFL (on its pivot_wheel_standard or
+        // pivot_wheel_offset, where its Assembly puts it).
+        void FindWheels(Dictionary<PlayMakerFSM, Entry> known)
+        {
+            var car = GameObject.Find("SATSUMA(557kg, 248)");
+            if (car == null) return;
+            foreach (var corner in Corners)
+            {
+                Transform wheel = null;
+                foreach (var t in car.GetComponentsInChildren<Transform>(true))
+                    if (t.name == "wheel" + corner) { wheel = t; break; }
+                if (wheel == null) continue;
+                var old = wheels.Find(w => w.Corner == wheel);
+                var e = old ?? new Entry { Name = "Wheel" + corner, Corner = wheel };
+                if (old == null) wheels.Add(e);
+                entries.Add(e);
+            }
+        }
+
+        readonly List<Entry> wheels = new List<Entry>();
+
+        PartReport? ReadWheel(Entry e, Vector3 feet)
+        {
+            GameObject part = null;
+            foreach (var fsm in e.Corner.GetComponentsInChildren<PlayMakerFSM>())  // active ones: a fitted wheel
+                if (fsm.FsmName == "Removal" && fsm.name.StartsWith("wheel_") && (fsm.transform.parent != null && fsm.transform.parent.name.StartsWith("pivot_wheel")))
+                { part = fsm.gameObject; break; }
+            if (part != e.Part) Bind(e, part);
+            int count = e.Stages.Count;
+            if (stages.Length < count) stages = new int[count];
+            for (int i = 0; i < count; i++) stages[i] = e.Stages[i] != null ? e.Stages[i].Value : 0;
+            int bolts, tight, sum;
+            PartReport.CountBolts(stages, count, out bolts, out tight, out sum);
+            var at = part != null ? part.transform.position : e.Corner.position;
+            bool placed = (at - feet).sqrMagnitude < PlacedRadius * PlacedRadius;
+            return new PartReport
+            {
+                Name = e.Name,
+                // MSC keeps no Bolted for a wheel: bolted is every nut screwed all the way in.
+                Flags = PartReport.FlagsFor(part != null, part != null && bolts > 0 && tight == bolts, false, placed),
+                Generation = island.Generation,
+                Position = placed ? island.IslandToSkyrim(new Vec3(at.x, at.y, at.z)) : new Vec3(0f, 0f, 0f),
+                Bolts = bolts,
+                BoltsTight = tight,
+                Stages = sum,
                 Object = part != null ? unchecked((uint)part.transform.GetInstanceID()) : 0u,
             };
         }

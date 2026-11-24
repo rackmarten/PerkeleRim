@@ -44,13 +44,15 @@ namespace PerkeleRim.Spike
     //                        aim up: looks at the sky, where nothing has a prompt; aim stop: lets go of the look
     //   fetch <name> [eyes]  the nearest loose part named so put down by the player (fetch wheel_regula), or with eyes
     //                        held in front of his eyes until a left click picks it up (fetch door left eyes)
+    //   fit <trigger...>     those parts put on through MSC's own Assembly (fit trigger_discbrake_fl), for setups
+    //   tighten <words>      every bolt with those words in its path turned all the way in by MSC's TIGHTEN, for setups
     //   offer <trigger>      the part in MSC's hand counted as come into that place on the car (offer trigger_door_left):
     //                        MSC checks it, shows its assemble icon and waits for the left click
     //   wrench <words>       MSC's wrench size set to the nearest bolt's with those words in its path (wrench door left(Clone))
     //   look <words>         like aim, at any enabled collider with those words in its path (a trigger too):
     //                        look trigger_door_left (a part's place on the car), look door left(Clone) BoltPM #2
     //                        (#n: the n-th in a fixed order, by path and place among siblings; a trailing $: the
-    //                        path ends with the words, look door left(Clone)$ for the part's own collider)
+    //                        path ends with the last word, look door left(Clone)$ for the part's own collider)
     //   textures <name>      read an object's model (GameObject.Find) without sending it and log it
     //   shot                 MSC's view to <MSC>/PerkeleRim_shot.png, the way F11 saves it (ViewShot)
     //   override on|off      InputShim on/off with nothing pressed (on: the link no longer feeds it)
@@ -336,8 +338,7 @@ namespace PerkeleRim.Spike
             }
             nth = Math.Max(1, nth);
             // "door left(Clone)$": the path ends there (the part's own collider, not its bolts' or window's).
-            string ending = words.Count > 0 && words[words.Count - 1].EndsWith("$") ? text.Substring(0, text.LastIndexOf('$')).Trim() : null;
-            if (ending != null) { var cut = ending.LastIndexOf('/'); ending = cut >= 0 ? ending.Substring(cut + 1) : ending; }
+            string ending = words.Count > 0 && words[words.Count - 1].EndsWith("$") ? words[words.Count - 1].TrimEnd('$') : null;
             var found = new List<KeyValuePair<float, Collider>>();
             foreach (var c in FindObjectsOfType<Collider>())
             {
@@ -470,7 +471,8 @@ namespace PerkeleRim.Spike
             if (assembly == null) { SpikeLog.Write($"cmd: offer: no active {name} :: Assembly (the part is on already?)"); return; }
             var held = Held();
             var want = assembly.FsmVariables.FindFsmString("HandChild");
-            var state = assembly.Fsm.GetState("Find correct part") ?? assembly.Fsm.GetState("Find correct part 2");
+            // Its own checks first where it has them (a wheel wants its brake on), else straight to the hand's part.
+            var state = assembly.Fsm.GetState("Requirements") ?? assembly.Fsm.GetState("Find correct part") ?? assembly.Fsm.GetState("Find correct part 2");
             if (state == null || PerkeleRim.Game.SaveSync.SwitchState == null) { SpikeLog.Write($"cmd: offer: {name} has no Find correct part state"); return; }
             PerkeleRim.Game.SaveSync.SwitchState.Invoke(assembly.Fsm, new object[] { state });
             SpikeLog.Write($"cmd: offer: {FullPath(assembly.transform)} [{state.Name}], the hand holds {(held != null ? held.name : "nothing")}, it wants {(want != null ? want.Value : "?")}");
@@ -483,6 +485,30 @@ namespace PerkeleRim.Spike
             foreach (var f in c.GetComponents<PlayMakerFSM>())
                 if (f.FsmName == "Assembly") return true;
             return false;
+        }
+
+        // "tighten <words>": every active bolt (BoltPM :: Screw) whose path has the words sent MSC's TIGHTEN event eight
+        // times, 0.35 s apart, as its wrench does per turn of the wheel: a scenario's setup (a spindle bolted on so the
+        // disc brake will go on). The bolts themselves turn and count as MSC's do.
+        System.Collections.IEnumerator Tighten(string text)
+        {
+            var words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            var bolts = new List<PlayMakerFSM>();
+            foreach (var f in FindObjectsOfType<PlayMakerFSM>())
+            {
+                if (f.FsmName != "Screw" || f.name != "BoltPM") continue;
+                var path = FullPath(f.transform);
+                bool all = words.Length > 0;
+                foreach (var w in words) all &= path.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0;
+                if (all) bolts.Add(f);
+            }
+            SpikeLog.Write($"cmd: tighten: {bolts.Count} bolts with '{text}' in their path");
+            for (int turn = 0; turn < 8; turn++)
+            {
+                foreach (var b in bolts) if (b != null) b.SendEvent("TIGHTEN");
+                yield return new WaitForSeconds(0.35f);
+            }
+            SpikeLog.Write("cmd: tighten: done");
         }
 
         // What MSC's hand holds (the child of ItemPivot), or null.
@@ -952,6 +978,14 @@ namespace PerkeleRim.Spike
                         var fetchWhat = lines[0].Trim().Substring(5).Trim();
                         if (fetchWhat.EndsWith(" eyes")) StartCoroutine(FetchToEyes(fetchWhat.Substring(0, fetchWhat.Length - 5).Trim()));
                         else Fetch(fetchWhat);
+                        break;
+                    case "fit":  // "fit trigger_discbrake_fl": that part put on through MSC's own Assembly, wherever it lies
+                        var fitter = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (fitter != null && words.Length > 1) fitter.FitParts(lines[0].Trim().Substring(3).Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+                        else SpikeLog.Write("cmd: fit <trigger names>, with PlayerLink");
+                        break;
+                    case "tighten":  // "tighten spindle": every bolt of that part turned all the way in by MSC's own TIGHTEN, for setups
+                        StartCoroutine(Tighten(lines[0].Trim().Substring(7).Trim()));
                         break;
                     case "offer":  // "offer trigger_door_left": the part in MSC's hand counted as come into its place on the car
                         Offer(lines[0].Trim().Substring(5).Trim());

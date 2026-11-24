@@ -256,6 +256,15 @@ namespace PerkeleRim.Game
         public void ModelsAgain(bool cold) => models.Again(cold);
         public void DumpItems() => items.Dump();
         public void DumpParts(string word) => parts.Dump(word);
+
+        // Spike command "fit <trigger> ...": those parts put on through MSC's own Assembly (SatsumaParts.Assemble, as
+        // "satsuma half" does), for a scenario's setup (the brake a wheel wants).
+        public void FitParts(string[] triggers)
+        {
+            satsuma.Find();
+            satsumaParts.Attach(satsuma.Car);
+            StartCoroutine(satsumaParts.Assemble(triggers));
+        }
         public void DumpParticles() => particles.Dump();
         public void PuffParticles(int count) => particles.Puff(count);
 
