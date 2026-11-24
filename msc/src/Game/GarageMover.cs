@@ -54,8 +54,8 @@ namespace PerkeleRim.Game
         GarageDone? unsent;  // an answer the ring had no room for
         bool bodyPlaced;  // this MSC session has set the body down on its stand (or seen it placed)
         bool laidOut;     // this MSC session has laid the bay out: parts on the island since are where Kumpo left them
-        readonly HashSet<Rigidbody> fresh = new HashSet<Rigidbody>();
-        readonly HashSet<Rigidbody> heldWhenTaken = new HashSet<Rigidbody>();  // kinematic by Keep when MSC's hand took it  // seen in MSC's own map or in hand this session, or restored by a load
+        readonly HashSet<Rigidbody> fresh = new HashSet<Rigidbody>();  // seen in MSC's own map or in hand this session, or restored by a load
+        readonly HashSet<Rigidbody> heldWhenTaken = new HashSet<Rigidbody>();  // kinematic by Keep when MSC's hand took it
 
         class Kept
         {
@@ -129,12 +129,18 @@ namespace PerkeleRim.Game
             bool body = false;
             int slotted = 0, floor = 0, brought = 0, missed = 0;
             var car = satsuma();
-            // The first stand request since MSC started: its parts on the island are where its save had
-            // them for another anchor; the bay is laid out again, as by the board.
-            bool restarted = (r.What & Wire.BayStand) != 0 && (!bodyPlaced || !laidOut);
-            if ((r.What & (Wire.BayMoveSatsuma | Wire.BayVehiclesHome)) != 0 || restarted)
+            // A stand request in an MSC session that hasn't laid the bay out (it restarted: its parts on the
+            // island are where its save had them, for another anchor): laid out again, as by the board, once.
+            // The body goes back on its stand while this session hasn't placed it (or seen it there).
+            bool stand = (r.What & Wire.BayStand) != 0;
+            bool restarted = stand && !laidOut;
+            if ((r.What & (Wire.BayMoveSatsuma | Wire.BayVehiclesHome)) != 0 || (stand && !bodyPlaced))
                 body = SetBodyDown(car, r);
-            else body = car != null && car.Car != null && OnStand(car.Car, r);
+            if (!body && car != null && car.Car != null && OnStand(car.Car, r))
+            {
+                body = true;
+                bodyPlaced = true;  // there already: no need to set it down at a later anchor
+            }
             if ((r.What & Wire.BayMoveSatsuma) != 0 && !body && car != null && car.Car != null)
             {
                 // Not the move without its body (Kumpo sits in it): Skyrim asks again in a while. With no
@@ -458,18 +464,24 @@ namespace PerkeleRim.Game
             var inBay = new List<Rigidbody>();
             foreach (var b in bodies)
                 if (b.transform.position.y > IslandBelow || b.transform.position.y < LostBelow) inBay.Add(b);
-            var placed = SatsumaBay.Assign(Describe(inBay));
-            for (int i = 0; i < inBay.Count; i++)
+            // On any slot listed for its name (two copies of a part may lie on each other's). Parts without
+            // a slot of their own (taken a free one) aren't counted.
+            foreach (var b in inBay)
             {
-                if (placed[i].Slot < 0 || !SatsumaBay.Listed(inBay[i].name)) continue;
-                var s = SatsumaBay.Slots[placed[i].Slot];
-                var spot = BayPoint(r, s.X, s.Y, s.Z);
-                float off2 = Flat(inBay[i].transform.position - spot);
-                if (off2 < OnSlot) on++;
+                if (!SatsumaBay.Listed(b.name)) continue;
+                float nearest = float.MaxValue;
+                int slot = -1;
+                foreach (var i in SatsumaBay.SlotsFor(b.name))
+                {
+                    var s = SatsumaBay.Slots[i];
+                    float d = Flat(b.transform.position - BayPoint(r, s.X, s.Y, s.Z));
+                    if (d < nearest) { nearest = d; slot = i; }
+                }
+                if (nearest < OnSlot) on++;
                 else
                 {
                     off++;
-                    if (off <= 12) log($"garage: {inBay[i].name} is {off2:0.00} m off its slot {placed[i].Slot} (kind {s.Kind}, at {inBay[i].transform.position}, slot {spot})");
+                    if (off <= 12) log($"garage: {b.name} is {nearest:0.00} m off its nearest slot {slot} (at {b.transform.position})");
                 }
             }
         }
