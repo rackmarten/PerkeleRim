@@ -1,0 +1,68 @@
+// Shopping at Teimo's stall (protocol/cpp/teimo_shop.h, msc/src/Game/StallGoods.cs): MSC's shop goods set out on
+// his stall, Kumpo takes a beer case, puts it on the counter and pays Teimo for it in gold at MSC's price; the case is
+// his MSC item afterwards and Teimo thanks him. Then the same with too little money (Teimo says so), and walking off
+// with a case unpaid (a bounty, Teimo's shout). scripts/skytest.ps1 run scenarios/teimo-shop.json in a running session;
+// MSC's half is in its log (msc.log: "stall: ..."), Skyrim's in PerkeleRim.log ("teimo: ..."); scenarios/README.md.
+{
+  "name": "teimo-shop",
+  "steps": [
+    { "label": "Skyrim takes Kumpo", "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "label": "Kumpo in front of Teimo's stall, about 3 m out", "cmd": "pr.teimo.front", "distance": 220 },
+    { "label": "Teimo hasn't met him yet", "cmd": "pr.teimo.reset" },
+    { "label": "300 gold, enough for a beer case (MSC's 149 mk) and change", "cmd": "console", "command": "player.removeitem 0000000F 100000" },
+    { "cmd": "console", "command": "player.additem 0000000F 300" },
+    { "cmd": "wait", "seconds": 4 },
+    { "label": "MSC takes him there", "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
+    { "label": "his hands empty", "cmd": "pr.send", "line": "event DROP_PART" },
+    { "label": "a clear day", "cmd": "scene", "presets": "day clear" },
+    { "cmd": "wait", "seconds": 6 },
+    { "label": "the stall's goods went to MSC", "cmd": "pr.teimo", "expect": ["stallSent > 0", "billCount == 0", "paid == 0"] },
+    { "label": "MSC's list of them", "cmd": "pr.send", "line": "shop" },
+
+    "pause",
+    { "label": "the stall with its goods, from the front", "cmd": "screenshot", "name": "goods-front", "camera": "orbit pr.teimo: yaw=180 distance=520 pitch=15" },
+    { "label": "the goods from above", "cmd": "screenshot", "name": "goods-top", "camera": "top pr.teimo: distance=520" },
+    "resume",
+
+    // A beer case into the hand, onto the counter, and paid for.
+    { "label": "Kumpo takes a beer case", "cmd": "pr.send", "line": "shop take beer" },
+    { "cmd": "wait", "seconds": 1 },
+    { "label": "and puts it on the counter", "cmd": "pr.send", "line": "shop counter" },
+    { "cmd": "wait", "seconds": 2 },
+    { "label": "the case is on the bill at MSC's price", "cmd": "pr.teimo", "expect": ["billCount == 1", "billTotal ~ 149 +- 0.01"] },
+    { "label": "the bill's note on the HUD", "cmd": "screenshot", "name": "bill", "hud": true },
+    { "label": "Kumpo talks to Teimo: he pays", "cmd": "pr.teimo.talk" },
+    { "cmd": "wait", "seconds": 0.8 },
+    { "label": "paid at MSC's price, Teimo thanks him", "cmd": "pr.teimo",
+      "expect": ["paid == 1", "paidTotal ~ 149 +- 0.01", "billCount == 0", "lastTopic matches ^(paid|drunkbuy)$", "caption contains Teimo:"] },
+    { "label": "his thanks' caption", "cmd": "screenshot", "name": "paid", "hud": true },
+    { "cmd": "wait", "seconds": 1.5 },
+    { "label": "Skyrim's gold down by the price: 300 - 149", "cmd": "pr.teimo", "expect": ["money >= 151", "money < 152", "gold == 151"] },
+    { "label": "the case is MSC's beer case item now", "cmd": "pr.send", "line": "items" },
+
+    // Another case with what's left (151 gold, the case 149, so it goes; then the third can't).
+    { "cmd": "wait", "seconds": 4 },
+    { "label": "only 20 gold left", "cmd": "console", "command": "player.removeitem 0000000F 131" },
+    { "cmd": "wait", "seconds": 1 },
+    { "label": "Kumpo takes another case", "cmd": "pr.send", "line": "shop take beer" },
+    { "cmd": "wait", "seconds": 1 },
+    { "cmd": "pr.send", "line": "shop counter" },
+    { "cmd": "wait", "seconds": 2 },
+    { "cmd": "pr.teimo", "expect": ["billCount == 1", "gold == 20"] },
+    { "label": "he can't pay for it", "cmd": "pr.teimo.talk" },
+    { "cmd": "wait", "seconds": 1.5 },
+    { "label": "not enough money, Teimo says so, nothing paid", "cmd": "pr.teimo", "expect": ["shorts == 1", "paid == 1", "lastTopic == short", "billCount == 1"] },
+    { "label": "MSC's NOT ENOUGH MONEY prompt and Teimo's line", "cmd": "screenshot", "name": "short", "hud": true },
+
+    // He walks off with it instead.
+    { "cmd": "wait", "seconds": 4 },
+    { "label": "Kumpo takes the case off the counter", "cmd": "pr.send", "line": "shop take beer" },
+    { "cmd": "wait", "seconds": 1 },
+    { "label": "and walks off with it along the road", "cmd": "pr.key", "key": 100, "seconds": 11.0 },
+    { "cmd": "wait", "seconds": 0.5 },
+    { "label": "stolen: a bounty, Teimo shouts after him", "cmd": "pr.teimo", "expect": ["stolen == 1", "bounty == 149", "crimeGold >= 149", "lastTopic == stolen", "gold == 20"] },
+    { "label": "Kumpo away down the road with the case (his shout came as he passed 8 m)", "cmd": "screenshot", "name": "stolen", "hud": true },
+    { "label": "the stolen case is a real MSC item, in his hand (msc.log: stall: ... stolen, now beercase<n>, back in the hand)", "cmd": "pr.send", "line": "shop" },
+    { "cmd": "scene", "presets": "restore" }
+  ]
+}

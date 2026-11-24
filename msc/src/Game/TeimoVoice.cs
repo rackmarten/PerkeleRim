@@ -16,6 +16,7 @@ namespace PerkeleRim.Game
         readonly Island island;
         readonly Action<string> log;
         AudioSource source;
+        AudioSource till;  // the stall's till sounds (MSC's Store group), beside his lines
 
         public TeimoVoice(Island island, Action<string> log)
         {
@@ -38,23 +39,49 @@ namespace PerkeleRim.Game
         // Also the spike's "teimo say <variation>", from where the player stands.
         public void Say(string name, Vec3? skyrim)
         {
-            var clip = Find(name);
+            var clip = Find("Teimo", name);
             if (clip == null)
             {
                 log($"teimo: no clip {name} in MSC's Teimo group");
                 return;
             }
-            if (source == null)
+            if (source == null) source = MakeSource("PerkeleRim.TeimoVoice");
+            float meters;
+            bool placed = Play(source, clip, skyrim, out meters);
+            log($"teimo: says {name} ({clip.name}, {clip.length:0.0} s){(placed ? $", {meters:0.0} m from the player" : ", in 2D")}");
+        }
+
+        // MSC's till sound (Store group: cash_register_1 as a good goes on the bill, cash_register_2
+        // as it's paid) from where the counter is, Skyrim world space.
+        public void Till(string name, Vec3 skyrim)
+        {
+            var clip = Find("Store", name);
+            if (clip == null)
             {
-                var go = new GameObject("PerkeleRim.TeimoVoice");
-                UnityEngine.Object.DontDestroyOnLoad(go);
-                source = go.AddComponent<AudioSource>();
-                source.rolloffMode = AudioRolloffMode.Linear;
-                source.minDistance = Near;
-                source.maxDistance = Far;
-                source.dopplerLevel = 0f;
-                source.loop = false;
+                log($"teimo: no clip {name} in MSC's Store group");
+                return;
             }
+            if (till == null) till = MakeSource("PerkeleRim.TeimoTill");
+            float unused;
+            Play(till, clip, skyrim, out unused);
+        }
+
+        static AudioSource MakeSource(string name)
+        {
+            var go = new GameObject(name);
+            UnityEngine.Object.DontDestroyOnLoad(go);
+            var made = go.AddComponent<AudioSource>();
+            made.rolloffMode = AudioRolloffMode.Linear;
+            made.minDistance = Near;
+            made.maxDistance = Far;
+            made.dopplerLevel = 0f;
+            made.loop = false;
+            return made;
+        }
+
+        // True when it plays from a point on the island (meters from the listener), false in 2D.
+        bool Play(AudioSource source, AudioClip clip, Vec3? skyrim, out float meters)
+        {
             var listener = UnityEngine.Object.FindObjectOfType<AudioListener>();
             bool placed = skyrim.HasValue && island.HasAnchor;
             if (placed)
@@ -66,20 +93,20 @@ namespace PerkeleRim.Game
             source.spatialBlend = placed ? 1f : 0f;
             source.clip = clip;
             source.Play();
-            float meters = listener != null && placed ? Vector3.Distance(listener.transform.position, source.transform.position) : 0f;
-            log($"teimo: says {name} ({clip.name}, {clip.length:0.0} s){(placed ? $", {meters:0.0} m from the player" : ", in 2D")}");
+            meters = listener != null && placed ? Vector3.Distance(listener.transform.position, source.transform.position) : 0f;
+            return placed;
         }
 
-        // The clip of MasterAudio/Teimo/<name> (a variation: paivaa1, whose clip is päivää), else a
+        // The clip of MasterAudio/<group>/<name> (a variation: paivaa1, whose clip is päivää), else a
         // clip of that name in the same group; never another character's.
-        static AudioClip Find(string name)
+        static AudioClip Find(string group, string name)
         {
             AudioClip byClip = null;
             foreach (var s in Resources.FindObjectsOfTypeAll<AudioSource>())
             {
                 if (s == null) continue;
                 var parent = s.transform.parent;
-                if (parent == null || parent.name != "Teimo" || parent.parent == null || parent.parent.name != "MasterAudio") continue;
+                if (parent == null || parent.name != group || parent.parent == null || parent.parent.name != "MasterAudio") continue;
                 if (s.gameObject.name == name) return s.clip;  // the variation, even without a clip: nothing else stands in
                 if (byClip == null && s.clip != null && s.clip.name == name) byClip = s.clip;
             }

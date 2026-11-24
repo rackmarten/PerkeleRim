@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 51;
+        public const uint ProtocolVersion = 52;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -136,6 +136,23 @@ namespace PerkeleRim.Protocol
         public const uint BlackoutDrunk = 1;
         public const uint BlackoutKnockout = 2;
         public const uint StockSpotsMax = 16;
+        public const uint ShopBeer = 0;
+        public const uint ShopSausages = 1;
+        public const uint ShopPizza = 2;
+        public const uint ShopChips = 3;
+        public const uint ShopMacaron = 4;
+        public const uint ShopJuice = 5;
+        public const uint ShopMilk = 6;
+        public const uint ShopCigarettes = 7;
+        public const uint ShopMotorOil = 8;
+        public const uint ShopCoffee = 9;
+        public const uint ShopMosquitoSpray = 10;
+        public const uint ShopProducts = 11;
+        public const uint StallGoodsMax = 16;
+        public const uint ShopBill = 1;
+        public const uint ShopPaid = 2;
+        public const uint ShopShort = 3;
+        public const uint ShopStolen = 4;
         public const uint FuelPumpsMax = 8;
         public const uint MaterialCutout = 0x1;
         public const uint MaterialBlend = 0x2;
@@ -185,6 +202,9 @@ namespace PerkeleRim.Protocol
         Blackout = 34,
         HeldDrink = 35,
         TeimoLine = 36,
+        TeimoStall = 37,
+        TeimoPay = 38,
+        TeimoShop = 39,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -673,6 +693,44 @@ namespace PerkeleRim.Protocol
         public uint generation;
         public uint count;
         public fixed float spots[64];  // StockSpotsMax StockSpot: position x, y, z, heading each
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct StallGood
+    {
+        public uint product;
+        public fixed float position[3];
+        public float heading;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct TeimoStall
+    {
+        public uint generation;
+        public uint count;
+        public fixed float teimo[3];
+        public float heading;
+        public fixed float counter[3];
+        public fixed float counterHalf[3];
+        public fixed byte goods[320];  // StallGoodsMax StallGood: product, position x, y, z, heading each
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct TeimoPay
+    {
+        public uint seq;
+        public uint reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct TeimoShop
+    {
+        public uint kind;
+        public uint count;
+        public float total;
+        public float money;
+        public uint products;
+        public uint seq;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

@@ -25,8 +25,12 @@ namespace PerkeleRim::Teimo
         kFinger,  // the middle finger at him: Speak's FINGER
         kPissed,  // the piss stream on him: the Reaction FSMs' PISS
         kHit,     // punched, run into, or something thrown at him
+        kPaid,    // Kumpo paid for what he put on the counter (protocol/cpp/teimo_shop.h)
+        kDrunkBuy,  // and he is drunk and it's beer: MSC's lines for a drunk ordering at the bar
+        kShort,   // he can't pay for all of it
+        kStolen,  // he walked off with goods he didn't pay for
     };
-    inline constexpr std::size_t kTopicCount = 7;
+    inline constexpr std::size_t kTopicCount = 11;
 
     struct CaptionPart
     {
@@ -99,6 +103,22 @@ namespace PerkeleRim::Teimo
                                                                   { 4.5f, "and don't you ever bother coming back! Hell!" } } } },
         Line{ Topic::kHit, "maksa_vahinko2", 5.8f, { { { 0.0f, "Good heavens, boy, I'm not selling you a damn thing" },
                                                        { 3.0f, "until you've paid for that." } } } },
+        // The shop (protocol/cpp/teimo_shop.h). MSC thanks with its goodbye lines; for a drunk buying
+        // beer the lines MSC's Teimo has for a drunk ordering at his bar; short of money and walking
+        // off with goods, his lines for those.
+        Line{ Topic::kPaid, "kiitos1", 2.3f, { { { 0.0f, "Thank you, and welcome back!" } } } },
+        Line{ Topic::kPaid, "kiitos2", 2.6f, { { { 0.0f, "Right then, thanks and cheerio!" } } } },
+        Line{ Topic::kPaid, "kiitos4", 2.5f, { { { 0.0f, "Right, thanks for this time." } } } },
+        Line{ Topic::kPaid, "kiitos5", 2.6f, { { { 0.0f, "Thank you, and have a nice day!" } } } },
+        Line{ Topic::kDrunkBuy, "tilaus_kanni2", 4.1f, { { { 0.0f, "Shouldn't you call it a day while you can still stand?" } } } },
+        Line{ Topic::kDrunkBuy, "tilaus_kanni3", 4.4f, { { { 0.0f, "Look at the boy. A bottomless well, that one." } } } },
+        Line{ Topic::kDrunkBuy, "tilaus_kanni5", 6.3f, { { { 0.0f, "For such a young man you've got a real man's grip on the beer." } } } },
+        Line{ Topic::kDrunkBuy, "tilaus_kanni6", 4.9f, { { { 0.0f, "If you ask me, there's no sense in any of this any more." } } } },
+        Line{ Topic::kDrunkBuy, "tilaus_kanni7", 4.6f, { { { 0.0f, "This one's your last, isn't it?" } } } },
+        Line{ Topic::kDrunkBuy, "tilaus_kanni8", 3.8f, { { { 0.0f, "So it's one for the third leg too, is it?" } } } },
+        Line{ Topic::kDrunkBuy, "tilaus_kanni9", 5.1f, { { { 0.0f, "Hell, am I an accomplice to a crime if I sell you this?" } } } },
+        Line{ Topic::kShort, "ei_tarpeeksi_rahaa", 4.0f, { { { 0.0f, "You haven't got quite enough money for all of that." } } } },
+        Line{ Topic::kStolen, "maksa_vahinko1", 3.7f, { { { 0.0f, "Hey! Dig out your wallet, you're paying for that!" } } } },
     };
 
     inline constexpr float kCaptionHold = 10.0f;  // a caption part shows at most this long, as MSC's subtitles do for a long story
@@ -220,6 +240,20 @@ namespace PerkeleRim::Teimo
             return a_topic;
         }
 
+        // A shop event's topic (kPaid, kDrunkBuy, kShort; kStolen goes through OnInsult): his answer
+        // to Kumpo paying, said over his small talk or a greeting but not over an insult's reply.
+        std::optional<Topic> OnShop(Topic a_topic, double a_now)
+        {
+            now_ = a_now;
+            if (Speaking() && IsInsult(current_)) {
+                return std::nullopt;
+            }
+            if (a_topic == Topic::kPaid || a_topic == Topic::kDrunkBuy) {
+                byeSaid_ = true;  // thanked already: no goodbye on walking off
+            }
+            return a_topic;
+        }
+
         // The line for a_topic at a_random (0..1), not the one said last for that topic when it has
         // others; starts it at a_now. Null for a topic without lines.
         const Line* Say(Topic a_topic, double a_now, double a_random)
@@ -257,7 +291,7 @@ namespace PerkeleRim::Teimo
 
         static constexpr bool IsInsult(Topic a_topic)
         {
-            return a_topic == Topic::kFinger || a_topic == Topic::kPissed || a_topic == Topic::kHit;
+            return a_topic == Topic::kFinger || a_topic == Topic::kPissed || a_topic == Topic::kHit || a_topic == Topic::kStolen;
         }
 
         static constexpr std::size_t Count(Topic a_topic)
@@ -292,7 +326,11 @@ namespace PerkeleRim::Teimo
         double                               endsAt_ = -1e9;
         Topic                                current_ = Topic::kGreet;
         std::array<const Line*, kTopicCount> last_{};
-        std::array<double, kTopicCount>      lastReply_{ -1e9, -1e9, -1e9, -1e9, -1e9, -1e9, -1e9 };
+        std::array<double, kTopicCount>      lastReply_ = [] {
+            std::array<double, kTopicCount> a{};
+            a.fill(-1e9);
+            return a;
+        }();
     };
 
     // Whether Teimo, a_dx, a_dy units from Kumpo (Skyrim space), sees the finger Kumpo points along
