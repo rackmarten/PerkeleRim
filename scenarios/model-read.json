@@ -18,8 +18,17 @@
 
     // The Satsuma on the island and built with every part MSC has loose, so its body and each part's
     // model are among those read (each part's paint and atlases named by id after the first, v56).
+    // Kumpo faces north-east for it, where no vehicle called later parks (the van comes to the south).
+    { "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "cmd": "console", "command": "player.setangle z 45" },
+    { "cmd": "wait", "seconds": 1 },
+    { "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
     { "label": "the Satsuma comes", "cmd": "pr.satsuma", "what": "here", "expect": ["drawn == true"] },
     { "label": "every part goes on", "cmd": "pr.satsuma", "what": "full", "expect": ["attached > 20", "allDrawn == true"] },
+    { "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "cmd": "console", "command": "player.setangle z 180" },
+    { "cmd": "wait", "seconds": 1 },
+    { "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
 
     // As after MSC starts: every model read and sent again, under new ids.
     { "label": "MSC reads every model again", "cmd": "pr.send", "line": "models again cold" },
