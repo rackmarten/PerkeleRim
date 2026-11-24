@@ -16,6 +16,7 @@ using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Skyrim;
 using Noggog;
+using PerkeleRim;
 using PerkeleRim.EspGen;
 
 string? data = null, output = null;
@@ -258,6 +259,50 @@ Console.WriteLine($"ground under the shack: {shackGround.Low:0} .. {shackGround.
 foreach (var (piece, tile, rot) in shack)
     pieces.Add(Place(Base(skyrim.Statics, piece), shackTiles[tile], shackY, shackGround.Low - wallSink, rot));
 pieces.Add(Place(Base(skyrim.Furniture, "CommonBed01"), bedSpot.X, bedSpot.Y, GroundAt(bedSpot.X, bedSpot.Y), 0f));
+uint garageNextId = nextId;
+
+// ---- The Satsuma bay ----
+//
+// A second open shed on the garage's left (+Y), the Satsuma's: its body on a stand of two crates, its
+// loose parts on shelves and on the floor (msc/src/Link/SatsumaBay.cs has the layout in the bay's own
+// frame, and the slot of every part; MSC puts them there once, from its home). A wooden floor at one
+// height under all of it, so the boards and the stand are where the layout says. From 0xD00: the bay
+// marker (0xD00, persistent: skse/src/garage/Garage.cpp sends it to MSC), then the pieces.
+nextId = 0xD00;
+const float bayY = 520f;  // the bay's middle from the garage's: the two sheds' roofs 24 apart
+var bayGround = GroundUnder(-SatsumaBay.FloorX.Max() - SatsumaBay.FloorHalf, SatsumaBay.FloorX.Max() + SatsumaBay.FloorHalf,
+    bayY - SatsumaBay.FloorHalf, bayY + SatsumaBay.FloorHalf);
+float bayFloor = bayGround.High + 2f;
+Console.WriteLine($"ground under the Satsuma bay: {bayGround.Low:0} .. {bayGround.High:0}, floor at {bayFloor:0}; corners " +
+    string.Join(", ", new[] { (-448f, -256f), (-448f, 256f), (448f, -256f), (448f, 256f), (0f, 0f) }.Select(c => $"({c.Item1:0},{c.Item2:0}) {GroundAt(c.Item1, bayY + c.Item2):0}")));
+markers.Add(Place(marker, 0f, bayY, bayFloor, Heading(1f, 0f) - yaw, persistent: true));  // 0xD00
+markers[^1].EditorID = "PerkeleRimSatsumaBayMarker";
+// The garage board (0xD01, skse/src/garage/GarageBoard.cpp): Skyrim's war map as an activator with no
+// script, on a low table; using it asks what to bring home. Its base is 0xDFF.
+var boardBase = new Mutagen.Bethesda.Skyrim.Activator(new FormKey(mod.ModKey, 0xDFF), SkyrimRelease.SkyrimSE)
+{
+    EditorID = "PerkeleRimGarageBoard",
+    Name = "Garage board",
+    Model = new Model { File = skyrim.Statics.First(r => r.EditorID == SatsumaBay.BoardStatic).Model!.File.DataRelativePath.Path },
+};
+mod.Activators.Add(boardBase);
+markers.Add(Place(boardBase.FormKey, SatsumaBay.TableX, bayY + SatsumaBay.TableY, bayFloor + SatsumaBay.TableTop, 0f, persistent: true));  // 0xD01
+markers[^1].EditorID = "PerkeleRimGarageBoardRef";
+foreach (var x in SatsumaBay.FloorX)
+    pieces.Add(Place(Base(skyrim.Statics, SatsumaBay.FloorPiece), x, bayY, bayFloor, 0f));
+pieces.Add(Place(Base(skyrim.Statics, "SFarmShed01"), 0f, bayY, bayFloor + 10f, 0f));
+// The back wall and the far side's, as the garage's; the near side faces the garage's own wall.
+foreach (var (wall, x, y, rot) in walls.Where(w => w.Rot < 0f || w.Y > 100f))
+    pieces.Add(Place(Base(skyrim.Statics, wall), x, bayY + y, bayGround.Low - wallSink, rot));
+foreach (var shelf in SatsumaBay.Shelves)
+    pieces.Add(Place(Base(skyrim.Statics, SatsumaBay.ShelfPiece), shelf.X, bayY + shelf.Y, bayFloor, shelf.Along));
+pieces.Add(Place(Base(skyrim.Statics, SatsumaBay.TablePiece), SatsumaBay.TableX, bayY + SatsumaBay.TableY, bayFloor, 0f));
+foreach (var x in SatsumaBay.StandX)  // CrateSmallLong01's origin is in its middle; its 142 run across the body
+    pieces.Add(Place(Base(skyrim.Statics, SatsumaBay.StandPiece), SatsumaBay.BodyX + x, bayY + SatsumaBay.BodyY, bayFloor + SatsumaBay.StandTop / 2f, 0f));
+uint bayNextId = nextId;
+if (bayNextId >= 0xDFF) throw new InvalidOperationException($"the Satsuma bay's ids reach {bayNextId:X3}, into the board's base at 0xDFF");
+bayNextId = 0xE00;  // past the board's base
+nextId = garageNextId;
 mod.ModHeader.Stats.NextFormID = nextId;
 
 // ---- Cells ----
@@ -287,7 +332,7 @@ foreach (var p in pieces)
 foreach (var p in markers.Concat(pieces))
 {
     var at = p.Placement!;
-    var name = cache.Resolve<IPlaceableObjectGetter>(p.Base.FormKey).EditorID;
+    var name = p.Base.FormKey.ModKey == mod.ModKey ? mod.Activators.First(a => a.FormKey == p.Base.FormKey).EditorID : cache.Resolve<IPlaceableObjectGetter>(p.Base.FormKey).EditorID;
     Console.WriteLine($"  {p.FormKey.ID:X3} {name,-16} ({at.Position.X:0},{at.Position.Y:0},{at.Position.Z:0}) rot {at.Rotation.Z:0.000}");
 }
 
@@ -805,7 +850,7 @@ foreach (var onMap in pumpMapMarkers)
 mod.FormLists.Add(pumpMarkerList);
 Console.WriteLine($"  981 {pumpMarkerList.EditorID} ({pumpMarkerList.Items.Count} map markers)");
 
-mod.ModHeader.Stats.NextFormID = Math.Max(stationsNextId, teimoNextId);  // past every record id (the stations from 0xA00, Teimo from 0xB00)
+mod.ModHeader.Stats.NextFormID = Math.Max(Math.Max(stationsNextId, teimoNextId), bayNextId);  // past every record id (the stations from 0xA00, Teimo from 0xB00, the Satsuma bay from 0xD00)
 // Header 1.70, not Mutagen's 1.71: Skyrim SE 1.5.97 skips 1.71 plugins, AE loads both.
 mod.ModHeader.Stats.Version = 1.7f;
 

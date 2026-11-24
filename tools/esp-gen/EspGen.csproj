@@ -13,6 +13,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The Satsuma bay's layout, shared with the MSCLoader mod (which puts the parts on its slots). -->
+    <Compile Include="..\..\msc\src\Link\SatsumaBay.cs" Link="SatsumaBay.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Last line that still targets net8.0. -->
     <PackageReference Include="Mutagen.Bethesda.Skyrim" Version="0.53.1" />
   </ItemGroup>

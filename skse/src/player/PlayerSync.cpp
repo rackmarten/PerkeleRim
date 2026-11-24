@@ -858,6 +858,7 @@ namespace PerkeleRim::PlayerSync
                 SKSE::log::info("player sync: {}", seated ? "seated" : "out of the seat");
             }
             Wash(a_player, valid && !seated);
+            Garage::UpdateBay(a_player->GetPosition(), state.owned && valid, state.generation);
             link.Receive([a_player](Protocol::MessageType a_type, const std::uint8_t* a_data, std::uint32_t a_size) {
                 if (a_type == Protocol::MessageType::ModelChunk) {
                     ModelView::OnChunk(a_data, a_size);
@@ -914,6 +915,10 @@ namespace PerkeleRim::PlayerSync
                 }
                 if (a_type == Protocol::MessageType::PartState) {
                     PartTable::OnMessage(a_data, a_size);
+                    return;
+                }
+                if (a_type == Protocol::MessageType::GarageDone) {
+                    Garage::OnGarageDone(a_data, a_size);
                     return;
                 }
                 if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle &&

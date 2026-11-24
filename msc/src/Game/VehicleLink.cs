@@ -113,6 +113,9 @@ namespace PerkeleRim.Game
         // Left where MSC has it until something places it (Summon): the Satsuma stays in MSC's garage
         // with its loose parts, not on the island, until a debug command (and later the garage) moves it.
         public bool LeftAlone { get; set; }
+        // Held still where it was set down (SetDown: the Satsuma's body on its stand in the garage), its
+        // body kinematic, until something moves it on (Summon).
+        public bool Pinned { get; set; }
         public string Contact(float within) => tune != null ? tune.Contact(within) : "";
         // The driven vehicle's impacts this physics step (CrashSensor), for the engine's stall guard.
         public void Impacts(bool inImpact, float impact) { if (tune != null) tune.Impacts(inImpact, impact); }
@@ -387,11 +390,11 @@ namespace PerkeleRim.Game
             log($"vehicle: the {driverName} waits to be called, put away for gen {island.Generation}");
         }
 
-        // The player calls the vehicle: it is parked in front of the player wherever it was (another
-        // worldspace, put away, far behind). Not while the player sits in it.
         // Called or not, whether Skyrim has it now (on the current island).
         public bool OnIsland => car != null && !away;
 
+        // The player calls the vehicle: it is parked in front of the player wherever it was (another
+        // worldspace, put away, far behind). Not while the player sits in it.
         public void Summon(Transform player, Vector3 feet)
         {
             if (car == null || player == null) return;
@@ -400,6 +403,8 @@ namespace PerkeleRim.Game
                 log($"vehicle: the player sits in the {driverName}, not calling it");
                 return;
             }
+            Pinned = false;
+            Hold(false);
             away = false;
             calling = true;
             try { Park(player, feet); }
@@ -409,6 +414,33 @@ namespace PerkeleRim.Game
         }
 
         const float AwayHeight = -5000f;
+
+        // Sets the vehicle down at rest exactly there (island space), wherever it was, and remembers it
+        // as where it was left: the Satsuma's body onto its stand in the garage (GarageMover), which
+        // the parking rules (ground under the wheels) would miss.
+        public void SetDown(Vector3 position, Quaternion rotation)
+        {
+            if (car == null) return;
+            away = false;
+            Hold(false);
+            Moves++;
+            car.position = position;
+            car.rotation = rotation;
+            if (body != null)
+            {
+                body.position = position;
+                body.rotation = rotation;
+                if (!body.isKinematic)
+                {
+                    body.velocity = Vector3.zero;
+                    body.angularVelocity = Vector3.zero;
+                }
+            }
+            heldVelocity = heldAngular = Vector3.zero;
+            spotGeneration = 0;
+            Remember();
+            if (Pinned) Hold(true);
+        }
 
         // Tows the vehicle onto spot (Skyrim world space, on the ground) facing heading, wherever it
         // was: a dry tank called at a pump (FuelLink). Not while the player sits in it.
@@ -761,8 +793,8 @@ namespace PerkeleRim.Game
                     restoring = false;
                     if (MoveToClearSpot()) ground = findGround(car.position);
                 }
-                Hold(!ground.HasValue);
-                if (ground.HasValue)
+                Hold(Pinned || !ground.HasValue);
+                if (ground.HasValue && !Pinned)
                 {
                     if (ground.Value.y - car.position.y > FellThroughDepth) PutBackAfterSinking(ground.Value);
                     else RememberStood(ground.Value);
@@ -907,7 +939,7 @@ namespace PerkeleRim.Game
                 heldVelocity = body.velocity;
                 heldAngular = body.angularVelocity;
                 body.isKinematic = true;
-                log($"vehicle: no ground under the {driverName}, holding it");
+                log(Pinned ? $"vehicle: the {driverName} held still where it was set down" : $"vehicle: no ground under the {driverName}, holding it");
             }
             else
             {

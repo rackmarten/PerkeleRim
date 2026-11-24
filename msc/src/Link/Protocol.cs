@@ -166,6 +166,11 @@ namespace PerkeleRim.Protocol
         public const uint ShopPaid = 2;
         public const uint ShopShort = 3;
         public const uint ShopStolen = 4;
+        public const uint BayMoveSatsuma = 0x1;    // GarageBay.request
+        public const uint BayPartsHome = 0x2;
+        public const uint BayVehiclesHome = 0x4;
+        public const uint BayCheck = 0x8;
+        public const uint BayStand = 0x10;
         public const uint FuelPumpsMax = 8;
         public const uint MaterialCutout = 0x1;
         public const uint MaterialBlend = 0x2;
@@ -218,7 +223,9 @@ namespace PerkeleRim.Protocol
         TeimoStall = 37,
         TeimoPay = 38,
         TeimoShop = 39,
-        PartState = 40,
+        GarageBay = 40,
+        GarageDone = 41,
+        PartState = 42,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -895,6 +902,29 @@ namespace PerkeleRim.Protocol
         public uint @object;
         public uint length;
         public fixed byte name[40];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct GarageBay
+    {
+        public uint generation;
+        public uint request;
+        public fixed float position[3];
+        public float heading;
+        public fixed uint reserved[2];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct GarageDone
+    {
+        public uint generation;
+        public uint request;
+        public uint body;
+        public uint slotted;
+        public uint floor;
+        public uint vehicles;
+        public uint missed;
+        public uint asked;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
