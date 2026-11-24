@@ -28,15 +28,16 @@ namespace PerkeleRim::Teimo
         float         rot;
     };
 
-    // What the stall sells, and where: beer cases on the crates by his cart, food and the like on
-    // the barrel and the crates on his other side, the counter itself kept clear for paying.
+    // What the stall sells, and where (set in game): beer cases on the ground in front of the crates
+    // by his cart and one on top of them, food and the like on the barrel and the crates on his
+    // other side, the counter itself kept clear for paying.
     inline constexpr std::array kStallSpots{
-        StallSpot{ Protocol::kShopBeer, 120.0f, 15.0f, 55.0f, 0.1f },
-        StallSpot{ Protocol::kShopBeer, 150.0f, 12.0f, 55.0f, -0.1f },
+        StallSpot{ Protocol::kShopBeer, 120.0f, 108.0f, 10.0f, 0.1f },
+        StallSpot{ Protocol::kShopBeer, 168.0f, 104.0f, 10.0f, -0.15f },
         StallSpot{ Protocol::kShopBeer, 135.0f, 60.0f, 103.0f, 0.4f },
         StallSpot{ Protocol::kShopSausages, -135.0f, 30.0f, 93.0f, 0.3f },
         StallSpot{ Protocol::kShopPizza, -118.0f, 10.0f, 93.0f, -0.2f },
-        StallSpot{ Protocol::kShopChips, -105.0f, 35.0f, 93.0f, 0.5f },
+        StallSpot{ Protocol::kShopChips, -100.0f, -38.0f, 60.0f, 0.5f },
         StallSpot{ Protocol::kShopMacaron, -140.0f, 5.0f, 93.0f, 0.0f },
         StallSpot{ Protocol::kShopCigarettes, -55.0f, 60.0f, 85.0f, 0.2f },
         StallSpot{ Protocol::kShopJuice, -115.0f, -45.0f, 48.0f, 0.0f },

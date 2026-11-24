@@ -204,6 +204,21 @@ namespace PerkeleRim::TestKit
             return out;
         }
 
+        std::int32_t Gold()
+        {
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            return player ? player->GetGoldAmount() : -1;
+        }
+
+        // The player's bounty in Whiterun Hold (Riverwood's, where Teimo's stall is).
+        std::int32_t WhiterunBounty()
+        {
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            auto* data = RE::TESDataHandler::GetSingleton();
+            auto* hold = data ? data->LookupForm<RE::TESFaction>(0x000267EA, "Skyrim.esm"sv) : nullptr;
+            return player && hold ? player->GetCrimeGoldValue(hold) : -1;
+        }
+
         Json DescribeTeimo()
         {
             const auto s = Teimo::Describe();
@@ -213,7 +228,7 @@ namespace PerkeleRim::TestKit
                 { "lastTopic", s.lastTopic }, { "lastAt", s.lastAt }, { "caption", s.caption }, { "billCount", static_cast<double>(s.billCount) },
                 { "billTotal", s.billTotal }, { "paid", static_cast<double>(s.paid) }, { "paidTotal", s.paidTotal }, { "stolen", static_cast<double>(s.stolen) },
                 { "bounty", static_cast<double>(s.bounty) }, { "shorts", static_cast<double>(s.shorts) }, { "money", s.money },
-                { "stallSent", static_cast<double>(s.stallSent) } };
+                { "stallSent", static_cast<double>(s.stallSent) }, { "gold", static_cast<double>(Gold()) }, { "crimeGold", static_cast<double>(WhiterunBounty()) } };
         }
 
         // A line for MSC's spike commands (msc/src/Spike/SpikeHost.cs: drunk 2, lightson 1, time 6, ...) over the link.

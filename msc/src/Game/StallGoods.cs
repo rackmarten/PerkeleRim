@@ -37,6 +37,8 @@ namespace PerkeleRim.Game
             public float Price;
             public bool Stolen;      // carried off: turns real once the hand has let go of it
             public bool WasInHand;   // and it was in the hand then: the real item goes back in
+            public Vector3 Home;     // where it was set out
+            public bool Touched;     // Kumpo has had it in his hand: Teimo puts it back once he's away
         }
 
         StallShop.Stall stall;
@@ -119,15 +121,18 @@ namespace PerkeleRim.Game
 
         void Restock(bool away, GameObject held)
         {
-            // Teimo tidies up behind Kumpo's back: unpaid goods left about go back to their spots.
+            foreach (var live in spots)
+                if (live != null && live.Go != null && live.Go == held) live.Touched = true;
+            // Teimo tidies up behind Kumpo's back: unpaid goods he moved go back to their spots
+            // (one that fell off its spot by itself stays where it fell).
             if (away)
                 for (int i = 0; i < spots.Length; i++)
                 {
                     var live = spots[i];
-                    if (live == null || live.Go == null || live.Stolen || live.Go == held) continue;
-                    var at = Spot(i);
-                    if (at.HasValue && Vector3.Distance(live.Go.transform.position, at.Value) > OffSpot)
+                    if (live == null || live.Go == null || live.Stolen || !live.Touched || live.Go == held) continue;
+                    if (Vector3.Distance(live.Go.transform.position, live.Home) > OffSpot)
                     {
+                        log($"stall: Teimo puts {live.Go.name} back");
                         Destroy(live);
                         spots[i] = null;
                     }
@@ -176,7 +181,7 @@ namespace PerkeleRim.Game
             var body = go.GetComponent<Rigidbody>();
             body.position = go.transform.position;
             body.rotation = go.transform.rotation;
-            spots[i] = new Live { Spot = i, Product = good.Product, Go = go, Price = prices[good.Product] };
+            spots[i] = new Live { Spot = i, Product = good.Product, Go = go, Price = prices[good.Product], Home = go.transform.position };
             log($"stall: {go.name} set out on spot {i} for {prices[good.Product]:0.00} mk");
         }
 
@@ -393,8 +398,10 @@ namespace PerkeleRim.Game
                 if (live == null || !live.Stolen || live.Go == null) continue;
                 if (live.Go == HeldObject(hand)) continue;  // still letting go
                 if (live.WasInHand && hand != null && hand.ActiveStateName != "Look for object") continue;  // its drop's short wait
+                string was = live.Go.name;
                 var real = MakeReal(live);
                 spots[i] = null;
+                log($"stall: {was} stolen, now {(real != null ? real.name : "nothing: the spawner made none")}{(live.WasInHand ? ", back in the hand" : "")}");
                 if (real != null && live.WasInHand && hand != null && hand.ActiveStateName == "Look for object")
                 {
                     // What a click on the item does (PocketLink): Look for object -> State 1 -> ... -> Part picked.
@@ -540,14 +547,26 @@ namespace PerkeleRim.Game
             if (live == null || stall == null) { log("stall: the hand holds none of Teimo's goods"); return false; }
             hand.SendEvent("DROP_PART");
             var c = island.SkyrimToIsland(stall.Counter);
-            float offset = (bill.Count % 3 - 1) * 0.25f;  // side by side
             var right = Quaternion.Euler(0f, Coords.SkyrimAngleToUnity(stall.Heading), 0f) * Vector3.right;
-            var at = new Vector3(c.x, c.y, c.z) + right * offset;
+            var at = new Vector3(c.x, c.y, c.z);
+            foreach (var offset in new[] { -0.22f, 0.22f, 0f })  // beside whatever lies there already
+            {
+                var spot = new Vector3(c.x, c.y, c.z) + right * offset;
+                bool free = true;
+                foreach (var hit in Physics.OverlapSphere(spot + Vector3.up * 0.15f, 0.15f))
+                    if (hit.attachedRigidbody != null && hit.attachedRigidbody.gameObject != live.Go) free = false;
+                if (free) { at = spot; break; }
+            }
             var ground = findGround(at + Vector3.up * 0.3f);
-            live.Go.transform.position = (ground.HasValue ? ground.Value : at) + Vector3.up * 0.25f;
+            live.Go.transform.position = ground.HasValue ? ground.Value : at;
+            live.Go.transform.rotation = Quaternion.Euler(0f, Coords.SkyrimAngleToUnity(stall.Heading), 0f);
+            float bottom;
+            if (ground.HasValue && Bottom(live.Go, out bottom)) live.Go.transform.position += Vector3.up * (ground.Value.y + Clearance - bottom);
             var body = live.Go.GetComponent<Rigidbody>();
             body.position = live.Go.transform.position;
+            body.rotation = live.Go.transform.rotation;
             body.velocity = Vector3.zero;
+            body.angularVelocity = Vector3.zero;
             log($"stall: {live.Go.name} put on the counter");
             return true;
         }

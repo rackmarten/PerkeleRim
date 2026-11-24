@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using PerkeleRim.Protocol;
 
 namespace PerkeleRim
@@ -178,7 +179,11 @@ namespace PerkeleRim
         public static bool CanPay(float total, float money) => total <= money;
 
         // What MSC's Buy FSM shows while its crosshair is on a product: "BEER 149.00 MK".
-        public static string Prompt(uint product, float price) => Known(product) ? $"{Products[product].Label} {price:0.00} MK" : $"{price:0.00} MK";
+        public static string Prompt(uint product, float price)
+        {
+            string marks = price.ToString("0.00", CultureInfo.InvariantCulture) + " MK";
+            return Known(product) ? Products[product].Label + " " + marks : marks;
+        }
 
         public const string NotEnough = "NOT ENOUGH MONEY";  // MSC's register's prompt when he can't pay, for 3 s
         public const float NotEnoughSeconds = 3f;

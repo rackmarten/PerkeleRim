@@ -36,7 +36,8 @@ TEST_CASE("every line has a clip, a length that fits and captions in order")
     for (const auto& line : Teimo::kLines) {
         CHECK(!line.clip.empty());
         CHECK(line.clip.size() <= 47);  // TeimoLine's clip room (kTeimoClipMax), ASCII names
-        CHECK(clips.insert(std::string(line.clip)).second);
+        // A clip once per topic (his thanks after paying are MSC's goodbye lines, kBye's too).
+        CHECK(clips.insert(std::to_string(static_cast<int>(line.topic)) + std::string(line.clip)).second);
         CHECK(line.seconds > 1.0f);
         CHECK(!line.captions[0].text.empty());
         CHECK(line.captions[0].at == 0.0f);
