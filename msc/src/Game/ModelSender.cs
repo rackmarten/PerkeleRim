@@ -49,6 +49,7 @@ namespace PerkeleRim.Game
         readonly Dictionary<string, uint> ids = new Dictionary<string, uint>();  // model key -> id
         readonly HashSet<uint> sent = new HashSet<uint>();    // this link session
         readonly HashSet<uint> queued = new HashSet<uint>();  // waiting, being read or being sent
+        readonly HashSet<uint> dropped = new HashSet<uint>(); // read this link session and came out with nothing (empty, or changed meanwhile)
         readonly Dictionary<uint, Failure> failed = new Dictionary<uint, Failure>();  // reads that threw
         readonly HashSet<int> changedLogged = new HashSet<int>();  // items whose read was given up, by instance id
 
@@ -107,11 +108,17 @@ namespace PerkeleRim.Game
 
         // The id of the model made of root's renderers that include accepts (by their own transform),
         // queued for sending if Skyrim doesn't have it yet. 0 when there is nothing to draw.
-        public uint IdFor(Transform root, Predicate<Transform> include)
+        public uint IdFor(Transform root, Predicate<Transform> include) => IdFor(root, include, null);
+
+        // The same drawn with look's rules (VehicleModel's for a vehicle's glass: the Satsuma's parts);
+        // look.Key keeps it apart from the same object read without them.
+        public uint IdFor(Transform root, Predicate<Transform> include, Look look)
         {
             var key = Key(root, include);
             if (key == null) return 0;
-            return Queue(key, () => Read(root, include, key), () => root == null, root.name);
+            if (look != null) key = look.Key + "|" + key;
+            var content = key;
+            return Queue(key, () => Read(root, include, content, look), () => root == null, root.name);
         }
 
         // The id of a model build puts together in one go (an overlay, a particle), known by key and
@@ -122,6 +129,24 @@ namespace PerkeleRim.Game
         // The same for a model read in steps (VehicleModel.Read: yields after each bit of work, the
         // ModelData last).
         public uint IdForRead(string key, Func<IEnumerable> steps) => Queue("built:" + key, steps, null, key);
+
+        // Whether a model id handed out earlier must be asked for again to reach Skyrim: not sent this
+        // link session, not waiting or being read, and not waiting out a failed read's backoff (the link
+        // came back up, "models again", or its read failed). A caller that asks only now and then
+        // (SatsumaParts) keeps its models going out with this.
+        public bool NeedsAsking(uint id)
+        {
+            if (id == 0 || sent.Contains(id) || queued.Contains(id) || dropped.Contains(id)) return false;
+            Failure f;
+            return !failed.TryGetValue(id, out f) || frameClock.Elapsed.TotalMilliseconds - f.At >= f.WaitMs;
+        }
+
+        // Whether a read under this id came out with nothing this link session (nothing it draws, or it
+        // changed while it was read): nothing to wait for; the caller asks again when it looks again.
+        public bool Dropped(uint id) => dropped.Contains(id);
+
+        // Counts up each time every id is given out anew ("models again cold"): the same look gets a new id.
+        public int IdEpoch { get; private set; }
 
         uint Queue(string key, Func<IEnumerable> steps, Func<bool> gone, string what)
         {
@@ -136,6 +161,7 @@ namespace PerkeleRim.Game
             if (!sent.Contains(id) && !queued.Contains(id))
             {
                 queued.Add(id);
+                dropped.Remove(id);  // read again: pending, not empty any more
                 jobs.Enqueue(new Job { Steps = steps, Gone = gone, What = what, Id = id, Session = session });
             }
             return id;
@@ -156,6 +182,7 @@ namespace PerkeleRim.Game
             log($"model: every model goes out again{(cold ? ", read anew under new ids" : "")}");
             if (cold)
             {
+                IdEpoch++;
                 ids.Clear();
                 textures.Clear();
             }
@@ -220,6 +247,7 @@ namespace PerkeleRim.Game
         {
             session++;
             failed.Clear();  // a new link session tries every model again
+            dropped.Clear();
             sent.Clear();
             queued.Clear();
             jobs.Clear();
@@ -310,6 +338,7 @@ namespace PerkeleRim.Game
             if (model == null || model.Meshes.Count == 0)
             {
                 queued.Remove(job.Id);  // not there yet, or its renderers went off since the scan: asked again
+                dropped.Add(job.Id);
                 yield break;
             }
             EncodedModel blob = null;
@@ -487,10 +516,10 @@ namespace PerkeleRim.Game
         // still be made of that when the read starts and when it ends, or there is no model: something
         // went or changed since the scan or meanwhile (eaten, drunk, despawned, a bottle out of its
         // case, another texture), and the next scan asks again under what it is now.
-        IEnumerable Read(Transform root, Predicate<Transform> include, string key)
+        IEnumerable Read(Transform root, Predicate<Transform> include, string key, Look look = null)
         {
             if (root == null) yield break;
-            if (key != null && Key(root, include) != key)
+            if (key != null && KeyFor(root, include, look) != key)
             {
                 Changed(root, "since it was seen");
                 yield break;
@@ -502,17 +531,23 @@ namespace PerkeleRim.Game
                 if (root == null || renderer == null) yield break;
                 var filter = renderer.GetComponent<MeshFilter>();
                 if (!renderer.enabled || filter == null || filter.sharedMesh == null || !include(renderer.transform)) continue;
-                foreach (var step in AddRenderer(model, materials, renderer, RelativeTo(root, renderer.transform), PathBelow(root, renderer.transform), -1, null))
+                foreach (var step in AddRenderer(model, materials, renderer, RelativeTo(root, renderer.transform), PathBelow(root, renderer.transform), -1, look))
                     yield return step;
                 if (renderer == null || materials.Cut) yield break;
             }
             if (root == null) yield break;
-            if (key != null && Key(root, include) != key)
+            if (key != null && KeyFor(root, include, look) != key)
             {
                 Changed(root, "while it was read");
                 yield break;
             }
             yield return model;
+        }
+
+        static string KeyFor(Transform root, Predicate<Transform> include, Look look)
+        {
+            var key = Key(root, include);
+            return key != null && look != null ? look.Key + "|" + key : key;
         }
 
         // A read given up because its item changed, logged the first time per item (one that keeps

@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 52;
+    inline constexpr std::uint32_t kProtocolVersion = 53;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -34,16 +34,17 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kOffsetInputSlot = 128;
     inline constexpr std::uint32_t kOffsetPlayerSlot = 256;
     inline constexpr std::uint32_t kOffsetVehicleSlot = 384;
-    inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 896;   // after kVehicleCount VehicleSlots
-    inline constexpr std::uint32_t kOffsetItemSlot = 33920;         // after kVehicleCount VehiclePartsSlots
-    inline constexpr std::uint32_t kOffsetHandLayerSlot = 39104;
-    inline constexpr std::uint32_t kOffsetActorSlot = 39168;
-    inline constexpr std::uint32_t kOffsetParticleSlot = 40768;
-    inline constexpr std::uint32_t kOffsetRingToMsc = 57216;        // RingHeader, data follows
+    inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 1024;  // after kVehicleCount VehicleSlots
+    inline constexpr std::uint32_t kOffsetPartSetSlot = 42304;      // after kVehicleCount VehiclePartsSlots
+    inline constexpr std::uint32_t kOffsetItemSlot = 52608;
+    inline constexpr std::uint32_t kOffsetHandLayerSlot = 57792;
+    inline constexpr std::uint32_t kOffsetActorSlot = 57856;
+    inline constexpr std::uint32_t kOffsetParticleSlot = 59456;
+    inline constexpr std::uint32_t kOffsetRingToMsc = 75904;        // RingHeader, data follows
     inline constexpr std::uint32_t kRingToMscCapacity = 4194304;    // 4 MiB: collision chunks
-    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4251584;   // 57216 + 64 + 4 MiB
+    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4270272;   // 75904 + 64 + 4 MiB
     inline constexpr std::uint32_t kRingToSkyrimCapacity = 262144;  // 256 KiB: events
-    inline constexpr std::uint32_t kMappingSize = 4513792;         // 4251584 + 64 + 256 KiB
+    inline constexpr std::uint32_t kMappingSize = 4532480;         // 4270272 + 64 + 256 KiB
 
     enum class Side : std::uint32_t
     {
@@ -171,7 +172,8 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kVehicleJonnez = 2;    // VehicleState.vehicle: the Jonnez moped
     inline constexpr std::uint32_t kVehicleKekmet = 3;    // VehicleState.vehicle: the Kekmet tractor
     inline constexpr std::uint32_t kVehicleGifu = 4;      // VehicleState.vehicle: the Gifu truck
-    inline constexpr std::uint32_t kVehicleCount = 4;     // vehicle ids are 1..kVehicleCount
+    inline constexpr std::uint32_t kVehicleSatsuma = 5;   // VehicleState.vehicle: the Satsuma, its body (its attached parts: PartSet)
+    inline constexpr std::uint32_t kVehicleCount = 5;     // vehicle ids are 1..kVehicleCount
 
     // MSC -> Skyrim, one slot per vehicle: vehicle id v is VehicleSlot v - 1 from kOffsetVehicleSlot
     // (its VehicleParts likewise from kOffsetVehiclePartsSlot). Skyrim world space like PlayerState;
@@ -238,6 +240,41 @@ namespace PerkeleRim::Protocol
         std::uint32_t seq;
         std::uint32_t reserved;
         VehicleParts  value;
+        std::uint8_t  pad[24];
+    };
+
+    inline constexpr std::uint32_t kPartSetCapacity = 256;  // PartSet.parts
+
+    // One part attached to a vehicle built from parts (the Satsuma): drawn from a model of its own,
+    // posed relative to the vehicle's body like a VehiclePart. kPartVisible while MSC draws it.
+    struct AttachedPart
+    {
+        std::uint32_t part;            // the part's id: stable while MSC has that part object, never 0
+        std::uint32_t model;           // ModelChunk.model of its look, 0 = not read yet (nothing drawn)
+        std::uint32_t flags;           // kPart*
+        float         rotation[4];     // x, y, z, w, relative to the body
+        float         translation[3];  // the part's origin relative to the body
+    };
+
+    // MSC -> Skyrim, written right after the vehicle's VehicleParts: the parts attached to it right
+    // now, wherever they hang (a door on the body, a cylinder head on the engine block), each once;
+    // count of them, the rest is zero. A part missing from one frame to the next came off (it is a
+    // loose item again, ItemState) and one that appears went on.
+    struct PartSet
+    {
+        std::uint32_t frame;        // MSC frame counter
+        std::uint32_t vehicle;      // kVehicle* id, 0 = none
+        std::uint32_t generation;   // WorldspaceChange.generation
+        std::uint32_t count;        // <= kPartSetCapacity
+        std::uint32_t reserved[4];
+        AttachedPart  parts[256];   // kPartSetCapacity
+    };
+
+    struct PartSetSlot
+    {
+        std::uint32_t seq;
+        std::uint32_t reserved;
+        PartSet       value;
         std::uint8_t  pad[24];
     };
 
@@ -1092,6 +1129,16 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(VehicleParts, parts) == 32);
     static_assert(sizeof(VehiclePartsSlot) == 8256);
     static_assert(offsetof(VehiclePartsSlot, value) == 8);
+    static_assert(sizeof(AttachedPart) == 40);
+    static_assert(offsetof(AttachedPart, model) == 4);
+    static_assert(offsetof(AttachedPart, flags) == 8);
+    static_assert(offsetof(AttachedPart, rotation) == 12);
+    static_assert(offsetof(AttachedPart, translation) == 28);
+    static_assert(sizeof(PartSet) == 10272);
+    static_assert(offsetof(PartSet, count) == 12);
+    static_assert(offsetof(PartSet, parts) == 32);
+    static_assert(sizeof(PartSetSlot) == 10304);
+    static_assert(offsetof(PartSetSlot, value) == 8);
     static_assert(sizeof(ItemPose) == 40);
     static_assert(offsetof(ItemPose, flags) == 8);
     static_assert(offsetof(ItemPose, position) == 12);
@@ -1261,7 +1308,8 @@ namespace PerkeleRim::Protocol
     static_assert(kOffsetPlayerSlot == kOffsetInputSlot + sizeof(InputSlot));
     static_assert(kOffsetVehicleSlot == kOffsetPlayerSlot + sizeof(PlayerSlot));
     static_assert(kOffsetVehiclePartsSlot == kOffsetVehicleSlot + kVehicleCount * sizeof(VehicleSlot));
-    static_assert(kOffsetItemSlot == kOffsetVehiclePartsSlot + kVehicleCount * sizeof(VehiclePartsSlot));
+    static_assert(kOffsetPartSetSlot == kOffsetVehiclePartsSlot + kVehicleCount * sizeof(VehiclePartsSlot));
+    static_assert(kOffsetItemSlot == kOffsetPartSetSlot + sizeof(PartSetSlot));
     static_assert(kOffsetHandLayerSlot == kOffsetItemSlot + sizeof(ItemSlot));
     static_assert(kOffsetActorSlot == kOffsetHandLayerSlot + sizeof(HandLayerSlot));
     static_assert(kOffsetParticleSlot == kOffsetActorSlot + sizeof(ActorSlot));
@@ -1273,6 +1321,7 @@ namespace PerkeleRim::Protocol
     static_assert(kOffsetRingToSkyrim == kOffsetRingToMsc + sizeof(RingHeader) + kRingToMscCapacity);
     static_assert(kMappingSize == kOffsetRingToSkyrim + sizeof(RingHeader) + kRingToSkyrimCapacity);
     static_assert(sizeof(VehicleParts::parts) / sizeof(VehiclePart) == kVehiclePartCapacity);
+    static_assert(sizeof(PartSet::parts) / sizeof(AttachedPart) == kPartSetCapacity);
     static_assert((kRingToMscCapacity & (kRingToMscCapacity - 1)) == 0);
     static_assert((kRingToSkyrimCapacity & (kRingToSkyrimCapacity - 1)) == 0);
 }

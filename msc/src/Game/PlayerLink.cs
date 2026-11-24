@@ -83,6 +83,10 @@ namespace PerkeleRim.Game
         int watchKey = (int)KeyCode.U;  // MSC's Watch binding, likewise
         Action<string> log;
         VehicleLink van, moped, kekmet, gifu;
+        // The Satsuma: drawn, not driven yet. Not in vehicles (no fuel, calls, snapshots, tuning): it stays
+        // in MSC's garage with its parts until "satsuma here" (or later the garage) brings it.
+        VehicleLink satsuma;
+        SatsumaParts satsumaParts;
         VehicleLink[] vehicles;
         BeerGift beer;  // spike "beer" only
         ShelfStocker shelves;
@@ -176,6 +180,10 @@ namespace PerkeleRim.Game
             gifu.ParkHalfSize = new Vector2(1.3f, 4.6f);
             gifu.TankSize = 300f;  // its tank has no MaxCapacity; its cap trigger reads MaxCapacity=300 once its FSM is up
             vehicles = new[] { van, moped, kekmet, gifu };
+            satsuma = new VehicleLink(SatsumaModel.ObjectName, SatsumaModel.Name, new Vector3(0f, 0f, 5f), Wire.VehicleSatsuma, true, null, null, island, ground, log);
+            satsuma.LeftAlone = true;
+            satsumaParts = new SatsumaParts(log);
+            satsuma.Exclude = t => satsumaParts.Excluded(t);
             beer = new BeerGift(log);
             shelves = new ShelfStocker(island, ground, log);
             moped.EndlessFuel = true;
@@ -224,6 +232,24 @@ namespace PerkeleRim.Game
         // Spike "teimo say <variation>": one of Teimo's lines, from where the player stands.
         public void TeimoSay(string name) => teimo.Say(name, null);
         public StallGoods Stall => stall;  // the spike's "shop"
+
+        // Spike command "satsuma": "satsuma" lists its parts, "satsuma here" brings it in front of the
+        // player as it is, "satsuma half" puts half its parts on, "satsuma bare" takes them off.
+        public void SatsumaCommand(string what)
+        {
+            satsuma.Find();
+            satsumaParts.Attach(satsuma.Car);
+            switch (what)
+            {
+                case "here":
+                    if (player == null) log("satsuma: no player");
+                    else satsuma.Summon(player, Feet());
+                    break;
+                case "half": StartCoroutine(satsumaParts.Assemble(SatsumaModel.HalfBuilt)); break;
+                case "bare": StartCoroutine(satsumaParts.Strip()); break;
+                default: satsumaParts.Dump(); break;
+            }
+        }
 
         // Spike commands "textures" (read an object's model and log it) and "items" (what Skyrim gets).
         public void InspectModel(string name) => models.Inspect(name);
@@ -340,6 +366,8 @@ namespace PerkeleRim.Game
             FindPlayer();
             PassOutGuard.Update(link.IsUp, player, log);
             foreach (var v in vehicles) v.Find();
+            satsuma.Find();
+            satsumaParts.Attach(satsuma.Car);
             UseGround();
 
             bool owned = link.IsUp && input.OwnsPlayer;
@@ -387,6 +415,9 @@ namespace PerkeleRim.Game
             SendGear(link, playing);
             foreach (var v in vehicles) v.Update(playing, player, player != null ? Feet() : Vector3.zero, viewCamera != null ? viewCamera.transform : null);
             foreach (var v in vehicles) v.SendModel(models, player);
+            satsuma.Update(playing, player, player != null ? Feet() : Vector3.zero, viewCamera != null ? viewCamera.transform : null);
+            if (satsuma.OnIsland) satsuma.SendModel(models, player);
+            satsumaParts.Update(link, playing && satsuma.OnIsland, island.Generation, models, player);
             if (playing && Driven() == null && cInput.GetKeyDown("Push"))
                 foreach (var v in vehicles) if (v.RightIfRolled(player)) break;
             if (playing && Driven() == null)

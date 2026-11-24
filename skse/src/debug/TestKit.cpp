@@ -144,7 +144,7 @@ namespace PerkeleRim::TestKit
         }
 
         // Vehicle names as the kit's commands take them, by kVehicle* id - 1.
-        constexpr std::array<std::string_view, Protocol::kVehicleCount> kVehicles{ "van", "moped", "kekmet", "gifu" };
+        constexpr std::array<std::string_view, Protocol::kVehicleCount> kVehicles{ "van", "moped", "kekmet", "gifu", "satsuma" };
 
         std::uint32_t VehicleId(std::string_view a_name)
         {
@@ -156,7 +156,7 @@ namespace PerkeleRim::TestKit
                     return i + 1;
                 }
             }
-            throw Error(std::format("no vehicle '{}' (van, moped, kekmet, gifu)", a_name));
+            throw Error(std::format("no vehicle '{}' (van, moped, kekmet, gifu, satsuma)", a_name));
         }
 
         // A vehicle's heading as a reference's angle z (0 north, clockwise): its local +Y (forward) turned by its
@@ -200,6 +200,21 @@ namespace PerkeleRim::TestKit
                 out.Set("lightRolesOn", std::move(on));
                 out.Set("lowLevel", parts->lowLevel);
                 out.Set("highLevel", parts->highLevel);
+            }
+            if (a_id == Protocol::kVehicleSatsuma) {
+                auto set = std::make_unique<Protocol::PartSet>();  // 10 KB, like the parts above
+                if (LinkService::Get().ReadPartSet(*set) && set->vehicle == a_id) {
+                    std::uint32_t pending = 0, visible = 0;
+                    for (std::uint32_t i = 0; i < set->count && i < Protocol::kPartSetCapacity; i++) {
+                        pending += set->parts[i].model == 0 ? 1 : 0;
+                        visible += (set->parts[i].flags & Protocol::kPartVisible) != 0 ? 1 : 0;
+                    }
+                    out.Set("attached", static_cast<double>(set->count));
+                    out.Set("unread", static_cast<double>(pending));
+                    out.Set("waiting", static_cast<double>(VehicleView::PartsWaiting(a_id)));
+                    out.Set("allDrawn", pending == 0 && VehicleView::PartsDrawn(a_id) == visible);  // every part MSC shows
+                }
+                out.Set("partsDrawn", static_cast<double>(VehicleView::PartsDrawn(a_id)));
             }
             return out;
         }
@@ -502,6 +517,64 @@ namespace PerkeleRim::TestKit
                     };
                 });
 
+            SkseTestKit::AddTask("pr.satsuma", "[what]",
+                "The Satsuma (MSC has it on foot): here brings it in front of Kumpo as MSC has it built, half puts half its parts on through "
+                "MSC's own assembly (body panels, front seats, dashboard, radiator), bare takes every part with a Removal FSM off; answers once "
+                "it is drawn and its parts have settled (every part on it drawn from its model, nothing changed for 2 s), as pr.vehicle satsuma",
+                [](Call& a_call) -> Step {
+                    RequireMsc();
+                    auto what = a_call.Text("what");
+                    if (what.empty()) {
+                        what = "here";
+                    }
+                    if (what != "here" && what != "half" && what != "bare") {
+                        throw Error("what is here, half or bare");
+                    }
+                    a_call.DefaultTimeout(180.0);
+                    struct Seen
+                    {
+                        bool          sent = false;
+                        double        sentAt = 0.0;
+                        double        steadySince = -1.0;
+                        std::uint32_t attached = ~0u;
+                        std::uint32_t drawn = ~0u;
+                    };
+                    return [line = "satsuma " + what, seen = std::make_shared<Seen>()](Call& a_call) -> std::optional<Json> {
+                        if (!seen->sent) {
+                            if (!SendToMsc(line)) {
+                                return std::nullopt;  // the ring is full: next frame
+                            }
+                            seen->sent = true;
+                            seen->sentAt = a_call.Seconds();
+                            SKSE::log::info("test kit: sent MSC '{}'", line);
+                        }
+                        Protocol::VehicleState state{};
+                        auto                   set = std::make_unique<Protocol::PartSet>();
+                        if (a_call.Seconds() - seen->sentAt < 1.0 || !LinkService::Get().ReadVehicle(Protocol::kVehicleSatsuma, state) ||
+                            !(state.flags & Protocol::kVehicleValid) || !VehicleView::Node(Protocol::kVehicleSatsuma) ||
+                            !LinkService::Get().ReadPartSet(*set) || set->vehicle != Protocol::kVehicleSatsuma) {
+                            seen->steadySince = -1.0;
+                            return std::nullopt;
+                        }
+                        const auto drawn = VehicleView::PartsDrawn(Protocol::kVehicleSatsuma);
+                        bool       unread = false;
+                        for (std::uint32_t i = 0; i < set->count && i < Protocol::kPartSetCapacity; i++) {
+                            unread = unread || set->parts[i].model == 0;
+                        }
+                        // Every part's model read and arrived (a door is 20 MB of chunks), and nothing changed for 2 s.
+                        if (unread || VehicleView::PartsWaiting(Protocol::kVehicleSatsuma) > 0 || set->count != seen->attached || drawn != seen->drawn) {
+                            seen->attached = set->count;
+                            seen->drawn = drawn;
+                            seen->steadySince = a_call.Seconds();
+                            return std::nullopt;
+                        }
+                        if (a_call.Seconds() - seen->steadySince < 2.0) {
+                            return std::nullopt;
+                        }
+                        return DescribeVehicle(Protocol::kVehicleSatsuma, state);
+                    };
+                });
+
             SkseTestKit::AddCommand("pr.fuel", "", "The fuel line on the HUD as Skyrim shows it (MSC's with the nearest pump on a low tank), MSC's flags for it (low, dry) and whether this save had the tow tip",
                 [](Call&) -> Json {
                     const auto flags = Fuel::LastFlags();
@@ -509,7 +582,7 @@ namespace PerkeleRim::TestKit
                         { "dry", (flags & Protocol::kFuelTextDry) != 0 }, { "tipped", Fuel::Tipped() } };
                 });
 
-            SkseTestKit::AddCommand("pr.vehicle", "[vehicle]", "A vehicle MSC has on the island (van, moped, kekmet, gifu): where, how fast, drawn, solid, its lights",
+            SkseTestKit::AddCommand("pr.vehicle", "[vehicle]", "A vehicle MSC has on the island (van, moped, kekmet, gifu, satsuma): where, how fast, drawn, solid, its lights; the Satsuma's parts on it (attached, unread: no model yet) and drawn (partsDrawn)",
                 [](Call& a_call) -> Json {
                     const auto             id = VehicleId(a_call.Text("vehicle"));
                     Protocol::VehicleState state{};
@@ -665,7 +738,7 @@ namespace PerkeleRim::TestKit
 
             // The cameras' and the probes' pr.vehicle:<name>: the vehicle's origin facing its way, its drawn model as the
             // root (its lamps' lights hang under it, so probe lights finds them).
-            SkseTestKit::AddTarget("pr.vehicle", "[vehicle]", "A vehicle PerkeleRim draws from MSC (van, the default; moped, kekmet, gifu): its origin, facing its way, its model and lamps inside",
+            SkseTestKit::AddTarget("pr.vehicle", "[vehicle]", "A vehicle PerkeleRim draws from MSC (van, the default; moped, kekmet, gifu, satsuma): its origin, facing its way, its model and lamps inside",
                 [](std::string_view a_name) {
                     const auto             id = VehicleId(a_name);
                     Protocol::VehicleState state{};
