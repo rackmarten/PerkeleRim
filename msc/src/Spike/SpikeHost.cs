@@ -42,6 +42,7 @@ namespace PerkeleRim.Spike
     //   aim <words>          stand at the nearest control surface ("Use" FSM) with those words in its path, looking
     //                        at it (aim doorl Handle); a second later, what the crosshair is on and MSC's prompt.
     //                        aim up: looks at the sky, where nothing has a prompt; aim stop: lets go of the look
+    //   fetch <name>         the nearest loose part named so put down in front of the player (fetch wheel_regula)
     //   wrench <words>       MSC's wrench size set to the nearest bolt's with those words in its path (wrench door left(Clone))
     //   look <words>         like aim, at any enabled collider with those words in its path (a trigger too):
     //                        look trigger_door_left (a part's place on the car), look door left(Clone) BoltPM #2
@@ -192,6 +193,34 @@ namespace PerkeleRim.Spike
             }
             if (best == null) { SpikeLog.Write($"cmd: aim: no control surface within {AimReach} m with '{text}' in its path"); return; }
             StartCoroutine(AimAt(best, player.transform));
+        }
+
+        // "fetch <name>": the nearest loose part (a root rigidbody tagged PART, active) named so, or starting so, put
+        // down 1.2 m in front of the player on the ground, still: for scenarios that need one of the Satsuma's parts
+        // MSC keeps elsewhere (its home garage, before the Skyrim garage has it).
+        void Fetch(string name)
+        {
+            var player = GameObject.Find("PLAYER");
+            if (player == null || name.Length == 0) { SpikeLog.Write("cmd: fetch <part name>, in game"); return; }
+            Rigidbody best = null;
+            float bestDistance = float.MaxValue;
+            foreach (var body in FindObjectsOfType<Rigidbody>())
+            {
+                var t = body.transform;
+                if (!t.CompareTag("PART") || t.IsChildOf(player.transform) || !t.name.StartsWith(name, StringComparison.OrdinalIgnoreCase)) continue;
+                float d = Vector3.Distance(player.transform.position, t.position);
+                if (d < bestDistance) { best = body; bestDistance = d; }
+            }
+            if (best == null) { SpikeLog.Write("cmd: fetch: no loose part named " + name); return; }
+            var p = player.transform;
+            var at = p.position + p.forward * 1.2f + Vector3.up * 1f;
+            float below;
+            if (Ground(at, 3f, best.transform, p, out below)) at.y -= below - 0.3f;
+            best.transform.position = at;
+            best.transform.rotation = Quaternion.Euler(0f, p.eulerAngles.y, 0f);
+            best.velocity = Vector3.zero;
+            best.angularVelocity = Vector3.zero;
+            SpikeLog.Write($"cmd: fetch: {FullPath(best.transform)} from {bestDistance:0} m away, now at {at}");
         }
 
         // "wrench <words>": the size MSC's tools have (global ToolWrenchSize, and SelectItem's OldWrench, which the tools
@@ -754,6 +783,9 @@ namespace PerkeleRim.Spike
                         break;
                     case "aim":  // "aim HAYOSIKO door": the player in front of the nearest control surface ("Use" FSM) whose path has those words, looking at it
                         Aim(lines[0].Trim().Substring(3).Trim());
+                        break;
+                    case "fetch":  // "fetch wheel_regula": the nearest loose part of that name put down in front of the player
+                        Fetch(lines[0].Trim().Substring(5).Trim());
                         break;
                     case "wrench":  // "wrench door left(Clone)": MSC's wrench the size of that part's nearest bolt, as if picked from the spanner set
                         Wrench(lines[0].Trim().Substring(6).Trim());
