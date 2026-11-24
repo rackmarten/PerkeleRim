@@ -42,11 +42,15 @@ namespace PerkeleRim.Spike
     //   aim <words>          stand at the nearest control surface ("Use" FSM) with those words in its path, looking
     //                        at it (aim doorl Handle); a second later, what the crosshair is on and MSC's prompt.
     //                        aim up: looks at the sky, where nothing has a prompt; aim stop: lets go of the look
-    //   fetch <name>         the nearest loose part named so put down in front of the player (fetch wheel_regula)
+    //   fetch <name> [eyes]  the nearest loose part named so put down by the player (fetch wheel_regula), or with eyes
+    //                        held in front of his eyes until a left click picks it up (fetch door left eyes)
+    //   offer <trigger>      the part in MSC's hand counted as come into that place on the car (offer trigger_door_left):
+    //                        MSC checks it, shows its assemble icon and waits for the left click
     //   wrench <words>       MSC's wrench size set to the nearest bolt's with those words in its path (wrench door left(Clone))
     //   look <words>         like aim, at any enabled collider with those words in its path (a trigger too):
     //                        look trigger_door_left (a part's place on the car), look door left(Clone) BoltPM #2
-    //                        (#n: the n-th nearest)
+    //                        (#n: the n-th in a fixed order, by path and place among siblings; a trailing $: the
+    //                        path ends with the words, look door left(Clone)$ for the part's own collider)
     //   textures <name>      read an object's model (GameObject.Find) without sending it and log it
     //   shot                 MSC's view to <MSC>/PerkeleRim_shot.png, the way F11 saves it (ViewShot)
     //   override on|off      InputShim on/off with nothing pressed (on: the link no longer feeds it)
@@ -195,6 +199,47 @@ namespace PerkeleRim.Spike
             StartCoroutine(AimAt(best, player.transform));
         }
 
+        // "fetch <name> eyes": the nearest loose part named so held still 0.6 m in front of MSC's camera, under its
+        // crosshair, until MSC's hand has it (a left click, PickUp: it is then below ItemPivot) or 8 s went; then it is a
+        // physics body again. The real pick-up with the part where a shelf would hold it, at any ground.
+        System.Collections.IEnumerator FetchToEyes(string name)
+        {
+            var player = GameObject.Find("PLAYER");
+            var body = player != null ? NearestLoose(name, player.transform) : null;
+            if (body == null) { SpikeLog.Write("cmd: fetch: no loose part named " + name); yield break; }
+            bool kinematic = body.isKinematic;
+            body.isKinematic = true;
+            SpikeLog.Write($"cmd: fetch: {FullPath(body.transform)} held in front of the eyes for a click");
+            for (float t = 0f; t < 8f; t += Time.deltaTime)
+            {
+                if (body == null) yield break;
+                var pivot = body.transform.parent;
+                if (pivot != null && pivot.name == "ItemPivot") { SpikeLog.Write("cmd: fetch: MSC's hand has it"); break; }
+                var cam = Camera.main;
+                if (cam != null)
+                {
+                    body.transform.position = cam.transform.position + cam.transform.forward * 0.6f;
+                    body.transform.rotation = Quaternion.LookRotation(cam.transform.forward, Vector3.up);
+                }
+                yield return null;
+            }
+            if (body != null) body.isKinematic = kinematic;
+        }
+
+        static Rigidbody NearestLoose(string name, Transform player)
+        {
+            Rigidbody best = null;
+            float bestDistance = float.MaxValue;
+            foreach (var body in FindObjectsOfType<Rigidbody>())
+            {
+                var t = body.transform;
+                if (!t.CompareTag("PART") || t.IsChildOf(player) || !t.name.StartsWith(name, StringComparison.OrdinalIgnoreCase)) continue;
+                float d = Vector3.Distance(player.position, t.position);
+                if (d < bestDistance) { best = body; bestDistance = d; }
+            }
+            return best;
+        }
+
         // "fetch <name>": the nearest loose part (a root rigidbody tagged PART, active) named so, or starting so, put
         // down 1.2 m in front of the player on the ground, still: for scenarios that need one of the Satsuma's parts
         // MSC keeps elsewhere (its home garage, before the Skyrim garage has it).
@@ -213,9 +258,28 @@ namespace PerkeleRim.Spike
             }
             if (best == null) { SpikeLog.Write("cmd: fetch: no loose part named " + name); return; }
             var p = player.transform;
-            var at = p.position + p.forward * 1.2f + Vector3.up * 1f;
-            float below;
-            if (Ground(at, 3f, best.transform, p, out below)) at.y -= below - 0.3f;
+            // Behind, left, right, then in front (pr.satsuma here parks the car in front): the first spot whose ground
+            // is the island's (no rigidbody under it) with room for the part.
+            var at = Vector3.zero;
+            bool found = false;
+            foreach (var dir in new[] { -p.forward, -p.right, p.right, p.forward, -p.forward * 2f, -p.right * 2f, p.right * 2f })
+            {
+                var top = p.position + dir * 1.5f + Vector3.up * 2f;
+                RaycastHit hit = default(RaycastHit);
+                float nearest = float.MaxValue;
+                foreach (var h in Physics.RaycastAll(top, Vector3.down, 5f))
+                    if (!h.collider.isTrigger && h.distance < nearest) { hit = h; nearest = h.distance; }
+                if (nearest == float.MaxValue || hit.collider.attachedRigidbody != null) continue;  // nothing, or the car, another part
+                var spot = hit.point + Vector3.up * 0.5f;
+                bool blocked = false;
+                foreach (var c in Physics.OverlapSphere(spot + Vector3.up * 0.3f, 0.45f))
+                    if (!c.isTrigger && !c.transform.IsChildOf(best.transform)) blocked = true;
+                if (blocked) continue;
+                at = spot;
+                found = true;
+                break;
+            }
+            if (!found) { SpikeLog.Write("cmd: fetch: no free ground around the player"); return; }
             best.transform.position = at;
             best.transform.rotation = Quaternion.Euler(0f, p.eulerAngles.y, 0f);
             best.velocity = Vector3.zero;
@@ -263,22 +327,32 @@ namespace PerkeleRim.Spike
             if (player == null || text.Length == 0) { SpikeLog.Write("cmd: look <words in an object's path>, in game"); return; }
             aims++;
             var words = new List<string>(text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
-            int nth = 1;  // "#3": the third nearest (a part's bolts all have one name)
+            int nth = 1;  // "#3": the third (a part's bolts all have one name)
+            bool explicitNth = false;
             if (words.Count > 1 && words[words.Count - 1].StartsWith("#") && int.TryParse(words[words.Count - 1].Substring(1), out nth))
+            {
                 words.RemoveAt(words.Count - 1);
+                explicitNth = true;
+            }
             nth = Math.Max(1, nth);
+            // "door left(Clone)$": the path ends there (the part's own collider, not its bolts' or window's).
+            string ending = words.Count > 0 && words[words.Count - 1].EndsWith("$") ? text.Substring(0, text.LastIndexOf('$')).Trim() : null;
+            if (ending != null) { var cut = ending.LastIndexOf('/'); ending = cut >= 0 ? ending.Substring(cut + 1) : ending; }
             var found = new List<KeyValuePair<float, Collider>>();
             foreach (var c in FindObjectsOfType<Collider>())
             {
                 if (!c.enabled || c.transform.IsChildOf(player.transform)) continue;
                 var path = FullPath(c.transform);
                 bool all = true;
-                foreach (var w in words) all &= path.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0;
-                if (!all) continue;
+                foreach (var w in words) all &= path.IndexOf(w.TrimEnd('$'), StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!all || (ending != null && !path.EndsWith(ending, StringComparison.OrdinalIgnoreCase))) continue;
                 float d = Vector3.Distance(player.transform.position, c.bounds.center);
                 if (d < AimReach) found.Add(new KeyValuePair<float, Collider>(d, c));
             }
-            found.Sort((x, y) => x.Key.CompareTo(y.Key));
+            // Nearest first; with #n in a fixed order instead (by path, then place among its siblings), since the
+            // player moves between looks and the nearest changes: "#2" stays the same bolt.
+            if (explicitNth) found.Sort((x, y) => { int c = string.CompareOrdinal(FullPath(x.Value.transform), FullPath(y.Value.transform)); return c != 0 ? c : x.Value.transform.GetSiblingIndex().CompareTo(y.Value.transform.GetSiblingIndex()); });
+            else found.Sort((x, y) => x.Key.CompareTo(y.Key));
             if (found.Count < nth) { SpikeLog.Write($"cmd: look: {found.Count} within {AimReach} m with '{string.Join(" ", words.ToArray())}' in its path, no #{nth}"); return; }
             var best = found[nth - 1].Value;
             SpikeLog.Write($"cmd: look: {FullPath(best.transform)} {found[nth - 1].Key:0.0} m, #{nth} of {found.Count}");
@@ -293,24 +367,72 @@ namespace PerkeleRim.Spike
         {
             var target = a_collider;
             var at = target.bounds.center;
+            // A solid part looked at from above (one lying on the ground, a bolt head): the top of its bounds, since its
+            // middle can be as low as the ground the ray would hit first. A trigger (a part's place) by its middle.
+            var ext = target.bounds.extents;
+            if (a_fsm == null && !target.isTrigger && ext.y < 0.3f * Mathf.Max(ext.x, ext.z))  // lying flat, not upright
+                at.y = target.bounds.max.y - Mathf.Min(0.02f, ext.y);
             var root = target.transform.root;
             // Straight out from the vehicle's side the surface is on (its right or left), else from its front or back.
             var offset = at - root.position;
             float side = Vector3.Dot(offset, root.right), along = Vector3.Dot(offset, root.forward);
             var away = Mathf.Abs(side) >= 0.3f ? root.right * Mathf.Sign(side) : root.forward * Mathf.Sign(along);
+            // A loose part (its root is a folder like CARPARTS, no vehicle): from the side the player is on.
+            if (root.GetComponent<Rigidbody>() == null && target.attachedRigidbody != null && target.attachedRigidbody.transform.parent == root)
+                away = player.position - at;
             away.y = 0f;
             if (away.sqrMagnitude < 0.01f) { away = player.position - at; away.y = 0f; }
             away.Normalize();
             // On the ground there, as high above it as the player stands now (the vehicle may be on other ground).
             float below;
             float feet = Ground(player.position, 5f, player, player, out below) ? below : 0f;
-            var stand = at + away * 0.4f;
+            // Out of the part's own footprint: a door lying flat is wider than the 0.4 m a handle needs.
+            float clear = a_fsm == null && !target.isTrigger ? Mathf.Max(0.4f, Mathf.Min(0.9f, new Vector2(target.bounds.extents.x, target.bounds.extents.z).magnitude * 0.6f)) : 0.4f;
+            var stand = at + away * clear;
             var top = new Vector3(stand.x, at.y + 1.5f, stand.z);
             // Not the vehicle's own mirrors and doors (the whole vehicle when the root is one, a rigidbody; else
             // the surface's own body), nor the player: a house's switch keeps the floor below it.
             var body = target.attachedRigidbody;
             var skip = root.GetComponent<Rigidbody>() != null ? root : body != null ? body.transform : target.transform;
             stand.y = Ground(top, 6f, skip, player, out below) ? top.y - below + feet : player.position.y;
+            // A part's place on the car (a trigger), looked at with the part in hand: MSC holds it about 0.6 m along the
+            // view (ItemPivot), so stand where that is the trigger's middle, as near as the eye's height allows.
+            var eyeCam = Camera.main;
+            if (a_fsm == null && target.isTrigger && eyeCam != null)
+            {
+                float dy = stand.y + (eyeCam.transform.position.y - player.position.y) - at.y;
+                float flat = Mathf.Sqrt(Mathf.Max(0.6f * 0.6f - dy * dy, 0.15f * 0.15f));
+                var xz = at + away * flat;
+                stand.x = xz.x;
+                stand.z = xz.z;
+            }
+            // A bolt (a trigger that isn't a part's place): of a few spots around the first, within MSC's 1 m reach,
+            // the first from where the eye's ray meets this bolt before any other (a hinge's bolts sit in pairs).
+            if (a_fsm == null && target.isTrigger && !IsPlace(target) && eyeCam != null)
+            {
+                var eyeUp = eyeCam.transform.position - player.position;
+                foreach (float turn in new[] { 0f, 35f, -35f, 70f, -70f })
+                {
+                    var dir = Quaternion.Euler(0f, turn, 0f) * away;
+                    foreach (float flat in new[] { 0.45f, 0.3f, 0.6f })
+                    {
+                        var spot = at + dir * flat;
+                        spot.y = stand.y;
+                        var eye = spot + eyeUp;
+                        var ray = at - eye;
+                        if (ray.magnitude > 0.95f) continue;
+                        RaycastHit first = default(RaycastHit);
+                        float nearest = float.MaxValue;
+                        foreach (var h in Physics.RaycastAll(eye, ray.normalized, ray.magnitude + 0.05f, 1 << target.gameObject.layer))
+                            if (h.distance < nearest) { first = h; nearest = h.distance; }
+                        if (nearest == float.MaxValue || first.collider != target) continue;
+                        stand = spot;
+                        goto chosen;
+                    }
+                }
+                SpikeLog.Write("cmd: aim: no spot within reach sees this bolt first, standing at the first");
+            }
+            chosen:
             player.position = stand;
             int generation = ++aims;
             for (int pass = 0; pass < AimHold * 4 && generation == aims; pass++)
@@ -321,12 +443,54 @@ namespace PerkeleRim.Spike
                 var look = at - cam.transform.position;
                 float yaw = Mathf.Atan2(look.x, look.z) * Mathf.Rad2Deg;
                 float pitch = Mathf.Atan2(look.y, new Vector2(look.x, look.z).magnitude) * Mathf.Rad2Deg;
-                player.rotation = Quaternion.Euler(0f, yaw, 0f);
-                var how = $"player at {player.position}, eye {look.magnitude:0.00} m away, yaw {yaw:0}, {Pitch(cam.transform, player, pitch)}";
+                // At a part's place (a trigger) only the first two aims: every turn after moves the held part, and MSC's
+                // Assembly only arms again when the part comes into the trigger anew.
+                bool still = a_fsm == null && IsPlace(target) && pass >= 2;
+                if (!still) player.rotation = Quaternion.Euler(0f, yaw, 0f);
+                var how = $"player at {player.position}, eye {look.magnitude:0.00} m away, yaw {yaw:0}, {(still ? "held still" : Pitch(cam.transform, player, pitch))}";
                 if (pass == 0) SpikeLog.Write($"cmd: aim: {FullPath(target.transform)}{(a_fsm != null ? $" [{a_fsm.ActiveStateName}]" : "")}, {how}");
                 if (pass == 4) AimReport(target.transform, a_fsm, how);  // a second on
                 yield return new WaitForSeconds(0.25f);  // he settles, the camera sways: aim again from where it is
             }
+        }
+
+        // "offer <trigger>": a part's place on the car (trigger_door_left, TriggerWheelFL_New, trigger_radiator) told
+        // that the part in MSC's hand came into it: its Assembly FSM goes to "Find correct part", as its OnTriggerEnter
+        // does, and from there it is all MSC's: it checks the hand holds its part (HandChild below ItemPivot), shows its
+        // assemble icon (GUIassemble) and waits for the left click. A scenario's stand-in for holding the part exactly
+        // into the trigger, which takes a player's hands.
+        static void Offer(string name)
+        {
+            PlayMakerFSM assembly = null;
+            foreach (var o in Resources.FindObjectsOfTypeAll(typeof(PlayMakerFSM)))
+            {
+                var f = (PlayMakerFSM)o;
+                if (f.FsmName == "Assembly" && f.name == name && f.gameObject.activeInHierarchy) { assembly = f; break; }
+            }
+            if (assembly == null) { SpikeLog.Write($"cmd: offer: no active {name} :: Assembly (the part is on already?)"); return; }
+            var held = Held();
+            var want = assembly.FsmVariables.FindFsmString("HandChild");
+            var state = assembly.Fsm.GetState("Find correct part") ?? assembly.Fsm.GetState("Find correct part 2");
+            if (state == null || PerkeleRim.Game.SaveSync.SwitchState == null) { SpikeLog.Write($"cmd: offer: {name} has no Find correct part state"); return; }
+            PerkeleRim.Game.SaveSync.SwitchState.Invoke(assembly.Fsm, new object[] { state });
+            SpikeLog.Write($"cmd: offer: {FullPath(assembly.transform)} [{state.Name}], the hand holds {(held != null ? held.name : "nothing")}, it wants {(want != null ? want.Value : "?")}");
+        }
+
+        // A part's place on the car: a trigger with an Assembly FSM (a bolt's trigger has a Screw one).
+        static bool IsPlace(Collider c)
+        {
+            if (!c.isTrigger) return false;
+            foreach (var f in c.GetComponents<PlayMakerFSM>())
+                if (f.FsmName == "Assembly") return true;
+            return false;
+        }
+
+        // What MSC's hand holds (the child of ItemPivot), or null.
+        static Transform Held()
+        {
+            var pivot = HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmGameObject("ItemPivot");
+            var t = pivot != null && pivot.Value != null ? pivot.Value.transform : null;
+            return t != null && t.childCount > 0 ? t.GetChild(0) : null;
         }
 
         // How far below from the ground is: the nearest solid hit down from there, not a trigger and nothing
@@ -784,8 +948,13 @@ namespace PerkeleRim.Spike
                     case "aim":  // "aim HAYOSIKO door": the player in front of the nearest control surface ("Use" FSM) whose path has those words, looking at it
                         Aim(lines[0].Trim().Substring(3).Trim());
                         break;
-                    case "fetch":  // "fetch wheel_regula": the nearest loose part of that name put down in front of the player
-                        Fetch(lines[0].Trim().Substring(5).Trim());
+                    case "fetch":  // "fetch wheel_regula": the nearest loose part of that name put down by the player; "fetch door left eyes": held up in front of his eyes for a click
+                        var fetchWhat = lines[0].Trim().Substring(5).Trim();
+                        if (fetchWhat.EndsWith(" eyes")) StartCoroutine(FetchToEyes(fetchWhat.Substring(0, fetchWhat.Length - 5).Trim()));
+                        else Fetch(fetchWhat);
+                        break;
+                    case "offer":  // "offer trigger_door_left": the part in MSC's hand counted as come into its place on the car
+                        Offer(lines[0].Trim().Substring(5).Trim());
                         break;
                     case "wrench":  // "wrench door left(Clone)": MSC's wrench the size of that part's nearest bolt, as if picked from the spanner set
                         Wrench(lines[0].Trim().Substring(6).Trim());

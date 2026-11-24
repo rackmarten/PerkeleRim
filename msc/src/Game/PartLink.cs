@@ -116,7 +116,12 @@ namespace PerkeleRim.Game
 
         void Find()
         {
-            if (database == null) database = GameObject.Find("Database") ?? Root("Database");
+            if (database == null)
+            {
+                // Through a section: an empty object elsewhere is also named Database, and GameObject.Find took that.
+                var body = GameObject.Find("Database/DatabaseBody");
+                database = body != null && body.transform.parent != null ? body.transform.parent.gameObject : RootWith("Database", "DatabaseBody");
+            }
             if (database == null) { entries.Clear(); shape = -1; return; }
             int now = 0;
             foreach (var section in Sections)
@@ -214,11 +219,11 @@ namespace PerkeleRim.Game
             }
         }
 
-        // A scene root by name, active or not (GameObject.Find finds only active objects, and any of that name).
-        static GameObject Root(string name)
+        // A scene root by name that has that child, active or not (GameObject.Find finds only active objects).
+        static GameObject RootWith(string name, string child)
         {
             foreach (GameObject go in Resources.FindObjectsOfTypeAll(typeof(GameObject)))
-                if (go.transform.parent == null && go.hideFlags == HideFlags.None && go.name == name) return go;
+                if (go.transform.parent == null && go.hideFlags == HideFlags.None && go.name == name && go.transform.Find(child) != null) return go;
             return null;
         }
 

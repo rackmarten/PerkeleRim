@@ -1,5 +1,6 @@
 #include "hud/Hud.h"
 
+#include <cctype>
 #include <mutex>
 
 #include "needs.h"
@@ -38,6 +39,11 @@ namespace PerkeleRim::Hud
         // MSC's subtitle line, bottom center above where Skyrim puts its own.
         constexpr double kSubtitleSize = 24.0;
         constexpr double kSubtitleAbove = 200.0;  // text top, up from the visible frame's bottom edge
+
+        // MSC's part name line, bottom center (MSC's GUI/Indicators/Partname): yellow capitals.
+        constexpr double        kPartNameSize = 20.0;
+        constexpr double        kPartNameAbove = 92.0;  // text top, up from the visible frame's bottom edge
+        constexpr std::uint32_t kPartNameColor = 0xF2D21B;
 
         // MSC's gear indicator, bottom right.
         constexpr double kGearSize = 22.0;  // the look-at label's size
@@ -152,23 +158,32 @@ namespace PerkeleRim::Hud
             Rect(a_clip, -10.0, -3.0, -7.4, 0.5);
         }
 
-        // MSC's assemble and disassemble icons: the hand with a badge on its lower right, a green plus for a held part
-        // that goes on where it is, a red minus for a part that comes off.
-        void DrawBadge(RE::GFxValue& a_clip, bool a_plus)
+        // A thick white line (AS2 lineStyle), for the icons drawn as strokes.
+        void Stroke(RE::GFxValue& a_clip, std::initializer_list<std::pair<double, double>> a_points, double a_width = 3.0)
         {
-            constexpr double kX = 10.5, kY = 9.0;
-            RE::GFxValue badge;
-            if (!a_clip.CreateEmptyMovieClip(&badge, "badge", 1)) {
-                return;
+            Call(a_clip, "lineStyle", { RE::GFxValue(a_width), RE::GFxValue(static_cast<double>(0xFFFFFF)), RE::GFxValue(100.0) });
+            bool first = true;
+            for (const auto& [x, y] : a_points) {
+                Call(a_clip, first ? "moveTo" : "lineTo", { RE::GFxValue(x), RE::GFxValue(y) });
+                first = false;
             }
-            badge.SetMember("_x", RE::GFxValue(kX));
-            badge.SetMember("_y", RE::GFxValue(kY));
-            Circle(badge, 0x000000, 80.0, 7.5);
-            Circle(badge, a_plus ? 0x3FBF4A : 0xD8402F, 100.0, 6.0);
-            Rect(badge, -3.5, -1.0, 3.5, 1.0);
-            if (a_plus) {
-                Rect(badge, -1.0, -3.5, 1.0, 3.5);
-            }
+            Call(a_clip, "lineStyle", {});
+        }
+
+        // MSC's assemble icon: a white check mark, as MSC's gui_assemble (on a dark disc like the hand, for daylight).
+        void DrawAssemble(RE::GFxValue& a_clip)
+        {
+            Circle(a_clip, 0x000000, 55.0, 15.0);
+            Stroke(a_clip, { { -7.0, 0.0 }, { -2.0, 6.0 }, { 8.0, -7.0 } }, 3.5);
+        }
+
+        // MSC's disassemble icon: a white circle crossed by a slash (gui_disassemble).
+        void DrawDisassemble(RE::GFxValue& a_clip)
+        {
+            Circle(a_clip, 0x000000, 55.0, 15.0);
+            Circle(a_clip, 0xFFFFFF, 100.0, 9.5);
+            Circle(a_clip, 0x000000, 100.0, 7.0);
+            Stroke(a_clip, { { -6.5, -6.5 }, { 6.5, 6.5 } }, 2.5);
         }
 
         // MSC's tools icon: a wrench and a screwdriver side by side, white, as MSC shows them top right.
@@ -233,9 +248,12 @@ namespace PerkeleRim::Hud
                 if (!a_clip.CreateEmptyMovieClip(&iconClip, name, at)) {
                     continue;
                 }
-                DrawHand(iconClip);
-                if (at != 4) {
-                    DrawBadge(iconClip, at == 14);
+                if (at == 4) {
+                    DrawHand(iconClip);
+                } else if (at == 14) {
+                    DrawAssemble(iconClip);
+                } else {
+                    DrawDisassemble(iconClip);
                 }
                 iconClip.SetMember("_y", RE::GFxValue(kHandCenter));
                 iconClip.SetMember("_visible", RE::GFxValue(false));
@@ -247,6 +265,10 @@ namespace PerkeleRim::Hud
             RE::GFxValue subBox, subtitle;
             a_clip.CreateEmptyMovieClip(&subBox, "subBox", 5);
             MakeText(a_movie, a_clip, "subtitle", 6.0, -500.0, 0.0, 1000.0, kSubtitleSize, "center", 0xFFFFFF, subtitle);
+
+            // MSC's part name line (PickedPart), bottom center in yellow capitals as MSC shows it, no box.
+            RE::GFxValue partName;
+            MakeText(a_movie, a_clip, "partName", 16.0, -400.0, 0.0, 800.0, kPartNameSize, "center", kPartNameColor, partName);
 
             RE::GFxValue gearBox, gear;
             a_clip.CreateEmptyMovieClip(&gearBox, "gearBox", 8);
@@ -505,6 +527,17 @@ namespace PerkeleRim::Hud
                 }
             }
 
+            RE::GFxValue partName;
+            if (clip.GetMember("partName", &partName) && partName.IsDisplayObject()) {
+                std::string caps = a_view.partName;
+                for (auto& c : caps) {
+                    c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));  // MSC's font is capitals; ASCII only, UTF-8 kept
+                }
+                partName.SetText(caps.c_str());
+                partName.SetMember("_visible", RE::GFxValue(!caps.empty() && open));
+                partName.SetMember("_y", RE::GFxValue(static_cast<double>(rect.bottom) - kPartNameAbove - cy));
+            }
+
             // Bottom right on a dark box, its right edge kGearRight from the frame's.
             const auto rightBox = [&](const char* a_text, const char* a_box, const std::string& a_value, double a_above, double a_field) {
                 RE::GFxValue text, box;
@@ -603,7 +636,7 @@ namespace PerkeleRim::Hud
         }
         const auto needs = Quantize(view);
         const int  charge = view.charge < 0.0f ? -1 : static_cast<int>(std::lround(std::clamp(view.charge, 0.0f, 1.0f) * kChargeSteps));
-        const bool textChanged = view.show != current.show || view.dot != current.dot || view.label != current.label || view.icon != current.icon ||
+        const bool textChanged = view.show != current.show || view.dot != current.dot || view.label != current.label || view.icon != current.icon || view.partName != current.partName ||
                                  view.subtitle != current.subtitle || view.gear != current.gear || view.fuel != current.fuel || view.tools != current.tools ||
                                  view.money != current.money;
         const bool handsChanged = view.handsImage != current.handsImage || view.handsWidth != current.handsWidth ||

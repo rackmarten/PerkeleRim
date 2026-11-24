@@ -18,7 +18,8 @@ namespace PerkeleRim::Hud
         bool                 dot = true;        // the dot at the screen center (off for the intro's captions)
         bool                 hideStealth = false;  // Skyrim's sneak eye hidden (every frame while true; shown again once it is false): it stayed up after standing
         std::string          label;             // look-at text, empty = none
-        LookAt::Icon         icon = LookAt::Icon::None;  // look-at icon: MSC's hand, assemble or disassemble
+        LookAt::Icon         icon = LookAt::Icon::None;  // look-at icon: MSC's hand, assemble (a check mark) or disassemble (a crossed circle)
+        std::string          partName;          // MSC's part name line (kLookAtPartName), bottom center; empty = none
         std::string          subtitle;          // empty = none
         std::string          gear;              // MSC's gear indicator while driving ("N", "3 HIGH"), empty = none
         std::string          fuel;              // MSC's fuel line above the gear (FuelText), empty = none

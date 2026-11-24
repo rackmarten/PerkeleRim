@@ -1007,7 +1007,9 @@ namespace PerkeleRim::PlayerSync
             Hud::View hud;
             hud.show = !chase;  // clean shots
             hud.hideStealth = !state.sneak;  // Skyrim's sneak eye stayed up after standing
-            hud.label = state.lookAt;
+            const bool partNameLine = (state.lookAtFlags & Protocol::kLookAtPartName) != 0;
+            hud.label = partNameLine ? std::string() : state.lookAt;
+            hud.partName = partNameLine ? state.lookAt : std::string();
             hud.icon = LookAt::IconFor(state.lookAtFlags);
             hud.subtitle = !state.subtitle.empty()        ? state.subtitle :
                            !Intro::Caption().empty() ? std::string(Intro::Caption()) :  // the shack's wake-up caption carries over the handover
