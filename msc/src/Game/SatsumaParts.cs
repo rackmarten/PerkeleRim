@@ -195,7 +195,12 @@ namespace PerkeleRim.Game
                 keyCursor = (keyCursor + 1) % parts.Count;
                 var t = parts[keyCursor];
                 Looks l;
-                if (t == null || (looks.TryGetValue(t, out l) && (l.Count >= MaxLooks || now < l.Next))) continue;
+                if (t == null) continue;
+                uint model;
+                // Frozen (MaxLooks) stays as it last looked, unless that last read found nothing: then it
+                // is asked again on its cooldown, so it isn't left out for good (a dropped read built no node).
+                bool frozen = looks.TryGetValue(t, out l) && l.Count >= MaxLooks && !(models.TryGetValue(t, out model) && sender.Dropped(model));
+                if (frozen || (l != null && now < l.Next)) continue;
                 Ask(sender, t);
                 asked++;
             }

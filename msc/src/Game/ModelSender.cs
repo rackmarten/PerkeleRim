@@ -161,6 +161,7 @@ namespace PerkeleRim.Game
             if (!sent.Contains(id) && !queued.Contains(id))
             {
                 queued.Add(id);
+                dropped.Remove(id);  // read again: pending, not empty any more
                 jobs.Enqueue(new Job { Steps = steps, Gone = gone, What = what, Id = id, Session = session });
             }
             return id;
