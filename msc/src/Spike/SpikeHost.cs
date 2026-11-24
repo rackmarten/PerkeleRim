@@ -523,6 +523,14 @@ namespace PerkeleRim.Spike
                         Array.Copy(words, 1, kw, 0, kw.Length);
                         FsmDump.Run(kw);
                         break;
+                    case "satsuma":  // "satsuma" lists the parts on it, "satsuma here" brings it in front of the player, "satsuma half" / "satsuma bare" put half its parts on or all off
+                        var satsumaLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (satsumaLink != null) satsumaLink.SatsumaCommand(words.Length > 1 ? words[1].ToLower() : "");
+                        else SpikeLog.Write("cmd: no PlayerLink");
+                        break;
+                    case "tree":  // "tree SATSUMA(557kg, 248)" writes its whole hierarchy to PerkeleRim_tree_<name>.txt; "tree roots" every root rigidbody
+                        TreeDump.Run(lines[0].Trim().Substring(4).Trim());
+                        break;
                     case "override":
                         InputShim.Clear();
                         InputShim.Active = InputShim.Manual = words.Length > 1 && words[1].ToLower() == "on";
@@ -592,8 +600,8 @@ namespace PerkeleRim.Spike
                         }
                         else PerkeleRim.Game.TeimoModel.Dump(SpikeLog.Write);
                         break;
-                    case "shot":  // MSC's own view, next to the game, as F11 saves it (ViewShot)
-                        PerkeleRim.Game.ViewShot.Save(Path.Combine(SpikeLog.GameDir, "PerkeleRim_shot.png"), 0, 0, SpikeLog.Write);
+                    case "shot":  // MSC's own view, next to the game, as F11 saves it (ViewShot); "shot bare" saves PerkeleRim_shot_bare.png
+                        PerkeleRim.Game.ViewShot.Save(Path.Combine(SpikeLog.GameDir, words.Length > 1 ? "PerkeleRim_shot_" + words[1] + ".png" : "PerkeleRim_shot.png"), 0, 0, SpikeLog.Write);
                         break;
                     case "event":  // a global PlayMaker event, e.g. "event DRINKBEER" plays the beer drinking animation
                         if (words.Length > 1) PlayMakerFSM.BroadcastEvent(words[1]);

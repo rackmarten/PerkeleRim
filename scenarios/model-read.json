@@ -1,7 +1,8 @@
 // MSC's frames while it reads and sends its models (msc/src/Game/ModelSender.cs): every model read again with new ids,
 // as after MSC starts ("models again cold"), then read and sent again under the same ids, as after Skyrim restarts
 // ("models again"; nothing kept from the cold read: MSC lets go of its textures 5 s after it, pr.models waits 8). MSC logs each stretch's frames ("model: models again cold: ... worst <n> ms"); scripts/model-read-test.ps1
-// runs this and prints those lines. Then the van, the moped, the Kekmet and the Gifu called one by one and pictured,
+// runs this and prints those lines. The Satsuma is brought first and half built, so its parts are read too. Then the
+// van, the moped, the Kekmet and the Gifu called one by one and pictured, and the Satsuma,
 // to see they still draw right.
 {
   "name": "model-read",
@@ -14,6 +15,10 @@
     { "cmd": "console", "command": "player.setangle z 180" },
     { "cmd": "wait", "seconds": 2 },
     { "label": "MSC takes him there", "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
+
+    // The Satsuma on the island and half built, so its body and each part's model are among those read.
+    { "label": "the Satsuma comes", "cmd": "pr.satsuma", "what": "here", "expect": ["drawn == true"] },
+    { "label": "half its parts go on", "cmd": "pr.satsuma", "what": "half", "expect": ["attached > 8", "unread == 0"] },
 
     // As after MSC starts: every model read and sent again, under new ids.
     { "label": "MSC reads every model again", "cmd": "pr.send", "line": "models again cold" },
@@ -54,6 +59,7 @@
     { "cmd": "wait", "until": "drawn == true", "for": "pr.vehicle gifu", "timeout": 30 },
     { "cmd": "wait", "seconds": 3 },
     { "cmd": "screenshot", "name": "gifu", "camera": "orbit pr.vehicle:gifu yaw=140 distance=1100 pitch=20" },
+    { "cmd": "screenshot", "name": "satsuma", "camera": "orbit pr.vehicle:satsuma yaw=140 distance=600 pitch=20" },
     { "cmd": "screenshot", "name": "all", "camera": "top player distance=2200" },
     { "cmd": "scene", "presets": "restore" }
   ]
