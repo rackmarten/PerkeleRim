@@ -55,6 +55,9 @@ namespace PerkeleRim
         bool ReadVehicle(std::uint32_t a_vehicle, Protocol::VehicleState& a_out) const;
         void WriteVehicleParts(const Protocol::VehicleParts& a_value);
         bool ReadVehicleParts(std::uint32_t a_vehicle, Protocol::VehicleParts& a_out) const;
+        // One slot, the Satsuma's attached parts (a_value.vehicle says whose).
+        void WritePartSet(const Protocol::PartSet& a_value);
+        bool ReadPartSet(Protocol::PartSet& a_out) const;
         void WriteItems(const Protocol::ItemState& a_value);
         bool ReadItems(Protocol::ItemState& a_out) const;
         void WriteHandLayer(const Protocol::HandLayer& a_value);

@@ -2,6 +2,7 @@
 
 #include "coords.h"
 #include "model/ModelView.h"
+#include "part_set.h"
 #include "vehicle/Hitbox.h"
 
 namespace PerkeleRim::VehicleView
@@ -11,7 +12,7 @@ namespace PerkeleRim::VehicleView
         // Each vehicle's model as MSC sends it (ModelChunk, msc/src/Game/VehicleModel.cs), read from
         // MSC's running vehicle and named like PlayerCurrentVehicle: one node per MSC object, posed
         // from VehicleParts. Nothing is drawn until it has arrived. By vehicle id - 1.
-        constexpr std::array<std::string_view, Protocol::kVehicleCount> kModelNames{ "Hayosiko", "Jonnez", "Kekmet", "Gifu" };
+        constexpr std::array<std::string_view, Protocol::kVehicleCount> kModelNames{ "Hayosiko", "Jonnez", "Kekmet", "Gifu", "Satsuma" };
 
         struct Lamp
         {
@@ -29,6 +30,36 @@ namespace PerkeleRim::VehicleView
             Lamp                      lamps[(Protocol::kLightBeacon + 1) * 2];  // by kLight* role x 2 (the second for the right headlight), see UpdateLamps
         };
         std::array<View, Protocol::kVehicleCount> views;
+
+        // The attached parts of a vehicle built from parts (PartSet, the Satsuma's): one node per part,
+        // made from that part's own model and hung under the vehicle's node. Nodes are never destroyed
+        // (ModelView): a part that comes off, or is built anew from another model, leaves its node in
+        // a pool by model for the next part that looks the same.
+        struct PartNode
+        {
+            RE::NiPointer<RE::NiNode> node;
+            std::uint32_t             model = 0;
+        };
+        struct Parts
+        {
+            std::unordered_map<std::uint32_t, PartNode>                               nodes;  // by AttachedPart.part
+            std::unordered_map<std::uint32_t, std::vector<RE::NiPointer<RE::NiNode>>> pool;   // by model
+            PartSets::Built                                                           built;  // part -> model, what nodes has
+            RE::NiNode*                                                               under = nullptr;  // the vehicle node they hang under
+            std::uint32_t                                                             drawn = 0;
+            std::uint32_t                                                             waiting = 0;  // parts whose model hasn't arrived, as last logged
+        };
+        Parts satsumaParts;
+
+        // A part's node off the vehicle, back in the pool for its model.
+        void PutBack(Parts& a_parts, PartNode& a_part)
+        {
+            a_part.node->SetAppCulled(true);
+            if (a_part.node->parent) {
+                a_part.node->parent->DetachChild(a_part.node.get());
+            }
+            a_parts.pool[a_part.model].push_back(a_part.node);
+        }
 
         // Skyrim's lights for the vehicle's lamps (MSC's Unity Lights arrive with the model, which of
         // them are on with VehicleParts.lights). Few on purpose: Skyrim lets only 4 lights cast
@@ -367,6 +398,84 @@ namespace PerkeleRim::VehicleView
             SKSE::log::info("vehicle view: showing the {} at ({:.0f},{:.0f},{:.0f})", name,
                 a_state->position[0], a_state->position[1], a_state->position[2]);
         }
+    }
+
+    void UpdateParts(const Protocol::PartSet& a_set, std::uint32_t a_generation)
+    {
+        constexpr std::uint32_t vehicle = Protocol::kVehicleSatsuma;
+        auto&                   parts = satsumaParts;
+        auto&                   view = views[vehicle - 1];
+        if (!PartSets::For(a_set, vehicle, a_generation) || !view.node) {
+            return;
+        }
+        // The body was built anew (MSC restarted): the parts move over to its node.
+        if (parts.under != view.node.get()) {
+            for (auto& [id, part] : parts.nodes) {
+                if (part.node->parent) {
+                    part.node->parent->DetachChild(part.node.get());
+                }
+                view.node->AttachChild(part.node.get(), true);
+            }
+            parts.under = view.node.get();
+        }
+        const auto changes = PartSets::Diff(parts.built, a_set);
+        for (const auto id : changes.gone) {
+            if (auto it = parts.nodes.find(id); it != parts.nodes.end()) {
+                PutBack(parts, it->second);
+                parts.nodes.erase(it);
+            }
+            parts.built.erase(id);
+        }
+        std::uint32_t built = 0, waiting = 0;
+        for (const auto index : changes.build) {
+            const auto&               in = a_set.parts[index];
+            RE::NiPointer<RE::NiNode> node;
+            if (auto& free = parts.pool[in.model]; !free.empty()) {
+                node = free.back();
+                free.pop_back();
+            } else {
+                node = ModelView::Instance(in.model);
+            }
+            if (!node) {
+                waiting++;  // its model hasn't arrived yet: asked again next frame
+                continue;
+            }
+            if (auto it = parts.nodes.find(in.part); it != parts.nodes.end()) {  // another look: the old node goes back
+                PutBack(parts, it->second);
+            }
+            view.node->AttachChild(node.get(), true);
+            parts.nodes[in.part] = PartNode{ node, in.model };
+            parts.built[in.part] = in.model;
+            built++;
+        }
+        std::uint32_t       drawn = 0;
+        const std::uint32_t count = (std::min)(a_set.count, Protocol::kPartSetCapacity);
+        for (std::uint32_t i = 0; i < count; i++) {
+            const auto& in = a_set.parts[i];
+            const auto  it = parts.nodes.find(in.part);
+            if (it == parts.nodes.end()) {
+                continue;
+            }
+            auto& node = *it->second.node;
+            SetRotation(node.local.rotate, in.rotation);
+            node.local.translate = RE::NiPoint3(in.translation[0], in.translation[1], in.translation[2]);
+            const bool visible = (in.flags & Protocol::kPartVisible) != 0;
+            node.SetAppCulled(!visible);
+            drawn += visible ? 1 : 0;
+        }
+        if (!changes.gone.empty() || built > 0 || waiting != parts.waiting) {
+            SKSE::log::info("vehicle view: Satsuma parts: {} attached, {} drawn, {} built, {} taken down, {} waiting for their model",
+                a_set.count, drawn, built, changes.gone.size(), waiting);
+        }
+        parts.drawn = drawn;
+        parts.waiting = waiting;
+        RE::NiUpdateData update{};
+        view.node->Update(update);
+    }
+
+    std::uint32_t PartsDrawn(std::uint32_t a_vehicle)
+    {
+        return a_vehicle == Protocol::kVehicleSatsuma && views[a_vehicle - 1].shown ? satsumaParts.drawn : 0;
     }
 
     void Hide()

@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 51;
+        public const uint ProtocolVersion = 52;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -17,16 +17,17 @@ namespace PerkeleRim.Protocol
         public const uint OffsetInputSlot = 128;
         public const uint OffsetPlayerSlot = 256;
         public const uint OffsetVehicleSlot = 384;
-        public const uint OffsetVehiclePartsSlot = 896;
-        public const uint OffsetItemSlot = 33920;
-        public const uint OffsetHandLayerSlot = 39104;
-        public const uint OffsetActorSlot = 39168;
-        public const uint OffsetParticleSlot = 40768;
-        public const uint OffsetRingToMsc = 57216;
+        public const uint OffsetVehiclePartsSlot = 1024;
+        public const uint OffsetPartSetSlot = 42304;
+        public const uint OffsetItemSlot = 52608;
+        public const uint OffsetHandLayerSlot = 57792;
+        public const uint OffsetActorSlot = 57856;
+        public const uint OffsetParticleSlot = 59456;
+        public const uint OffsetRingToMsc = 75904;
         public const uint RingToMscCapacity = 4194304;
-        public const uint OffsetRingToSkyrim = 4251584;
+        public const uint OffsetRingToSkyrim = 4270272;
         public const uint RingToSkyrimCapacity = 262144;
-        public const uint MappingSize = 4513792;
+        public const uint MappingSize = 4532480;
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint InputPaused = 0x2;
@@ -61,10 +62,12 @@ namespace PerkeleRim.Protocol
         public const uint VehicleJonnez = 2;
         public const uint VehicleKekmet = 3;
         public const uint VehicleGifu = 4;
-        public const uint VehicleCount = 4;
+        public const uint VehicleSatsuma = 5;
+        public const uint VehicleCount = 5;
         public const uint AnchorVehicleSpot = 0x1;
         public const uint VehiclePartCapacity = 256;
         public const uint PartVisible = 0x1;
+        public const uint PartSetCapacity = 256;
         public const uint ItemCapacity = 128;
         public const uint ItemVisible = 0x1;
         public const uint ItemHeld = 0x2;
@@ -346,6 +349,49 @@ namespace PerkeleRim.Protocol
         public uint seq;
         public uint reserved;
         public VehicleParts value;
+        public fixed byte pad[24];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct AttachedPart
+    {
+        public uint part;
+        public uint model;
+        public uint flags;
+        public fixed float rotation[4];
+        public fixed float translation[3];
+    }
+
+    // parts holds kPartSetCapacity AttachedParts.
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct PartSet
+    {
+        public uint frame;
+        public uint vehicle;
+        public uint generation;
+        public uint count;
+        public fixed uint reserved[4];
+        public fixed byte parts[10240];
+
+        public AttachedPart Get(int i)
+        {
+            if ((uint)i >= Wire.PartSetCapacity) throw new System.ArgumentOutOfRangeException(nameof(i));
+            fixed (byte* p = parts) return ((AttachedPart*)p)[i];
+        }
+
+        public void Set(int i, AttachedPart part)
+        {
+            if ((uint)i >= Wire.PartSetCapacity) throw new System.ArgumentOutOfRangeException(nameof(i));
+            fixed (byte* p = parts) ((AttachedPart*)p)[i] = part;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct PartSetSlot
+    {
+        public uint seq;
+        public uint reserved;
+        public PartSet value;
         public fixed byte pad[24];
     }
 

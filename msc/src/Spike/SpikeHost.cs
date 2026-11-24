@@ -523,6 +523,9 @@ namespace PerkeleRim.Spike
                         Array.Copy(words, 1, kw, 0, kw.Length);
                         FsmDump.Run(kw);
                         break;
+                    case "tree":  // "tree SATSUMA(557kg, 248)" writes its whole hierarchy to PerkeleRim_tree_<name>.txt; "tree roots" every root rigidbody
+                        TreeDump.Run(lines[0].Trim().Substring(4).Trim());
+                        break;
                     case "override":
                         InputShim.Clear();
                         InputShim.Active = InputShim.Manual = words.Length > 1 && words[1].ToLower() == "on";
