@@ -13,6 +13,10 @@ namespace PerkeleRim
     {
         public int Width, Height;
         public byte[] Rgba;  // Width * Height * 4, top row first
+        // What it was made from when other models may have the same one (ModelSender: the textures and
+        // tint it was baked from), so it goes to Skyrim once and is named by id after (SharedTextures);
+        // null = this model's own, always inline.
+        public string Key;
 
         // Unity's pixel order (Texture2D.GetPixels32: bottom row first) to the wire's.
         public static ModelTextureData FromUnity(int width, int height, byte[] bottomUpRgba)
@@ -307,6 +311,86 @@ namespace PerkeleRim
         }
     }
 
+    // The textures several models share, per link session (v56): a texture with a key gets an id
+    // (MSC's, from the same counter as the models', so it never names a model) and goes inline with it
+    // the first time a model has it; the models encoded after it name it by id without its pixels.
+    // Models go out in the order they were encoded, so Skyrim always has it by then. The link going
+    // down (Forget) makes every texture go inline again; Clear also gives them new ids (MSC as after a
+    // start). Unity-free, so the tests cover it.
+    public sealed class SharedTextures
+    {
+        readonly Dictionary<string, uint> ids = new Dictionary<string, uint>();
+        readonly HashSet<uint> sent = new HashSet<uint>();
+        readonly Func<uint> nextId;
+
+        public SharedTextures(Func<uint> nextId) { this.nextId = nextId; }
+
+        public int Count => ids.Count;
+        public long BytesSaved { get; private set; }  // pixels named by id instead of sent, this link session
+        readonly Dictionary<string, int[]> sizes = new Dictionary<string, int[]>();  // key -> width, height as sent
+
+        // Whether the texture made from key went to Skyrim this link session, and its size: a model
+        // read now names it by id without reading it (ModelSender).
+        public bool Sent(string key, out int width, out int height)
+        {
+            width = height = 0;
+            uint id;
+            int[] size;
+            if (!ids.TryGetValue(key, out id) || !sent.Contains(id) || !sizes.TryGetValue(key, out size)) return false;
+            width = size[0];
+            height = size[1];
+            return true;
+        }
+
+        public uint Id(string key)
+        {
+            uint id;
+            if (!ids.TryGetValue(key, out id)) ids[key] = id = nextId();
+            return id;
+        }
+
+        // Whether this texture goes inline now (the first model of this link session to have it), and
+        // takes note of it either way.
+        public bool Inline(uint id, long bytes)
+        {
+            if (sent.Add(id)) return true;
+            BytesSaved += bytes;
+            return false;
+        }
+
+        void Remember(string key, int width, int height) => sizes[key] = new[] { width, height };
+
+        public void Forget()
+        {
+            sent.Clear();
+            BytesSaved = 0;
+        }
+
+        public void Clear()
+        {
+            Forget();
+            ids.Clear();
+            sizes.Clear();
+        }
+
+        // EncodeSteps' part: id 0 = inline as the model's own; else inline the first time (the
+        // texture's pixels must be there then), by id after.
+        internal bool Encode(ModelTextureData t, out uint id)
+        {
+            id = t.Key != null ? Id(t.Key) : 0u;
+            if (id == 0) return true;
+            long bytes = (long)t.Width * t.Height * 4;
+            if (t.Rgba == null)
+            {
+                if (!sent.Contains(id)) throw new ArgumentException($"texture {t.Key} was never sent and has no pixels");
+                BytesSaved += bytes;
+                return false;
+            }
+            Remember(t.Key, t.Width, t.Height);
+            return Inline(id, bytes);
+        }
+    }
+
     public sealed class ModelData
     {
         public string Name;
@@ -326,10 +410,10 @@ namespace PerkeleRim
             }
         }
 
-        public byte[] Encode()
+        public byte[] Encode(SharedTextures shared = null)
         {
             EncodedModel encoded = null;
-            foreach (var step in EncodeSteps()) if (step != null) encoded = step;
+            foreach (var step in EncodeSteps(shared)) if (step != null) encoded = step;
             return encoded.ToArray();
         }
 
@@ -337,7 +421,7 @@ namespace PerkeleRim
         public long EncodedSize()
         {
             long size = Wire.ModelNameMax + 5 * 4;
-            foreach (var t in Textures) size += 16 + (t.Rgba != null ? t.Rgba.LongLength : 0);
+            foreach (var t in Textures) size += 16 + (t.Rgba != null ? t.Rgba.LongLength : 0);  // by id: no pixels
             size += Materials.Count * 40L;
             size += Nodes.Count * (Wire.ModelNodeNameMax + 4 + 7 * 4L);
             size += Lights.Count * 40L;
@@ -348,8 +432,9 @@ namespace PerkeleRim
 
         // Encoded a texture or a mesh at a time (ModelSender reads over several frames): null after
         // each, the encoded model last. Never one array: a texture's pixels go in as they are, the
-        // rest in pieces (EncodedModel), so a vehicle's 50 MB and more is never copied whole.
-        public IEnumerable<EncodedModel> EncodeSteps()
+        // rest in pieces (EncodedModel), so a vehicle's 50 MB and more is never copied whole. With
+        // shared, a texture with a key that an earlier model of this link session sent goes by its id.
+        public IEnumerable<EncodedModel> EncodeSteps(SharedTextures shared = null)
         {
             long size = EncodedSize();
             if (size > Wire.ModelSizeMax) throw new ArgumentException($"{Name}: {size} bytes, at most {Wire.ModelSizeMax}");
@@ -365,14 +450,17 @@ namespace PerkeleRim
             foreach (var t in Textures)
             {
                 if (t.Width < 1 || t.Height < 1 || t.Width > Wire.ModelTextureSizeMax || t.Height > Wire.ModelTextureSizeMax ||
-                    t.Rgba.Length != t.Width * t.Height * 4)
+                    (t.Rgba != null ? t.Rgba.Length != t.Width * t.Height * 4 : shared == null || t.Key == null))
                     throw new ArgumentException($"{Name}: bad texture {t.Width}x{t.Height}");
+                uint id = 0;
+                bool inline = shared == null || t.Key == null || shared.Encode(t, out id);
                 w.Write((uint)t.Width);
                 w.Write((uint)t.Height);
-                w.Write(Wire.ModelTextureRgba8);
-                w.Write(0u);
+                w.Write(inline ? Wire.ModelTextureRgba8 : Wire.ModelTextureShared);
+                w.Write(id);
                 encoded.Add(Take(stream));
-                encoded.Add(t.Rgba);
+                if (inline) encoded.Add(t.Rgba);
+                else if (t.Rgba != null) size -= t.Rgba.LongLength;  // named by id
                 yield return null;
             }
             foreach (var m in Materials)

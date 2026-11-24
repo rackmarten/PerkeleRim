@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 53;
+    inline constexpr std::uint32_t kProtocolVersion = 56;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -911,7 +911,8 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kLightWork = 7;             // work light (the Gifu's, over its tail)
     inline constexpr std::uint32_t kLightBeacon = 8;           // rotating beacon (the Gifu's, on its roof)
     inline constexpr std::uint32_t kModelNodeNameMax = 64;     // ModelNode.name bytes, UTF-8, zero padded
-    inline constexpr std::uint32_t kModelTextureRgba8 = 1;     // ModelTexture.format
+    inline constexpr std::uint32_t kModelTextureRgba8 = 1;     // ModelTexture.format: width * height RGBA8 pixels follow
+    inline constexpr std::uint32_t kModelTextureShared = 2;    // ModelTexture.format: no pixels, the texture id an earlier model sent
     inline constexpr std::uint32_t kModelTextureSizeMax = 2048;  // width and height limit
     inline constexpr std::uint32_t kModelMeshVertexMax = 65535;  // 16-bit indices
 
@@ -924,8 +925,8 @@ namespace PerkeleRim::Protocol
         std::uint32_t size;       // <= kModelChunkMax
     };
 
-    // The blob: this header, textureCount textures (ModelTexture, then width * height RGBA8 pixels,
-    // top row first), then materialCount ModelMaterial, then nodeCount ModelNode, then meshCount
+    // The blob: this header, textureCount textures (ModelTexture, then for kModelTextureRgba8 width *
+    // height RGBA8 pixels, top row first; nothing for kModelTextureShared), then materialCount ModelMaterial, then nodeCount ModelNode, then meshCount
     // meshes (ModelMesh, then vertexCount ModelVertex, then indexCount uint16 triangle indices).
     // Positions and normals are relative to the mesh's node (the model's root without one), in Skyrim
     // axes and units. Front faces wind counterclockwise seen from the front (cross(b - a, c - a)
@@ -940,12 +941,15 @@ namespace PerkeleRim::Protocol
         std::uint32_t lightCount;  // ModelLights after the nodes, <= kModelLightMax
     };
 
+    // A texture several models share (v56: the same paint on every part of the Satsuma) goes inline
+    // once per link session with its id, and the models after it name it by id (kModelTextureShared)
+    // instead of carrying its pixels again. Skyrim keeps every texture it got with an id.
     struct ModelTexture
     {
         std::uint32_t width;   // <= kModelTextureSizeMax
         std::uint32_t height;  // <= kModelTextureSizeMax
         std::uint32_t format;  // kModelTexture*
-        std::uint32_t reserved;
+        std::uint32_t id;      // MSC's id for a shared texture, never a model's; 0 = this model's own (kModelTextureRgba8 only)
     };
 
     // How a mesh is drawn, from MSC's material. MSC bakes its color tint (and a metal's darker

@@ -19,7 +19,8 @@ namespace PerkeleRim::Model
     {
         std::uint32_t       width;
         std::uint32_t       height;
-        const std::uint8_t* rgba;  // width * height * 4, top row first
+        const std::uint8_t* rgba;    // width * height * 4, top row first; null for a shared one sent before
+        std::uint32_t       id = 0;  // the shared texture's id (ModelTexture.id), 0 = this model's own
     };
 
     struct Mesh
@@ -103,16 +104,25 @@ namespace PerkeleRim::Model
         model.name = Name(header.name);
         for (std::uint32_t i = 0; i < header.textureCount; i++) {
             Protocol::ModelTexture texture{};
-            if (!take(&texture, sizeof(texture)) || texture.format != Protocol::kModelTextureRgba8 || texture.width == 0 ||
-                texture.height == 0 || texture.width > Protocol::kModelTextureSizeMax ||
-                texture.height > Protocol::kModelTextureSizeMax) {
+            if (!take(&texture, sizeof(texture)) || texture.width == 0 || texture.height == 0 ||
+                texture.width > Protocol::kModelTextureSizeMax || texture.height > Protocol::kModelTextureSizeMax) {
+                return std::nullopt;
+            }
+            if (texture.format == Protocol::kModelTextureShared) {
+                if (texture.id == 0) {
+                    return std::nullopt;  // a reference names a texture
+                }
+                model.textures.push_back({ texture.width, texture.height, nullptr, texture.id });
+                continue;
+            }
+            if (texture.format != Protocol::kModelTextureRgba8) {
                 return std::nullopt;
             }
             const std::size_t bytes = static_cast<std::size_t>(texture.width) * texture.height * 4;
             if (a_size - at < bytes) {
                 return std::nullopt;
             }
-            model.textures.push_back({ texture.width, texture.height, a_blob + at });
+            model.textures.push_back({ texture.width, texture.height, a_blob + at, texture.id });
             at += bytes;
         }
         for (std::uint32_t i = 0; i < header.materialCount; i++) {
