@@ -39,6 +39,7 @@ namespace PerkeleRim.Game
         readonly List<Entry> entries = new List<Entry>();         // items and their pieces, closest first
         float nextScan;
         int lastCount = -1;
+        Entry focus;           // the bolt MSC's tools are on (BoltFocus), sent last while there is one
         uint itemsGeneration;  // anchor the items' island positions are for, 0 = none yet
         Vec3 itemsAnchor;      // its Skyrim position
 
@@ -50,8 +51,9 @@ namespace PerkeleRim.Game
             this.findGround = findGround;
         }
 
-        // Call every LateUpdate. playing: MSC owns the player and it stands on the current island.
-        public void Update(Link link, bool playing, Transform player, Vector3 feet)
+        // Call every LateUpdate. playing: MSC owns the player and it stands on the current island. bolt: the highlighted
+        // bolt's mesh (BoltFocus), drawn as one more item at its live pose with MSC's highlight; null for none.
+        public void Update(Link link, bool playing, Transform player, Vector3 feet, Transform bolt = null)
         {
             var state = new ItemState { frame = (uint)Time.frameCount, generation = island.Generation };
             if (!playing || player == null)
@@ -76,8 +78,22 @@ namespace PerkeleRim.Game
             foreach (var e in entries)
             {
                 if (e.Transform == null) continue;  // destroyed since the scan (a bottle drunk)
+                if (n >= Wire.ItemCapacity - 1 && bolt != null) break;  // room for the bolt
                 state.Set(n++, Pose(e, player));
             }
+            if (bolt != null && n < Wire.ItemCapacity)
+            {
+                if (focus == null || focus.Transform != bolt)
+                {
+                    var only = bolt;
+                    // Its own id (an item's is its instance id: never the same as a mesh object's), the model read with
+                    // MSC's highlight material, which keys it apart from the plain bolts.
+                    focus = new Entry { Transform = bolt, Id = unchecked((uint)bolt.GetInstanceID()) ^ 0x80000000u,
+                        Model = models.IdFor(bolt, t => t == only), Renderers = new[] { bolt.GetComponent<Renderer>() } };
+                }
+                state.Set(n++, Pose(focus, player));
+            }
+            else focus = null;
             state.count = (uint)n;
             link.WriteItems(ref state);
         }

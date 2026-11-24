@@ -21,6 +21,7 @@ namespace PerkeleRim.Spike
     //   inspect <text>       objects named like text, inactive ones too: tag, layer, physics, FSMs
     //   tree <prefix> [depth] every object below the roots named so, to PerkeleRim_tree_<prefix>.txt
     //   items                log the items Skyrim gets (ItemLink): id, path, model id
+    //   parts [word]         the Satsuma's parts as MSC's database has them: installed, bolted, bolts tight (PartLink)
     //   hands                cameras, layers and first-person renderers to PerkeleRim_hands.txt
     //   handlayer on|off|tint|save  share MSC's first-person layer with Skyrim or not (HandLayerSender); tint toggles a
     //                        red background, save writes the layer to PerkeleRim_handlayer.png;
@@ -42,6 +43,8 @@ namespace PerkeleRim.Spike
     //   aim <words>          stand at the nearest control surface ("Use" FSM) with those words in its path, looking
     //                        at it (aim doorl Handle); a second later, what the crosshair is on and MSC's prompt.
     //                        aim up: looks at the sky, where nothing has a prompt; aim stop: lets go of the look
+    //   look <words>         like aim, at any enabled collider with those words in its path (a trigger too):
+    //                        look trigger_door_left (a part's place on the car), look door left(Clone) BoltPM
     //   textures <name>      read an object's model (GameObject.Find) without sending it and log it
     //   shot                 MSC's view to <MSC>/PerkeleRim_shot.png, the way F11 saves it (ViewShot)
     //   override on|off      InputShim on/off with nothing pressed (on: the link no longer feeds it)
@@ -226,9 +229,39 @@ namespace PerkeleRim.Spike
             StartCoroutine(AimAt(best, player.transform));
         }
 
-        System.Collections.IEnumerator AimAt(PlayMakerFSM target, Transform player)
+        // "look <words>": like aim, at the nearest enabled collider of any kind (a trigger too: a part's place on the
+        // car, trigger_door_left) whose path has every word (look door left(Clone) BoltPM: one of the door's bolts).
+        void Look(string text)
         {
-            var at = target.GetComponent<Collider>().bounds.center;
+            var player = GameObject.Find("PLAYER");
+            if (player == null || text.Length == 0) { SpikeLog.Write("cmd: look <words in an object's path>, in game"); return; }
+            aims++;
+            var words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            Collider best = null;
+            float bestDistance = AimReach;
+            foreach (var c in FindObjectsOfType<Collider>())
+            {
+                if (!c.enabled || c.transform.IsChildOf(player.transform)) continue;
+                var path = FullPath(c.transform);
+                bool all = true;
+                foreach (var w in words) all &= path.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!all) continue;
+                float d = Vector3.Distance(player.transform.position, c.bounds.center);
+                if (d < bestDistance) { best = c; bestDistance = d; }
+            }
+            if (best == null) { SpikeLog.Write($"cmd: look: nothing within {AimReach} m with '{text}' in its path"); return; }
+            SpikeLog.Write($"cmd: look: {FullPath(best.transform)} {bestDistance:0.0} m");
+            StartCoroutine(AimAt(best, null, player.transform));
+        }
+
+        System.Collections.IEnumerator AimAt(PlayMakerFSM target, Transform player) => AimAt(target.GetComponent<Collider>(), target, player);
+
+        // Stands the player at a_collider (any one, a trigger too) looking at it, as above; a_fsm, when there is one, is
+        // the control surface it belongs to, for the report.
+        System.Collections.IEnumerator AimAt(Collider a_collider, PlayMakerFSM a_fsm, Transform player)
+        {
+            var target = a_collider;
+            var at = target.bounds.center;
             var root = target.transform.root;
             // Straight out from the vehicle's side the surface is on (its right or left), else from its front or back.
             var offset = at - root.position;
@@ -244,7 +277,7 @@ namespace PerkeleRim.Spike
             var top = new Vector3(stand.x, at.y + 1.5f, stand.z);
             // Not the vehicle's own mirrors and doors (the whole vehicle when the root is one, a rigidbody; else
             // the surface's own body), nor the player: a house's switch keeps the floor below it.
-            var body = target.GetComponent<Collider>().attachedRigidbody;
+            var body = target.attachedRigidbody;
             var skip = root.GetComponent<Rigidbody>() != null ? root : body != null ? body.transform : target.transform;
             stand.y = Ground(top, 6f, skip, player, out below) ? top.y - below + feet : player.position.y;
             player.position = stand;
@@ -259,8 +292,8 @@ namespace PerkeleRim.Spike
                 float pitch = Mathf.Atan2(look.y, new Vector2(look.x, look.z).magnitude) * Mathf.Rad2Deg;
                 player.rotation = Quaternion.Euler(0f, yaw, 0f);
                 var how = $"player at {player.position}, eye {look.magnitude:0.00} m away, yaw {yaw:0}, {Pitch(cam.transform, player, pitch)}";
-                if (pass == 0) SpikeLog.Write($"cmd: aim: {FullPath(target.transform)} [{target.ActiveStateName}], {how}");
-                if (pass == 4) AimReport(target, how);  // a second on
+                if (pass == 0) SpikeLog.Write($"cmd: aim: {FullPath(target.transform)}{(a_fsm != null ? $" [{a_fsm.ActiveStateName}]" : "")}, {how}");
+                if (pass == 4) AimReport(target.transform, a_fsm, how);  // a second on
                 yield return new WaitForSeconds(0.25f);  // he settles, the camera sways: aim again from where it is
             }
         }
@@ -279,7 +312,7 @@ namespace PerkeleRim.Spike
         }
 
         // What the crosshair is on (within the 1 m reach of doors and switches) and MSC's prompt.
-        static void AimReport(PlayMakerFSM target, string how)
+        static void AimReport(Transform target, PlayMakerFSM fsm, string how)
         {
             var camera = Camera.main;
             var hits = new List<string>();
@@ -290,8 +323,11 @@ namespace PerkeleRim.Spike
             var g = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
             var use = g.FindFsmBool("GUIuse");
             var interaction = g.FindFsmString("GUIinteraction");
-            SpikeLog.Write($"cmd: aim: a second on the crosshair is on {under}; {target.name} [{target.ActiveStateName}], " +
-                           $"GUIuse {(use != null && use.Value)}, GUIinteraction '{(interaction != null ? interaction.Value : "")}'; {how}");
+            var assemble = g.FindFsmBool("GUIassemble");
+            var disassemble = g.FindFsmBool("GUIdisassemble");
+            SpikeLog.Write($"cmd: aim: a second on the crosshair is on {under}; {target.name}{(fsm != null ? $" [{fsm.ActiveStateName}]" : "")}, " +
+                           $"GUIuse {(use != null && use.Value)}, GUIassemble {(assemble != null && assemble.Value)}, GUIdisassemble {(disassemble != null && disassemble.Value)}, " +
+                           $"GUIinteraction '{(interaction != null ? interaction.Value : "")}'; {how}");
         }
 
         // Pitches MSC's camera (its MouseLook's rotationY, degrees up) on the way from the camera up to PLAYER.
@@ -575,6 +611,11 @@ namespace PerkeleRim.Spike
                         if (link != null) link.GiveBeer(words.Length > 1 ? int.Parse(words[1]) : 1);
                         else SpikeLog.Write("cmd: no PlayerLink");
                         break;
+                    case "parts":  // "parts door": the Satsuma's parts as MSC's database has them, and their bolts (PartLink)
+                        var partLister = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (partLister != null) partLister.DumpParts(words.Length > 1 ? words[1] : "");
+                        else SpikeLog.Write("cmd: no PlayerLink");
+                        break;
                     case "items":
                         var lister = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
                         if (lister != null) lister.DumpItems();
@@ -703,6 +744,9 @@ namespace PerkeleRim.Spike
                         break;
                     case "aim":  // "aim HAYOSIKO door": the player in front of the nearest control surface ("Use" FSM) whose path has those words, looking at it
                         Aim(lines[0].Trim().Substring(3).Trim());
+                        break;
+                    case "look":  // "look trigger_door_left": the player at the nearest collider with those words in its path, looking at it
+                        Look(lines[0].Trim().Substring(4).Trim());
                         break;
                     case "goto":  // "goto chair_pub 2" puts the player 1 m above the first object with that name (inactive ones too)
                         Goto(lines[0].Trim().Substring(4).Trim());

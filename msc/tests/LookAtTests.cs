@@ -38,6 +38,21 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void ShowsThePartNameOnlyWithoutAPrompt()
+        {
+            uint flags = Wire.LookAtUse;
+            Assert.That(LookAt.Text("IGNITION", "spanner 10mm", true, ref flags), Is.EqualTo("IGNITION"));
+            Assert.That(flags, Is.EqualTo(Wire.LookAtUse));
+            flags = 0;
+            Assert.That(LookAt.Text("", "spanner 10mm", true, ref flags), Is.EqualTo("spanner 10mm"));
+            Assert.That(flags, Is.EqualTo(Wire.LookAtPartName));
+            flags = 0;
+            Assert.That(LookAt.Text("", "spanner 10mm", false, ref flags), Is.EqualTo(""));  // MSC's option is off
+            Assert.That(LookAt.Text(null, null, true, ref flags), Is.EqualTo(""));
+            Assert.That(flags, Is.EqualTo(0u));
+        }
+
+        [Test]
         public void LongTextIsCutAtACharacter()
         {
             var text = new string('a', (int)Wire.LookAtTextMax - 1) + "ää";

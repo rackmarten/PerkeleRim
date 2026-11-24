@@ -41,5 +41,6 @@ namespace PerkeleRim::PlayerSync
     void DebugHandOver();
     void DebugTakeBack();  // Skyrim takes the player back, as F10 does while MSC has him (the test kit's pr.msc on=false)
     void DebugHold(std::uint16_t a_keyCode, bool a_held);
+    void DebugWheel(int a_notches);  // the test kit's scroll: notches away from the user, as Skyrim's wheel adds them
     void DebugMouse(std::int32_t a_dx, std::int32_t a_dy);
 }

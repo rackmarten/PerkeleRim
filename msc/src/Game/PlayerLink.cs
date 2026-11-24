@@ -92,6 +92,8 @@ namespace PerkeleRim.Game
         ModelSender models;
         TeimoVoice teimo;
         ItemLink items;
+        PartLink parts;
+        readonly BoltFocus bolt = new BoltFocus();
         ParticleLink particles;
         ActorLink actors;
         FingerLink finger;
@@ -183,6 +185,7 @@ namespace PerkeleRim.Game
             pocket = new PocketLink(junk, log);
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
+            parts = new PartLink(island, log);
             particles = new ParticleLink(island, models, () => Array.ConvertAll(vehicles, v => v.Car), log);
             actors = new ActorLink(island, charge, log, what => voice.Swear(what));
             finger = new FingerLink(log);
@@ -226,6 +229,7 @@ namespace PerkeleRim.Game
         public void InspectModel(string name) => models.Inspect(name);
         public void ModelsAgain(bool cold) => models.Again(cold);
         public void DumpItems() => items.Dump();
+        public void DumpParts(string word) => parts.Dump(word);
         public void DumpParticles() => particles.Dump();
         public void PuffParticles(int count) => particles.Puff(count);
 
@@ -400,7 +404,8 @@ namespace PerkeleRim.Game
             junk.Update(link, playing, player);
             pocket.Update(link, playing, player != null);
             windUp.Update(charge, Time.realtimeSinceStartup);
-            items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
+            items.Update(link, playing, player, player != null ? Feet() : Vector3.zero, playing ? bolt.Mesh() : null);
+            parts.Update(link, playing, player != null ? Feet() : Vector3.zero);
             particles.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
             var driven = playing ? Driven() : null;
             // MSC's push stance (J toggles it): PlayerFunctions holds both hands up in its On state.
@@ -1277,8 +1282,10 @@ namespace PerkeleRim.Game
             if (!playing) { lookAtSent = null; return; }
             var globals = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
             var global = globals.FindFsmString("GUIinteraction");
-            var text = global != null && global.Value != null ? global.Value : "";
             uint flags = LookAt.Flags(GlobalBool(globals, "GUIuse"), GlobalBool(globals, "GUIassemble"), GlobalBool(globals, "GUIdisassemble"));
+            var partName = globals.FindFsmString("PickedPart");
+            var text = LookAt.Text(global != null ? global.Value : null, partName != null ? partName.Value : null,
+                GlobalBool(globals, "OptionsPartNames"), ref flags);
             var key = flags + ":" + text;
             if (key == lookAtSent) return;
             var payload = LookAt.Encode(text, flags);

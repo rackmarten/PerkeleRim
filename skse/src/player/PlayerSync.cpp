@@ -25,6 +25,7 @@
 #include "model/ModelView.h"
 #include "needs/NeedEffects.h"
 #include "particle/ParticleView.h"
+#include "parts/PartTable.h"
 #include "people/People.h"
 #include "piss_tap.h"
 #include "play_mode.h"
@@ -906,6 +907,10 @@ namespace PerkeleRim::PlayerSync
                     HeldDrinkView::OnMessage(a_data, a_size);
                     return;
                 }
+                if (a_type == Protocol::MessageType::PartState) {
+                    PartTable::OnMessage(a_data, a_size);
+                    return;
+                }
                 if (a_type != Protocol::MessageType::LookAtText && a_type != Protocol::MessageType::Subtitle &&
                     a_type != Protocol::MessageType::GearText && a_type != Protocol::MessageType::FuelText) {
                     return;
@@ -1459,6 +1464,14 @@ namespace PerkeleRim::PlayerSync
     void DebugMouse(std::int32_t a_dx, std::int32_t a_dy)
     {
         state.input.AddMouse(a_dx, a_dy);
+    }
+
+    void DebugWheel(int a_notches)
+    {
+        state.input.AddWheel(a_notches);
+        if (state.owned) {
+            Publish();
+        }
     }
 
     void RestoreControls()

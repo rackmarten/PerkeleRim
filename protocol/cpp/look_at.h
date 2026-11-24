@@ -41,10 +41,12 @@ namespace PerkeleRim::LookAt
         return (a_flags & Protocol::kLookAtUse) != 0 ? Icon::Hand : Icon::None;
     }
 
-    // Whether MSC's crosshair is on something of its own (any text or icon): E and the left click are MSC's then.
+    // Whether MSC's crosshair is on something of its own (a prompt's text or any icon): E is MSC's then. MSC's part name
+    // line (kLookAtPartName) alone isn't a prompt: it stays up a few seconds after the look.
     inline bool Claims(std::string_view a_text, std::uint32_t a_flags)
     {
-        return !a_text.empty() || (a_flags & (Protocol::kLookAtUse | Protocol::kLookAtAssemble | Protocol::kLookAtDisassemble)) != 0;
+        const bool prompt = !a_text.empty() && (a_flags & Protocol::kLookAtPartName) == 0;
+        return prompt || (a_flags & (Protocol::kLookAtUse | Protocol::kLookAtAssemble | Protocol::kLookAtDisassemble)) != 0;
     }
 
     // Payload for a_text and a_flags; text longer than kLookAtTextMax bytes is cut at a UTF-8

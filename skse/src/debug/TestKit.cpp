@@ -8,6 +8,7 @@
 #include "link/LinkService.h"
 #include "look_at.h"
 #include "model/ModelView.h"
+#include "parts/PartTable.h"
 #include "player/PlayerSync.h"
 #include "shout.h"
 #include "teimo/Teimo.h"
@@ -69,6 +70,35 @@ namespace PerkeleRim::TestKit
         std::shared_ptr<OnDrop> Dropping(std::function<void()> a_what)
         {
             return std::make_shared<OnDrop>(std::move(a_what));
+        }
+
+        // One of the Satsuma's parts as MSC last reported it (PartState): the bolt-state probe's answer.
+        Json DescribePart(const Parts::Part& a_part)
+        {
+            return JsonObject{ { "name", a_part.name }, { "installed", a_part.Installed() }, { "bolted", a_part.Bolted() },
+                { "damaged", (a_part.flags & Protocol::kPartDamaged) != 0 }, { "placed", a_part.Placed() }, { "bolts", a_part.bolts },
+                { "boltsTight", a_part.boltsTight }, { "stages", a_part.stages }, { "allTight", a_part.AllTight() },
+                { "boltsOut", a_part.BoltsOut() }, { "tightness", a_part.tightness }, { "tightnessFull", a_part.tightnessFull },
+                { "x", a_part.position[0] }, { "y", a_part.position[1] }, { "z", a_part.position[2] } };
+        }
+
+        const Parts::Part& FindPart(std::string_view a_name)
+        {
+            const auto& table = PartTable::Get();
+            if (table.Size() == 0) {
+                throw Error("MSC hasn't reported any Satsuma part (it does while it has the player)");
+            }
+            const auto* part = table.Find(a_name);
+            if (!part) {
+                std::string names;
+                for (const auto& [key, p] : table.All()) {
+                    if (Parts::Key(p.name).starts_with(Parts::Key(a_name)) || names.size() < 200) {
+                        names += (names.empty() ? "" : ", ") + p.name;
+                    }
+                }
+                throw Error(std::format("no one Satsuma part named '{}' (MSC has {}: {})", a_name, table.Size(), names));
+            }
+            return *part;
         }
 
         // [Test] MSC=1: the session is ready once MSC has the player standing on its island and has gone quiet sending
@@ -403,6 +433,34 @@ namespace PerkeleRim::TestKit
                     };
                 });
 
+            SkseTestKit::AddTask("pr.wheel", "<notches> [every=<s>]",
+                "Turns MSC's scroll wheel by notches (positive away from you: MSC tightens the bolt its tools are on, negative "
+                "loosens it), one notch every seconds (0.35: MSC turns a bolt one stage per 0.28 s), while MSC has the player; "
+                "answers once the last went",
+                [](Call& a_call) -> Step {
+                    RequireMsc();
+                    const double notches = a_call.Number("notches");
+                    const double every = a_call.Number("every", 0.35);
+                    if (notches == 0 || std::abs(notches) > 64 || notches != std::floor(notches)) {
+                        throw Error("notches is a whole number, -64 to 64, not 0");
+                    }
+                    if (every < 0.02 || every > 5.0) {
+                        throw Error("every is 0.02 to 5 seconds");
+                    }
+                    const int total = static_cast<int>(std::abs(notches)), step = notches > 0 ? 1 : -1;
+                    a_call.DefaultTimeout(total * every + 10.0);
+                    return [total, step, every, done = 0](Call& a_call) mutable -> std::optional<Json> {
+                        while (done < total && a_call.Seconds() >= done * every) {
+                            PlayerSync::DebugWheel(step);
+                            done++;
+                        }
+                        if (done < total) {
+                            return std::nullopt;
+                        }
+                        return JsonObject{ { "notches", total * step } };
+                    };
+                });
+
             SkseTestKit::AddTask("pr.shout", "[words] [shout=<hex form id>] [seconds=<s>]",
                 "Tells MSC the player shouted, as Combat does when a shout is released (PlayerShout: Whirlwind Sprint, 0002F7BA, unless "
                 "shout=; words 1 to 3, 3 by default), while MSC has the player; answers seconds (2) later with how far the player went, "
@@ -630,6 +688,30 @@ namespace PerkeleRim::TestKit
                     player->SetPosition(to, true);
                     player->SetAngle(RE::NiPoint3(0.0f, 0.0f, facing));
                     return JsonObject{ { "x", to.x }, { "y", to.y }, { "z", to.z }, { "heading", facing * 57.29578 } };
+                });
+
+            SkseTestKit::AddCommand("pr.part", "[name]",
+                "One of the Satsuma's parts as MSC's database has it, as Skyrim last got it (PartState): on the car, bolted, its bolts "
+                "(tight, stages 0..8 each added up) and where it is; any spelling of MSC's name (door_left, Door Left, radiator, wheelfl). "
+                "Without a name, how many parts MSC reported and how many are on the car",
+                [](Call& a_call) -> Json {
+                    const auto name = a_call.Text("name");
+                    if (name.empty()) {
+                        const auto& table = PartTable::Get();
+                        return JsonObject{ { "parts", table.Size() }, { "installed", table.Installed() } };
+                    }
+                    return DescribePart(FindPart(name));
+                });
+
+            // pr.part:<name>: where one of the Satsuma's parts is, with MSC's bolt state as the details of every probe.
+            SkseTestKit::AddTarget("pr.part", "<name>", "One of the Satsuma's parts (MSC's database name): where MSC has it, its bolt state as details",
+                [](std::string_view a_name) {
+                    const auto& part = FindPart(a_name);
+                    if (!part.Placed() || part.generation != PlayerSync::Generation()) {
+                        throw Error(std::format("{} isn't on the island MSC has Kumpo on now", part.name));
+                    }
+                    return SkseTestKit::Place{ .x = part.position[0], .y = part.position[1], .z = part.position[2], .heading = 0.0f,
+                        .details = DescribePart(part) };
                 });
 
             // pr.teimo: Teimo's feet, facing the way his model does, his drawn model as the root.

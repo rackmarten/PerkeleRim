@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 51;
+    inline constexpr std::uint32_t kProtocolVersion = 55;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -428,6 +428,7 @@ namespace PerkeleRim::Protocol
         Blackout = 34,         // MSC -> Skyrim
         HeldDrink = 35,        // MSC -> Skyrim
         TeimoLine = 36,        // Skyrim -> MSC
+        PartState = 40,        // MSC -> Skyrim (v55)
     };
 
     struct MessageHeader
@@ -475,10 +476,13 @@ namespace PerkeleRim::Protocol
     // terminator). length 0 and no flags clears the prompt.
     inline constexpr std::uint32_t kLookAtTextMax = 255;
     inline constexpr std::uint32_t kLookAtUse = 0x1;  // LookAtText.flags: MSC shows its hand icon (global GUIuse)
-    // vBOLT: MSC's assemble icon, a part held in place on the car (global GUIassemble: a click puts it on), and its
+    // v55: MSC's assemble icon, a part held in place on the car (global GUIassemble: a click puts it on), and its
     // disassemble icon, a part with its bolts out under the crosshair (GUIdisassemble: a click takes it off).
     inline constexpr std::uint32_t kLookAtAssemble = 0x2;
     inline constexpr std::uint32_t kLookAtDisassemble = 0x4;
+    // v55: the text is MSC's part name line, not a prompt (global PickedPart, a part or tool under the crosshair, shown
+    // while MSC's option OptionsPartNames is on), sent only while GUIinteraction is empty. It doesn't keep E with MSC.
+    inline constexpr std::uint32_t kLookAtPartName = 0x8;
 
     struct LookAtText
     {
@@ -858,6 +862,35 @@ namespace PerkeleRim::Protocol
         char          clip[kTeimoClipMax];  // UTF-8
     };
 
+    // PartState (v55): one of the Satsuma's parts as MSC's own database has it (Database/Database*/<name> :: Data,
+    // protocol/cpp/parts.h): fitted to the car or not, its bolts and how tight they are, and where it is. name is the
+    // database entry's (Door_Left, Radiator, WheelFL). Sent while MSC has the player, when anything but the position
+    // changes or it moved more than kPartMoved, and every part again each time MSC gets the player. Skyrim keeps the
+    // latest per name (the bolt-state probe, pr.part) and forgets one on kPartGone (MSC never drops a database entry, so
+    // nothing sends it today).
+    inline constexpr std::uint32_t kPartNameMax = 40;
+    inline constexpr std::uint32_t kPartInstalled = 0x1;  // Data.Installed: on the car
+    inline constexpr std::uint32_t kPartBolted = 0x2;     // Data.Bolted: MSC counts it bolted (BoltCheck Tightness at BoltedYES)
+    inline constexpr std::uint32_t kPartPlaced = 0x4;     // position is valid: the part is on the current anchor's island
+    inline constexpr std::uint32_t kPartDamaged = 0x8;    // Data.Damaged
+    inline constexpr std::uint32_t kPartGone = 0x10;      // the entry is gone: forget it
+    inline constexpr float         kPartMoved = 17.5f;    // Skyrim units (25 cm) a part moves before it is sent again
+
+    struct PartState
+    {
+        float         position[3];   // the part's object, Skyrim world units, with kPartPlaced
+        std::uint32_t flags;         // kPart*
+        std::uint32_t generation;    // WorldspaceChange.generation the position is for
+        std::uint16_t bolts;         // its bolts (Screw FSMs below it)
+        std::uint16_t boltsTight;    // of them screwed all the way in (stage 8)
+        std::uint16_t stages;        // all its bolts' stages added up (0..8 each)
+        std::uint16_t reserved;
+        float         tightness;     // BoltCheck.Tightness, 0 without one
+        float         tightnessFull; // BoltCheck.BoltedYES: bolted from there
+        std::uint32_t length;        // bytes of name used, <= kPartNameMax
+        char          name[kPartNameMax];  // UTF-8
+    };
+
     // ---- Models (MSC -> Skyrim) ----
     //
     // MSC sends its own meshes and textures, read from the running game, and Skyrim builds them in
@@ -1138,6 +1171,16 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ConsumeEvent, form) == 20);
     static_assert(sizeof(HeldDrink) == 56);
     static_assert(sizeof(TeimoLine) == 64);
+    static_assert(sizeof(PartState) == 80);
+    static_assert(offsetof(PartState, flags) == 12);
+    static_assert(offsetof(PartState, generation) == 16);
+    static_assert(offsetof(PartState, bolts) == 20);
+    static_assert(offsetof(PartState, boltsTight) == 22);
+    static_assert(offsetof(PartState, stages) == 24);
+    static_assert(offsetof(PartState, tightness) == 28);
+    static_assert(offsetof(PartState, tightnessFull) == 32);
+    static_assert(offsetof(PartState, length) == 36);
+    static_assert(offsetof(PartState, name) == 40);
     static_assert(offsetof(TeimoLine, length) == 12);
     static_assert(offsetof(TeimoLine, clip) == 16);
     static_assert(offsetof(HeldDrink, grip) == 44);
