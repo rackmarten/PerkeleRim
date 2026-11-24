@@ -306,18 +306,33 @@ namespace PerkeleRim.Game
             log($"garage: {bodies.Count} loose parts {(fromIsland ? "at home and on the island" : "at home")} put in the bay");
         }
 
-        // Sets the part on the surface at spot (a board, the floor), its long side along the slot.
+        // Sets the part on the surface at spot (a board, the floor): lying on its flattest side (round
+        // parts on their edge rolled off the boards), its long side along the slot.
+        static readonly Quaternion[] Sides = { Quaternion.identity, Quaternion.Euler(90f, 0f, 0f), Quaternion.Euler(0f, 0f, 90f) };
+
         void Place(Rigidbody body, Vector3 spot, Quaternion yaw)
         {
             var t = body.transform;
             t.position = spot;
-            // Whichever of the two quarter turns lays it longer along the slot.
             var along = yaw * Vector3.forward;
-            t.rotation = yaw;
-            float a = Extent(t, along);
-            t.rotation = yaw * Quaternion.Euler(0f, 90f, 0f);
-            float b = Extent(t, along);
-            if (a >= b) t.rotation = yaw;
+            Quaternion best = yaw;
+            float bestHeight = float.MaxValue, bestAlong = 0f;
+            foreach (var side in Sides)
+                foreach (var turn in new[] { 0f, 90f })
+                {
+                    var rotation = yaw * Quaternion.Euler(0f, turn, 0f) * side;
+                    t.rotation = rotation;
+                    var size = Size(t);
+                    float a = Mathf.Abs(size.x * along.x) + Mathf.Abs(size.z * along.z);
+                    // Flattest first (a centimetre's difference doesn't count), then longest along the slot.
+                    if (size.y < bestHeight - 0.01f || (Mathf.Abs(size.y - bestHeight) <= 0.01f && a > bestAlong))
+                    {
+                        best = rotation;
+                        bestHeight = Mathf.Min(bestHeight, size.y);
+                        bestAlong = a;
+                    }
+                }
+            t.rotation = best;
             var ground = findGround(spot);
             if (ground.HasValue && spot.y - ground.Value.y > 0.1f) ground = spot;  // a pile's upper layer: on the parts below
             float bottom;
@@ -345,8 +360,13 @@ namespace PerkeleRim.Game
                 if (placed[i].Slot < 0 || !SatsumaBay.Listed(inBay[i].name)) continue;
                 var s = SatsumaBay.Slots[placed[i].Slot];
                 var spot = BayPoint(r, s.X, s.Y, s.Z);
-                if (Flat(inBay[i].transform.position - spot) < OnSlot) on++;
-                else off++;
+                float off2 = Flat(inBay[i].transform.position - spot);
+                if (off2 < OnSlot) on++;
+                else
+                {
+                    off++;
+                    if (off <= 12) log($"garage: {inBay[i].name} is {off2:0.00} m off its slot {placed[i].Slot} (kind {s.Kind}, at {inBay[i].transform.position}, slot {spot})");
+                }
             }
         }
 
