@@ -235,10 +235,16 @@ namespace PerkeleRim::Garage
         return true;
     }
 
-    void UpdateBay(const RE::NiPoint3& a_player, bool a_owned, std::uint32_t a_generation)
+    void UpdateBay(RE::TESObjectREFR* a_player, bool a_owned, std::uint32_t a_generation)
     {
-        if (!a_owned || !state.bay || a_generation == 0 || a_generation == state.bayGeneration || Now() < state.retryAt ||
-            a_player.GetDistance(state.bay->GetPosition()) > kBayRadius) {
+        if (!a_player || !a_owned || !state.bay || a_generation == 0 || a_generation == state.bayGeneration || Now() < state.retryAt) {
+            return;
+        }
+        // Outside, in the bay's own worldspace: an interior's (or another worldspace's) coordinates can
+        // fall within reach of the marker's too.
+        const auto* cell = a_player->GetParentCell();
+        if (!cell || cell->IsInteriorCell() || a_player->GetWorldspace() != state.bay->GetWorldspace() ||
+            a_player->GetPosition().GetDistance(state.bay->GetPosition()) > kBayRadius) {
             return;
         }
         const auto what = state.moved ? Protocol::kBayStand : Protocol::kBayMoveSatsuma;
@@ -270,13 +276,13 @@ namespace PerkeleRim::Garage
             RE::SendHUDMessage::ShowHUDMessage(std::format("{} car parts back on their own slots, {} elsewhere in the bay.", d.slotted, d.floor).c_str());
         }
         if (d.request == 0) {
-            SKSE::log::info("garage: MSC couldn't do {:X} (no ground under the bay in time, or a new anchor)", d.asked);
+            SKSE::log::info("garage: MSC couldn't do {:X} (no ground under the bay in time, a new anchor, or the move with Kumpo in the Satsuma)", d.asked);
             if ((d.asked & (Protocol::kBayVehiclesHome | Protocol::kBayPartsHome)) != 0) {
                 RE::SendHUDMessage::ShowHUDMessage("The garage board couldn't bring them home: try again in a moment.");
             }
         }
-        if (d.request == 0 && (d.asked & (Protocol::kBayMoveSatsuma | Protocol::kBayStand)) != 0) {
-            state.bayGeneration = 0;  // ask again in a while
+        if (d.request == 0 && d.generation == state.bayGeneration && (d.asked & (Protocol::kBayMoveSatsuma | Protocol::kBayStand)) != 0) {
+            state.bayGeneration = 0;  // ask again in a while (only for the anchor it was asked for)
             state.retryAt = Now() + kBayRetry;
         }
     }

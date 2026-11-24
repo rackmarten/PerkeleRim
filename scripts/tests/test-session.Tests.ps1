@@ -145,6 +145,18 @@ Describe 'A session''s own My Summer Car save' {
         }
     }
 
+    It 'deletes what MSC wrote beside the session''s save, never the settings or the kept files' {
+        Save-SessionFiles $store -Keep @(Get-MscSavePaths $saves $chosen) | Should -BeTrue
+        Use-MscSave $saves $chosen
+        [IO.File]::WriteAllText((Join-Path $saves 'new.txt'), 'msc wrote it')
+        $kept = @(Read-SessionList $store | ForEach-Object { $_.path })
+        Remove-MscStrayFiles $saves $kept | Should -Be @('new.txt')
+        Test-Path (Join-Path $saves 'new.txt') | Should -BeFalse
+        Test-Path (Join-Path $saves 'options.txt') | Should -BeTrue
+        Test-Path (Join-Path $saves 'defaultES2File.txt') | Should -BeTrue
+        Remove-MscStrayFiles $saves @() | Should -BeNullOrEmpty  # a session with the player's own save: nothing goes
+    }
+
     It 'takes a folder, and refuses one without a save' {
         Resolve-MscSave $chosen | Should -Be (Resolve-Path $chosen).Path
         Resolve-MscSave '' | Should -BeNullOrEmpty

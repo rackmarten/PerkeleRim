@@ -84,7 +84,7 @@ namespace PerkeleRim.Game
         Action<string> log;
         VehicleLink van, moped, kekmet, gifu;
         // The Satsuma: drawn, not driven yet. Not in vehicles (no fuel, calls, snapshots, tuning): it stays
-        // in MSC's garage with its parts until "satsuma here" (or later the garage) brings it.
+        // in MSC's garage with its parts until the Satsuma bay's move (GarageMover) brings it, or "satsuma here".
         VehicleLink satsuma;
         SatsumaParts satsumaParts;
         VehicleLink[] vehicles;
@@ -197,6 +197,7 @@ namespace PerkeleRim.Game
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
             parts = new PartLink(island, log);
+            items.KeptRestored = garage.Restored;
             particles = new ParticleLink(island, models, () => Array.ConvertAll(vehicles, v => v.Car), log);
             actors = new ActorLink(island, charge, log, what => voice.Swear(what));
             finger = new FingerLink(log);
@@ -237,6 +238,13 @@ namespace PerkeleRim.Game
         // Spike "teimo say <variation>": one of Teimo's lines, from where the player stands.
         public void TeimoSay(string name) => teimo.Say(name, null);
         public StallGoods Stall => stall;  // the spike's "shop"
+
+        // Spike "garage restart" (GarageMover.SimulateRestart).
+        public void GarageCommand(string what)
+        {
+            if (what == "restart") garage.SimulateRestart();
+            else log("garage: spike commands: restart");
+        }
 
         // Spike command "satsuma": "satsuma" lists its parts, "satsuma here" brings it in front of the
         // player as it is, "satsuma half" puts half its parts on, "satsuma bare" takes them off.

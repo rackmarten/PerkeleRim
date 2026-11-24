@@ -38,7 +38,7 @@ namespace PerkeleRim.Game
         readonly List<Transform> items = new List<Transform>();  // item roots
         readonly List<Entry> entries = new List<Entry>();         // items and their pieces, closest first
         float nextScan;
-        int lastCount = -1;
+        int lastCount = -1, lastShown = -1;
         Entry focus;           // the bolt MSC's tools are on (BoltFocus), sent last while there is one
         static readonly ModelSender.Look LitBolt = new ModelSender.Look { Key = "lit", Lit = true };  // with MSC's highlight
         uint itemsGeneration;  // anchor the items' island positions are for, 0 = none yet
@@ -139,6 +139,8 @@ namespace PerkeleRim.Game
         // Puts items back where a snapshot had them, on the current island, by instance id (so only
         // within the MSC session that took it). Items in the player's hands now stay there; ones
         // without ground yet are held until it arrives. Beer cases get their bottle count back.
+        public Func<Rigidbody, bool> KeptRestored;  // GarageMover.Restored: takes the Satsuma's loose parts and the spanner set
+
         public void Restore(List<Snapshot.Body> saved, Transform player)
         {
             var byId = new Dictionary<int, Snapshot.Body>();
@@ -156,6 +158,11 @@ namespace PerkeleRim.Game
                 t.rotation = new Quaternion(b.Rotation.x, b.Rotation.y, b.Rotation.z, b.Rotation.w);
                 body.position = t.position;
                 body.rotation = t.rotation;
+                if (KeptRestored != null && KeptRestored(body))
+                {
+                    moved++;  // GarageMover keeps it (and holds it for its ground)
+                    continue;
+                }
                 if (findGround(t.position).HasValue)
                 {
                     if (!body.isKinematic)
@@ -266,9 +273,11 @@ namespace PerkeleRim.Game
             items.Sort((a, b) => (a.position - feet).sqrMagnitude.CompareTo((b.position - feet).sqrMagnitude));
 
             entries.Clear();
+            int shown = 0;
             foreach (var item in items)
             {
                 if (entries.Count >= Wire.ItemCapacity) break;
+                shown++;
                 uint form = JunkLink.FormOf(item);
                 if (form != 0)
                 {
@@ -285,10 +294,12 @@ namespace PerkeleRim.Game
                     Add(child, t => t.IsChildOf(piece) && !InsideItem(t, piece, known));
                 }
             }
-            if (entries.Count != lastCount)
+            if (entries.Count != lastCount || shown != lastShown)
             {
                 lastCount = entries.Count;
-                log($"items: {entries.Count} entries from {items.Count} items near the player");
+                lastShown = shown;
+                log($"items: {entries.Count} entries from {items.Count} items near the player" +
+                    (shown < items.Count ? $", the farthest {items.Count - shown} left out: ItemState holds {Wire.ItemCapacity} entries" : ""));
             }
         }
 

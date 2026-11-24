@@ -2,7 +2,10 @@
 // "The Satsuma garage"): the session's handover at the garage is the save's first time near the Satsuma bay, so MSC
 // moves the body onto its stand and the loose parts from its home onto their shelf slots and the floor. Pictured from
 // outside, then saved and loaded again: the load only tells MSC the body lives on its stand (kBayStand), nothing moves
-// again, and every part is still on its slot. scripts/satsuma-garage-test.ps1 runs it with a fresh MSC save and a half
+// again, and every part is still on its slot. Then as after MSC restarted (the spike's "garage restart": the parts on
+// the island moved as MSC's own save would have them, for an old anchor, and the session's bay forgotten): they're put
+// away below rather than left about, and the next handover's stand request lays the bay out again.
+// scripts/satsuma-garage-test.ps1 runs it with a fresh MSC save and a half
 // built one (PERKELERIM_MSC_SAVE). MSC is closed without saving, so its own save keeps the car at home.
 {
   "name": "satsuma-garage",
@@ -35,6 +38,18 @@
     "pause",
     { "cmd": "screenshot", "name": "after-load", "camera": "top pr.bay: distance=900 near=620" },
     "resume",
+
+    // As after an MSC restart with the parts in the bay.
+    { "label": "as after an MSC restart", "cmd": "pr.send", "line": "garage restart" },
+    { "cmd": "wait", "seconds": 4 },
+    { "label": "its stale parts are put away, not left about", "cmd": "pr.garage.ask", "what": "check", "expect": ["last.missed > 40"] },
+    { "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "cmd": "wait", "seconds": 3 },
+    { "label": "MSC takes him again (a new anchor)", "cmd": "pr.msc", "expect": ["msc == true"] },
+    { "cmd": "wait", "seconds": 15 },
+    { "label": "the stand request lays the bay out again", "cmd": "pr.garage",
+      "expect": ["last.request == 16", "last.body == true", "last.slotted > 40"] },
+    { "label": "every part on its slot again", "cmd": "pr.garage.ask", "what": "check", "expect": ["last.missed == 0", "last.slotted > 40"] },
     { "cmd": "scene", "presets": "restore" }
   ]
 }

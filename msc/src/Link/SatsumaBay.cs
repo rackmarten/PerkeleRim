@@ -117,7 +117,7 @@ namespace PerkeleRim
             new[]
             {
                 new[] { "trail arm rl(Clone)", "trail arm rr(Clone)" },
-                new[] { "halfshaft(Clone)", "halfshaft(Clone)" },
+                new[] { "", "" },  // free: the halfshafts rolled off this board (they lie on the floor)
                 new[] { "spindle fl(Clone)", "spindle fr(Clone)", "steering rod fl(Clone)", "steering rod fr(Clone)" },
                 new[] { "steering rack(Clone)", "stock steering wheel(Clone)", "gear stick(Clone)", "fuel tank pipe(Clone)" },
             },
@@ -153,6 +153,8 @@ namespace PerkeleRim
             // the open front corner, beside the nose
             new[] { 260f, 40f, Quarter }, new[] { 260f, 110f, Quarter }, new[] { 320f, 40f, Quarter }, new[] { 320f, 110f, Quarter },
             new[] { 290f, -60f, Quarter }, new[] { 280f, -130f, 0f },
+            // behind the body, by the far wall's shelves
+            new[] { -200f, 130f, Quarter },
         };
 
         static readonly string[] FloorParts =
@@ -163,6 +165,8 @@ namespace PerkeleRim
             "seat passenger(Clone)", "seat rear(Clone)",
             "dashboard(Clone)", "grille(Clone)", "back panel(Clone)", "subwoofer panel(Clone)",
             "steering column(Clone)", "handbrake(Clone)",
+            // round and long: woken on a board they rolled off its open front
+            "halfshaft(Clone)", "halfshaft(Clone)",
         };
 
         // Free spots past every slot, for parts with nowhere else to go: a grid on the floor's apron in

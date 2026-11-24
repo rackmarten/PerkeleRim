@@ -140,6 +140,15 @@ function Use-MscSave([string] $SaveDir, [string] $Source) {
     }
 }
 
+# Files a session's own MSC save left in $SaveDir that neither save had (MSC writes new ones as it plays): deleted
+# before the kept files go back, the settings aside. $Kept: the save paths the session kept (Read-SessionList).
+function Remove-MscStrayFiles([string] $SaveDir, [string[]] $Kept) {
+    if (-not $Kept -or -not (Test-Path -LiteralPath $SaveDir)) { return @() }
+    $stray = @(Get-ChildItem -LiteralPath $SaveDir -File | Where-Object { $MscSettingsFiles -notcontains $_.Name -and $Kept -notcontains $_.FullName })
+    $stray | Remove-Item -Force
+    return @($stray | ForEach-Object { $_.Name })
+}
+
 # PERKELERIM_MSC_SAVE as a folder: a folder path as it is, else the name of a scripts/msc-save.ps1 snapshot.
 function Resolve-MscSave([string] $Value) {
     if (-not $Value) { return $null }
