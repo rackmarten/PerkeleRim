@@ -20,14 +20,14 @@ namespace PerkeleRim.Protocol
         public const uint OffsetVehiclePartsSlot = 1024;
         public const uint OffsetPartSetSlot = 42304;
         public const uint OffsetItemSlot = 52608;
-        public const uint OffsetHandLayerSlot = 57792;
-        public const uint OffsetActorSlot = 57856;
-        public const uint OffsetParticleSlot = 59456;
-        public const uint OffsetRingToMsc = 75904;
+        public const uint OffsetHandLayerSlot = 62912;
+        public const uint OffsetActorSlot = 62976;
+        public const uint OffsetParticleSlot = 64576;
+        public const uint OffsetRingToMsc = 81024;
         public const uint RingToMscCapacity = 4194304;
-        public const uint OffsetRingToSkyrim = 4270272;
+        public const uint OffsetRingToSkyrim = 4275392;
         public const uint RingToSkyrimCapacity = 262144;
-        public const uint MappingSize = 4532480;
+        public const uint MappingSize = 4537600;
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint InputPaused = 0x2;
@@ -68,7 +68,7 @@ namespace PerkeleRim.Protocol
         public const uint VehiclePartCapacity = 256;
         public const uint PartVisible = 0x1;
         public const uint PartSetCapacity = 256;
-        public const uint ItemCapacity = 128;
+        public const uint ItemCapacity = 256;
         public const uint ItemVisible = 0x1;
         public const uint ItemHeld = 0x2;
         public const uint ItemForm = 0x4;
@@ -440,7 +440,7 @@ namespace PerkeleRim.Protocol
         public uint generation;
         public uint count;
         public uint reserved;
-        public fixed byte items[5120];
+        public fixed byte items[10240];
 
         public ItemPose Get(int i)
         {

@@ -281,8 +281,8 @@ namespace PerkeleRim::Garage
                 RE::SendHUDMessage::ShowHUDMessage("The garage board couldn't bring them home: try again in a moment.");
             }
         }
-        if (d.request == 0 && (d.asked & (Protocol::kBayMoveSatsuma | Protocol::kBayStand)) != 0) {
-            state.bayGeneration = 0;  // ask again in a while
+        if (d.request == 0 && d.generation == state.bayGeneration && (d.asked & (Protocol::kBayMoveSatsuma | Protocol::kBayStand)) != 0) {
+            state.bayGeneration = 0;  // ask again in a while (only for the anchor it was asked for)
             state.retryAt = Now() + kBayRetry;
         }
     }

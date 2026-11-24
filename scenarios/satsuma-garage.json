@@ -48,7 +48,7 @@
     { "label": "MSC takes him again (a new anchor)", "cmd": "pr.msc", "expect": ["msc == true"] },
     { "cmd": "wait", "seconds": 15 },
     { "label": "the stand request lays the bay out again", "cmd": "pr.garage",
-      "expect": ["requests == 2", "last.request == 16", "last.body == true", "last.slotted > 40"] },
+      "expect": ["last.request == 16", "last.body == true", "last.slotted > 40"] },
     { "label": "every part on its slot again", "cmd": "pr.garage.ask", "what": "check", "expect": ["last.missed == 0", "last.slotted > 40"] },
     { "cmd": "scene", "presets": "restore" }
   ]

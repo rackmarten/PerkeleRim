@@ -37,14 +37,14 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 1024;  // after kVehicleCount VehicleSlots
     inline constexpr std::uint32_t kOffsetPartSetSlot = 42304;      // after kVehicleCount VehiclePartsSlots
     inline constexpr std::uint32_t kOffsetItemSlot = 52608;
-    inline constexpr std::uint32_t kOffsetHandLayerSlot = 57792;
-    inline constexpr std::uint32_t kOffsetActorSlot = 57856;
-    inline constexpr std::uint32_t kOffsetParticleSlot = 59456;
-    inline constexpr std::uint32_t kOffsetRingToMsc = 75904;        // RingHeader, data follows
+    inline constexpr std::uint32_t kOffsetHandLayerSlot = 62912;
+    inline constexpr std::uint32_t kOffsetActorSlot = 62976;
+    inline constexpr std::uint32_t kOffsetParticleSlot = 64576;
+    inline constexpr std::uint32_t kOffsetRingToMsc = 81024;        // RingHeader, data follows
     inline constexpr std::uint32_t kRingToMscCapacity = 4194304;    // 4 MiB: collision chunks
-    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4270272;   // 75904 + 64 + 4 MiB
+    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4275392;   // 81024 + 64 + 4 MiB
     inline constexpr std::uint32_t kRingToSkyrimCapacity = 262144;  // 256 KiB: events
-    inline constexpr std::uint32_t kMappingSize = 4532480;         // 4270272 + 64 + 256 KiB
+    inline constexpr std::uint32_t kMappingSize = 4537600;         // 4275392 + 64 + 256 KiB
 
     enum class Side : std::uint32_t
     {
@@ -278,7 +278,7 @@ namespace PerkeleRim::Protocol
         std::uint8_t  pad[24];
     };
 
-    inline constexpr std::uint32_t kItemCapacity = 128;  // ItemState.items
+    inline constexpr std::uint32_t kItemCapacity = 256;  // ItemState.items (v54: 128 before; the Satsuma bay's parts)
     inline constexpr std::uint32_t kItemVisible = 0x1;   // ItemPose.flags: MSC draws it
     inline constexpr std::uint32_t kItemHeld = 0x2;      // ItemPose.flags: in the player's hands
     inline constexpr std::uint32_t kItemForm = 0x4;      // ItemPose.flags: model is a Skyrim form id, drawn with that form's own model (thrown junk, v46)
@@ -302,7 +302,7 @@ namespace PerkeleRim::Protocol
         std::uint32_t generation;  // WorldspaceChange.generation
         std::uint32_t count;       // <= kItemCapacity
         std::uint32_t reserved;
-        ItemPose      items[128];  // kItemCapacity
+        ItemPose      items[256];  // kItemCapacity
     };
 
     struct ItemSlot
@@ -1182,10 +1182,10 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ItemPose, flags) == 8);
     static_assert(offsetof(ItemPose, position) == 12);
     static_assert(offsetof(ItemPose, rotation) == 24);
-    static_assert(sizeof(ItemState) == 5136);
+    static_assert(sizeof(ItemState) == 10256);
     static_assert(offsetof(ItemState, count) == 8);
     static_assert(offsetof(ItemState, items) == 16);
-    static_assert(sizeof(ItemSlot) == 5184);
+    static_assert(sizeof(ItemSlot) == 10304);
     static_assert(offsetof(ItemSlot, value) == 8);
     static_assert(sizeof(HandLayer) == 32);
     static_assert(offsetof(HandLayer, texture) == 8);
