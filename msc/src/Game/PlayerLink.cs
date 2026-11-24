@@ -632,7 +632,7 @@ namespace PerkeleRim.Game
             var right = g.FindFsmBool("PlayerHandRight");
             var vehicle = g.FindFsmString("PlayerCurrentVehicle");
             return (text == null || string.IsNullOrEmpty(text.Value)) && (use == null || !use.Value) &&
-                   (assemble == null || !assemble.Value) && (disassemble == null || !disassemble.Value) &&
+                   (assemble == null || !assemble.Value) && (disassemble == null || !disassemble.Value) && !RemovalUnder() &&
                    (watching || left == null || !left.Value) && (right == null || !right.Value) &&
                    (vehicle == null || string.IsNullOrEmpty(vehicle.Value)) &&
                    !PocketLink.Carrying() && PocketLink.Aimed() == null;  // an item MSC picks up shows no prompt (empty bottles)
@@ -1308,6 +1308,19 @@ namespace PerkeleRim.Game
             s.flags |= Wire.PlayerNeeds;
         }
 
+        // A part under the crosshair whose Removal FSM is in "Mouse over", where a right click takes it off. MSC sets
+        // GUIdisassemble only as that state starts, and its GUI/Icons clears every GUI flag each time it cycles (every 5 s
+        // while a door's own use hand is up), so the flag alone came and went while the part stayed removable.
+        static bool RemovalUnder()
+        {
+            var cam = Camera.main;
+            RaycastHit hit;
+            if (cam == null || !Physics.Raycast(cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f)), out hit, 1f, 1 << 19)) return false;
+            foreach (var fsm in hit.collider.GetComponents<PlayMakerFSM>())
+                if (fsm.FsmName == "Removal" && fsm.enabled && fsm.ActiveStateName == "Mouse over") return true;
+            return false;
+        }
+
         static bool GlobalBool(HutongGames.PlayMaker.FsmVariables globals, string name)
         {
             var b = globals.FindFsmBool(name);
@@ -1322,7 +1335,7 @@ namespace PerkeleRim.Game
             if (!playing) { lookAtSent = null; return; }
             var globals = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
             var global = globals.FindFsmString("GUIinteraction");
-            uint flags = LookAt.Flags(GlobalBool(globals, "GUIuse"), GlobalBool(globals, "GUIassemble"), GlobalBool(globals, "GUIdisassemble"));
+            uint flags = LookAt.Flags(GlobalBool(globals, "GUIuse"), GlobalBool(globals, "GUIassemble"), GlobalBool(globals, "GUIdisassemble") || RemovalUnder());
             var partName = globals.FindFsmString("PickedPart");
             var text = LookAt.Text(global != null ? global.Value : null, partName != null ? partName.Value : null,
                 GlobalBool(globals, "OptionsPartNames"), ref flags);
