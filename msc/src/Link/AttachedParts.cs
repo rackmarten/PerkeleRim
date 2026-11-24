@@ -20,10 +20,13 @@ namespace PerkeleRim
 
         // Fills s with entries in their order, each part id once: an id 0 or one already in is left
         // out, and so is everything past PartSetCapacity. Returns how many were left out.
+        [System.ThreadStatic] static HashSet<uint> seen;  // kept: Encode runs every frame
+
         public static unsafe int Encode(IList<Entry> entries, uint vehicle, uint generation, uint frame, ref PartSet s)
         {
             s = new PartSet { vehicle = vehicle, generation = generation, frame = frame };
-            var seen = new HashSet<uint>();
+            if (seen == null) seen = new HashSet<uint>();
+            seen.Clear();
             int count = 0, left = 0;
             for (int i = 0; i < entries.Count; i++)
             {

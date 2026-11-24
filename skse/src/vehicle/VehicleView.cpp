@@ -51,6 +51,10 @@ namespace PerkeleRim::VehicleView
         };
         Parts satsumaParts;
 
+        // Part nodes built a frame at most: a fully built car arriving at once (a link-up) spreads
+        // over a few frames, the rest counting as waiting.
+        constexpr std::uint32_t kPartBuildsPerFrame = 8;
+
         // A part's node off the vehicle, back in the pool for its model.
         void PutBack(Parts& a_parts, PartNode& a_part)
         {
@@ -408,7 +412,9 @@ namespace PerkeleRim::VehicleView
         if (!PartSets::For(a_set, vehicle, a_generation) || !view.node) {
             return;
         }
-        // The body was built anew (MSC restarted): the parts move over to its node.
+        // The body was built anew (MSC restarted): the parts move over to its node. The pool keeps
+        // nodes of the old ids: freeing them would run the game's destructors on geometry built by
+        // hand (ModelView), the same reason no item or vehicle node is ever freed.
         if (parts.under != view.node.get()) {
             for (auto& [id, part] : parts.nodes) {
                 if (part.node->parent) {
@@ -428,7 +434,11 @@ namespace PerkeleRim::VehicleView
         }
         std::uint32_t built = 0, waiting = 0;
         for (const auto index : changes.build) {
-            const auto&               in = a_set.parts[index];
+            const auto& in = a_set.parts[index];
+            if (built == kPartBuildsPerFrame) {
+                waiting++;  // next frame
+                continue;
+            }
             RE::NiPointer<RE::NiNode> node;
             if (auto& free = parts.pool[in.model]; !free.empty()) {
                 node = free.back();
@@ -462,6 +472,8 @@ namespace PerkeleRim::VehicleView
             const bool visible = (in.flags & Protocol::kPartVisible) != 0;
             node.SetAppCulled(!visible);
             drawn += visible ? 1 : 0;
+            RE::NiUpdateData update{};
+            node.Update(update);  // the body was updated before the parts were posed
         }
         if (!changes.gone.empty() || built > 0 || waiting != parts.waiting) {
             SKSE::log::info("vehicle view: Satsuma parts: {} attached, {} drawn, {} built, {} taken down, {} waiting for their model",
@@ -469,13 +481,16 @@ namespace PerkeleRim::VehicleView
         }
         parts.drawn = drawn;
         parts.waiting = waiting;
-        RE::NiUpdateData update{};
-        view.node->Update(update);
     }
 
     std::uint32_t PartsDrawn(std::uint32_t a_vehicle)
     {
         return a_vehicle == Protocol::kVehicleSatsuma && views[a_vehicle - 1].shown ? satsumaParts.drawn : 0;
+    }
+
+    std::uint32_t PartsWaiting(std::uint32_t a_vehicle)
+    {
+        return a_vehicle == Protocol::kVehicleSatsuma ? satsumaParts.waiting : 0;
     }
 
     void Hide()

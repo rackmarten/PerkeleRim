@@ -18,7 +18,7 @@
 
     // Bare, as the starter save has it.
     { "label": "the Satsuma comes, as MSC has it", "cmd": "pr.satsuma", "what": "here",
-      "expect": ["drawn == true", "partsDrawn == attached", "unread == 0"] },
+      "expect": ["drawn == true", "attached < 5", "allDrawn == true"] },
     { "cmd": "wait", "seconds": 2 },
     { "label": "MSC's view of it", "cmd": "pr.send", "line": "shot bare" },
     { "label": "Skyrim's view of it, the same moment", "cmd": "screenshot", "name": "bare-kumpo" },
@@ -29,7 +29,7 @@
 
     // Half built: body panels, front seats, the dashboard and the radiator put on.
     { "label": "half its parts go on", "cmd": "pr.satsuma", "what": "half",
-      "expect": ["drawn == true", "attached > 8", "partsDrawn == attached", "unread == 0"] },
+      "expect": ["drawn == true", "attached > 8", "allDrawn == true"] },
     { "cmd": "wait", "seconds": 2 },
     { "label": "MSC's view of it", "cmd": "pr.send", "line": "shot half" },
     { "label": "Skyrim's view of it, the same moment", "cmd": "screenshot", "name": "half-kumpo" },

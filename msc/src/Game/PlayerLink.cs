@@ -414,7 +414,7 @@ namespace PerkeleRim.Game
             foreach (var v in vehicles) v.SendModel(models, player);
             satsuma.Update(playing, player, player != null ? Feet() : Vector3.zero, viewCamera != null ? viewCamera.transform : null);
             if (satsuma.OnIsland) satsuma.SendModel(models, player);
-            satsumaParts.Update(link, playing && satsuma.OnIsland, island.Generation, models);
+            satsumaParts.Update(link, playing && satsuma.OnIsland, island.Generation, models, player);
             if (playing && Driven() == null && cInput.GetKeyDown("Push"))
                 foreach (var v in vehicles) if (v.RightIfRolled(player)) break;
             if (playing && Driven() == null)

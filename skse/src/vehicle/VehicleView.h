@@ -20,6 +20,8 @@ namespace PerkeleRim::VehicleView
     void UpdateParts(const Protocol::PartSet& a_set, std::uint32_t a_generation);
     // How many parts of vehicle a_vehicle are drawn now (built and visible), for the test kit.
     std::uint32_t PartsDrawn(std::uint32_t a_vehicle);
+    // How many parts of it have a model that hasn't arrived yet (nothing drawn for them).
+    std::uint32_t PartsWaiting(std::uint32_t a_vehicle);
     // Hides every vehicle.
     void Hide();
     // The node vehicle a_vehicle is drawn under while it is shown (its lamps' lights hang under it too), else null:

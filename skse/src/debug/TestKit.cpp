@@ -210,6 +210,8 @@ namespace PerkeleRim::TestKit
                     }
                     out.Set("attached", static_cast<double>(set->count));
                     out.Set("unread", static_cast<double>(pending));
+                    out.Set("waiting", static_cast<double>(VehicleView::PartsWaiting(a_id)));
+                    out.Set("allDrawn", pending == 0 && VehicleView::PartsDrawn(a_id) == set->count);
                 }
                 out.Set("partsDrawn", static_cast<double>(VehicleView::PartsDrawn(a_id)));
             }
@@ -509,7 +511,7 @@ namespace PerkeleRim::TestKit
                     if (what != "here" && what != "half" && what != "bare") {
                         throw Error("what is here, half or bare");
                     }
-                    a_call.DefaultTimeout(90.0);
+                    a_call.DefaultTimeout(180.0);
                     struct Seen
                     {
                         bool          sent = false;
@@ -540,7 +542,8 @@ namespace PerkeleRim::TestKit
                         for (std::uint32_t i = 0; i < set->count && i < Protocol::kPartSetCapacity; i++) {
                             unread = unread || set->parts[i].model == 0;
                         }
-                        if (unread || set->count != seen->attached || drawn != seen->drawn) {
+                        // Every part's model read and arrived (a door is 20 MB of chunks), and nothing changed for 2 s.
+                        if (unread || VehicleView::PartsWaiting(Protocol::kVehicleSatsuma) > 0 || set->count != seen->attached || drawn != seen->drawn) {
                             seen->attached = set->count;
                             seen->drawn = drawn;
                             seen->steadySince = a_call.Seconds();

@@ -18,12 +18,16 @@ namespace PerkeleRim.Game
     public sealed class SatsumaParts
     {
         const float ScanEvery = 0.5f;
-        const int KeysPerFrame = 4;
+        const int KeysPerFrame = 4;   // while parts haven't been asked yet
+        const int RekeysPerFrame = 1; // once they all were: each in turn, for a changed look
 
         readonly Action<string> log;
         readonly List<Transform> parts = new List<Transform>();  // on the car, in hierarchy order
         readonly HashSet<Transform> partSet = new HashSet<Transform>();
+        // A part's model id, 0 = nothing to draw of its own (all its meshes belong to nested parts, or
+        // are off): left out of the set. Not in here = not asked yet.
         readonly Dictionary<Transform, uint> models = new Dictionary<Transform, uint>();
+        readonly Dictionary<Transform, Predicate<Transform>> includes = new Dictionary<Transform, Predicate<Transform>>();
         readonly Dictionary<Transform, bool> isPart = new Dictionary<Transform, bool>();  // every object below the car seen so far
         List<AttachedParts.Entry> entries = new List<AttachedParts.Entry>();
         List<AttachedParts.Entry> lastEntries = new List<AttachedParts.Entry>();
@@ -67,13 +71,14 @@ namespace PerkeleRim.Game
             parts.Clear();
             partSet.Clear();
             models.Clear();
+            includes.Clear();
             isPart.Clear();
             nextScan = 0f;
         }
 
         // Every frame the Satsuma is on the island: finds the parts, asks for their models, and writes
         // the PartSet; with onIsland false (or no car) an empty set that is nobody's.
-        public void Update(Link link, bool onIsland, uint generation, ModelSender sender)
+        public void Update(Link link, bool onIsland, uint generation, ModelSender sender, Transform player)
         {
             if (link == null) return;
             var set = new PartSet();
@@ -85,16 +90,18 @@ namespace PerkeleRim.Game
             if (Time.realtimeSinceStartup >= nextScan)
             {
                 nextScan = Time.realtimeSinceStartup + ScanEvery;
-                Scan();
+                Scan(player);
             }
             AskModels(sender);
             entries.Clear();
             var toCar = Quaternion.Inverse(car.rotation);
             foreach (var t in parts)
             {
-                if (t == null) continue;
+                // Come off since the last scan (a door unhung): its pose isn't the car's any more.
+                if (t == null || !t.IsChildOf(car)) continue;
                 uint model;
-                models.TryGetValue(t, out model);
+                bool asked = models.TryGetValue(t, out model);
+                if (asked && model == 0) continue;  // nothing of its own to draw
                 var c = ModelSender.RelativeTo(car, t).GetColumn(3);
                 var p = Coords.UnityToSkyrim(new Vec3(c.x, c.y, c.z));
                 var r = toCar * t.rotation;
@@ -122,20 +129,25 @@ namespace PerkeleRim.Game
             }
         }
 
-        // The parts on the car right now: active part objects below it.
-        void Scan()
+        // The parts on the car right now: active part objects below it, not the player or what he
+        // holds (a part in the hand of a player sitting in it).
+        void Scan(Transform player)
         {
             parts.Clear();
             partSet.Clear();
             foreach (var t in car.GetComponentsInChildren<Transform>())  // active ones only
             {
-                if (t == car || !IsPartObject(t)) continue;
+                if (t == car || !IsPartObject(t) || (player != null && t.IsChildOf(player))) continue;
                 parts.Add(t);
                 partSet.Add(t);
             }
             var gone = new List<Transform>();
             foreach (var t in models.Keys) if (t == null || !partSet.Contains(t)) gone.Add(t);
-            foreach (var t in gone) models.Remove(t);
+            foreach (var t in gone)
+            {
+                models.Remove(t);
+                includes.Remove(t);
+            }
         }
 
         // A few content keys a frame: parts without a model first, then each in turn.
@@ -149,7 +161,8 @@ namespace PerkeleRim.Game
                 Ask(sender, t);
                 asked++;
             }
-            for (int i = 0; i < parts.Count && asked < KeysPerFrame; i++, asked++)
+            if (asked > 0 || parts.Count == 0) return;
+            for (int i = 0; i < RekeysPerFrame; i++)
             {
                 keyCursor = (keyCursor + 1) % parts.Count;
                 if (parts[keyCursor] != null) Ask(sender, parts[keyCursor]);
@@ -158,15 +171,21 @@ namespace PerkeleRim.Game
 
         void Ask(ModelSender sender, Transform part)
         {
-            var root = part;
-            models[part] = sender.IdFor(part, t => PartOf(t) == root, VehicleModel.Plain);
+            Predicate<Transform> include;
+            if (!includes.TryGetValue(part, out include))
+            {
+                var root = part;
+                include = t => PartOf(t) == root;
+                includes[part] = include;
+            }
+            models[part] = sender.IdFor(part, include, VehicleModel.Plain);
         }
 
         // Spike command "satsuma": every part on the car with its model.
         public void Dump()
         {
             if (car == null) { log("satsuma: not found"); return; }
-            Scan();
+            Scan(null);
             log($"satsuma: {parts.Count} parts on the car at {car.position}");
             foreach (var t in parts)
             {
@@ -217,6 +236,7 @@ namespace PerkeleRim.Game
                 yield return null;
                 fsm.SendEvent("ASSEMBLE");
                 for (int i = 0; i < 10; i++) yield return null;
+                // Gone from the hand: destroyed (its copy switched on) or hung on its pivot.
                 bool went = part == null || !part.IsChildOf(pivot);
                 if (went) on++;
                 else
@@ -237,7 +257,7 @@ namespace PerkeleRim.Game
         public IEnumerator Strip()
         {
             if (car == null) { log("satsuma: not found"); yield break; }
-            Scan();
+            Scan(null);
             int off = 0;
             for (int i = parts.Count - 1; i >= 0; i--)
             {
@@ -253,7 +273,7 @@ namespace PerkeleRim.Game
             }
             nextScan = 0f;
             for (int i = 0; i < 5; i++) yield return null;
-            Scan();
+            Scan(null);
             log($"satsuma: took {off} parts off, {parts.Count} still on (without a Removal FSM: wiring, the halfshafts, as MSC has them)");
         }
 
