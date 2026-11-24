@@ -11,7 +11,8 @@
 // The Satsuma comes in front of Kumpo (`pr.satsuma here`), every part off (`bare`), its body held still as on its stand
 // (`freeze`, again after each part, as MSC's own assembly lets the car go). A bare test car has no suspension under the
 // front left corner, so the wheel's setup marks its disc brake fitted in MSC's database (`fsmvar`, the session never
-// saves). The wheel stays on: MSC takes one off only while it is off the ground (its Removal checks the wheel's
+// saves); once it is on, the body is lifted 0.3 m as on its stand, so Kumpo, lying down, sees its nuts straight on. The
+// wheel stays on: MSC takes one off only while it is off the ground (its Removal checks the wheel's
 // OnGroundDown), so with the car jacked up or on its stand. The radiator's other three bolts sit too deep for the
 // scenario's aim; MSC counts it bolted from its first (BoltedYES 2). Runs from a session's start (Kumpo standing).
 // scripts/skytest.ps1 run scenarios/satsuma-bolting.json in a running session; MSC's lines (`cmd: fetch:`, `cmd: offer:`,
@@ -104,7 +105,7 @@
     {"label": "MSC's view at the assemble icon", "cmd": "pr.mscshot", "name": "bolting-wheel-assemble"},
     {"label": "a left click puts it on", "cmd": "pr.key", "key": 323},
     {"label": "MSC has it on the car", "cmd": "wait", "until": "installed == true", "for": "pr.part wheelfl", "timeout": 5},
-    {"label": "held still again (MSC's own assembly lets the car go when it is done)", "cmd": "pr.send", "line": "freeze SATSUMA"},
+    {"label": "held still again and lifted 0.3 m, as on its stand: the hub at Kumpo's eye lying down", "cmd": "pr.send", "line": "freeze SATSUMA 0.3"},
     {"label": "Skyrim draws it on the car (the Satsuma's parts are looked for every half second)", "cmd": "wait", "until": "drawnOnCar == true", "for": "pr.part wheelfl", "timeout": 5},
     {"cmd": "pr.part", "name": "wheelfl", "expect": ["attached == true", "boltsOut == true", "bolts == 4"]},
     {"label": "the tools out (2)", "cmd": "pr.key", "key": 50},
