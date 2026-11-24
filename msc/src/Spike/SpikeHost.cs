@@ -50,6 +50,8 @@ namespace PerkeleRim.Spike
     //   tighten <words>      every bolt with those words in its path turned all the way in by MSC's TIGHTEN, for setups
     //   offer <trigger>      the part in MSC's hand counted as come into that place on the car (offer trigger_door_left):
     //                        MSC checks it, shows its assemble icon and waits for the left click
+    //   spanner <words>      the player at the spanner in the open spanner set that fits that part's bolts, looking at
+    //                        it, for the left click with the tools out that takes it (spanner door left(Clone))
     //   wrench <words>       MSC's wrench size set to the nearest bolt's with those words in its path (wrench door left(Clone))
     //   look <words>         like aim, at any enabled collider with those words in its path (a trigger too):
     //                        look trigger_door_left (a part's place on the car), look door left(Clone) BoltPM #2
@@ -252,17 +254,9 @@ namespace PerkeleRim.Spike
         {
             var player = GameObject.Find("PLAYER");
             if (player == null || name.Length == 0) { SpikeLog.Write("cmd: fetch <part name>, in game"); return; }
-            Rigidbody best = null;
-            float bestDistance = float.MaxValue;
-            foreach (var body in FindObjectsOfType<Rigidbody>())
-            {
-                var t = body.transform;
-                if (!t.CompareTag("PART") || t.IsChildOf(player.transform) || !t.name.StartsWith(name, StringComparison.OrdinalIgnoreCase)) continue;
-                if (t.parent != null && t.root.name != "CARPARTS") continue;  // loose only: a fitted door keeps its rigidbody
-                float d = Vector3.Distance(player.transform.position, t.position);
-                if (d < bestDistance) { best = body; bestDistance = d; }
-            }
+            var best = NearestLoose(name, player.transform);
             if (best == null) { SpikeLog.Write("cmd: fetch: no loose part named " + name); return; }
+            float bestDistance = Vector3.Distance(player.transform.position, best.transform.position);
             var p = player.transform;
             // Behind, left, right, then in front (pr.satsuma here parks the car in front): the first spot whose ground
             // is the island's (no rigidbody under it) with room for the part.
@@ -291,6 +285,55 @@ namespace PerkeleRim.Spike
             best.velocity = Vector3.zero;
             best.angularVelocity = Vector3.zero;
             SpikeLog.Write($"cmd: fetch: {FullPath(best.transform)} from {bestDistance:0} m away, now at {at}");
+        }
+
+        // "spanner <words>": the spanner in MSC's spanner set (ITEMS/spanner set(itemx), opened with a left click on its lid)
+        // whose size fits the nearest bolt with those words in its path: the player stood at it, looking at it, for the
+        // left click with the tools out that takes it (2Spanner/Pick, which sets ToolWrenchSize from the spanner's "mesh"
+        // scale, as the bolt's size is its own scale; docs/FSM_MAP.md, "Building the Satsuma"). The real path to a wrench
+        // size; "wrench" is the shortcut.
+        void Spanner(string text)
+        {
+            var player = GameObject.Find("PLAYER");
+            if (player == null || text.Length == 0) { SpikeLog.Write("cmd: spanner <words in a part's path>, in game"); return; }
+            float size;
+            var bolt = NearestBolt(text, player.transform, out size);
+            if (bolt == null) { SpikeLog.Write($"cmd: spanner: no bolt with '{text}' in its path"); return; }
+            Collider best = null;
+            float bestMiss = 0.02f;  // MSC's own tolerance
+            foreach (var c in FindObjectsOfType<Collider>())
+            {
+                if (!c.enabled || c.gameObject.layer != 12 || c.transform.root.name != "ITEMS" || !c.name.StartsWith("spanner", StringComparison.OrdinalIgnoreCase)) continue;
+                var mesh = c.transform.Find("mesh");
+                if (mesh == null) continue;
+                float miss = Mathf.Abs(mesh.localScale.x - size);
+                if (miss <= bestMiss) { best = c; bestMiss = miss; }
+            }
+            if (best == null) { SpikeLog.Write($"cmd: spanner: no {size:0.###} spanner out in the spanner set (is it open?)"); return; }
+            SpikeLog.Write($"cmd: spanner: {FullPath(best.transform)} for {FullPath(bolt)} (size {size:0.###})");
+            aims++;
+            StartCoroutine(AimAt(best, null, player.transform));
+        }
+
+        static Transform NearestBolt(string text, Transform player, out float size)
+        {
+            size = 0f;
+            var words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            Transform best = null;
+            float bestDistance = float.MaxValue;
+            foreach (var o in Resources.FindObjectsOfTypeAll(typeof(PlayMakerFSM)))
+            {
+                var f = (PlayMakerFSM)o;
+                if (f.FsmName != "Screw" || f.name != "BoltPM" || f.gameObject.hideFlags != HideFlags.None) continue;
+                var path = FullPath(f.transform);
+                bool all = true;
+                foreach (var w in words) all &= path.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!all) continue;
+                float d = Vector3.Distance(player.position, f.transform.position);
+                if (d < bestDistance) { best = f.transform; bestDistance = d; }
+            }
+            if (best != null) size = best.localScale.x;
+            return best;
         }
 
         // "wrench <words>": the size MSC's tools have (global ToolWrenchSize, and SelectItem's OldWrench, which the tools
@@ -448,9 +491,10 @@ namespace PerkeleRim.Spike
                 var look = at - cam.transform.position;
                 float yaw = Mathf.Atan2(look.x, look.z) * Mathf.Rad2Deg;
                 float pitch = Mathf.Atan2(look.y, new Vector2(look.x, look.z).magnitude) * Mathf.Rad2Deg;
-                // At a part's place (a trigger) only the first two aims: every turn after moves the held part, and MSC's
-                // Assembly only arms again when the part comes into the trigger anew.
-                bool still = a_fsm == null && IsPlace(target) && pass >= 2;
+                // At a trigger only the first two aims: at a part's place every turn after moves the held part, and MSC's
+                // Assembly only arms again when the part comes into the trigger anew; at a bolt a turn moved the
+                // crosshair off a small wheel nut while the wheel was turning it.
+                bool still = a_fsm == null && target.isTrigger && pass >= 2;
                 if (!still) player.rotation = Quaternion.Euler(0f, yaw, 0f);
                 var how = $"player at {player.position}, eye {look.magnitude:0.00} m away, yaw {yaw:0}, {(still ? "held still" : Pitch(cam.transform, player, pitch))}";
                 if (pass == 0) SpikeLog.Write($"cmd: aim: {FullPath(target.transform)}{(a_fsm != null ? $" [{a_fsm.ActiveStateName}]" : "")}, {how}");
@@ -1033,6 +1077,9 @@ namespace PerkeleRim.Spike
                         break;
                     case "offer":  // "offer trigger_door_left": the part in MSC's hand counted as come into its place on the car
                         Offer(lines[0].Trim().Substring(5).Trim());
+                        break;
+                    case "spanner":  // "spanner door left(Clone)": the player at the spanner in the open spanner set that fits that part's bolts, looking at it
+                        Spanner(lines[0].Trim().Substring(7).Trim());
                         break;
                     case "wrench":  // "wrench door left(Clone)": MSC's wrench the size of that part's nearest bolt, as if picked from the spanner set
                         Wrench(lines[0].Trim().Substring(6).Trim());

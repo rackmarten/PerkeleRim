@@ -40,6 +40,7 @@ namespace PerkeleRim.Game
         float nextScan;
         int lastCount = -1;
         Entry focus;           // the bolt MSC's tools are on (BoltFocus), sent last while there is one
+        static readonly ModelSender.Look LitBolt = new ModelSender.Look { Key = "lit", Lit = true };  // with MSC's highlight
         uint itemsGeneration;  // anchor the items' island positions are for, 0 = none yet
         Vec3 itemsAnchor;      // its Skyrim position
 
@@ -89,7 +90,7 @@ namespace PerkeleRim.Game
                     // Its own id (the mesh's instance id with the top bit set, apart from the items' own), the model read with
                     // MSC's highlight material, which keys it apart from the plain bolts.
                     focus = new Entry { Transform = bolt, Id = unchecked((uint)bolt.GetInstanceID()) | 0x80000000u,
-                        Model = models.IdFor(bolt, t => t == only), Renderers = new[] { bolt.GetComponent<Renderer>() } };
+                        Model = models.IdFor(bolt, t => t == only, LitBolt), Renderers = new[] { bolt.GetComponent<Renderer>() } };
                 }
                 state.Set(n++, Pose(focus, player));
             }
