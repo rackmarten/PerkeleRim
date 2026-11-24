@@ -180,7 +180,7 @@ namespace PerkeleRim.Game
         }
 
         // The Satsuma's loose parts: MSC keeps them under CARPARTS (PartsCar, PartsMotor, PartsGT, ...)
-        // tagged PART while off the car; at home (within HomeRadius of it, in MSC's own map) or, with
+        // tagged PART while off the car, named like a part (SatsumaModel.IsPart, as SatsumaParts has them); at home (within HomeRadius of it, in MSC's own map) or, with
         // island, on the island too. Not the ones in Kumpo's hands, nor the parts' own triggers.
         List<Rigidbody> LooseParts(bool island)
         {
@@ -191,7 +191,7 @@ namespace PerkeleRim.Game
             foreach (Rigidbody body in UnityEngine.Object.FindObjectsOfType(typeof(Rigidbody)))
             {
                 var t = body.transform;
-                if (!body.gameObject.activeInHierarchy || !t.CompareTag("PART") || t.root.name != "CARPARTS") continue;
+                if (!body.gameObject.activeInHierarchy || !t.CompareTag("PART") || t.root.name != "CARPARTS" || !SatsumaModel.IsPart(t.name, HasRemoval(t))) continue;
                 if ((p != null && t.IsChildOf(p)) || (car != null && t.IsChildOf(car))) continue;
                 bool onIsland = t.position.y > IslandBelow;
                 bool atHome = !onIsland && home.HasValue && Flat(t.position - home.Value) < HomeRadius;
@@ -204,6 +204,13 @@ namespace PerkeleRim.Game
                 return byName != 0 ? byName : a.GetInstanceID().CompareTo(b.GetInstanceID());
             });
             return list;
+        }
+
+        static bool HasRemoval(Transform t)
+        {
+            foreach (var fsm in t.GetComponents<PlayMakerFSM>())
+                if (fsm.FsmName == "Removal") return true;
+            return false;
         }
 
         static float Flat(Vector3 v) => new Vector2(v.x, v.z).magnitude;
