@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 53;
+        public const uint ProtocolVersion = 54;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -139,6 +139,11 @@ namespace PerkeleRim.Protocol
         public const uint BlackoutDrunk = 1;
         public const uint BlackoutKnockout = 2;
         public const uint StockSpotsMax = 16;
+        public const uint BayMoveSatsuma = 0x1;    // GarageBay.request
+        public const uint BayPartsHome = 0x2;
+        public const uint BayVehiclesHome = 0x4;
+        public const uint BayCheck = 0x8;
+        public const uint BayStand = 0x10;
         public const uint FuelPumpsMax = 8;
         public const uint MaterialCutout = 0x1;
         public const uint MaterialBlend = 0x2;
@@ -188,6 +193,8 @@ namespace PerkeleRim.Protocol
         Blackout = 34,
         HeldDrink = 35,
         TeimoLine = 36,
+        GarageBay = 37,
+        GarageDone = 38,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -809,6 +816,29 @@ namespace PerkeleRim.Protocol
         public fixed float position[3];
         public uint length;
         public fixed byte clip[48];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct GarageBay
+    {
+        public uint generation;
+        public uint request;
+        public fixed float position[3];
+        public float heading;
+        public fixed uint reserved[2];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct GarageDone
+    {
+        public uint generation;
+        public uint request;
+        public uint body;
+        public uint slotted;
+        public uint floor;
+        public uint vehicles;
+        public uint missed;
+        public uint reserved;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

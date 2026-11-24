@@ -1,5 +1,7 @@
 #include "garage/Garage.h"
 
+#include "link/LinkService.h"
+
 namespace PerkeleRim::Garage
 {
     namespace
@@ -10,6 +12,11 @@ namespace PerkeleRim::Garage
         constexpr RE::FormID kVanMarker = 0x801;
         constexpr RE::FormID kWakeMarker = 0x80B;
         constexpr RE::FormID kShelfSpots = 0x910;  // FormList of the shelf spot markers
+        constexpr RE::FormID kBayMarker = 0xD00;   // the Satsuma bay's (tools/esp-gen, SatsumaBay.cs)
+
+        // MSC has Kumpo this close to the bay marker: the move (units; 30 m, well inside the island).
+        constexpr float  kBayRadius = 2100.0f;
+        constexpr double kBayRetry = 30.0;  // seconds before a move MSC couldn't do is asked again
 
         // Skyrim's own fade up from black (the cart at the start of a new game), about 8 s.
         constexpr auto       kFadePlugin = "Skyrim.esm"sv;
@@ -20,7 +27,7 @@ namespace PerkeleRim::Garage
         constexpr float kStockRadius = 2048.0f;
 
         constexpr std::uint32_t kRecord = 'GRGE';
-        constexpr std::uint32_t kVersion = 2;  // 1 had only the visited flag
+        constexpr std::uint32_t kVersion = 3;  // 1 had only the visited flag, 2 the stocked one too
 
         struct State
         {
@@ -33,14 +40,25 @@ namespace PerkeleRim::Garage
             bool                      visited = false;  // this save's first handover already went to the garage
             bool                      stocked = false;  // this save's shelves got MSC's items
             bool                      skipped = false;  // this new game skipped Helgen to the spawn marker (not saved)
+            RE::TESObjectREFR*        bay = nullptr;      // null with an ESP from before the Satsuma bay
+            bool                      moved = false;      // this save had the Satsuma's move (saved)
+            std::uint32_t             bayGeneration = 0;  // the anchor the bay was last asked for (not saved)
+            double                    retryAt = 0.0;
+            std::uint32_t             requests = 0;
+            BayResult                 last;
         } state;
+
+        double Now()
+        {
+            return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        }
     }
 
     void Save(SKSE::SerializationInterface* a_intfc)
     {
         if (!a_intfc->OpenRecord(kRecord, kVersion) || !a_intfc->WriteRecordData(state.visited) ||
-            !a_intfc->WriteRecordData(state.stocked)) {
-            SKSE::log::warn("garage: could not save the visited and stocked flags");
+            !a_intfc->WriteRecordData(state.stocked) || !a_intfc->WriteRecordData(state.moved)) {
+            SKSE::log::warn("garage: could not save the visited, stocked and Satsuma moved flags");
         }
     }
 
@@ -55,8 +73,11 @@ namespace PerkeleRim::Garage
         if (a_version >= 2) {
             a_intfc->ReadRecordData(state.stocked);
         }
-        SKSE::log::info("garage: save loaded, {}, shelves {}", state.visited ? "already been to the garage" : "first handover goes to the garage",
-            state.stocked ? "stocked" : "not stocked yet");
+        if (a_version >= 3) {
+            a_intfc->ReadRecordData(state.moved);
+        }
+        SKSE::log::info("garage: save loaded, {}, shelves {}, the Satsuma {}", state.visited ? "already been to the garage" : "first handover goes to the garage",
+            state.stocked ? "stocked" : "not stocked yet", state.moved ? "in its bay" : "not moved over yet");
         return true;
     }
 
@@ -66,6 +87,10 @@ namespace PerkeleRim::Garage
         state.visited = false;
         state.stocked = false;
         state.skipped = false;
+        state.moved = false;
+        state.bayGeneration = 0;
+        state.retryAt = 0.0;
+        state.requests = 0;
     }
 
     void OnDataLoaded()
@@ -87,6 +112,8 @@ namespace PerkeleRim::Garage
         SKSE::log::info("garage: spawn marker {:08X} at ({:.0f},{:.0f},{:.0f})", state.spawn->GetFormID(), at.x, at.y, at.z);
 
         state.wake = data->LookupForm<RE::TESObjectREFR>(kWakeMarker, kPlugin);
+        state.bay = data->LookupForm<RE::TESObjectREFR>(kBayMarker, kPlugin);
+        SKSE::log::info("garage: Satsuma bay marker {}", state.bay ? "found" : "missing (an ESP from before 0.3: no Satsuma bay)");
         state.fade = data->LookupForm<RE::TESImageSpaceModifier>(kWakeFade, kFadePlugin);
         state.shelves.clear();
         if (auto* list = data->LookupForm<RE::BGSListForm>(kShelfSpots, kPlugin)) {
@@ -171,5 +198,82 @@ namespace PerkeleRim::Garage
     void Stocked()
     {
         state.stocked = true;
+    }
+
+    std::optional<Spot> Bay()
+    {
+        if (!state.bay) {
+            return std::nullopt;
+        }
+        return Spot{ state.bay->GetPosition(), state.bay->GetAngleZ() };
+    }
+
+    bool SatsumaMoved()
+    {
+        return state.moved;
+    }
+
+    bool RequestBay(std::uint32_t a_what, std::uint32_t a_generation, const char* a_why)
+    {
+        const auto bay = Bay();
+        if (!bay) {
+            return false;
+        }
+        Protocol::GarageBay message{};
+        message.generation = a_generation;
+        message.request = a_what;
+        message.position[0] = bay->position.x;
+        message.position[1] = bay->position.y;
+        message.position[2] = bay->position.z;
+        message.heading = bay->heading;
+        if (!LinkService::Get().Send(Protocol::MessageType::GarageBay, &message, sizeof(message))) {
+            SKSE::log::warn("garage: could not send the bay to MSC ({})", a_why);
+            return false;
+        }
+        state.requests++;
+        SKSE::log::info("garage: bay request {:X} to MSC for gen {} ({})", a_what, a_generation, a_why);
+        return true;
+    }
+
+    void UpdateBay(const RE::NiPoint3& a_player, bool a_owned, std::uint32_t a_generation)
+    {
+        if (!a_owned || !state.bay || a_generation == 0 || a_generation == state.bayGeneration || Now() < state.retryAt ||
+            a_player.GetDistance(state.bay->GetPosition()) > kBayRadius) {
+            return;
+        }
+        const auto what = state.moved ? Protocol::kBayStand : Protocol::kBayMoveSatsuma;
+        if (RequestBay(what, a_generation, state.moved ? "near the bay" : "the Satsuma's move")) {
+            state.bayGeneration = a_generation;
+        }
+    }
+
+    void OnGarageDone(const std::uint8_t* a_data, std::uint32_t a_size)
+    {
+        if (!a_data || a_size < sizeof(Protocol::GarageDone)) {
+            SKSE::log::warn("garage: bad GarageDone ({} bytes)", a_size);
+            return;
+        }
+        std::memcpy(&state.last.done, a_data, sizeof(Protocol::GarageDone));
+        state.last.count++;
+        const auto& d = state.last.done;
+        SKSE::log::info("garage: MSC did {:X} for gen {}: body {}, {} parts on their slots, {} on the floor, {} vehicles home, {} off their slots",
+            d.request, d.generation, d.body ? "on its stand" : "not there", d.slotted, d.floor, d.vehicles, d.missed);
+        if ((d.request & Protocol::kBayMoveSatsuma) != 0) {
+            state.moved = true;
+            SKSE::log::info("garage: the Satsuma moved over, this save remembers it");
+        } else if (d.request == 0 && !state.moved) {
+            state.bayGeneration = 0;  // ask again in a while
+            state.retryAt = Now() + kBayRetry;
+        }
+    }
+
+    const BayResult& LastBay()
+    {
+        return state.last;
+    }
+
+    std::uint32_t BayRequests()
+    {
+        return state.requests;
     }
 }

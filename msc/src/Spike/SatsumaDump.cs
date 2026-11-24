@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace PerkeleRim.Spike
 {
-    // "satsuma": writes <MSC>/PerkeleRim_satsuma.txt, what the Satsuma and its parts are made of in the
+    // "satsumadump": writes <MSC>/PerkeleRim_satsuma.txt, what the Satsuma and its parts are made of in the
     // running game: the car's root, the loose physics objects (name, tag, layer, mass, size, FSMs, where,
     // how far from the car), the car's own hierarchy, MSC's part database (Database/*: each part's Data
     // FSM variables) and the scene's roots. For working out the garage's slot map; reads only.

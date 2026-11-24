@@ -90,6 +90,7 @@ namespace PerkeleRim.Game
         VehicleLink[] vehicles;
         BeerGift beer;  // spike "beer" only
         ShelfStocker shelves;
+        GarageMover garage;  // the Satsuma bay: its one-time move and the garage board
         FuelLink fuel;
         PocketLink pocket;
         JunkLink junk;
@@ -185,6 +186,7 @@ namespace PerkeleRim.Game
             satsuma.Exclude = t => satsumaParts.Excluded(t);
             beer = new BeerGift(log);
             shelves = new ShelfStocker(island, ground, log);
+            garage = new GarageMover(island, ground, () => satsuma, () => vehicles, () => player, log);
             moped.EndlessFuel = true;
             fuel = new FuelLink(island, log);
             junk = new JunkLink(island, log);
@@ -427,6 +429,7 @@ namespace PerkeleRim.Game
             fuel.Update(link, playing, player != null ? Feet() : Vector3.zero, playing ? Driven() : null, vehicles);
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             shelves.Update(playing);
+            garage.Update(link, playing);
             pocket.Paused = input.Paused;
             junk.Update(link, playing, player);
             pocket.Update(link, playing, player != null);
@@ -547,6 +550,8 @@ namespace PerkeleRim.Game
                 teimo.OnLine(payload, size);
             else if (type == MessageType.StockShelves)
                 shelves.OnMessage(payload, size);
+            else if (type == MessageType.GarageBay)
+                garage.OnMessage(payload, size);
             else if (type == MessageType.FuelStations)
                 fuel.OnStations(payload, size);
             else if (type == MessageType.LoadReset)

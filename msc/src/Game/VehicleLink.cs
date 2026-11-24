@@ -412,6 +412,32 @@ namespace PerkeleRim.Game
 
         // Tows the vehicle onto spot (Skyrim world space, on the ground) facing heading, wherever it
         // was: a dry tank called at a pump (FuelLink). Not while the player sits in it.
+        // Sets the vehicle down at rest exactly there (island space), wherever it was, and remembers it
+        // as where it was left: the Satsuma's body onto its stand in the garage (GarageMover), which
+        // the parking rules (ground under the wheels) would miss.
+        public void SetDown(Vector3 position, Quaternion rotation)
+        {
+            if (car == null) return;
+            away = false;
+            Hold(false);
+            Moves++;
+            car.position = position;
+            car.rotation = rotation;
+            if (body != null)
+            {
+                body.position = position;
+                body.rotation = rotation;
+                if (!body.isKinematic)
+                {
+                    body.velocity = Vector3.zero;
+                    body.angularVelocity = Vector3.zero;
+                }
+            }
+            heldVelocity = heldAngular = Vector3.zero;
+            spotGeneration = 0;
+            Remember();
+        }
+
         public void TowTo(Transform player, Vec3 spot, float heading)
         {
             if (car == null || player == null || Carries(player)) return;

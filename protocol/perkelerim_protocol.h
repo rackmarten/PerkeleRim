@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 53;
+    inline constexpr std::uint32_t kProtocolVersion = 54;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -465,6 +465,8 @@ namespace PerkeleRim::Protocol
         Blackout = 34,         // MSC -> Skyrim
         HeldDrink = 35,        // MSC -> Skyrim
         TeimoLine = 36,        // Skyrim -> MSC
+        GarageBay = 37,        // Skyrim -> MSC
+        GarageDone = 38,       // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -891,6 +893,43 @@ namespace PerkeleRim::Protocol
         char          clip[kTeimoClipMax];  // UTF-8
     };
 
+    // GarageBay (v54): the Satsuma bay next to the garage (PerkeleRim.esp; the layout and the slot of
+    // every part: msc/src/Link/SatsumaBay.cs). Skyrim sends the bay marker's pose and what to do:
+    // kBayMoveSatsuma once per save, when Kumpo first comes near the bay with MSC (the Satsuma's body
+    // onto its stand and its loose parts at MSC's home onto their slots); the garage board's
+    // kBayPartsHome (every loose car part, wherever it is, back to the bay) and kBayVehiclesHome
+    // (every vehicle to its spot by the garage); kBayCheck only counts (the test kit's probe);
+    // kBayStand, at every handover near the bay of a save that had the move, says the Satsuma lives
+    // on its stand (a restarted MSC that hasn't placed it yet sets the body back there). MSC
+    // answers each with GarageDone once it is done (it waits for the island's ground at the bay, 20 s
+    // at most); Skyrim's cosave remembers the move only then.
+    inline constexpr std::uint32_t kBayMoveSatsuma = 0x1;
+    inline constexpr std::uint32_t kBayPartsHome = 0x2;
+    inline constexpr std::uint32_t kBayVehiclesHome = 0x4;
+    inline constexpr std::uint32_t kBayCheck = 0x8;
+    inline constexpr std::uint32_t kBayStand = 0x10;
+
+    struct GarageBay
+    {
+        std::uint32_t generation;   // the anchor (WorldspaceChange) it is for
+        std::uint32_t request;      // kBay*
+        float         position[3];  // the bay marker: the bay's floor in its middle, Skyrim world space
+        float         heading;      // the way the bay opens (its +X), radians clockwise from north
+        std::uint32_t reserved[2];
+    };
+
+    struct GarageDone
+    {
+        std::uint32_t generation;  // as asked
+        std::uint32_t request;     // as asked; 0 = it couldn't (no ground at the bay in time)
+        std::uint32_t body;        // 1: the Satsuma's body is on its stand (moved, or found there)
+        std::uint32_t slotted;     // Satsuma parts on their slots (put there, or kBayCheck: lying there)
+        std::uint32_t floor;       // parts laid on the bay's floor or its pile (no slot of their own free, or not the Satsuma's)
+        std::uint32_t vehicles;    // vehicles brought to their spots
+        std::uint32_t missed;      // kBayCheck: Satsuma parts in the bay off their slots
+        std::uint32_t reserved;
+    };
+
     // ---- Models (MSC -> Skyrim) ----
     //
     // MSC sends its own meshes and textures, read from the running game, and Skyrim builds them in
@@ -1181,6 +1220,11 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ConsumeEvent, form) == 20);
     static_assert(sizeof(HeldDrink) == 56);
     static_assert(sizeof(TeimoLine) == 64);
+    static_assert(sizeof(GarageBay) == 32);
+    static_assert(offsetof(GarageBay, position) == 8);
+    static_assert(offsetof(GarageBay, heading) == 20);
+    static_assert(sizeof(GarageDone) == 32);
+    static_assert(offsetof(GarageDone, missed) == 24);
     static_assert(offsetof(TeimoLine, length) == 12);
     static_assert(offsetof(TeimoLine, clip) == 16);
     static_assert(offsetof(HeldDrink, grip) == 44);

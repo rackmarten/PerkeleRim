@@ -554,7 +554,7 @@ namespace PerkeleRim.Spike
                     case "hands":
                         HandsDump.Run();
                         break;
-                    case "satsuma":  // the Satsuma, its loose parts and MSC's part database, to PerkeleRim_satsuma.txt
+                    case "satsumadump":  // the Satsuma, its loose parts and MSC's part database, to PerkeleRim_satsuma.txt
                         SatsumaDump.Run();
                         break;
                     case "surfaces":  // "surfaces 15000 -14500": the island's surfaces at that Skyrim x, y (a shelf's boards)

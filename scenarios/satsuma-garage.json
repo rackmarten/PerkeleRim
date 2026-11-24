@@ -1,0 +1,39 @@
+// The Satsuma moves over to the garage once (msc/src/Game/GarageMover.cs, skse/src/garage/Garage.cpp, docs/PROTOCOL.md
+// "The Satsuma garage"): the session's handover at the garage is the save's first time near the Satsuma bay, so MSC
+// moves the body onto its stand and the loose parts from its home onto their shelf slots and the floor. Pictured from
+// outside, then saved and loaded again: the load only tells MSC the body lives on its stand (kBayStand), nothing moves
+// again, and every part is still on its slot. scripts/satsuma-garage-test.ps1 runs it with a fresh MSC save and a half
+// built one (PERKELERIM_MSC_SAVE). MSC is closed without saving, so its own save keeps the car at home.
+{
+  "name": "satsuma-garage",
+  "steps": [
+    { "cmd": "wait", "seconds": 15 },
+    { "label": "the move happened at the handover", "cmd": "pr.garage",
+      "expect": ["moved == true", "last.request == 1", "last.body == true", "last.slotted > 40"] },
+    { "label": "every part in the bay is on its slot", "cmd": "pr.garage.ask", "what": "check",
+      "expect": ["last.missed == 0", "last.slotted > 40"] },
+    { "cmd": "pr.vehicle", "vehicle": "satsuma", "expect": ["drawn == true"] },
+    { "label": "a clear day", "cmd": "scene", "presets": "day clear" },
+    "wait frames=45",
+    "pause",
+    { "cmd": "screenshot", "name": "bay-front", "camera": "orbit pr.bay yaw=180 distance=900 pitch=20" },
+    { "cmd": "screenshot", "name": "bay-shelves", "camera": "orbit pr.bay yaw=120 distance=450 pitch=12" },
+    { "cmd": "screenshot", "name": "bay-back", "camera": "orbit pr.bay yaw=-60 distance=420 pitch=15" },
+    { "cmd": "screenshot", "name": "body-on-stand", "camera": "orbit pr.vehicle:satsuma yaw=150 distance=420 pitch=15" },
+    "resume",
+
+    // A reload never moves anything again.
+    { "label": "saved", "cmd": "console", "command": "save PerkeleRimGarageTest" },
+    { "cmd": "wait", "seconds": 3 },
+    { "label": "loaded again", "cmd": "pr.load", "save": "PerkeleRimGarageTest" },
+    { "cmd": "wait", "seconds": 20 },
+    { "label": "the load only says where the body lives", "cmd": "pr.garage",
+      "expect": ["moved == true", "requests == 1", "last.request == 16", "last.body == true"] },
+    { "label": "still every part on its slot", "cmd": "pr.garage.ask", "what": "check",
+      "expect": ["last.missed == 0", "last.slotted > 40"] },
+    "pause",
+    { "cmd": "screenshot", "name": "after-load", "camera": "orbit pr.bay yaw=180 distance=900 pitch=20" },
+    "resume",
+    { "cmd": "scene", "presets": "restore" }
+  ]
+}
