@@ -58,6 +58,7 @@ add_executable(protocol_tests
     tests/cpp/test_fuel_hint.cpp
     tests/cpp/test_teimo.cpp
     tests/cpp/test_part_set.cpp
+    tests/cpp/test_teimo_shop.cpp
 )
 if(WIN32)
     target_sources(protocol_tests PRIVATE cpp/link.cpp tests/cpp/test_link.cpp)

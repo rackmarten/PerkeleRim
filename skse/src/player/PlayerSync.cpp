@@ -902,6 +902,10 @@ namespace PerkeleRim::PlayerSync
                     Blackout::OnMessage(a_data, a_size);
                     return;
                 }
+                if (a_type == Protocol::MessageType::TeimoShop) {
+                    Teimo::OnShop(a_player, a_data, a_size);
+                    return;
+                }
                 if (a_type == Protocol::MessageType::HeldDrink) {
                     HeldDrinkView::OnMessage(a_data, a_size);
                     return;
@@ -982,7 +986,7 @@ namespace PerkeleRim::PlayerSync
             HandView::Update(link.ReadHandLayer(hands) ? &hands : nullptr, a_delta);
             Combat::Update(a_player, state.generation, a_delta);
             People::Update(a_player, seated ? driven : nullptr);
-            Teimo::Update(a_player, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, inVehicle != 0);
+            Teimo::Update(a_player, state.hasNeeds ? state.needs[Protocol::kNeedDrunk] : 0.0f, inVehicle != 0, state.generation);
             const bool menu = MenuHasInput();
             HeldDrinkView::Update(a_player, posed && !chase, a_delta);
             Combat::Disarm(a_player);

@@ -41,7 +41,21 @@ namespace PerkeleRim::Teimo
             double                    lastAt = -1.0;
             std::uint32_t             lines = 0;
             std::mt19937              random{ std::random_device{}() };
+            // The shop (teimo_shop.h): MSC's bill, what happened, the stall sent for which anchor.
+            std::uint32_t             billCount = 0;
+            float                     billTotal = 0.0f;
+            std::uint32_t             paid = 0;
+            float                     paidTotal = 0.0f;
+            std::uint32_t             stolen = 0;
+            std::uint32_t             bounty = 0;
+            std::uint32_t             shorts = 0;
+            float                     money = -1.0f;
+            std::uint32_t             stallSent = 0;
+            std::uint32_t             paySeq = 0;
+            float                     drunk = 0.0f;
         } state;
+
+        constexpr RE::FormID kWhiterunCrime = 0x000267EA;  // Skyrim.esm CrimeFactionWhiterun: Riverwood is in Whiterun Hold
 
         std::atomic<RE::FormID> teimoId{ 0 };  // for OnTalk on other threads
         std::atomic<bool>       talkedTo{ false };
@@ -233,6 +247,15 @@ namespace PerkeleRim::Teimo
         state.culled.clear();
         state.headingSet = false;
         talkedTo = false;
+        state.billCount = 0;
+        state.billTotal = 0.0f;
+        state.paid = 0;
+        state.paidTotal = 0.0f;
+        state.stolen = 0;
+        state.bounty = 0;
+        state.shorts = 0;
+        state.money = -1.0f;
+        state.stallSent = 0;  // a load hands over again: send the stall for that anchor (MSC starts the stall over)
     }
 
     void Draw(RE::PlayerCharacter* a_player, float a_delta)
@@ -300,9 +323,22 @@ namespace PerkeleRim::Teimo
         }
     }
 
-    void Update(RE::PlayerCharacter* a_player, float a_drunk, bool a_inVehicle)
+    void Update(RE::PlayerCharacter* a_player, float a_drunk, bool a_inVehicle, std::uint32_t a_generation)
     {
+        state.drunk = a_drunk;
+        const bool up = LinkService::Get().IsUp();  // a link that comes back re-anchors, and the new generation sends the stall again
         auto* teimo = Find();
+        if (teimo && teimo->Is3DLoaded() && !teimo->IsDisabled() && up && a_generation != 0 && a_generation != state.stallSent &&
+            FlatDistance(teimo->GetPosition(), a_player->GetPosition()) <= kStallReach) {
+            const auto stall = MakeStall(a_generation, Point{ state.homeAt.x, state.homeAt.y, state.homeAt.z }, state.home);
+            if (LinkService::Get().Send(Protocol::MessageType::TeimoStall, &stall, sizeof(stall))) {
+                state.stallSent = a_generation;
+                state.billCount = 0;
+                state.billTotal = 0.0f;
+                SKSE::log::info("teimo: the stall's {} goods to MSC for gen {}, Kumpo {:.0f} m from him", stall.count, a_generation,
+                    FlatDistance(teimo->GetPosition(), a_player->GetPosition()) / 70.0f);
+            }
+        }
         if (!teimo || !teimo->Is3DLoaded() || teimo->IsDisabled() || teimo->IsDead() || !LinkService::Get().IsUp() || a_inVehicle) {
             talkedTo = false;
             state.talk.EndVisit();  // Kumpo went far away, drives past (or the link went): a later walk-up is a new visit
@@ -310,6 +346,16 @@ namespace PerkeleRim::Teimo
         }
         const float distance = FlatDistance(teimo->GetPosition(), a_player->GetPosition());
         if (talkedTo.exchange(false) && distance <= kAround) {
+            if (state.billCount > 0) {
+                // Goods on the counter: talking to him is paying, as a click on MSC's register is.
+                Protocol::TeimoPay pay{ ++state.paySeq, 0 };
+                if (LinkService::Get().Send(Protocol::MessageType::TeimoPay, &pay, sizeof(pay))) {
+                    SKSE::log::info("teimo: Kumpo pays for {} goods, {} gold (pay {})", state.billCount, Marks(state.billTotal), pay.seq);
+                } else {
+                    SKSE::log::warn("teimo: the payment didn't go to MSC (ring full or link down)");
+                }
+                return;
+            }
             if (const auto topic = state.talk.OnTalk(state.clock, distance)) {
                 Say(a_player, teimo, *topic, "Kumpo talks to him");
                 return;
@@ -360,6 +406,89 @@ namespace PerkeleRim::Teimo
         if (const auto say = state.talk.OnInsult(Topic::kFinger, state.clock, FlatDistance(at, kumpo))) {
             Say(a_player, teimo, *say, "the finger");
         }
+    }
+
+    void OnShop(RE::PlayerCharacter* a_player, const std::uint8_t* a_data, std::uint32_t a_size)
+    {
+        if (a_size < sizeof(Protocol::TeimoShop)) {
+            SKSE::log::warn("teimo: bad TeimoShop ({} bytes)", a_size);
+            return;
+        }
+        Protocol::TeimoShop shop{};
+        std::memcpy(&shop, a_data, sizeof(shop));
+        auto*       teimo = Find();
+        const float distance = teimo ? FlatDistance(teimo->GetPosition(), a_player->GetPosition()) : 1e9f;
+        switch (shop.kind) {
+        case Protocol::kShopBill:
+            {
+                const bool more = shop.count > state.billCount;
+                state.billCount = shop.count;
+                state.billTotal = shop.total;
+                SKSE::log::info("teimo: {} goods on the counter, {} gold", shop.count, Marks(shop.total));
+                if (more) {
+                    RE::SendHUDMessage::ShowHUDMessage(BillNote(shop.count, shop.total).c_str());
+                }
+                return;
+            }
+        case Protocol::kShopPaid:
+            {
+                state.paid += shop.count;
+                state.paidTotal += shop.total;
+                state.money = shop.money;
+                state.billCount = 0;
+                state.billTotal = 0.0f;
+                const bool beer = (shop.products & (1u << Protocol::kShopBeer)) != 0;
+                const auto topic = beer && state.drunk >= kDrunkAt ? Topic::kDrunkBuy : Topic::kPaid;
+                SKSE::log::info("teimo: Kumpo paid {} gold for {} goods (pay {}), {} gold left", Marks(shop.total), shop.count, shop.seq, Marks(shop.money));
+                if (teimo && state.talk.OnShop(topic, state.clock)) {
+                    Say(a_player, teimo, topic, topic == Topic::kDrunkBuy ? "Kumpo buys beer drunk" : "Kumpo paid");
+                }
+                return;
+            }
+        case Protocol::kShopShort:
+            {
+                state.shorts++;
+                state.money = shop.money;
+                SKSE::log::info("teimo: {} gold due for {} goods, Kumpo has {}: not enough", Marks(shop.total), shop.count, Marks(shop.money));
+                if (teimo && state.talk.OnShop(Topic::kShort, state.clock)) {
+                    Say(a_player, teimo, Topic::kShort, "Kumpo can't pay");
+                }
+                return;
+            }
+        case Protocol::kShopStolen:
+            {
+                state.stolen += shop.count;
+                const auto bounty = TheftBounty(shop.total);
+                auto*      data = RE::TESDataHandler::GetSingleton();
+                auto*      hold = data ? data->LookupForm<RE::TESFaction>(kWhiterunCrime, "Skyrim.esm"sv) : nullptr;
+                if (hold && teimo && !teimo->IsDead()) {
+                    a_player->ModCrimeGoldValue(hold, false, static_cast<std::int32_t>(bounty));
+                    state.bounty += bounty;
+                    RE::SendHUDMessage::ShowHUDMessage(fmt::format("Teimo saw you walk off without paying: {} gold bounty", bounty).c_str());
+                    SKSE::log::info("teimo: {} goods worth {} gold carried off unpaid: {} gold bounty in Whiterun Hold, now {}", shop.count, Marks(shop.total),
+                        bounty, a_player->GetCrimeGoldValue(hold));
+                } else {
+                    SKSE::log::info("teimo: {} goods carried off unpaid, nobody to mind it (no Whiterun crime faction, or Teimo isn't there)", shop.count);
+                }
+                if (teimo) {
+                    if (const auto say = state.talk.OnInsult(Topic::kStolen, state.clock, distance)) {
+                        Say(a_player, teimo, *say, "goods carried off");
+                    }
+                }
+                return;
+            }
+        default:
+            SKSE::log::warn("teimo: unknown TeimoShop kind {}", shop.kind);
+        }
+    }
+
+    bool DebugTalk()
+    {
+        auto* teimo = Find();
+        if (!teimo || !mscOwns) {
+            return false;
+        }
+        return OnTalk(teimo);
     }
 
     bool OnTalk(const RE::Actor* a_actor)
@@ -413,6 +542,15 @@ namespace PerkeleRim::Teimo
         s.lastAt = state.lastAt;
         s.lines = state.lines;
         s.caption = CurrentCaption();
+        s.billCount = state.billCount;
+        s.billTotal = state.billTotal;
+        s.paid = state.paid;
+        s.paidTotal = state.paidTotal;
+        s.stolen = state.stolen;
+        s.bounty = state.bounty;
+        s.shorts = state.shorts;
+        s.money = state.money;
+        s.stallSent = state.stallSent;
         return s;
     }
 
@@ -453,6 +591,14 @@ namespace PerkeleRim::Teimo
             return "pissed";
         case Topic::kHit:
             return "hit";
+        case Topic::kPaid:
+            return "paid";
+        case Topic::kDrunkBuy:
+            return "drunkbuy";
+        case Topic::kShort:
+            return "short";
+        case Topic::kStolen:
+            return "stolen";
         }
         return "?";
     }
