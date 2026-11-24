@@ -574,9 +574,16 @@ namespace PerkeleRim::TestKit
                     };
                 });
 
-            SkseTestKit::AddCommand("pr.lookat", "", "MSC's look-at prompt as Skyrim last got it: whether MSC shows its hand (doors, switches, knobs) and its text",
+            SkseTestKit::AddCommand("pr.lookat", "",
+                "MSC's look-at prompt as Skyrim last got it: whether MSC shows its hand (doors, switches, knobs), its assemble icon (a held part "
+                "in its place on the car), its disassemble icon (a part with its bolts out), the icon Skyrim draws and MSC's text",
                 [](Call&) -> Json {
-                    return JsonObject{ { "msc", PlayerSync::Owned() }, { "hand", PlayerSync::PromptHand() }, { "text", PlayerSync::PromptText() } };
+                    const auto flags = PlayerSync::PromptFlags();
+                    const auto icon = LookAt::IconFor(flags);
+                    return JsonObject{ { "msc", PlayerSync::Owned() }, { "hand", (flags & Protocol::kLookAtUse) != 0 },
+                        { "assemble", (flags & Protocol::kLookAtAssemble) != 0 }, { "disassemble", (flags & Protocol::kLookAtDisassemble) != 0 },
+                        { "icon", icon == LookAt::Icon::Assemble ? "assemble" : icon == LookAt::Icon::Disassemble ? "disassemble" : icon == LookAt::Icon::Hand ? "hand" : "none" },
+                        { "text", PlayerSync::PromptText() } };
                 });
 
             SkseTestKit::AddCommand("pr.teimo", "", "Teimo at his stall in Riverwood: found, loaded, drawn as MSC's Teimo, where, which way he faces, how far Kumpo is, the last line he said and his caption now",

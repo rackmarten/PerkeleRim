@@ -30,10 +30,10 @@ namespace PerkeleRim::PlayerSync
     bool Seated();           // ...and it sits in a vehicle
     bool Standing();         // ...and MSC put it down on the current anchor's island (its pose is placed)
     std::uint32_t Generation();  // the current anchor's generation; a new one after each teleport
-    // MSC's look-at prompt as Skyrim last got it (LookAtText): its text, and whether MSC shows its hand.
-    // Empty while Skyrim has the player.
+    // MSC's look-at prompt as Skyrim last got it (LookAtText): its text, and its icons (kLookAt*: the hand,
+    // assemble, disassemble). Empty while Skyrim has the player.
     const std::string& PromptText();
-    bool PromptHand();
+    std::uint32_t PromptFlags();
     void RestoreControls();  // the loaded save was taken while MSC had the player and kept its controls off
     // The hit test (debug/HitTest.h) at the keys: F10 unless MSC has the player or is about to (play mode
     // hands over by itself after a load), a Unity KeyCode held for MSC on top of what

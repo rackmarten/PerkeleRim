@@ -75,6 +75,8 @@ namespace PerkeleRim.Protocol
         public const uint ParticleCapacity = 512;
         public const uint LookAtTextMax = 255;
         public const uint LookAtUse = 0x1;
+        public const uint LookAtAssemble = 0x2;
+        public const uint LookAtDisassemble = 0x4;
         public const uint TeimoClipMax = 48;
         public const uint FuelTextLow = 0x1;
         public const uint FuelTextDry = 0x2;

@@ -152,6 +152,25 @@ namespace PerkeleRim::Hud
             Rect(a_clip, -10.0, -3.0, -7.4, 0.5);
         }
 
+        // MSC's assemble and disassemble icons: the hand with a badge on its lower right, a green plus for a held part
+        // that goes on where it is, a red minus for a part that comes off.
+        void DrawBadge(RE::GFxValue& a_clip, bool a_plus)
+        {
+            constexpr double kX = 10.5, kY = 9.0;
+            RE::GFxValue badge;
+            if (!a_clip.CreateEmptyMovieClip(&badge, "badge", 1)) {
+                return;
+            }
+            badge.SetMember("_x", RE::GFxValue(kX));
+            badge.SetMember("_y", RE::GFxValue(kY));
+            Circle(badge, 0x000000, 80.0, 7.5);
+            Circle(badge, a_plus ? 0x3FBF4A : 0xD8402F, 100.0, 6.0);
+            Rect(badge, -3.5, -1.0, 3.5, 1.0);
+            if (a_plus) {
+                Rect(badge, -1.0, -3.5, 1.0, 3.5);
+            }
+        }
+
         // MSC's tools icon: a wrench and a screwdriver side by side, white, as MSC shows them top right.
         void DrawTools(RE::GFxValue& a_clip)
         {
@@ -207,11 +226,19 @@ namespace PerkeleRim::Hud
             RE::GFxValue box;
             a_clip.CreateEmptyMovieClip(&box, "box", 2);
 
-            RE::GFxValue handClip;
-            if (a_clip.CreateEmptyMovieClip(&handClip, "hand", 4)) {
-                DrawHand(handClip);
-                handClip.SetMember("_y", RE::GFxValue(kHandCenter));
-                handClip.SetMember("_visible", RE::GFxValue(false));
+            // One clip per icon (depths 4, 14 and 15), only one visible at a time.
+            const std::pair<const char*, std::int32_t> icons[] = { { "hand", 4 }, { "assemble", 14 }, { "disassemble", 15 } };
+            for (const auto& [name, at] : icons) {
+                RE::GFxValue iconClip;
+                if (!a_clip.CreateEmptyMovieClip(&iconClip, name, at)) {
+                    continue;
+                }
+                DrawHand(iconClip);
+                if (at != 4) {
+                    DrawBadge(iconClip, at == 14);
+                }
+                iconClip.SetMember("_y", RE::GFxValue(kHandCenter));
+                iconClip.SetMember("_visible", RE::GFxValue(false));
             }
 
             RE::GFxValue text;
@@ -437,17 +464,22 @@ namespace PerkeleRim::Hud
             clip.SetMember("_y", RE::GFxValue(cy));
 
             const bool   open = !covered;  // no menu over the view
-            RE::GFxValue dot, text, box, handClip;
+            RE::GFxValue dot, text, box;
             if (clip.GetMember("dot", &dot) && dot.IsDisplayObject()) {
                 dot.SetMember("_visible", RE::GFxValue(a_view.dot && open));
             }
             clip.GetMember("text", &text);
             clip.GetMember("box", &box);
-            if (clip.GetMember("hand", &handClip) && handClip.IsDisplayObject()) {
-                handClip.SetMember("_visible", RE::GFxValue(a_view.hand && open));
+            const std::pair<const char*, LookAt::Icon> icons[] = { { "hand", LookAt::Icon::Hand }, { "assemble", LookAt::Icon::Assemble },
+                { "disassemble", LookAt::Icon::Disassemble } };
+            for (const auto& [name, icon] : icons) {
+                RE::GFxValue iconClip;
+                if (clip.GetMember(name, &iconClip) && iconClip.IsDisplayObject()) {
+                    iconClip.SetMember("_visible", RE::GFxValue(a_view.icon == icon && open));
+                }
             }
             if (text.IsDisplayObject() && box.IsDisplayObject()) {
-                const double top = kLabelBelow + (a_view.hand ? kHandSpace : 0.0);
+                const double top = kLabelBelow + (a_view.icon != LookAt::Icon::None ? kHandSpace : 0.0);
                 const bool   hasLabel = !a_view.label.empty() && open;
                 text.SetText(a_view.label.c_str());
                 text.SetMember("_visible", RE::GFxValue(hasLabel));
@@ -571,7 +603,7 @@ namespace PerkeleRim::Hud
         }
         const auto needs = Quantize(view);
         const int  charge = view.charge < 0.0f ? -1 : static_cast<int>(std::lround(std::clamp(view.charge, 0.0f, 1.0f) * kChargeSteps));
-        const bool textChanged = view.show != current.show || view.dot != current.dot || view.label != current.label || view.hand != current.hand ||
+        const bool textChanged = view.show != current.show || view.dot != current.dot || view.label != current.label || view.icon != current.icon ||
                                  view.subtitle != current.subtitle || view.gear != current.gear || view.fuel != current.fuel || view.tools != current.tools ||
                                  view.money != current.money;
         const bool handsChanged = view.handsImage != current.handsImage || view.handsWidth != current.handsWidth ||
@@ -586,7 +618,8 @@ namespace PerkeleRim::Hud
         }
         if (textChanged) {
             SKSE::log::info("hud: {} label \"{}\"{}, subtitle \"{}\"", view.show ? "shown," : "hidden,", view.label,
-                view.hand ? ", hand" : "", view.subtitle);
+                view.icon == LookAt::Icon::Hand ? ", hand" : view.icon == LookAt::Icon::Assemble ? ", assemble" : view.icon == LookAt::Icon::Disassemble ? ", disassemble" : "",
+                view.subtitle);
         }
         static std::array<int, 3> loggedLight{};
         if ((lightChanged || handsChanged) && !view.handsImage.empty() && std::abs(light[0] - loggedLight[0]) + std::abs(light[1] - loggedLight[1]) + std::abs(light[2] - loggedLight[2]) >= 15) {

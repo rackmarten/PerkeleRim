@@ -1,5 +1,5 @@
 // The LookAtText message (MSC -> Skyrim): MSC's interaction prompt for what its crosshair is on
-// (text and hand icon). Header-only, mirrored by msc/src/Link/LookAt.cs; the protocol tests cover
+// (text and its hand, assemble and disassemble icons). Header-only, mirrored by msc/src/Link/LookAt.cs; the protocol tests cover
 // both directions.
 
 #pragma once
@@ -19,6 +19,33 @@ namespace PerkeleRim::LookAt
         std::string_view text;   // points into the payload
         std::uint32_t    flags;  // kLookAt*
     };
+
+    // The icon Skyrim shows under its dot for a prompt's flags, as MSC shows one at a time: assembling a held part
+    // over its hand (a part held in place on the car is also under the crosshair), then taking one off, then the hand.
+    enum class Icon
+    {
+        None,
+        Hand,         // kLookAtUse: something to use
+        Assemble,     // kLookAtAssemble: a click puts the held part on
+        Disassemble,  // kLookAtDisassemble: a click takes this part off
+    };
+
+    inline Icon IconFor(std::uint32_t a_flags)
+    {
+        if ((a_flags & Protocol::kLookAtAssemble) != 0) {
+            return Icon::Assemble;
+        }
+        if ((a_flags & Protocol::kLookAtDisassemble) != 0) {
+            return Icon::Disassemble;
+        }
+        return (a_flags & Protocol::kLookAtUse) != 0 ? Icon::Hand : Icon::None;
+    }
+
+    // Whether MSC's crosshair is on something of its own (any text or icon): E and the left click are MSC's then.
+    inline bool Claims(std::string_view a_text, std::uint32_t a_flags)
+    {
+        return !a_text.empty() || (a_flags & (Protocol::kLookAtUse | Protocol::kLookAtAssemble | Protocol::kLookAtDisassemble)) != 0;
+    }
 
     // Payload for a_text and a_flags; text longer than kLookAtTextMax bytes is cut at a UTF-8
     // character boundary.

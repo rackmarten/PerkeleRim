@@ -581,10 +581,13 @@ namespace PerkeleRim.Game
             var g = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
             var text = g.FindFsmString("GUIinteraction");
             var use = g.FindFsmBool("GUIuse");
+            var assemble = g.FindFsmBool("GUIassemble");  // a part held to the car, or one to take off: the click is MSC's
+            var disassemble = g.FindFsmBool("GUIdisassemble");
             var left = g.FindFsmBool("PlayerHandLeft");
             var right = g.FindFsmBool("PlayerHandRight");
             var vehicle = g.FindFsmString("PlayerCurrentVehicle");
             return (text == null || string.IsNullOrEmpty(text.Value)) && (use == null || !use.Value) &&
+                   (assemble == null || !assemble.Value) && (disassemble == null || !disassemble.Value) &&
                    (watching || left == null || !left.Value) && (right == null || !right.Value) &&
                    (vehicle == null || string.IsNullOrEmpty(vehicle.Value)) &&
                    !PocketLink.Carrying() && PocketLink.Aimed() == null;  // an item MSC picks up shows no prompt (empty bottles)
@@ -1260,17 +1263,22 @@ namespace PerkeleRim.Game
             s.flags |= Wire.PlayerNeeds;
         }
 
+        static bool GlobalBool(HutongGames.PlayMaker.FsmVariables globals, string name)
+        {
+            var b = globals.FindFsmBool(name);
+            return b != null && b.Value;
+        }
+
         // MSC's interaction prompt (globals GUIinteraction: "IGNITION", item names; GUIuse: the hand
-        // icon on doors and hatches), sent to Skyrim when it changes, and again from scratch each time
+        // icon on doors and hatches; GUIassemble and GUIdisassemble: a part going on or off the car), sent to Skyrim when it changes, and again from scratch each time
         // MSC gets the player. A full ring retries next frame.
         void SendLookAt(Link link, bool playing)
         {
             if (!playing) { lookAtSent = null; return; }
             var globals = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
             var global = globals.FindFsmString("GUIinteraction");
-            var use = globals.FindFsmBool("GUIuse");
             var text = global != null && global.Value != null ? global.Value : "";
-            uint flags = use != null && use.Value ? Wire.LookAtUse : 0;
+            uint flags = LookAt.Flags(GlobalBool(globals, "GUIuse"), GlobalBool(globals, "GUIassemble"), GlobalBool(globals, "GUIdisassemble"));
             var key = flags + ":" + text;
             if (key == lookAtSent) return;
             var payload = LookAt.Encode(text, flags);

@@ -26,6 +26,18 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void CarriesTheAssembleIcons()
+        {
+            Assert.That(LookAt.Flags(false, false, false), Is.EqualTo(0u));
+            Assert.That(LookAt.Flags(true, false, false), Is.EqualTo(Wire.LookAtUse));
+            Assert.That(LookAt.Flags(false, true, false), Is.EqualTo(Wire.LookAtAssemble));
+            Assert.That(LookAt.Flags(false, false, true), Is.EqualTo(Wire.LookAtDisassemble));
+            var payload = LookAt.Encode("Door left", LookAt.Flags(false, false, true));
+            Assert.That(LookAt.Decode(payload, payload.Length, out var flags), Is.EqualTo("Door left"));
+            Assert.That(flags, Is.EqualTo(Wire.LookAtDisassemble));
+        }
+
+        [Test]
         public void LongTextIsCutAtACharacter()
         {
             var text = new string('a', (int)Wire.LookAtTextMax - 1) + "ää";

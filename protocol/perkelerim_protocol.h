@@ -475,6 +475,10 @@ namespace PerkeleRim::Protocol
     // terminator). length 0 and no flags clears the prompt.
     inline constexpr std::uint32_t kLookAtTextMax = 255;
     inline constexpr std::uint32_t kLookAtUse = 0x1;  // LookAtText.flags: MSC shows its hand icon (global GUIuse)
+    // vBOLT: MSC's assemble icon, a part held in place on the car (global GUIassemble: a click puts it on), and its
+    // disassemble icon, a part with its bolts out under the crosshair (GUIdisassemble: a click takes it off).
+    inline constexpr std::uint32_t kLookAtAssemble = 0x2;
+    inline constexpr std::uint32_t kLookAtDisassemble = 0x4;
 
     struct LookAtText
     {

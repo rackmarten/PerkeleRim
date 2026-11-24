@@ -100,7 +100,7 @@ namespace PerkeleRim::PlayerSync
             float          savedDrawFirstPersonFov = 0.0f;  // and DrawWorld's, which the first-person pass draws with
             bool           wasThirdPerson = false;  // Skyrim's camera was third person at the handover
             std::string    lookAt;            // MSC's interaction text
-            bool           lookAtUse = false; // MSC shows its hand icon
+            std::uint32_t  lookAtFlags = 0;   // MSC's icons with it (kLookAt*: hand, assemble, disassemble)
             std::string    subtitle;          // MSC's subtitle line
             std::string    gear;              // MSC's gear indicator while driving
             std::string    fuel;              // MSC's fuel line (FuelText)
@@ -272,7 +272,7 @@ namespace PerkeleRim::PlayerSync
                 state.wasThirdPerson = false;
             }
             state.lookAt.clear();
-            state.lookAtUse = false;
+            state.lookAtFlags = 0;
             state.subtitle.clear();
             state.gear.clear();
             state.fuel.clear();
@@ -922,7 +922,7 @@ namespace PerkeleRim::PlayerSync
                     state.fuelFlags = text->flags;
                 } else {
                     state.lookAt.assign(text->text);
-                    state.lookAtUse = (text->flags & Protocol::kLookAtUse) != 0;
+                    state.lookAtFlags = text->flags;
                 }
             });
             bool posed = false;  // Skyrim's first-person camera sits at MSC's this frame
@@ -998,7 +998,7 @@ namespace PerkeleRim::PlayerSync
             hud.show = !chase;  // clean shots
             hud.hideStealth = !state.sneak;  // Skyrim's sneak eye stayed up after standing
             hud.label = state.lookAt;
-            hud.hand = state.lookAtUse;
+            hud.icon = LookAt::IconFor(state.lookAtFlags);
             hud.subtitle = !state.subtitle.empty()        ? state.subtitle :
                            !Intro::Caption().empty() ? std::string(Intro::Caption()) :  // the shack's wake-up caption carries over the handover
                                                        Teimo::CurrentCaption();
@@ -1069,7 +1069,7 @@ namespace PerkeleRim::PlayerSync
         {
             static bool thunk(RE::ActivateHandler* a_handler, RE::InputEvent* a_event)
             {
-                if (state.owned && (!state.lookAt.empty() || state.lookAtUse)) {
+                if (state.owned && LookAt::Claims(state.lookAt, state.lookAtFlags)) {
                     return false;
                 }
                 if (state.owned && ActivatePressed(a_event) && !CrosshairTarget() &&
@@ -1421,9 +1421,9 @@ namespace PerkeleRim::PlayerSync
         return state.lookAt;
     }
 
-    bool PromptHand()
+    std::uint32_t PromptFlags()
     {
-        return state.lookAtUse;
+        return state.lookAtFlags;
     }
 
     void DebugHandOver()

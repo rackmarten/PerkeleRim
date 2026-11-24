@@ -19,6 +19,7 @@ namespace PerkeleRim.Spike
     //   pocket <key>         press a pocket key while handed over: Y, or 3..8 (PocketLink)
     //   hold <kind>          a new pocket kind (0 beer .. 5 macaron box) into MSC's hand, pocket untouched
     //   inspect <text>       objects named like text, inactive ones too: tag, layer, physics, FSMs
+    //   tree <prefix> [depth] every object below the roots named so, to PerkeleRim_tree_<prefix>.txt
     //   items                log the items Skyrim gets (ItemLink): id, path, model id
     //   hands                cameras, layers and first-person renderers to PerkeleRim_hands.txt
     //   handlayer on|off|tint|save  share MSC's first-person layer with Skyrim or not (HandLayerSender); tint toggles a
@@ -81,6 +82,42 @@ namespace PerkeleRim.Spike
 
         // Tag, layer, physics and FSMs of every object whose name contains text (prefabs and inactive
         // templates included), at most 20.
+        // Every object below the scene roots whose name starts with prefix (inactive ones too), depth levels down,
+        // one line each: active, layer, tag, body, colliders (trigger or not), renderers and FSMs with their state.
+        // Written to <MSC>/PerkeleRim_tree_<prefix>.txt, as a Satsuma has thousands of lines.
+        static void Tree(string prefix, int depth)
+        {
+            var sb = new System.Text.StringBuilder();
+            int roots = 0;
+            foreach (GameObject go in Resources.FindObjectsOfTypeAll(typeof(GameObject)))
+            {
+                if (go.transform.parent != null || go.hideFlags != HideFlags.None) continue;
+                if (!go.name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                roots++;
+                TreeOf(sb, go.transform, 0, depth);
+            }
+            File.WriteAllText(Path.Combine(SpikeLog.GameDir, $"PerkeleRim_tree_{prefix}.txt"), sb.ToString());
+            SpikeLog.Write($"cmd: tree {prefix}: {roots} roots, {sb.Length} chars to PerkeleRim_tree_{prefix}.txt");
+        }
+
+        static void TreeOf(System.Text.StringBuilder sb, Transform t, int level, int depth)
+        {
+            var go = t.gameObject;
+            sb.Append(' ', level * 2).Append(t.name).Append(go.activeSelf ? "" : " [off]");
+            sb.Append($" L{go.layer}");
+            if (go.tag != "Untagged") sb.Append(" tag ").Append(go.tag);
+            var body = go.GetComponent<Rigidbody>();
+            if (body != null) sb.Append($" body {body.mass:0.#}kg{(body.isKinematic ? " kin" : "")}");
+            foreach (var j in go.GetComponents<Joint>()) sb.Append(" joint ").Append(j.GetType().Name).Append(j.connectedBody != null ? "->" + j.connectedBody.name : "");
+            foreach (var c in go.GetComponents<Collider>()) sb.Append(c.isTrigger ? " trig" : " coll").Append(c.enabled ? "" : "-off");
+            var r = go.GetComponent<Renderer>();
+            if (r != null) sb.Append(r.enabled ? " mesh" : " mesh-off");
+            foreach (var f in go.GetComponents<PlayMakerFSM>()) sb.Append($" {{{f.FsmName}:{f.ActiveStateName}}}");
+            sb.Append($" at {t.localPosition.x:0.###},{t.localPosition.y:0.###},{t.localPosition.z:0.###}").AppendLine();
+            if (level >= depth) { if (t.childCount > 0) sb.Append(' ', level * 2 + 2).AppendLine($"... {t.childCount} children"); return; }
+            for (int i = 0; i < t.childCount; i++) TreeOf(sb, t.GetChild(i), level + 1, depth);
+        }
+
         static void Inspect(string text)
         {
             int n = 0;
@@ -681,6 +718,9 @@ namespace PerkeleRim.Spike
                     case "hold":  // "hold 0": a one-bottle beer case in the hand
                         var holder = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
                         if (holder != null && words.Length > 1) holder.HoldPocketKind(int.Parse(words[1]));
+                        break;
+                    case "tree":  // "tree SATSUMA 6": every object below the roots whose name starts so, to PerkeleRim_tree_<prefix>.txt
+                        Tree(words.Length > 1 ? words[1] : "", words.Length > 2 ? int.Parse(words[2]) : 8);
                         break;
                     case "inspect":  // "inspect empty bottle" lists objects with that name, inactive ones too
                         Inspect(lines[0].Trim().Substring(7).Trim());
