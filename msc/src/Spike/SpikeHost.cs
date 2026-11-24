@@ -45,7 +45,8 @@ namespace PerkeleRim.Spike
     //   fetch <name> [eyes]  the nearest loose part named so put down by the player (fetch wheel_regula), or with eyes
     //                        held in front of his eyes until a left click picks it up (fetch door left eyes)
     //   fit <trigger...>     those parts put on through MSC's own Assembly (fit trigger_discbrake_fl), for setups
-    //   freeze <root> [off]  a vehicle's body held still (kinematic) as on a stand, or let go (freeze SATSUMA)
+    //   freeze <root> [m|off] a vehicle's body held still (kinematic) as on a stand, lifted m metres (its wheels off the
+    //                        ground, freeze SATSUMA 0.3), or let go (freeze SATSUMA off)
     //   tighten <words>      every bolt with those words in its path turned all the way in by MSC's TIGHTEN, for setups
     //   offer <trigger>      the part in MSC's hand counted as come into that place on the car (offer trigger_door_left):
     //                        MSC checks it, shows its assemble icon and waits for the left click
@@ -491,14 +492,17 @@ namespace PerkeleRim.Spike
         // "freeze <root> [on|off]": the root rigidbody whose name starts so held still (kinematic, no velocity) or let go,
         // for a scenario working on the Satsuma's body as if it stood on its stand: a part's joint set up while the player
         // stood against the body once flung the whole car off.
-        static void Freeze(string prefix, bool on)
+        static void Freeze(string prefix, bool on, float lift = 0f)
         {
             foreach (var body in FindObjectsOfType<Rigidbody>())
             {
                 if (body.transform.parent != null || prefix.Length == 0 || !body.name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
                 if (on) { body.velocity = Vector3.zero; body.angularVelocity = Vector3.zero; }
                 body.isKinematic = on;
-                SpikeLog.Write($"cmd: freeze: {body.name} {(on ? "held still" : "let go")}");
+                // Lifted as on a stand or a jack: MSC takes a wheel off only while it doesn't touch the ground
+                // (its Removal's Requirements 2 reads the wheel's SetGrip OnGroundDown).
+                if (on && lift > 0f) body.transform.position += Vector3.up * lift;
+                SpikeLog.Write($"cmd: freeze: {body.name} {(on ? "held still" : "let go")}{(lift > 0f ? $", lifted {lift:0.##} m" : "")}");
                 return;
             }
             SpikeLog.Write("cmd: freeze: no root rigidbody named " + prefix);
@@ -1017,7 +1021,10 @@ namespace PerkeleRim.Spike
                         else SpikeLog.Write("cmd: fit <trigger names>, with PlayerLink");
                         break;
                     case "freeze":  // "freeze SATSUMA on": that vehicle's body held still (kinematic), as on a stand; "off" lets it go
-                        Freeze(words.Length > 1 ? words[1] : "", words.Length < 3 || words[2] != "off");
+                        float lift = 0f;
+                        bool letGo = words.Length > 2 && words[2] == "off";
+                        if (words.Length > 2 && !letGo) float.TryParse(words[2], NumberStyles.Float, CultureInfo.InvariantCulture, out lift);
+                        Freeze(words.Length > 1 ? words[1] : "", !letGo, lift);
                         break;
                     case "tighten":  // "tighten spindle": every bolt of that part turned all the way in by MSC's own TIGHTEN, for setups
                         StartCoroutine(Tighten(lines[0].Trim().Substring(7).Trim()));
