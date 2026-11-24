@@ -1,0 +1,53 @@
+// The garage board in the Satsuma bay brings things home (skse/src/garage/GarageBoard.cpp, msc/src/Game/GarageMover.cs,
+// docs/PROTOCOL.md "The Satsuma garage"): the van called to Riverwood and left there, a Satsuma part (the gearbox, off
+// its shelf) dropped in Bleak Falls Barrow, then Kumpo back at the garage uses the board twice, as a player does: the
+// van comes onto the garage's pit, the gearbox back onto its slot. Run it after scenarios/satsuma-garage.json in the
+// same session (or in a fresh one: its first handover at the garage moves the Satsuma over).
+{
+  "name": "garage-board",
+  "steps": [
+    // The van, left in Riverwood.
+    { "label": "Skyrim takes Kumpo", "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "cmd": "console", "command": "coc Riverwood" },
+    { "cmd": "wait", "seconds": 10 },
+    { "label": "MSC takes him there", "cmd": "pr.msc", "expect": ["msc == true", "seated == false"] },
+    { "label": "the van comes to Riverwood", "cmd": "pr.call", "vehicle": "van", "expect": ["drawn == true", "position.y < -40000"] },
+
+    // The gearbox, dropped in a dungeon.
+    { "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "cmd": "console", "command": "coc BleakFallsBarrow01" },
+    { "cmd": "wait", "seconds": 10 },
+    { "label": "MSC takes him into the barrow", "cmd": "pr.msc", "expect": ["msc == true"] },
+    { "cmd": "wait", "seconds": 5 },
+    { "label": "the gearbox dropped there", "cmd": "pr.send", "line": "fetch gearbox(Clone)" },
+    { "cmd": "wait", "seconds": 3 },
+
+    // Back at the garage, in front of the Satsuma bay.
+    { "cmd": "pr.msc", "on": false, "expect": "msc == false" },
+    { "cmd": "console", "command": "coc Riverwood" },
+    { "cmd": "wait", "seconds": 5 },
+    { "cmd": "console", "command": "player.setpos x 15350" },
+    { "cmd": "console", "command": "player.setpos y -14000" },
+    { "cmd": "console", "command": "player.setpos z -4700" },
+    { "cmd": "wait", "seconds": 5 },
+    { "label": "MSC takes him at the garage", "cmd": "pr.msc", "expect": ["msc == true"] },
+    { "cmd": "wait", "seconds": 10 },
+    { "label": "the gearbox isn't on its slot", "cmd": "pr.garage.ask", "what": "check", "expect": ["last.slotted > 40"] },
+
+    // The board: vehicles, then parts.
+    { "label": "the board brings the vehicles home", "cmd": "pr.garage.board", "what": "vehicles", "expect": ["last.vehicles >= 1"] },
+    { "cmd": "wait", "seconds": 5 },
+    { "label": "the van is on the garage's pit", "cmd": "pr.vehicle", "vehicle": "van",
+      "expect": ["drawn == true", "position.x ~ 15170 +- 250", "position.y ~ -14516 +- 250"] },
+    { "label": "the board brings the parts home", "cmd": "pr.garage.board", "what": "parts", "expect": ["last.slotted > 40"] },
+    { "cmd": "wait", "seconds": 3 },
+    { "label": "every part in the bay on its slot, the gearbox too", "cmd": "pr.garage.ask", "what": "check", "expect": ["last.missed == 0", "last.slotted > 40"] },
+    { "label": "a clear day", "cmd": "scene", "presets": "day clear" },
+    "wait frames=45",
+    "pause",
+    { "cmd": "screenshot", "name": "van-home", "camera": "orbit pr.vehicle:van yaw=200 distance=700 pitch=20" },
+    { "cmd": "screenshot", "name": "parts-home", "camera": "orbit pr.bay yaw=120 distance=450 pitch=12" },
+    "resume",
+    { "cmd": "scene", "presets": "restore" }
+  ]
+}
