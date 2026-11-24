@@ -276,7 +276,7 @@ namespace PerkeleRim::Garage
             RE::SendHUDMessage::ShowHUDMessage(std::format("{} car parts back on their own slots, {} elsewhere in the bay.", d.slotted, d.floor).c_str());
         }
         if (d.request == 0) {
-            SKSE::log::info("garage: MSC couldn't do {:X} (no ground under the bay in time, or a new anchor)", d.asked);
+            SKSE::log::info("garage: MSC couldn't do {:X} (no ground under the bay in time, a new anchor, or the move with Kumpo in the Satsuma)", d.asked);
             if ((d.asked & (Protocol::kBayVehiclesHome | Protocol::kBayPartsHome)) != 0) {
                 RE::SendHUDMessage::ShowHUDMessage("The garage board couldn't bring them home: try again in a moment.");
             }

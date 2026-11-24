@@ -54,7 +54,8 @@ namespace PerkeleRim.Game
         GarageDone? unsent;  // an answer the ring had no room for
         bool bodyPlaced;  // this MSC session has set the body down on its stand (or seen it placed)
         bool laidOut;     // this MSC session has laid the bay out: parts on the island since are where Kumpo left them
-        readonly HashSet<Rigidbody> fresh = new HashSet<Rigidbody>();  // seen in MSC's own map or in hand this session, or restored by a load
+        readonly HashSet<Rigidbody> fresh = new HashSet<Rigidbody>();
+        readonly HashSet<Rigidbody> heldWhenTaken = new HashSet<Rigidbody>();  // kinematic by Keep when MSC's hand took it  // seen in MSC's own map or in hand this session, or restored by a load
 
         class Kept
         {
@@ -134,9 +135,10 @@ namespace PerkeleRim.Game
             if ((r.What & (Wire.BayMoveSatsuma | Wire.BayVehiclesHome)) != 0 || restarted)
                 body = SetBodyDown(car, r);
             else body = car != null && car.Car != null && OnStand(car.Car, r);
-            if ((r.What & Wire.BayMoveSatsuma) != 0 && !body)
+            if ((r.What & Wire.BayMoveSatsuma) != 0 && !body && car != null && car.Car != null)
             {
-                // Not the move without its body (Kumpo sits in it, say): Skyrim asks again in a while.
+                // Not the move without its body (Kumpo sits in it): Skyrim asks again in a while. With no
+                // Satsuma in MSC at all, the parts still come over.
                 log("garage: the move not done, the body isn't on its stand");
                 Answer(link, GarageMessages.Done(r, false, false, 0, 0, 0, 0));
                 return;
@@ -510,7 +512,10 @@ namespace PerkeleRim.Game
                         if (playing && t.position.y > LostBelow) fresh.Add(body);
                         continue;
                     }
-                    kept[body] = new Kept { Body = body, Stale = !laidOut && !fresh.Contains(body) };
+                    var added = new Kept { Body = body, Stale = !laidOut && !fresh.Contains(body) };
+                    // Ours held when Kumpo took it: if it's still kinematic, it's let go on its ground.
+                    if (heldWhenTaken.Remove(body) && body.isKinematic) added.Held = true;
+                    kept[body] = added;
                 }
             }
             var gone = new List<Rigidbody>();
@@ -526,7 +531,15 @@ namespace PerkeleRim.Game
                 // In Kumpo's hands, or on the car: not ours until it lies loose again.
                 if ((p != null && t.IsChildOf(p)) || (car != null && t.IsChildOf(car)) || (t.root.name != "CARPARTS" && !IsSpannerSet(t)))
                 {
-                    k.Held = false;  // MSC's hand (or the car) sets isKinematic itself now: left to it
+                    bool mscHas = (p != null && t.IsChildOf(p)) || (car != null && t.IsChildOf(car));
+                    if (k.Held)
+                    {
+                        // MSC's hand (or the car) sets isKinematic itself now: left to it, and let go on the
+                        // part's next ground if it comes back still kinematic. Under another root: let go now.
+                        if (mscHas) heldWhenTaken.Add(body);
+                        else body.isKinematic = false;
+                        k.Held = false;
+                    }
                     if (playing) fresh.Add(body);
                     gone.Add(body);
                     continue;

@@ -992,7 +992,7 @@ namespace PerkeleRim::Protocol
     struct GarageDone
     {
         std::uint32_t generation;  // as asked
-        std::uint32_t request;     // as asked; 0 = it couldn't (no ground at the bay in time)
+        std::uint32_t request;     // as asked; 0 = it couldn't (no ground at the bay in time, a new anchor, or the move with Kumpo in the body)
         std::uint32_t body;        // 1: the Satsuma's body is on its stand (moved, or found there)
         std::uint32_t slotted;     // Satsuma parts on their slots (put there, or kBayCheck: lying there)
         std::uint32_t floor;       // parts laid on the bay's floor or its pile (no slot of their own free, or not the Satsuma's)
