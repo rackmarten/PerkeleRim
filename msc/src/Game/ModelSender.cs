@@ -134,6 +134,20 @@ namespace PerkeleRim.Game
         // ModelData last).
         public uint IdForRead(string key, Func<IEnumerable> steps) => Queue("built:" + key, steps, null, key);
 
+        // Whether a model id handed out earlier must be asked for again to reach Skyrim: not sent this
+        // link session, not waiting or being read, and not waiting out a failed read's backoff (the link
+        // came back up, "models again", or its read failed). A caller that asks only now and then
+        // (SatsumaParts) keeps its models going out with this.
+        public bool NeedsAsking(uint id)
+        {
+            if (id == 0 || sent.Contains(id) || queued.Contains(id)) return false;
+            Failure f;
+            return !failed.TryGetValue(id, out f) || frameClock.Elapsed.TotalMilliseconds - f.At >= f.WaitMs;
+        }
+
+        // Counts up each time every id is given out anew ("models again cold"): the same look gets a new id.
+        public int IdEpoch { get; private set; }
+
         uint Queue(string key, Func<IEnumerable> steps, Func<bool> gone, string what)
         {
             uint id;
@@ -167,6 +181,7 @@ namespace PerkeleRim.Game
             log($"model: every model goes out again{(cold ? ", read anew under new ids" : "")}");
             if (cold)
             {
+                IdEpoch++;
                 ids.Clear();
                 textures.Clear();
                 shared.Clear();
