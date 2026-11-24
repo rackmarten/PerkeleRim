@@ -324,6 +324,11 @@ namespace PerkeleRim.Game
                 total += on;
                 log($"satsuma: full, pass {pass}: {on} of {tried} parts put on");
                 if (on == 0) break;
+                // Parts that need what they hang on bolted (struts, wishbones, the steering: their FSM's
+                // Requirements and Check bolts) go on in the next pass once every bolt is tight: MSC's own
+                // global TIGHTEN, which every bolt's Screw FSM takes (a test session's MSC is never saved).
+                PlayMakerFSM.BroadcastEvent("TIGHTEN");
+                for (int i = 0; i < 10; i++) yield return null;
             }
             nextScan = 0f;
             for (int i = 0; i < 5; i++) yield return null;
@@ -356,7 +361,15 @@ namespace PerkeleRim.Game
             if (state != null && SaveSync.SwitchState != null) SaveSync.SwitchState.Invoke(fsm.Fsm, new object[] { state });
             yield return null;
             if (fsm != null) fsm.SendEvent("ASSEMBLE");
-            for (int i = 0; i < 10; i++) yield return null;
+            // Until it left the hand or its FSM is back to waiting for a part: some go through Wait states
+            // (the bootlid, the rear seat and panels) for longer than a few frames. 3 s at most.
+            float until = Time.realtimeSinceStartup + 3f;
+            for (int i = 0; ; i++)
+            {
+                yield return null;
+                if (part == null || !part.IsChildOf(pivot) || fsm == null) break;
+                if (i >= 10 && (fsm.ActiveStateName == "Check for Part collision" || Time.realtimeSinceStartup >= until)) break;
+            }
             went[0] = part == null || !part.IsChildOf(pivot);
             if (!went[0])
             {
