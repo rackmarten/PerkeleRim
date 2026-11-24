@@ -25,7 +25,7 @@ namespace PerkeleRim.Game
         const int KeysPerFrame = 4;   // while parts haven't been asked yet
         const int RekeysPerFrame = 1; // once they all were: each in turn, for a changed look
         const float RekeyEvery = 10f; // seconds between a part's asks, times the looks it had
-        const int MaxLooks = 4;       // a part's models in a session at most
+        const int MaxLooks = 4;       // a part object's models at most (rekeys stop there)
 
         readonly Action<string> log;
         readonly List<Transform> parts = new List<Transform>();  // on the car, in hierarchy order
@@ -43,6 +43,7 @@ namespace PerkeleRim.Game
         }
         readonly Dictionary<Transform, Looks> looks = new Dictionary<Transform, Looks>();
         Transform lastPlayer;
+        int idEpoch;
         List<AttachedParts.Entry> entries = new List<AttachedParts.Entry>();
         List<AttachedParts.Entry> lastEntries = new List<AttachedParts.Entry>();
         Transform car;
@@ -115,7 +116,7 @@ namespace PerkeleRim.Game
                 {
                     models.Remove(t);
                     includes.Remove(t);
-                    looks.Remove(t);
+                    if (t == null) looks.Remove(t);  // a part off for a while keeps its looks: the cap is per part
                 }
             }
             AskModels(sender);
@@ -167,11 +168,19 @@ namespace PerkeleRim.Game
         // A few content keys a frame: parts without a model first, then each in turn.
         void AskModels(ModelSender sender)
         {
+            if (sender.IdEpoch != idEpoch)  // every id given out anew: the same looks, other ids
+            {
+                idEpoch = sender.IdEpoch;
+                looks.Clear();
+            }
             int asked = 0;
             foreach (var t in parts)
             {
                 if (asked == KeysPerFrame) return;
-                if (t == null || models.ContainsKey(t)) continue;
+                uint model;
+                // Never asked, or its model has to go out again (the link came back, its read failed):
+                // whatever its looks, frozen or not.
+                if (t == null || (models.TryGetValue(t, out model) && !sender.NeedsAsking(model))) continue;
                 Ask(sender, t);
                 asked++;
             }
@@ -203,7 +212,7 @@ namespace PerkeleRim.Game
             models[part] = id;
             Looks l;
             if (!looks.TryGetValue(part, out l)) looks[part] = l = new Looks { Count = 1 };
-            if (had && id != before)
+            if (had && id != before && before != 0 && id != 0)  // nothing to draw for a moment isn't a look
             {
                 l.Count++;
                 log(l.Count >= MaxLooks
