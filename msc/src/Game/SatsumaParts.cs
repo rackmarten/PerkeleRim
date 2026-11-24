@@ -116,8 +116,11 @@ namespace PerkeleRim.Game
                 {
                     models.Remove(t);
                     includes.Remove(t);
-                    if (t == null) looks.Remove(t);  // a part off for a while keeps its looks: the cap is per part
                 }
+                // A part off for a while keeps its looks (the cap is per part object); a destroyed one goes.
+                var dead = new List<Transform>();
+                foreach (var t in looks.Keys) if (t == null) dead.Add(t);
+                foreach (var t in dead) looks.Remove(t);
             }
             AskModels(sender);
             entries.Clear();
@@ -128,7 +131,7 @@ namespace PerkeleRim.Game
                 if (t == null || !t.IsChildOf(car)) continue;
                 uint model;
                 bool asked = models.TryGetValue(t, out model);
-                if (asked && model == 0) continue;  // nothing of its own to draw
+                if (asked && (model == 0 || sender.Dropped(model))) continue;  // nothing of its own to draw (or its read found nothing), asked again in turn
                 var c = ModelSender.RelativeTo(car, t).GetColumn(3);
                 var p = Coords.UnityToSkyrim(new Vec3(c.x, c.y, c.z));
                 var r = toCar * t.rotation;
@@ -168,10 +171,11 @@ namespace PerkeleRim.Game
         // A few content keys a frame: parts without a model first, then each in turn.
         void AskModels(ModelSender sender)
         {
-            if (sender.IdEpoch != idEpoch)  // every id given out anew: the same looks, other ids
+            if (sender.IdEpoch != idEpoch)  // every id given out anew: the same looks, other ids, asked afresh
             {
                 idEpoch = sender.IdEpoch;
                 looks.Clear();
+                models.Clear();
             }
             int asked = 0;
             foreach (var t in parts)
