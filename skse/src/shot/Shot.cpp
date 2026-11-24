@@ -105,4 +105,22 @@ namespace PerkeleRim::Shot
             SKSE::log::warn("shot: MSC's view not asked for (not linked, or the path is too long)");
         }
     }
+
+    std::filesystem::path AskMsc(std::string_view a_name)
+    {
+        const auto      folder = Folder();
+        std::error_code error;
+        if (folder.empty() || (std::filesystem::create_directories(folder, error), error)) {
+            return {};
+        }
+        const auto msc = folder / (std::string(a_name) + "_msc.png");
+        std::filesystem::remove(msc, error);
+        auto&      link = LinkService::Get();
+        const auto payload = Screenshot::Encode(Utf8(msc));
+        if (!payload || !link.IsUp() || !link.Send(Protocol::MessageType::ScreenshotEvent, payload->data(), static_cast<std::uint32_t>(payload->size()))) {
+            return {};
+        }
+        SKSE::log::info("shot: {} asked of MSC in {}", Utf8(msc.filename()), Utf8(folder));
+        return msc;
+    }
 }

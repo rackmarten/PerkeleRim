@@ -10,6 +10,7 @@
 #include "model/ModelView.h"
 #include "parts/PartTable.h"
 #include "player/PlayerSync.h"
+#include "shot/Shot.h"
 #include "shout.h"
 #include "teimo/Teimo.h"
 #include "vehicle/Hitbox.h"
@@ -430,6 +431,30 @@ namespace PerkeleRim::TestKit
                         }
                         PlayerSync::DebugHold(code, false);
                         return JsonObject{ { "key", static_cast<int>(code) }, { "held", a_call.Seconds() } };
+                    };
+                });
+
+            SkseTestKit::AddTask("pr.mscshot", "<name>",
+                "My Summer Car's own view as a PNG, <name>_msc.png in the folder F11 saves to (Documents/My Games/PerkeleRim/Screenshots "
+                "or the ini's ScreenshotDir), while MSC has the player; answers with its path once MSC has saved it",
+                [](Call& a_call) -> Step {
+                    RequireMsc();
+                    const auto name = a_call.Text("name");
+                    if (name.empty() || name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") != std::string::npos) {
+                        throw Error("name is letters, digits, '.', '_' and '-'");
+                    }
+                    const auto path = Shot::AskMsc(name);
+                    if (path.empty()) {
+                        throw Error("MSC's view couldn't be asked for (not linked, or no screenshot folder)");
+                    }
+                    a_call.DefaultTimeout(15.0);
+                    return [path](Call&) -> std::optional<Json> {
+                        std::error_code error;
+                        if (!std::filesystem::exists(path, error) || std::filesystem::file_size(path, error) == 0 || error) {
+                            return std::nullopt;
+                        }
+                        const auto text = path.u8string();
+                        return JsonObject{ { "path", std::string(reinterpret_cast<const char*>(text.data()), text.size()) } };
                     };
                 });
 

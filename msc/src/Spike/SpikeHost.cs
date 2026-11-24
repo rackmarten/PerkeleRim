@@ -43,8 +43,10 @@ namespace PerkeleRim.Spike
     //   aim <words>          stand at the nearest control surface ("Use" FSM) with those words in its path, looking
     //                        at it (aim doorl Handle); a second later, what the crosshair is on and MSC's prompt.
     //                        aim up: looks at the sky, where nothing has a prompt; aim stop: lets go of the look
+    //   wrench <words>       MSC's wrench size set to the nearest bolt's with those words in its path (wrench door left(Clone))
     //   look <words>         like aim, at any enabled collider with those words in its path (a trigger too):
-    //                        look trigger_door_left (a part's place on the car), look door left(Clone) BoltPM
+    //                        look trigger_door_left (a part's place on the car), look door left(Clone) BoltPM #2
+    //                        (#n: the n-th nearest)
     //   textures <name>      read an object's model (GameObject.Find) without sending it and log it
     //   shot                 MSC's view to <MSC>/PerkeleRim_shot.png, the way F11 saves it (ViewShot)
     //   override on|off      InputShim on/off with nothing pressed (on: the link no longer feeds it)
@@ -229,6 +231,38 @@ namespace PerkeleRim.Spike
             StartCoroutine(AimAt(best, player.transform));
         }
 
+        // "wrench <words>": the size MSC's tools have (global ToolWrenchSize, and SelectItem's OldWrench, which the tools
+        // take out again) set to the nearest bolt's whose path has every word: its x scale, as MSC's 2Spanner/Pick sets it
+        // from a spanner taken out of the spanner set (docs/FSM_MAP.md, "Building the Satsuma"). A scenario's shortcut for
+        // walking to the set and picking the right spanner.
+        void Wrench(string text)
+        {
+            var player = GameObject.Find("PLAYER");
+            var size = HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmFloat("ToolWrenchSize");
+            if (player == null || size == null || text.Length == 0) { SpikeLog.Write("cmd: wrench <words in a part's path>, in game"); return; }
+            var words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            Transform best = null;
+            float bestDistance = float.MaxValue;
+            foreach (var fsm in Resources.FindObjectsOfTypeAll(typeof(PlayMakerFSM)))
+            {
+                var f = (PlayMakerFSM)fsm;
+                if (f.FsmName != "Screw" || f.name != "BoltPM" || f.gameObject.hideFlags != HideFlags.None) continue;
+                var path = FullPath(f.transform);
+                bool all = true;
+                foreach (var w in words) all &= path.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!all) continue;
+                float d = Vector3.Distance(player.transform.position, f.transform.position);
+                if (d < bestDistance) { best = f.transform; bestDistance = d; }
+            }
+            if (best == null) { SpikeLog.Write($"cmd: wrench: no bolt with '{text}' in its path"); return; }
+            size.Value = best.localScale.x;
+            var select = player.transform.Find("Pivot/AnimPivot/Camera/FPSCamera/SelectItem");
+            if (select != null)
+                foreach (var f in select.GetComponents<PlayMakerFSM>())
+                    if (f.FsmName == "Selection" && f.FsmVariables.FindFsmFloat("OldWrench") != null) f.FsmVariables.FindFsmFloat("OldWrench").Value = size.Value;
+            SpikeLog.Write($"cmd: wrench: ToolWrenchSize {size.Value:0.###} from {FullPath(best)} ({bestDistance:0.0} m)");
+        }
+
         // "look <words>": like aim, at the nearest enabled collider of any kind (a trigger too: a part's place on the
         // car, trigger_door_left) whose path has every word (look door left(Clone) BoltPM: one of the door's bolts).
         void Look(string text)
@@ -236,9 +270,12 @@ namespace PerkeleRim.Spike
             var player = GameObject.Find("PLAYER");
             if (player == null || text.Length == 0) { SpikeLog.Write("cmd: look <words in an object's path>, in game"); return; }
             aims++;
-            var words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            Collider best = null;
-            float bestDistance = AimReach;
+            var words = new List<string>(text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+            int nth = 1;  // "#3": the third nearest (a part's bolts all have one name)
+            if (words.Count > 1 && words[words.Count - 1].StartsWith("#") && int.TryParse(words[words.Count - 1].Substring(1), out nth))
+                words.RemoveAt(words.Count - 1);
+            nth = Math.Max(1, nth);
+            var found = new List<KeyValuePair<float, Collider>>();
             foreach (var c in FindObjectsOfType<Collider>())
             {
                 if (!c.enabled || c.transform.IsChildOf(player.transform)) continue;
@@ -247,10 +284,12 @@ namespace PerkeleRim.Spike
                 foreach (var w in words) all &= path.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0;
                 if (!all) continue;
                 float d = Vector3.Distance(player.transform.position, c.bounds.center);
-                if (d < bestDistance) { best = c; bestDistance = d; }
+                if (d < AimReach) found.Add(new KeyValuePair<float, Collider>(d, c));
             }
-            if (best == null) { SpikeLog.Write($"cmd: look: nothing within {AimReach} m with '{text}' in its path"); return; }
-            SpikeLog.Write($"cmd: look: {FullPath(best.transform)} {bestDistance:0.0} m");
+            found.Sort((x, y) => x.Key.CompareTo(y.Key));
+            if (found.Count < nth) { SpikeLog.Write($"cmd: look: {found.Count} within {AimReach} m with '{string.Join(" ", words.ToArray())}' in its path, no #{nth}"); return; }
+            var best = found[nth - 1].Value;
+            SpikeLog.Write($"cmd: look: {FullPath(best.transform)} {found[nth - 1].Key:0.0} m, #{nth} of {found.Count}");
             StartCoroutine(AimAt(best, null, player.transform));
         }
 
@@ -744,6 +783,9 @@ namespace PerkeleRim.Spike
                         break;
                     case "aim":  // "aim HAYOSIKO door": the player in front of the nearest control surface ("Use" FSM) whose path has those words, looking at it
                         Aim(lines[0].Trim().Substring(3).Trim());
+                        break;
+                    case "wrench":  // "wrench door left(Clone)": MSC's wrench the size of that part's nearest bolt, as if picked from the spanner set
+                        Wrench(lines[0].Trim().Substring(6).Trim());
                         break;
                     case "look":  // "look trigger_door_left": the player at the nearest collider with those words in its path, looking at it
                         Look(lines[0].Trim().Substring(4).Trim());
