@@ -54,6 +54,10 @@ namespace PerkeleRim
         public const float BodyX = 30f, BodyY = 10f;  // the body's middle; nose toward +X (out of the front)
         public const float BodyHalfLength = 130f, BodyHalfWidth = 56f;
 
+        // MSC's spanner set (ITEMS/spanner set(itemx)) on the floor by the body's nose: MSC takes a
+        // wrench's size from it while it lies open, so bolting the Satsuma needs it at hand.
+        public const float ToolX = 230f, ToolY = -60f;
+
         // The garage board: an activator (Skyrim's war map, CivilWarMap01: 136 x 100, flat)
         // lying on a low table (CommonShelf04: 134 x 54, 63 tall) in the near back corner, long side
         // along X.

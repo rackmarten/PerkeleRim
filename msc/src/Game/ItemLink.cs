@@ -174,7 +174,7 @@ namespace PerkeleRim.Game
             foreach (var t in items)
             {
                 if (t == null || t.IsChildOf(player) || (t.position + delta - feet).sqrMagnitude > keep) continue;
-                if (t.root.name == "CARPARTS") continue;  // the Satsuma's parts keep their place in Skyrim themselves (GarageMover)
+                if (t.root.name == "CARPARTS" || GarageMover.IsSpannerSet(t)) continue;  // the Satsuma's parts and the spanner set keep their place in Skyrim themselves (GarageMover)
                 t.position += delta;
                 var body = t.GetComponent<Rigidbody>();
                 if (body != null)
