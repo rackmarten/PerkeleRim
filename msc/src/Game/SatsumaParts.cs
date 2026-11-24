@@ -43,6 +43,7 @@ namespace PerkeleRim.Game
         }
         readonly Dictionary<Transform, Looks> looks = new Dictionary<Transform, Looks>();
         Transform lastPlayer;
+        int building;  // spike commands putting parts on or taking them off right now (PartSetBuilding)
         int idEpoch;
         List<AttachedParts.Entry> entries = new List<AttachedParts.Entry>();
         List<AttachedParts.Entry> lastEntries = new List<AttachedParts.Entry>();
@@ -142,6 +143,7 @@ namespace PerkeleRim.Game
                 });
             }
             int left = AttachedParts.Encode(entries, Wire.VehicleSatsuma, generation, (uint)Time.frameCount, ref set);
+            if (building > 0) set.flags |= Wire.PartSetBuilding;
             link.WritePartSet(ref set);
             if (!AttachedParts.SameSet(entries, lastEntries))
             {
@@ -242,7 +244,20 @@ namespace PerkeleRim.Game
         // (ItemPivot), the FSM to its Find correct part state, then its ASSEMBLE event, one part a few
         // frames. MSC does the rest (its copy switched on or the part hung on its pivot, the loose one
         // gone). A part that didn't go on goes back where it lay.
-        public IEnumerator Assemble(string[] triggers)
+        public IEnumerator Assemble(string[] triggers) => Building(AssembleSteps(triggers));
+
+        // A spike command's steps with PartSetBuilding set meanwhile, however it ends.
+        IEnumerator Building(IEnumerator steps)
+        {
+            building++;
+            try
+            {
+                while (steps.MoveNext()) yield return steps.Current;
+            }
+            finally { building--; }
+        }
+
+        IEnumerator AssembleSteps(string[] triggers)
         {
             if (car == null) { log("satsuma: not found"); yield break; }
             var pivotVar = HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmGameObject("ItemPivot");
@@ -270,7 +285,9 @@ namespace PerkeleRim.Game
         // half", over and over until a pass puts nothing on (a part's own triggers, the cylinder head's on
         // the block, only show once it is on): the triggers on the car and on the loose parts
         // (CARPARTS), so the engine is built on its block before the block goes in.
-        public IEnumerator AssembleAll()
+        public IEnumerator AssembleAll() => Building(AssembleAllSteps());
+
+        IEnumerator AssembleAllSteps()
         {
             if (car == null) { log("satsuma: not found"); yield break; }
             var pivotVar = HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmGameObject("ItemPivot");
@@ -301,8 +318,9 @@ namespace PerkeleRim.Game
             }
             nextScan = 0f;
             for (int i = 0; i < 5; i++) yield return null;
-            Scan(null);
-            log($"satsuma: full: {total} parts put on, {parts.Count} on the car");
+            var onCar = new List<Transform>();
+            if (car != null) Find(onCar, lastPlayer);
+            log($"satsuma: full: {total} parts put on, {onCar.Count} on the car");
         }
 
         // One part on through its trigger's Assembly FSM: the loose part (HandChild) into the hand, the
@@ -343,7 +361,9 @@ namespace PerkeleRim.Game
 
         // Spike command "satsuma bare": takes every part with a Removal FSM off as MSC's Remove part state
         // does (the copy switched off and the loose part back, or the part unhung), deepest first.
-        public IEnumerator Strip()
+        public IEnumerator Strip() => Building(StripSteps());
+
+        IEnumerator StripSteps()
         {
             if (car == null) { log("satsuma: not found"); yield break; }
             var on = new List<Transform>();  // its own list: the half-second scan refills parts meanwhile

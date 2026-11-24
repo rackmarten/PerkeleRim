@@ -244,6 +244,7 @@ namespace PerkeleRim::Protocol
     };
 
     inline constexpr std::uint32_t kPartSetCapacity = 256;  // PartSet.parts
+    inline constexpr std::uint32_t kPartSetBuilding = 0x1;  // PartSet.flags: MSC is putting parts on or taking them off (spike satsuma half, full, bare), the set isn't settled
 
     // One part attached to a vehicle built from parts (the Satsuma): drawn from a model of its own,
     // posed relative to the vehicle's body like a VehiclePart. kPartVisible while MSC draws it.
@@ -266,7 +267,8 @@ namespace PerkeleRim::Protocol
         std::uint32_t vehicle;      // kVehicle* id, 0 = none
         std::uint32_t generation;   // WorldspaceChange.generation
         std::uint32_t count;        // <= kPartSetCapacity
-        std::uint32_t reserved[4];
+        std::uint32_t flags;        // kPartSet* (v56)
+        std::uint32_t reserved[3];
         AttachedPart  parts[256];   // kPartSetCapacity
     };
 
@@ -1069,6 +1071,7 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(AttachedPart, translation) == 28);
     static_assert(sizeof(PartSet) == 10272);
     static_assert(offsetof(PartSet, count) == 12);
+    static_assert(offsetof(PartSet, flags) == 16);
     static_assert(offsetof(PartSet, parts) == 32);
     static_assert(sizeof(PartSetSlot) == 10304);
     static_assert(offsetof(PartSetSlot, value) == 8);

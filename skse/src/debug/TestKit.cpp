@@ -544,7 +544,10 @@ namespace PerkeleRim::TestKit
                             unread = unread || set->parts[i].model == 0;
                         }
                         // Every part's model read and arrived (a door is 20 MB of chunks), and nothing changed for 2 s.
-                        if (unread || VehicleView::PartsWaiting(Protocol::kVehicleSatsuma) > 0 || set->count != seen->attached || drawn != seen->drawn) {
+                        // MSC still putting parts on (kPartSetBuilding): a run of parts that don't go on, or the
+                        // engine built on its loose block, changes nothing on the car for a while.
+                        if (unread || (set->flags & Protocol::kPartSetBuilding) != 0 || VehicleView::PartsWaiting(Protocol::kVehicleSatsuma) > 0 ||
+                            set->count != seen->attached || drawn != seen->drawn) {
                             seen->attached = set->count;
                             seen->drawn = drawn;
                             seen->steadySince = a_call.Seconds();

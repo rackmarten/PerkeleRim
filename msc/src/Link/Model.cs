@@ -320,7 +320,8 @@ namespace PerkeleRim
     public sealed class SharedTextures
     {
         readonly Dictionary<string, uint> ids = new Dictionary<string, uint>();
-        readonly HashSet<uint> sent = new HashSet<uint>();
+        readonly HashSet<uint> sent = new HashSet<uint>();     // went out with a model this link session
+        readonly HashSet<uint> pending = new HashSet<uint>();  // inline in the model being encoded, not out yet
         readonly Func<uint> nextId;
 
         public SharedTextures(Func<uint> nextId) { this.nextId = nextId; }
@@ -349,20 +350,36 @@ namespace PerkeleRim
             return id;
         }
 
-        // Whether this texture goes inline now (the first model of this link session to have it), and
-        // takes note of it either way.
+        // Whether this texture goes inline now (no model of this link session took it out yet), and
+        // takes note of it either way. It counts as sent only once its model goes out (Commit).
         public bool Inline(uint id, long bytes)
         {
-            if (sent.Add(id)) return true;
+            if (!sent.Contains(id))
+            {
+                pending.Add(id);
+                return true;
+            }
             BytesSaved += bytes;
             return false;
         }
+
+        // The model just encoded goes out (ModelSender queues it): its inline textures are Skyrim's now.
+        public void Commit()
+        {
+            sent.UnionWith(pending);
+            pending.Clear();
+        }
+
+        // The model being encoded never goes out (its encode threw, or was given up): nothing it had
+        // inline counts as sent, so the next model with those textures carries their pixels.
+        public void Discard() => pending.Clear();
 
         void Remember(string key, int width, int height) => sizes[key] = new[] { width, height };
 
         public void Forget()
         {
             sent.Clear();
+            pending.Clear();
             BytesSaved = 0;
         }
 
@@ -410,10 +427,12 @@ namespace PerkeleRim
             }
         }
 
+        // In one go, the model counted as gone out right away (shared.Commit): for tests and tools.
         public byte[] Encode(SharedTextures shared = null)
         {
             EncodedModel encoded = null;
             foreach (var step in EncodeSteps(shared)) if (step != null) encoded = step;
+            if (shared != null) shared.Commit();
             return encoded.ToArray();
         }
 
@@ -421,7 +440,9 @@ namespace PerkeleRim
         public long EncodedSize()
         {
             long size = Wire.ModelNameMax + 5 * 4;
-            foreach (var t in Textures) size += 16 + (t.Rgba != null ? t.Rgba.LongLength : 0);  // by id: no pixels
+            // A placeholder (by id) has no pixels; a read texture that goes by id after all counts here and
+            // is taken off while encoding, so this is an upper bound for ModelSizeMax.
+            foreach (var t in Textures) size += 16 + (t.Rgba != null ? t.Rgba.LongLength : 0);
             size += Materials.Count * 40L;
             size += Nodes.Count * (Wire.ModelNodeNameMax + 4 + 7 * 4L);
             size += Lights.Count * 40L;
@@ -434,7 +455,26 @@ namespace PerkeleRim
         // each, the encoded model last. Never one array: a texture's pixels go in as they are, the
         // rest in pieces (EncodedModel), so a vehicle's 50 MB and more is never copied whole. With
         // shared, a texture with a key that an earlier model of this link session sent goes by its id.
+        // The caller commits the shared textures once the model goes out; an encode that throws or is
+        // given up (disposed) discards what it had inline.
         public IEnumerable<EncodedModel> EncodeSteps(SharedTextures shared = null)
+        {
+            bool done = false;
+            try
+            {
+                foreach (var step in EncodeAll(shared))
+                {
+                    if (step != null) done = true;
+                    yield return step;
+                }
+            }
+            finally
+            {
+                if (!done && shared != null) shared.Discard();
+            }
+        }
+
+        IEnumerable<EncodedModel> EncodeAll(SharedTextures shared)
         {
             long size = EncodedSize();
             if (size > Wire.ModelSizeMax) throw new ArgumentException($"{Name}: {size} bytes, at most {Wire.ModelSizeMax}");

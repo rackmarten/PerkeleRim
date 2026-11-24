@@ -348,7 +348,8 @@ namespace PerkeleRim.Game
                 if (step != null) blob = step;
                 yield return "encoding " + model.Name;
             }
-            if (job.Session != session) yield break;  // the link went down meanwhile
+            if (job.Session != session) yield break;  // the link went down meanwhile (Forget cleared the shared textures)
+            shared.Commit();  // this model goes out: its inline textures are Skyrim's from now on
             outgoing.Enqueue(new ChunkCursor(blob, job.Id));
             lastWork = frameClock.Elapsed.TotalMilliseconds;
             outgoingBytes += blob.Length;
@@ -698,7 +699,9 @@ namespace PerkeleRim.Game
             bool standard = shader.StartsWith("Standard");
             var tint = Color(material, "_Color") ?? new[] { 1f, 1f, 1f, 1f };
             float metallic = standard && metalTexture == null ? (Float(material, "_Metallic") ?? 0f) : 0f;
-            string bakeKey = (mainTexture != null ? mainTexture.GetInstanceID() : 0) + "/" + (standard && metalTexture != null ? metalTexture.GetInstanceID() : 0) + "/" +
+            // The metal map is in the key whenever there is one (its averages go into the material even
+            // when the shader doesn't bake it), so a model naming the texture by id has its averages.
+            string bakeKey = (mainTexture != null ? mainTexture.GetInstanceID() : 0) + "/" + (metalTexture != null ? metalTexture.GetInstanceID() : 0) + "/" +
                 Mathf.Round(metallic * 1000f) + "/" + string.Join(",", Array.ConvertAll(tint, c => Mathf.Round(c * 1000f).ToString()));
             // Shared with other models (v56) only when made of textures that can't change (ReadTexture).
             bool canShare = (mainTexture == null || stable.Contains(mainTexture.GetInstanceID())) &&
@@ -786,8 +789,10 @@ namespace PerkeleRim.Game
             {
                 bool direct;
                 data = Pixels(texture, log, out direct);
-                // Only what can't change: MSC may draw into a RenderTexture or write a texture it can read.
-                if (!direct && !(texture is RenderTexture))
+                // Only what can't change: MSC may draw into a RenderTexture or write a texture it can
+                // read, so only a texture with no CPU copy at all (GetPixels32 refused it) is kept, and
+                // shared with other models by id (stable).
+                if (!direct && !(texture is RenderTexture) && !Readable(texture as Texture2D))
                 {
                     textures.Put(id, data, data.Rgba.LongLength);
                     stable.Add(id);
@@ -886,6 +891,19 @@ namespace PerkeleRim.Game
             log($"model: texture {texture.name} {(t2 != null ? t2.format.ToString() : texture.GetType().Name)} {texture.width}x{texture.height} -> " +
                 $"{data.Width}x{data.Height} average {Average(data.Rgba)}");
             return data;
+        }
+
+        // Whether a texture has a CPU copy MSC could write (a big one Direct skips, one reading back as
+        // the debug fill): not a Texture2D, or one that refuses GetPixel, has none.
+        static bool Readable(Texture2D texture)
+        {
+            if (texture == null) return false;
+            try
+            {
+                texture.GetPixel(0, 0);
+                return true;
+            }
+            catch (Exception) { return false; }
         }
 
         static ModelTextureData Direct(Texture2D texture)

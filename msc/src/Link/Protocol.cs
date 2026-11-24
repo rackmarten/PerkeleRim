@@ -68,6 +68,7 @@ namespace PerkeleRim.Protocol
         public const uint VehiclePartCapacity = 256;
         public const uint PartVisible = 0x1;
         public const uint PartSetCapacity = 256;
+        public const uint PartSetBuilding = 0x1;
         public const uint ItemCapacity = 128;
         public const uint ItemVisible = 0x1;
         public const uint ItemHeld = 0x2;
@@ -371,7 +372,8 @@ namespace PerkeleRim.Protocol
         public uint vehicle;
         public uint generation;
         public uint count;
-        public fixed uint reserved[4];
+        public uint flags;
+        public fixed uint reserved[3];
         public fixed byte parts[10240];
 
         public AttachedPart Get(int i)

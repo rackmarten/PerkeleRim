@@ -131,5 +131,41 @@ namespace PerkeleRim.Tests
             int w, h;
             Assert.That(shared.Sent("paint", out w, out h), Is.False, "the next model reads it and sends it again");
         }
+        [Test]
+        public void AModelThatNeverGoesOutDoesntCountItsTexturesAsSent()
+        {
+            var shared = Shared();
+            var broken = Part("door", "paint");
+            broken.Meshes[0].Material = 5;  // no such material: its encode throws after the textures
+            Assert.Throws<System.ArgumentException>(() => broken.Encode(shared));
+            int w, h;
+            Assert.That(shared.Sent("paint", out w, out h), Is.False);
+            var next = Part("fender", "paint").Encode(shared);
+            Assert.That(Format(next), Is.EqualTo(Wire.ModelTextureRgba8), "the next model with it carries its pixels");
+        }
+
+        [Test]
+        public void ATextureCountsAsSentOnlyOnceItsModelGoesOut()
+        {
+            var shared = Shared();
+            EncodedModel encoded = null;
+            foreach (var step in Part("door", "paint").EncodeSteps(shared)) if (step != null) encoded = step;
+            Assert.That(encoded, Is.Not.Null);
+            int w, h;
+            Assert.That(shared.Sent("paint", out w, out h), Is.False, "encoded, not queued yet");
+            shared.Commit();
+            Assert.That(shared.Sent("paint", out w, out h), Is.True);
+        }
+
+        [Test]
+        public void AnEncodeGivenUpHalfwayDiscardsItsTextures()
+        {
+            var shared = Shared();
+            using (var steps = Part("door", "paint").EncodeSteps(shared).GetEnumerator())
+                steps.MoveNext();  // the texture is in, then the read is given up (the link went down)
+            shared.Commit();
+            int w, h;
+            Assert.That(shared.Sent("paint", out w, out h), Is.False);
+        }
     }
 }

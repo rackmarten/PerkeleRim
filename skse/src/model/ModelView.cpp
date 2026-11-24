@@ -459,8 +459,8 @@ namespace PerkeleRim::ModelView
                     continue;
                 }
                 auto* made = MakeTexture(texture, texture.id ? std::format("PerkeleRim\\T{:08X}", texture.id) : std::format("PerkeleRim\\{:08X}\\{}", a_id, i));
-                if (texture.id && made) {
-                    state.shared[texture.id] = made;  // a resend replaces it
+                if (texture.id) {
+                    state.shared[texture.id] = made;  // a resend replaces it; one that failed to build (null) draws untextured like here
                 }
                 cached->textures.push_back(made);
                 built++;
