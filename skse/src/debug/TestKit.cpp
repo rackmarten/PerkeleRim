@@ -221,14 +221,15 @@ namespace PerkeleRim::TestKit
             if (a_id == Protocol::kVehicleSatsuma) {
                 auto set = std::make_unique<Protocol::PartSet>();  // 10 KB, like the parts above
                 if (LinkService::Get().ReadPartSet(*set) && set->vehicle == a_id) {
-                    std::uint32_t pending = 0;
+                    std::uint32_t pending = 0, visible = 0;
                     for (std::uint32_t i = 0; i < set->count && i < Protocol::kPartSetCapacity; i++) {
                         pending += set->parts[i].model == 0 ? 1 : 0;
+                        visible += (set->parts[i].flags & Protocol::kPartVisible) != 0 ? 1 : 0;
                     }
                     out.Set("attached", static_cast<double>(set->count));
                     out.Set("unread", static_cast<double>(pending));
                     out.Set("waiting", static_cast<double>(VehicleView::PartsWaiting(a_id)));
-                    out.Set("allDrawn", pending == 0 && VehicleView::PartsDrawn(a_id) == set->count);
+                    out.Set("allDrawn", pending == 0 && VehicleView::PartsDrawn(a_id) == visible);  // every part MSC shows
                 }
                 out.Set("partsDrawn", static_cast<double>(VehicleView::PartsDrawn(a_id)));
             }

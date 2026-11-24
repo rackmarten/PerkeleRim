@@ -49,6 +49,7 @@ namespace PerkeleRim.Game
         readonly Dictionary<string, uint> ids = new Dictionary<string, uint>();  // model key -> id
         readonly HashSet<uint> sent = new HashSet<uint>();    // this link session
         readonly HashSet<uint> queued = new HashSet<uint>();  // waiting, being read or being sent
+        readonly HashSet<uint> dropped = new HashSet<uint>(); // read this link session and came out with nothing (empty, or changed meanwhile)
         readonly Dictionary<uint, Failure> failed = new Dictionary<uint, Failure>();  // reads that threw
         readonly HashSet<int> changedLogged = new HashSet<int>();  // items whose read was given up, by instance id
 
@@ -129,6 +130,24 @@ namespace PerkeleRim.Game
         // ModelData last).
         public uint IdForRead(string key, Func<IEnumerable> steps) => Queue("built:" + key, steps, null, key);
 
+        // Whether a model id handed out earlier must be asked for again to reach Skyrim: not sent this
+        // link session, not waiting or being read, and not waiting out a failed read's backoff (the link
+        // came back up, "models again", or its read failed). A caller that asks only now and then
+        // (SatsumaParts) keeps its models going out with this.
+        public bool NeedsAsking(uint id)
+        {
+            if (id == 0 || sent.Contains(id) || queued.Contains(id) || dropped.Contains(id)) return false;
+            Failure f;
+            return !failed.TryGetValue(id, out f) || frameClock.Elapsed.TotalMilliseconds - f.At >= f.WaitMs;
+        }
+
+        // Whether a read under this id came out with nothing this link session (nothing it draws, or it
+        // changed while it was read): nothing to wait for; the caller asks again when it looks again.
+        public bool Dropped(uint id) => dropped.Contains(id);
+
+        // Counts up each time every id is given out anew ("models again cold"): the same look gets a new id.
+        public int IdEpoch { get; private set; }
+
         uint Queue(string key, Func<IEnumerable> steps, Func<bool> gone, string what)
         {
             uint id;
@@ -142,6 +161,7 @@ namespace PerkeleRim.Game
             if (!sent.Contains(id) && !queued.Contains(id))
             {
                 queued.Add(id);
+                dropped.Remove(id);  // read again: pending, not empty any more
                 jobs.Enqueue(new Job { Steps = steps, Gone = gone, What = what, Id = id, Session = session });
             }
             return id;
@@ -162,6 +182,7 @@ namespace PerkeleRim.Game
             log($"model: every model goes out again{(cold ? ", read anew under new ids" : "")}");
             if (cold)
             {
+                IdEpoch++;
                 ids.Clear();
                 textures.Clear();
             }
@@ -226,6 +247,7 @@ namespace PerkeleRim.Game
         {
             session++;
             failed.Clear();  // a new link session tries every model again
+            dropped.Clear();
             sent.Clear();
             queued.Clear();
             jobs.Clear();
@@ -316,6 +338,7 @@ namespace PerkeleRim.Game
             if (model == null || model.Meshes.Count == 0)
             {
                 queued.Remove(job.Id);  // not there yet, or its renderers went off since the scan: asked again
+                dropped.Add(job.Id);
                 yield break;
             }
             EncodedModel blob = null;

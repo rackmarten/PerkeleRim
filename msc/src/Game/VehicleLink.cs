@@ -390,11 +390,11 @@ namespace PerkeleRim.Game
             log($"vehicle: the {driverName} waits to be called, put away for gen {island.Generation}");
         }
 
-        // The player calls the vehicle: it is parked in front of the player wherever it was (another
-        // worldspace, put away, far behind). Not while the player sits in it.
         // Called or not, whether Skyrim has it now (on the current island).
         public bool OnIsland => car != null && !away;
 
+        // The player calls the vehicle: it is parked in front of the player wherever it was (another
+        // worldspace, put away, far behind). Not while the player sits in it.
         public void Summon(Transform player, Vector3 feet)
         {
             if (car == null || player == null) return;
