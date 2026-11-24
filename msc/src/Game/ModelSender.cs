@@ -77,6 +77,10 @@ namespace PerkeleRim.Game
         readonly Stopwatch frameClock = Stopwatch.StartNew();
         readonly StepBudget budget;
         readonly SizedCache<int, ModelTextureData> textures = new SizedCache<int, ModelTextureData>(TextureCacheBytes);  // Texture instance id -> as read
+        // Textures several models share (v56): each goes to Skyrim once per link session, by id after.
+        readonly SharedTextures shared;
+        readonly HashSet<int> stable = new HashSet<int>();  // Texture instance ids that can't change (no CPU copy, not a RenderTexture)
+        readonly Dictionary<int, float[]> metalAverages = new Dictionary<int, float[]>();  // metal map instance id -> metallic, gloss
 
         // MSC's frames from the link coming up (or Again) until the models have gone out: what a
         // player feels of the reads (logged as "model: link-up: sent ...", "model: models again: ...").
@@ -96,6 +100,7 @@ namespace PerkeleRim.Game
             this.host = host;
             this.log = log;
             budget = new StepBudget(BudgetMs, () => frameClock.Elapsed.TotalMilliseconds);
+            shared = new SharedTextures(() => nextId++);
         }
 
         // Reads an object's model without sending it and logs what came out (spike command "textures").
@@ -185,6 +190,9 @@ namespace PerkeleRim.Game
                 IdEpoch++;
                 ids.Clear();
                 textures.Clear();
+                shared.Clear();
+                stable.Clear();
+                metalAverages.Clear();
             }
             if (wasUp) Watch(cold ? "models again cold" : "models again");
         }
@@ -246,6 +254,7 @@ namespace PerkeleRim.Game
         void Forget()
         {
             session++;
+            shared.Forget();  // Skyrim may come back without them: every texture inline again
             failed.Clear();  // a new link session tries every model again
             dropped.Clear();
             sent.Clear();
@@ -342,12 +351,13 @@ namespace PerkeleRim.Game
                 yield break;
             }
             EncodedModel blob = null;
-            foreach (var step in model.EncodeSteps())
+            foreach (var step in model.EncodeSteps(shared))
             {
                 if (step != null) blob = step;
                 yield return "encoding " + model.Name;
             }
-            if (job.Session != session) yield break;  // the link went down meanwhile
+            if (job.Session != session) yield break;  // the link went down meanwhile (Forget cleared the shared textures)
+            shared.Commit();  // this model goes out: its inline textures are Skyrim's from now on
             outgoing.Enqueue(new ChunkCursor(blob, job.Id));
             lastWork = frameClock.Elapsed.TotalMilliseconds;
             outgoingBytes += blob.Length;
@@ -412,7 +422,7 @@ namespace PerkeleRim.Game
         {
             log($"model: {watchWhat}: sent {watchModels} models, {watchChunks} chunks, {watchBytes} bytes in {(now - watchStart - (done ? IdleMs : 0)) / 1000:0.0} s" +
                 $"{(done ? "" : " (cut short)")}: {watch.Summary()}; reading took {watchReadMs:0} ms, longest step {longestStepMs:0.0} ms ({longestStep}), " +
-                $"longest gap between chunks {longestGap:0} ms");
+                $"longest gap between chunks {longestGap:0} ms; {shared.Count} shared textures, {shared.BytesSaved >> 20} MB of them named by id instead of sent");
             watch = null;
         }
 
@@ -504,6 +514,7 @@ namespace PerkeleRim.Game
                 log($"model: {model.Name} has {model.Meshes.Count} meshes, {model.VertexCount} vertices, {model.Textures.Count} textures");
                 for (int i = 0; i < model.Textures.Count; i++)
                 {
+                    if (model.Textures[i].Rgba == null) continue;  // named by id: Skyrim has it, not read here
                     SavePng(model.Textures[i], $"PerkeleRim_texture_{i}.png");  // a PNG of a big texture takes a while: one a frame
                     yield return null;
                 }
@@ -692,49 +703,76 @@ namespace PerkeleRim.Game
 
             var mainTexture = look != null && look.Diffuse != null ? look.Diffuse(material) : material.mainTexture;
             var metalTexture = material.HasProperty("_MetallicGlossMap") ? material.GetTexture("_MetallicGlossMap") : null;
+            string shader = material.shader != null ? material.shader.name : "";
+            bool standard = shader.StartsWith("Standard");
+            var tint = Color(material, "_Color") ?? new[] { 1f, 1f, 1f, 1f };
+            float metallic = standard && metalTexture == null ? (Float(material, "_Metallic") ?? 0f) : 0f;
+            // The metal map is in the key whenever there is one (its averages go into the material even
+            // when the shader doesn't bake it), so a model naming the texture by id has its averages; and
+            // whether it is baked in (Standard shaders only), so the same textures and tint baked with
+            // and without it are two textures.
+            string bakeKey = (mainTexture != null ? mainTexture.GetInstanceID() : 0) + "/" + (metalTexture != null ? metalTexture.GetInstanceID() : 0) +
+                (standard ? "s" : "n") + "/" + Mathf.Round(metallic * 1000f) + "/" + string.Join(",", Array.ConvertAll(tint, c => Mathf.Round(c * 1000f).ToString()));
+            // Shared with other models (v56) only when made of textures that can't change (ReadTexture).
+            bool canShare = (mainTexture == null || stable.Contains(mainTexture.GetInstanceID())) &&
+                            (metalTexture == null || stable.Contains(metalTexture.GetInstanceID()));
+            int sentWidth = 0, sentHeight = 0;
+            float[] metalAverage = null;
+            bool known = canShare && shared.Sent(bakeKey, out sentWidth, out sentHeight) &&
+                         (metalTexture == null || metalAverages.TryGetValue(metalTexture.GetInstanceID(), out metalAverage));
             ModelTextureData main = null, metalMap = null;
-            if (mainTexture != null)
+            if (!known && !materials.Baked.ContainsKey(bakeKey))
             {
-                main = ReadTexture(materials.Pixels, mainTexture);
-                yield return "texture " + mainTexture.name;
+                if (mainTexture != null)
+                {
+                    main = ReadTexture(materials.Pixels, mainTexture);
+                    yield return "texture " + mainTexture.name;
+                }
+                if (metalTexture != null)
+                {
+                    metalMap = ReadTexture(materials.Pixels, metalTexture);
+                    metalAverage = new[] { Average(metalMap.Rgba, 0), Average(metalMap.Rgba, 3) };
+                    metalAverages[metalTexture.GetInstanceID()] = metalAverage;
+                    yield return "texture " + metalTexture.name;
+                }
+                // Stability is known once read: the first model with a texture never names it by id.
+                canShare = (mainTexture == null || stable.Contains(mainTexture.GetInstanceID())) &&
+                           (metalTexture == null || stable.Contains(metalTexture.GetInstanceID()));
             }
-            if (metalTexture != null)
-            {
-                metalMap = ReadTexture(materials.Pixels, metalTexture);
-                yield return "texture " + metalTexture.name;
-            }
+            else if (metalTexture != null && metalAverage == null) metalAverages.TryGetValue(metalTexture.GetInstanceID(), out metalAverage);
             if (material == null) yield break;  // destroyed meanwhile
             var unity = new ModelMaterialData.Unity
             {
-                Shader = material.shader != null ? material.shader.name : "",
+                Shader = shader,
                 RenderQueue = material.renderQueue,
                 Mode = Float(material, "_Mode"),
                 Cutoff = Float(material, "_Cutoff"),
-                Metallic = metalMap != null ? Average(metalMap.Rgba, 0) : Float(material, "_Metallic"),
-                Glossiness = metalMap != null ? Average(metalMap.Rgba, 3) : Float(material, "_Glossiness"),
+                Metallic = metalAverage != null ? metalAverage[0] : Float(material, "_Metallic"),
+                Glossiness = metalAverage != null ? metalAverage[1] : Float(material, "_Glossiness"),
                 SpecColor = Color(material, "_SpecColor"),
                 Shininess = Float(material, "_Shininess"),
                 Emission = Color(material, "_EmissionColor"),
             };
             var data = ModelMaterialData.FromUnity(unity);
             if (look != null && look.Adjust != null) data = look.Adjust(material, data);
-            bool standard = unity.Shader.StartsWith("Standard");
-            var tint = Color(material, "_Color") ?? new[] { 1f, 1f, 1f, 1f };
             var bakeMetal = standard ? metalMap : null;
-            float metallic = standard && metalMap == null ? (unity.Metallic ?? 0f) : 0f;
-            string bakeKey = (mainTexture != null ? mainTexture.GetInstanceID() : 0) + "/" + (bakeMetal != null ? metalTexture.GetInstanceID() : 0) + "/" +
-                Mathf.Round(metallic * 1000f) + "/" + string.Join(",", Array.ConvertAll(tint, c => Mathf.Round(c * 1000f).ToString()));
             string materialName = material.name;
             int texture;
             ModelTextureData baked = null;
             if (materials.Baked.TryGetValue(bakeKey, out texture)) baked = model.Textures[texture];
             else
             {
-                int rows = Math.Max(1, BakePixelsPerStep / Math.Max(1, main != null ? main.Width : 1));
-                foreach (var step in ModelTextureData.BakeSteps(main, tint, bakeMetal, metallic, rows))
+                if (known)  // Skyrim has it from an earlier model of this link session: named by id, nothing read or baked
+                    baked = new ModelTextureData { Width = sentWidth, Height = sentHeight, Key = bakeKey };
+                else
                 {
-                    if (step != null) baked = step;
-                    else yield return "baking " + materialName;
+                    int rows = Math.Max(1, BakePixelsPerStep / Math.Max(1, main != null ? main.Width : 1));
+                    foreach (var step in ModelTextureData.BakeSteps(main, tint, bakeMetal, metallic, rows))
+                    {
+                        if (step != null) baked = step;
+                        else yield return "baking " + materialName;
+                    }
+                    if (canShare) baked.Key = bakeKey;
                 }
                 texture = model.Textures.Count;
                 model.Textures.Add(baked);
@@ -747,7 +785,7 @@ namespace PerkeleRim.Game
             materials.Index[key] = index;
             log($"model: material {materialName} shader \"{unity.Shader}\" queue {unity.RenderQueue} flags {data.Flags} cutoff {data.AlphaCutoff:0.##} " +
                 $"tint ({tint[0]:0.##},{tint[1]:0.##},{tint[2]:0.##},{tint[3]:0.##}) metal {unity.Metallic:0.##} gloss {data.Glossiness:0.##} " +
-                $"specular {data.Specular[0]:0.##} -> average {Average(baked.Rgba)}");
+                $"specular {data.Specular[0]:0.##} -> {(baked.Rgba != null ? "average " + Average(baked.Rgba) : "texture Skyrim has")}");
             yield return "material " + materialName;
         }
 
@@ -761,9 +799,17 @@ namespace PerkeleRim.Game
             {
                 bool direct;
                 data = Pixels(texture, log, out direct);
-                // Only what can't change: MSC may draw into a RenderTexture or write a texture it can read.
-                if (!direct && !(texture is RenderTexture)) textures.Put(id, data, data.Rgba.LongLength);
+                // Only what can't change: MSC may draw into a RenderTexture or write a texture it can
+                // read, so only a texture with no usable CPU copy (GetPixels32 refused it, or gave the
+                // debug fill: MSC's textures) is kept and shared with other models by id (stable). One too
+                // big for that read (a 4096 atlas) is probed for a copy the same way.
+                if (!direct && !(texture is RenderTexture) && !CpuCopy(texture))
+                {
+                    textures.Put(id, data, data.Rgba.LongLength);
+                    stable.Add(id);
+                }
             }
+            else stable.Add(id);
             pixels[id] = data;
             return data;
         }
@@ -856,6 +902,22 @@ namespace PerkeleRim.Game
             log($"model: texture {texture.name} {(t2 != null ? t2.format.ToString() : texture.GetType().Name)} {texture.width}x{texture.height} -> " +
                 $"{data.Width}x{data.Height} average {Average(data.Rgba)}");
             return data;
+        }
+
+        // Whether a texture Direct didn't read (too big for it) has a CPU copy MSC could write: a corner
+        // of it read back as anything but the debug fill. Smaller ones: Direct already found none.
+        static bool CpuCopy(Texture texture)
+        {
+            var t2 = texture as Texture2D;
+            if (t2 == null || (t2.width <= Wire.ModelTextureSizeMax && t2.height <= Wire.ModelTextureSizeMax)) return false;
+            Color[] corner;
+            try { corner = t2.GetPixels(0, 0, 4, 4); }
+            catch (Exception) { return false; }  // not readable
+            const float fill = 0xCD / 255f;
+            foreach (var c in corner)
+                if (Mathf.Abs(c.r - fill) > 0.002f || Mathf.Abs(c.g - fill) > 0.002f || Mathf.Abs(c.b - fill) > 0.002f || Mathf.Abs(c.a - fill) > 0.002f)
+                    return true;
+            return false;
         }
 
         static ModelTextureData Direct(Texture2D texture)

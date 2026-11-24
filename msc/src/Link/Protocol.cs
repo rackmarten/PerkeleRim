@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 53;
+        public const uint ProtocolVersion = 56;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -68,6 +68,7 @@ namespace PerkeleRim.Protocol
         public const uint VehiclePartCapacity = 256;
         public const uint PartVisible = 0x1;
         public const uint PartSetCapacity = 256;
+        public const uint PartSetBuilding = 0x1;
         public const uint ItemCapacity = 128;
         public const uint ItemVisible = 0x1;
         public const uint ItemHeld = 0x2;
@@ -95,6 +96,7 @@ namespace PerkeleRim.Protocol
         public const uint LightWork = 7;
         public const uint LightBeacon = 8;
         public const uint ModelTextureRgba8 = 1;
+        public const uint ModelTextureShared = 2;
         public const uint ModelTextureSizeMax = 2048;
         public const uint ModelMeshVertexMax = 65535;
         public const uint DamageCrash = 1;
@@ -390,7 +392,8 @@ namespace PerkeleRim.Protocol
         public uint vehicle;
         public uint generation;
         public uint count;
-        public fixed uint reserved[4];
+        public uint flags;
+        public fixed uint reserved[3];
         public fixed byte parts[10240];
 
         public AttachedPart Get(int i)
@@ -895,7 +898,7 @@ namespace PerkeleRim.Protocol
         public uint width;
         public uint height;
         public uint format;
-        public uint reserved;
+        public uint id;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
