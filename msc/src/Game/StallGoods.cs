@@ -28,6 +28,8 @@ namespace PerkeleRim.Game
         const float Regrip = 1f;        // seconds a stolen good in the hand may take to let go and be taken again as the real item
         const float Reach = 1.5f;       // meters from the camera the real item may be to go back in the hand
         const float GiveUp = 3f;        // seconds a stolen good waits for MSC's spawner before it's gone with no bounty
+        const float SpawnRetry = 0.5f;  // seconds between its tries
+        const float PriceEvery = 30f;   // seconds at least between two readings of MSC's prices
 
         readonly Island island;
         readonly Func<Vector3, Vector3?> findGround;
@@ -45,6 +47,7 @@ namespace PerkeleRim.Game
             public Vector3 Home;     // where it was set out
             public bool Touched;     // Kumpo has had it in his hand: Teimo puts it back once he's away
             public float StolenAt;   // when it was carried off
+            public float NextTry;    // when MSC's spawner is tried again for it, after it made nothing
         }
 
         StallShop.Stall stall;
@@ -55,6 +58,7 @@ namespace PerkeleRim.Game
         bool[] noGroundLogged = new bool[0];
         float since;
         bool wasAway = true;
+        float pricesRead = -1e9f;
         readonly float[] prices = new float[StallShop.Products.Length];
         readonly string[] labels = new string[StallShop.Products.Length];
         readonly List<uint> pays = new List<uint>();
@@ -86,6 +90,7 @@ namespace PerkeleRim.Game
                 return;
             }
             Clear("a new stall");  // even for the same generation: a restarted Skyrim counts its anchors from 1 again
+            outbox.Clear();  // answers and thefts from before (a reload, a restarted Skyrim) don't reach the new one
             stall = got;
             anchor = island.Anchor;
             spots = new Live[got.Goods.Count];
@@ -118,7 +123,7 @@ namespace PerkeleRim.Game
             if (!playing) return;
             var kumpo = island.IslandToSkyrim(new Vec3(feet.x, feet.y, feet.z));
             bool away = StallShop.KumpoAway(kumpo, stall);
-            if (wasAway && !away) ReadPrices();  // a new visit: MSC's prices as they are now (its inflation)
+            if (wasAway && !away && Time.realtimeSinceStartup - pricesRead >= PriceEvery) ReadPrices();  // a new visit: MSC's prices as they are now (its inflation)
             wasAway = away;
             var hand = PocketLink.PickUp();
             var held = HeldObject(hand);
@@ -216,7 +221,13 @@ namespace PerkeleRim.Game
         bool SetOut(int i, Vector3 at, float board)
         {
             var good = stall.Goods[i];
-            if (!StallShop.Known(good.Product)) { log($"stall: spot {i} has an unknown product {good.Product}"); return false; }
+            if (!StallShop.Known(good.Product))
+            {
+                log($"stall: spot {i} has an unknown product {good.Product}, left empty");
+                filled[i] = true;
+                retryAt[i] = float.MaxValue;
+                return true;
+            }
             var prefab = Prefab(StallShop.Products[good.Product].Name);
             if (prefab == null) return false;
             var go = MakeLook(prefab, $"{StallShop.Products[good.Product].Name.ToLowerInvariant()}(Teimo's)");
@@ -347,6 +358,7 @@ namespace PerkeleRim.Game
                     }
                 }
             }
+            pricesRead = Time.realtimeSinceStartup;
             log($"stall: MSC's prices {string.Join(", ", found.ToArray())} ({found.Count} of {prices.Length} read from its shop)");
         }
 
@@ -492,11 +504,13 @@ namespace PerkeleRim.Game
                     continue;
                 }
                 if (live.WasInHand && waiting && hand != null && hand.ActiveStateName != "Look for object") continue;  // its drop's short wait
+                if (now < live.NextTry) continue;
                 string was = live.Go.name;
                 var real = MakeReal(live, false);
                 if (real == null)
                 {
-                    if (now - live.StolenAt < GiveUp) continue;  // the spawner again next frame
+                    live.NextTry = now + SpawnRetry;
+                    if (now - live.StolenAt < GiveUp) continue;  // the spawner again in a moment
                     log($"stall: {was} carried off, but MSC's spawner made none: gone, no bounty");
                     Destroy(live);
                     spots[i] = null;
