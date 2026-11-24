@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 51;
+    inline constexpr std::uint32_t kProtocolVersion = 52;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -428,6 +428,9 @@ namespace PerkeleRim::Protocol
         Blackout = 34,         // MSC -> Skyrim
         HeldDrink = 35,        // MSC -> Skyrim
         TeimoLine = 36,        // Skyrim -> MSC
+        TeimoStall = 37,       // Skyrim -> MSC
+        TeimoPay = 38,         // Skyrim -> MSC
+        TeimoShop = 39,        // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -854,6 +857,74 @@ namespace PerkeleRim::Protocol
         char          clip[kTeimoClipMax];  // UTF-8
     };
 
+    // Shopping at Teimo's stall (v52, protocol/cpp/teimo_shop.h, msc/src/Link/StallShop.cs): the
+    // stall's goods are MSC's own shop goods, set out on MSC's island where the stall stands. Kumpo
+    // carries them to the counter with MSC's hand, pays Teimo (E on him) in MSC's money, which is
+    // Skyrim's gold, and they become his MSC items; carried off unpaid, they're stolen.
+    inline constexpr std::uint32_t kShopBeer = 0;           // StallGood.product, a bit (1 << product) in TeimoShop.products
+    inline constexpr std::uint32_t kShopSausages = 1;
+    inline constexpr std::uint32_t kShopPizza = 2;
+    inline constexpr std::uint32_t kShopChips = 3;          // potato chips
+    inline constexpr std::uint32_t kShopMacaron = 4;        // a macaron box
+    inline constexpr std::uint32_t kShopJuice = 5;
+    inline constexpr std::uint32_t kShopMilk = 6;
+    inline constexpr std::uint32_t kShopCigarettes = 7;     // a pack
+    inline constexpr std::uint32_t kShopMotorOil = 8;
+    inline constexpr std::uint32_t kShopCoffee = 9;
+    inline constexpr std::uint32_t kShopMosquitoSpray = 10;
+    inline constexpr std::uint32_t kShopProducts = 11;
+    inline constexpr std::uint32_t kStallGoodsMax = 16;
+
+    struct StallGood
+    {
+        std::uint32_t product;      // kShop*
+        float         position[3];  // Skyrim world space, a little above what it stands on
+        float         heading;      // radians, clockwise from north: the way it faces
+    };
+
+    // TeimoStall: where the stall's goods go and where its counter is, for the anchor generation
+    // (sent after each anchor while MSC has the player within reach of the stall, and when MSC asks
+    // by losing them: see PROTOCOL.md). MSC sets a good out on each spot whose good is gone (bought,
+    // stolen, or carried off its spot) while Kumpo is away from the stall.
+    struct TeimoStall
+    {
+        std::uint32_t generation;      // the anchor (WorldspaceChange) these are for
+        std::uint32_t count;           // goods, <= kStallGoodsMax
+        float         teimo[3];        // Teimo's spot behind the counter, Skyrim world space
+        float         heading;         // radians: the way the stall faces (toward the customers)
+        float         counter[3];      // the middle of the counter's top, Skyrim world space
+        float         counterHalf[3];  // half its width (across), depth (toward the customers) and the height above it that counts, units
+        StallGood     goods[16];       // kStallGoodsMax
+    };
+
+    // TeimoPay: Kumpo asks Teimo to ring up what lies on the counter (E on him while TeimoShop's
+    // last bill had something). seq counts up per Skyrim session; MSC answers with kShopPaid or
+    // kShopShort carrying it.
+    struct TeimoPay
+    {
+        std::uint32_t seq;
+        std::uint32_t reserved;
+    };
+
+    // TeimoShop: what happened at the stall. kShopBill: the goods on the counter changed (count, total,
+    // products); kShopPaid: Kumpo paid total for count goods (seq of the TeimoPay), money is what he
+    // has left; kShopShort: he can't pay total (money is what he has); kShopStolen: count goods worth
+    // total left the stall unpaid (products: which).
+    inline constexpr std::uint32_t kShopBill = 1;    // TeimoShop.kind
+    inline constexpr std::uint32_t kShopPaid = 2;
+    inline constexpr std::uint32_t kShopShort = 3;
+    inline constexpr std::uint32_t kShopStolen = 4;
+
+    struct TeimoShop
+    {
+        std::uint32_t kind;      // kShop{Bill,Paid,Short,Stolen}
+        std::uint32_t count;     // goods
+        float         total;     // MSC's marks (MSC's prices), gold one for one
+        float         money;     // MSC's PlayerMoney after paying, or what he has when short
+        std::uint32_t products;  // bit (1 << kShop*) per kind of good in it
+        std::uint32_t seq;       // the TeimoPay answered, 0 for the others
+    };
+
     // ---- Models (MSC -> Skyrim) ----
     //
     // MSC sends its own meshes and textures, read from the running game, and Skyrim builds them in
@@ -1136,6 +1207,18 @@ namespace PerkeleRim::Protocol
     static_assert(sizeof(TeimoLine) == 64);
     static_assert(offsetof(TeimoLine, length) == 12);
     static_assert(offsetof(TeimoLine, clip) == 16);
+    static_assert(sizeof(StallGood) == 20);
+    static_assert(offsetof(StallGood, heading) == 16);
+    static_assert(sizeof(TeimoStall) == 368);
+    static_assert(offsetof(TeimoStall, heading) == 20);
+    static_assert(offsetof(TeimoStall, counter) == 24);
+    static_assert(offsetof(TeimoStall, counterHalf) == 36);
+    static_assert(offsetof(TeimoStall, goods) == 48);
+    static_assert(sizeof(TeimoPay) == 8);
+    static_assert(sizeof(TeimoShop) == 24);
+    static_assert(offsetof(TeimoShop, money) == 12);
+    static_assert(offsetof(TeimoShop, products) == 16);
+    static_assert(offsetof(TeimoShop, seq) == 20);
     static_assert(offsetof(HeldDrink, grip) == 44);
     static_assert(offsetof(HeldDrink, bottom) == 8);
     static_assert(offsetof(HeldDrink, top) == 20);
