@@ -43,7 +43,9 @@ namespace PerkeleRim.Game
         }
         readonly Dictionary<Transform, Looks> looks = new Dictionary<Transform, Looks>();
         Transform lastPlayer;
-        int building;  // spike commands putting parts on or taking them off right now (PartSetBuilding)
+        // When a spike command putting parts on or taking them off last stepped (PartSetBuilding while
+        // within a second): a coroutine stopped from outside never runs its finally, so no counter.
+        float buildingAt = -10f;
         int idEpoch;
         List<AttachedParts.Entry> entries = new List<AttachedParts.Entry>();
         List<AttachedParts.Entry> lastEntries = new List<AttachedParts.Entry>();
@@ -146,7 +148,7 @@ namespace PerkeleRim.Game
                 });
             }
             int left = AttachedParts.Encode(entries, Wire.VehicleSatsuma, generation, (uint)Time.frameCount, ref set);
-            if (building > 0) set.flags |= Wire.PartSetBuilding;
+            if (Time.realtimeSinceStartup - buildingAt < 1f) set.flags |= Wire.PartSetBuilding;
             link.WritePartSet(ref set);
             if (!AttachedParts.SameSet(entries, lastEntries))
             {
@@ -258,12 +260,13 @@ namespace PerkeleRim.Game
         // A spike command's steps with PartSetBuilding set meanwhile, however it ends.
         IEnumerator Building(IEnumerator steps)
         {
-            building++;
-            try
+            buildingAt = Time.realtimeSinceStartup;
+            while (steps.MoveNext())
             {
-                while (steps.MoveNext()) yield return steps.Current;
+                buildingAt = Time.realtimeSinceStartup;
+                yield return steps.Current;
             }
-            finally { building--; }
+            buildingAt = -10f;
         }
 
         IEnumerator AssembleSteps(string[] triggers)
@@ -273,6 +276,7 @@ namespace PerkeleRim.Game
             var pivot = pivotVar != null && pivotVar.Value != null ? pivotVar.Value.transform : null;
             if (pivot == null) { log("satsuma: no ItemPivot"); yield break; }
             int on = 0;
+            var loosePart = LooseParts();
             foreach (var name in triggers)
             {
                 var trigger = FindBelow(car, name);
@@ -283,7 +287,7 @@ namespace PerkeleRim.Game
                     continue;
                 }
                 var went = new bool[1];
-                foreach (var step in Put(fsm, pivot, went)) yield return step;
+                foreach (var step in Put(fsm, pivot, went, loosePart)) yield return step;
                 if (went[0]) on++;
             }
             log($"satsuma: {on} of {triggers.Length} parts put on");
@@ -308,6 +312,7 @@ namespace PerkeleRim.Game
             int total = 0;
             for (int pass = 1; pass <= 8; pass++)
             {
+                var loosePart = LooseParts();  // once a pass: a lookup per trigger was hundreds of scene scans a frame
                 var fsms = new List<PlayMakerFSM>();
                 foreach (var f in car.GetComponentsInChildren<PlayMakerFSM>()) if (f.FsmName == "Assembly") fsms.Add(f);
                 if (loose != null)
@@ -317,10 +322,10 @@ namespace PerkeleRim.Game
                 {
                     if (fsm == null || !fsm.gameObject.activeInHierarchy) continue;
                     var handChild = fsm.FsmVariables.FindFsmString("HandChild");
-                    if (handChild == null || FindLoose(handChild.Value) == null) continue;
+                    if (handChild == null || Loose(loosePart, handChild.Value) == null) continue;
                     tried++;
                     var went = new bool[1];
-                    foreach (var step in Put(fsm, pivot, went)) yield return step;
+                    foreach (var step in Put(fsm, pivot, went, loosePart)) yield return step;
                     if (went[0]) on++;
                 }
                 total += on;
@@ -337,10 +342,10 @@ namespace PerkeleRim.Game
         // One part on through its trigger's Assembly FSM: the loose part (HandChild) into the hand, the
         // FSM to Find correct part, then ASSEMBLE. went[0]: it left the hand (destroyed, its copy switched
         // on, or hung on its pivot); else it goes back where it lay.
-        IEnumerable Put(PlayMakerFSM fsm, Transform pivot, bool[] went)
+        IEnumerable Put(PlayMakerFSM fsm, Transform pivot, bool[] went, Dictionary<string, List<Transform>> loose)
         {
             var handChild = fsm.FsmVariables.FindFsmString("HandChild");
-            var part = handChild != null ? FindLoose(handChild.Value) : null;
+            var part = handChild != null ? Loose(loose, handChild.Value) : null;
             if (part == null)
             {
                 log($"satsuma: {fsm.name}: no loose {(handChild != null ? handChild.Value : "part")}");
@@ -424,12 +429,34 @@ namespace PerkeleRim.Game
         }
 
         // A loose part by name: active, tagged PART, not on a vehicle.
-        Transform FindLoose(string name)
+        // The loose parts by name, looked up once per pass (Loose checks each is still loose when taken).
+        Dictionary<string, List<Transform>> LooseParts()
         {
+            var byName = new Dictionary<string, List<Transform>>();
             foreach (var body in UnityEngine.Object.FindObjectsOfType<Rigidbody>())
             {
                 var t = body.transform;
-                if (t.name == name && t.CompareTag("PART") && !t.IsChildOf(car) && t.gameObject.activeInHierarchy) return t;
+                if (!t.CompareTag("PART")) continue;
+                List<Transform> list;
+                if (!byName.TryGetValue(t.name, out list)) byName[t.name] = list = new List<Transform>();
+                list.Add(t);
+            }
+            return byName;
+        }
+
+        // A loose part by name: active, tagged PART, not on the car and not mounted on another part (the
+        // engine's parts on its block in CARPARTS: two triggers wanting the same part mustn't take it
+        // from each other).
+        Transform Loose(Dictionary<string, List<Transform>> loose, string name)
+        {
+            List<Transform> list;
+            if (loose == null || !loose.TryGetValue(name, out list)) return null;
+            foreach (var t in list)
+            {
+                if (t == null || !t.gameObject.activeInHierarchy || t.name != name || (car != null && t.IsChildOf(car))) continue;
+                bool mounted = false;
+                for (var p = t.parent; p != null && !mounted; p = p.parent) mounted = p.CompareTag("PART");
+                if (!mounted) return t;
             }
             return null;
         }

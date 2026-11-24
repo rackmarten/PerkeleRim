@@ -708,9 +708,11 @@ namespace PerkeleRim.Game
             var tint = Color(material, "_Color") ?? new[] { 1f, 1f, 1f, 1f };
             float metallic = standard && metalTexture == null ? (Float(material, "_Metallic") ?? 0f) : 0f;
             // The metal map is in the key whenever there is one (its averages go into the material even
-            // when the shader doesn't bake it), so a model naming the texture by id has its averages.
-            string bakeKey = (mainTexture != null ? mainTexture.GetInstanceID() : 0) + "/" + (metalTexture != null ? metalTexture.GetInstanceID() : 0) + "/" +
-                Mathf.Round(metallic * 1000f) + "/" + string.Join(",", Array.ConvertAll(tint, c => Mathf.Round(c * 1000f).ToString()));
+            // when the shader doesn't bake it), so a model naming the texture by id has its averages; and
+            // whether it is baked in (Standard shaders only), so the same textures and tint baked with
+            // and without it are two textures.
+            string bakeKey = (mainTexture != null ? mainTexture.GetInstanceID() : 0) + "/" + (metalTexture != null ? metalTexture.GetInstanceID() : 0) +
+                (standard ? "s" : "n") + "/" + Mathf.Round(metallic * 1000f) + "/" + string.Join(",", Array.ConvertAll(tint, c => Mathf.Round(c * 1000f).ToString()));
             // Shared with other models (v56) only when made of textures that can't change (ReadTexture).
             bool canShare = (mainTexture == null || stable.Contains(mainTexture.GetInstanceID())) &&
                             (metalTexture == null || stable.Contains(metalTexture.GetInstanceID()));
@@ -800,8 +802,8 @@ namespace PerkeleRim.Game
                 // Only what can't change: MSC may draw into a RenderTexture or write a texture it can
                 // read, so only a texture with no usable CPU copy (GetPixels32 refused it, or gave the
                 // debug fill: MSC's textures) is kept and shared with other models by id (stable). One too
-                // big for that read wasn't tried, so it may have a copy: never kept.
-                if (!direct && !(texture is RenderTexture) && texture.width <= Wire.ModelTextureSizeMax && texture.height <= Wire.ModelTextureSizeMax)
+                // big for that read (a 4096 atlas) is probed for a copy the same way.
+                if (!direct && !(texture is RenderTexture) && !CpuCopy(texture))
                 {
                     textures.Put(id, data, data.Rgba.LongLength);
                     stable.Add(id);
@@ -900,6 +902,22 @@ namespace PerkeleRim.Game
             log($"model: texture {texture.name} {(t2 != null ? t2.format.ToString() : texture.GetType().Name)} {texture.width}x{texture.height} -> " +
                 $"{data.Width}x{data.Height} average {Average(data.Rgba)}");
             return data;
+        }
+
+        // Whether a texture Direct didn't read (too big for it) has a CPU copy MSC could write: a corner
+        // of it read back as anything but the debug fill. Smaller ones: Direct already found none.
+        static bool CpuCopy(Texture texture)
+        {
+            var t2 = texture as Texture2D;
+            if (t2 == null || (t2.width <= Wire.ModelTextureSizeMax && t2.height <= Wire.ModelTextureSizeMax)) return false;
+            Color[] corner;
+            try { corner = t2.GetPixels(0, 0, 4, 4); }
+            catch (Exception) { return false; }  // not readable
+            const float fill = 0xCD / 255f;
+            foreach (var c in corner)
+                if (Mathf.Abs(c.r - fill) > 0.002f || Mathf.Abs(c.g - fill) > 0.002f || Mathf.Abs(c.b - fill) > 0.002f || Mathf.Abs(c.a - fill) > 0.002f)
+                    return true;
+            return false;
         }
 
         static ModelTextureData Direct(Texture2D texture)

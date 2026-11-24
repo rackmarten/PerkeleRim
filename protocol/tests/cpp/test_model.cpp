@@ -189,3 +189,17 @@ TEST_CASE("a shared texture without an id, or an unknown format, is refused")
     const auto tooBig = Blob(2, 0, 0, 1, 0, { Protocol::kModelTextureSizeMax + 1, 1, Protocol::kModelTextureShared, 7 });
     CHECK_FALSE(Model::Parse(tooBig.data(), tooBig.size()));
 }
+
+TEST_CASE("a malformed model still gives up the shared textures it brought")
+{
+    auto blob = Blob(7, 0, 0, 1, 0, { 2, 1, Protocol::kModelTextureRgba8, 9 });  // index 7: out of the triangle's 3 vertices
+    CHECK_FALSE(Model::Parse(blob.data(), blob.size()));
+    const auto kept = Model::SharedTextures(blob.data(), blob.size());
+    REQUIRE(kept.size() == 1);
+    CHECK(kept[0].id == 9u);
+    CHECK(kept[0].rgba[0] == 255);
+    const auto own = Blob(7);
+    CHECK(Model::SharedTextures(own.data(), own.size()).empty());  // a model's own texture isn't shared
+    const auto named = Blob(2, 0, 0, 1, 0, { 2, 1, Protocol::kModelTextureShared, 9 });
+    CHECK(Model::SharedTextures(named.data(), named.size()).empty());  // naming one brings nothing
+}

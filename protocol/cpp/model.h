@@ -182,6 +182,47 @@ namespace PerkeleRim::Model
         return at == a_size ? std::optional<Model>(std::move(model)) : std::nullopt;
     }
 
+    // The shared textures a blob brings inline (kModelTextureRgba8 with an id), as far as its header and
+    // textures read, whether or not the rest of it parses: Skyrim keeps them even from a model it drops,
+    // since MSC counts them sent.
+    inline std::vector<Texture> SharedTextures(const std::uint8_t* a_blob, std::size_t a_size)
+    {
+        std::vector<Texture> out;
+        Protocol::ModelHeader header{};
+        if (!a_blob || a_size < sizeof(header)) {
+            return out;
+        }
+        std::memcpy(&header, a_blob, sizeof(header));
+        std::size_t at = sizeof(header);
+        for (std::uint32_t i = 0; i < header.textureCount; i++) {
+            Protocol::ModelTexture texture{};
+            if (a_size - at < sizeof(texture)) {
+                break;
+            }
+            std::memcpy(&texture, a_blob + at, sizeof(texture));
+            at += sizeof(texture);
+            if (texture.width == 0 || texture.height == 0 || texture.width > Protocol::kModelTextureSizeMax ||
+                texture.height > Protocol::kModelTextureSizeMax) {
+                break;
+            }
+            if (texture.format == Protocol::kModelTextureShared) {
+                continue;
+            }
+            if (texture.format != Protocol::kModelTextureRgba8) {
+                break;
+            }
+            const std::size_t bytes = static_cast<std::size_t>(texture.width) * texture.height * 4;
+            if (a_size - at < bytes) {
+                break;
+            }
+            if (texture.id != 0) {
+                out.push_back({ texture.width, texture.height, a_blob + at, texture.id });
+            }
+            at += bytes;
+        }
+        return out;
+    }
+
     // Puts blobs back together from ModelChunk payloads.
     class Assembler
     {

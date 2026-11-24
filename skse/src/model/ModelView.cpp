@@ -440,30 +440,46 @@ namespace PerkeleRim::ModelView
             cached->blob = a_blob;
             auto model = Model::Parse(cached->blob.data(), cached->blob.size());
             if (!model) {
-                SKSE::log::warn("model view: model {:08X} is malformed ({} bytes)", a_id, a_blob.size());
+                // MSC counts the shared textures it brought as sent all the same: keep them for the models
+                // that name them, as far as they read.
+                std::uint32_t kept = 0;
+                for (const auto& texture : Model::SharedTextures(cached->blob.data(), cached->blob.size())) {
+                    state.shared[texture.id] = MakeTexture(texture, std::format("PerkeleRim\\T{:08X}", texture.id));
+                    kept++;
+                }
+                SKSE::log::warn("model view: model {:08X} is malformed ({} bytes), {} shared textures of it kept", a_id, a_blob.size(), kept);
                 return;
             }
             cached->model = std::move(*model);
             std::uint32_t built = 0, named = 0;
+            cached->textures.resize(cached->model.textures.size(), nullptr);
+            // Its own and shared textures first, so a model dropped below still leaves the shared ones it
+            // brought for the models that name them (MSC counts them sent).
             for (std::size_t i = 0; i < cached->model.textures.size(); i++) {
                 const auto& texture = cached->model.textures[i];
-                if (!texture.rgba) {  // named by id: an earlier model brought it
-                    const auto it = state.shared.find(texture.id);
-                    if (it == state.shared.end()) {
-                        SKSE::log::warn("model view: model {:08X} {} names texture {:08X}, which never came: model dropped", a_id,
-                            cached->model.name, texture.id);
-                        return;
-                    }
-                    cached->textures.push_back(it->second);
-                    named++;
+                if (!texture.rgba) {
                     continue;
                 }
                 auto* made = MakeTexture(texture, texture.id ? std::format("PerkeleRim\\T{:08X}", texture.id) : std::format("PerkeleRim\\{:08X}\\{}", a_id, i));
                 if (texture.id) {
                     state.shared[texture.id] = made;  // a resend replaces it; one that failed to build (null) draws untextured like here
                 }
-                cached->textures.push_back(made);
+                cached->textures[i] = made;
                 built++;
+            }
+            for (std::size_t i = 0; i < cached->model.textures.size(); i++) {
+                const auto& texture = cached->model.textures[i];
+                if (texture.rgba) {
+                    continue;
+                }
+                const auto it = state.shared.find(texture.id);  // named by id: an earlier model brought it
+                if (it == state.shared.end()) {
+                    SKSE::log::warn("model view: model {:08X} {} names texture {:08X}, which never came: model dropped", a_id,
+                        cached->model.name, texture.id);
+                    return;
+                }
+                cached->textures[i] = it->second;
+                named++;
             }
             state.sharedUses += named;
             const auto ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
