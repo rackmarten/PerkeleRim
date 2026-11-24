@@ -574,15 +574,21 @@ namespace PerkeleRim.Game
             return string.Join("\n", lines.ToArray());
         }
 
-        // "shop take beer": the first good of that product into MSC's hand, as a click on it does.
+        // "shop take beer": a good of that product into MSC's hand, as a click on it does: one still
+        // on its spot before one already on the counter.
         public bool Take(string product)
         {
             var hand = PocketLink.PickUp();
             if (hand == null || hand.ActiveStateName != "Look for object") { log("stall: the hand is busy"); return false; }
+            Live pick = null;
             foreach (var live in spots)
             {
                 if (live == null || live.Go == null || live.Stolen) continue;
                 if (!string.Equals(StallShop.Products[live.Product].Name, product, StringComparison.OrdinalIgnoreCase)) continue;
+                if (pick == null || (StallShop.OnCounter(SkyrimAt(pick.Go), stall) && !StallShop.OnCounter(SkyrimAt(live.Go), stall))) pick = live;
+            }
+            foreach (var live in pick != null ? new[] { pick } : new Live[0])
+            {
                 hand.FsmVariables.FindFsmGameObject("RaycastHitObject").Value = live.Go;
                 hand.SendEvent("FINISHED");
                 log($"stall: {live.Go.name} into the hand");
