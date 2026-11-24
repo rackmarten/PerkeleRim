@@ -24,8 +24,11 @@ namespace PerkeleRim.Game
     // goes back to its pose. After MSC starts again its parts on the island are where its own save had
     // them for an anchor long gone: held where they are, and the first stand request of the session
     // (Kumpo near the bay of a save that had the move) lays them all on their slots again.
+    // MSC's spanner set goes with the parts (on the floor by the body's nose) and is kept the same way.
     public unsafe class GarageMover
     {
+        public const string SpannerSetPath = "ITEMS/spanner set(itemx)";
+        public static bool IsSpannerSet(Transform t) => t.root.name == "ITEMS" && t.parent == t.root && t.name == "spanner set(itemx)";
         const float GroundWait = 20f;
         const float Clearance = 0.02f;   // meters between a part's bottom and the surface it's set on
         const float HomeRadius = 60f;    // meters around MSC's home (YARD/Building/Garage)
@@ -113,7 +116,10 @@ namespace PerkeleRim.Game
                 body = SetBodyDown(car, r);
             else body = car != null && car.Car != null && OnStand(car.Car, r);
             if ((r.What & (Wire.BayMoveSatsuma | Wire.BayPartsHome)) != 0 || restarted)
+            {
                 PutParts(r, (r.What & Wire.BayPartsHome) != 0 || restarted, out slotted, out floor);
+                PutSpannerSet(r, (r.What & Wire.BayPartsHome) != 0 || restarted);
+            }
             if ((r.What & Wire.BayVehiclesHome) != 0)
                 brought = BringVehicles(r);
             if ((r.What & Wire.BayCheck) != 0)
@@ -306,6 +312,23 @@ namespace PerkeleRim.Game
             log($"garage: {bodies.Count} loose parts {(fromIsland ? "at home and on the island" : "at home")} put in the bay");
         }
 
+        // The spanner set, at home or (fromIsland) on the island, onto its spot by the body's nose.
+        void PutSpannerSet(GarageMessages.Request r, bool fromIsland)
+        {
+            var go = GameObject.Find(SpannerSetPath);
+            var body = go != null ? go.GetComponent<Rigidbody>() : null;
+            var p = player();
+            if (body == null || (p != null && go.transform.IsChildOf(p))) { log("garage: no spanner set to put in the bay"); return; }
+            var t = go.transform;
+            var home = Home();
+            bool onIsland = t.position.y > IslandBelow || t.position.y < LostBelow;
+            bool atHome = !onIsland && home.HasValue && Flat(t.position - home.Value) < HomeRadius;
+            if (!atHome && !(fromIsland && onIsland)) { log($"garage: the spanner set is elsewhere ({t.position}), left there"); return; }
+            Place(body, BayPoint(r, SatsumaBay.ToolX, SatsumaBay.ToolY, 0f), Yaw(r, 0f));
+            Forget(body);
+            log("garage: the spanner set put by the Satsuma's nose");
+        }
+
         // Sets the part on the surface at spot (a board, the floor): lying on its flattest side (round
         // parts on their edge rolled off the boards), its long side along the slot.
         static readonly Quaternion[] Sides = { Quaternion.identity, Quaternion.Euler(90f, 0f, 0f), Quaternion.Euler(0f, 0f, 90f) };
@@ -343,6 +366,8 @@ namespace PerkeleRim.Game
             {
                 body.velocity = Vector3.zero;
                 body.angularVelocity = Vector3.zero;
+                // Still until something touches it: a halfshaft woken on its board rolled off onto the floor.
+                body.Sleep();
             }
         }
 
@@ -392,8 +417,9 @@ namespace PerkeleRim.Game
                 foreach (Rigidbody body in UnityEngine.Object.FindObjectsOfType(typeof(Rigidbody)))
                 {
                     var t = body.transform;
-                    if (kept.ContainsKey(body) || !body.gameObject.activeInHierarchy || !t.CompareTag("PART") || t.root.name != "CARPARTS") continue;
-                    if (t.position.y < IslandBelow || !SatsumaModel.IsPart(t.name, HasRemoval(t))) continue;  // MSC's own map (home, shops), or lost
+                    if (kept.ContainsKey(body) || !body.gameObject.activeInHierarchy || t.position.y < IslandBelow) continue;  // MSC's own map (home, shops), or lost
+                    bool part = t.CompareTag("PART") && t.root.name == "CARPARTS" && SatsumaModel.IsPart(t.name, HasRemoval(t));
+                    if (!part && !IsSpannerSet(t)) continue;
                     kept[body] = new Kept { Body = body };
                 }
             }
@@ -406,7 +432,7 @@ namespace PerkeleRim.Game
                 if (body == null || !body.gameObject.activeInHierarchy) { gone.Add(body); continue; }
                 var t = body.transform;
                 // In Kumpo's hands, or on the car: not ours until it lies loose again.
-                if ((p != null && t.IsChildOf(p)) || (car != null && t.IsChildOf(car)) || t.root.name != "CARPARTS")
+                if ((p != null && t.IsChildOf(p)) || (car != null && t.IsChildOf(car)) || (t.root.name != "CARPARTS" && !IsSpannerSet(t)))
                 {
                     if (k.Held) { body.isKinematic = false; k.Held = false; }
                     gone.Add(body);

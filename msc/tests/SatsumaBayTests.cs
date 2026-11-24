@@ -140,6 +140,9 @@ namespace PerkeleRim.Tests
                 SatsumaBay.PileSpot(n, out var x, out var y, out _);
                 spots.Add((x, y));
             }
+            foreach (var s in SatsumaBay.Slots.Where(s => s.Kind == SatsumaBay.Kind.Floor))
+                Assert.That(Math.Sqrt(Math.Pow(s.X - SatsumaBay.ToolX, 2) + Math.Pow(s.Y - SatsumaBay.ToolY, 2)), Is.GreaterThanOrEqualTo(45f), "the spanner set's spot on a floor slot");
+            spots.Add((SatsumaBay.ToolX, SatsumaBay.ToolY));
             foreach (var (x, y) in spots)
             {
                 Assert.That(Math.Abs(x), Is.LessThanOrEqualTo(SatsumaBay.FloorX.Max() + SatsumaBay.FloorHalf - margin));
