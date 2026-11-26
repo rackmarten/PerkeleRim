@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 57;
+        public const uint ProtocolVersion = 58;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -79,7 +79,17 @@ namespace PerkeleRim.Protocol
         public const uint ParticleCapacity = 512;
         public const uint LookAtTextMax = 255;
         public const uint LookAtUse = 0x1;
+        public const uint LookAtAssemble = 0x2;
+        public const uint LookAtDisassemble = 0x4;
+        public const uint LookAtPartName = 0x8;
         public const uint TeimoClipMax = 48;
+        public const uint PartNameMax = 40;
+        public const uint PartInstalled = 0x1;
+        public const uint PartBolted = 0x2;
+        public const uint PartPlaced = 0x4;
+        public const uint PartDamaged = 0x8;
+        public const uint PartGone = 0x10;
+        public const float PartMoved = 17.5f;
         public const uint FuelTextLow = 0x1;
         public const uint FuelTextDry = 0x2;
         public const uint ModelChunkMax = 49152;
@@ -217,6 +227,7 @@ namespace PerkeleRim.Protocol
         TeimoShop = 39,
         GarageBay = 40,
         GarageDone = 41,
+        PartState = 42,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -877,6 +888,23 @@ namespace PerkeleRim.Protocol
         public fixed float position[3];
         public uint length;
         public fixed byte clip[48];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct PartState
+    {
+        public fixed float position[3];
+        public uint flags;
+        public uint generation;
+        public ushort bolts;
+        public ushort boltsTight;
+        public ushort stages;
+        public ushort reserved;
+        public float tightness;
+        public float tightnessFull;
+        public uint @object;
+        public uint length;
+        public fixed byte name[40];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

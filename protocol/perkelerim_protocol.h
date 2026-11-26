@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 57;
+    inline constexpr std::uint32_t kProtocolVersion = 58;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -472,6 +472,7 @@ namespace PerkeleRim::Protocol
         TeimoShop = 39,        // MSC -> Skyrim
         GarageBay = 40,        // Skyrim -> MSC
         GarageDone = 41,       // MSC -> Skyrim
+        PartState = 42,        // MSC -> Skyrim (v58)
     };
 
     struct MessageHeader
@@ -519,6 +520,14 @@ namespace PerkeleRim::Protocol
     // terminator). length 0 and no flags clears the prompt.
     inline constexpr std::uint32_t kLookAtTextMax = 255;
     inline constexpr std::uint32_t kLookAtUse = 0x1;  // LookAtText.flags: MSC shows its hand icon (global GUIuse)
+    // v58: MSC's assemble icon, a part held in place on the car (global GUIassemble: a click puts it on), and its
+    // disassemble icon, a part with its bolts out under the crosshair (GUIdisassemble: a click takes it off).
+    inline constexpr std::uint32_t kLookAtAssemble = 0x2;
+    inline constexpr std::uint32_t kLookAtDisassemble = 0x4;
+    // v58: the text is MSC's part name line, not a prompt (global PickedPart, a part or tool under the crosshair, shown
+    // while MSC's option OptionsPartNames is on; MSC's own GUI/Indicators/Partname clears it 5 s after it was set), sent
+    // only while GUIinteraction is empty. It doesn't keep E with MSC.
+    inline constexpr std::uint32_t kLookAtPartName = 0x8;
 
     struct LookAtText
     {
@@ -896,6 +905,37 @@ namespace PerkeleRim::Protocol
         float         position[3];          // Skyrim world units
         std::uint32_t length;               // bytes of clip used, <= kTeimoClipMax
         char          clip[kTeimoClipMax];  // UTF-8
+    };
+
+    // PartState (v58): one of the Satsuma's parts as MSC's own database has it (Database/Database*/<name> :: Data,
+    // protocol/cpp/parts.h): fitted to the car or not, its bolts and how tight they are, and where it is. name is the
+    // database entry's (Door_Left, Radiator, WheelFL). Sent while MSC has the player, when anything but the position
+    // changes or, loose, it moved more than kPartMoved (a fitted part rides with the car), and every part again each
+    // time MSC gets the player. Skyrim keeps the
+    // latest per name (the bolt-state probe, pr.part) and forgets one on kPartGone (MSC never drops a database entry, so
+    // nothing sends it today).
+    inline constexpr std::uint32_t kPartNameMax = 40;
+    inline constexpr std::uint32_t kPartInstalled = 0x1;  // Data.Installed: on the car
+    inline constexpr std::uint32_t kPartBolted = 0x2;     // Data.Bolted: MSC counts it bolted (BoltCheck Tightness at BoltedYES)
+    inline constexpr std::uint32_t kPartPlaced = 0x4;     // position is valid: the part is on the current anchor's island
+    inline constexpr std::uint32_t kPartDamaged = 0x8;    // Data.Damaged
+    inline constexpr std::uint32_t kPartGone = 0x10;      // the entry is gone: forget it
+    inline constexpr float         kPartMoved = 17.5f;    // Skyrim units (25 cm) a loose part moves before it is sent again
+
+    struct PartState
+    {
+        float         position[3];   // the part's object, Skyrim world units, with kPartPlaced
+        std::uint32_t flags;         // kPart*
+        std::uint32_t generation;    // WorldspaceChange.generation the position is for
+        std::uint16_t bolts;         // its bolts (Screw FSMs below it)
+        std::uint16_t boltsTight;    // of them screwed all the way in (stage 8)
+        std::uint16_t stages;        // all its bolts' stages added up (0..8 each)
+        std::uint16_t reserved;
+        float         tightness;     // BoltCheck.Tightness, 0 without one
+        float         tightnessFull; // BoltCheck.BoltedYES: bolted from there
+        std::uint32_t object;        // the part's object as AttachedPart.part has it (its instance id), 0 = none
+        std::uint32_t length;        // bytes of name used, <= kPartNameMax
+        char          name[kPartNameMax];  // UTF-8
     };
 
     // Shopping at Teimo's stall (v52, protocol/cpp/teimo_shop.h, msc/src/Link/StallShop.cs): the
@@ -1298,6 +1338,17 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ConsumeEvent, form) == 20);
     static_assert(sizeof(HeldDrink) == 56);
     static_assert(sizeof(TeimoLine) == 64);
+    static_assert(sizeof(PartState) == 84);
+    static_assert(offsetof(PartState, flags) == 12);
+    static_assert(offsetof(PartState, generation) == 16);
+    static_assert(offsetof(PartState, bolts) == 20);
+    static_assert(offsetof(PartState, boltsTight) == 22);
+    static_assert(offsetof(PartState, stages) == 24);
+    static_assert(offsetof(PartState, tightness) == 28);
+    static_assert(offsetof(PartState, tightnessFull) == 32);
+    static_assert(offsetof(PartState, object) == 36);
+    static_assert(offsetof(PartState, length) == 40);
+    static_assert(offsetof(PartState, name) == 44);
     static_assert(sizeof(GarageBay) == 32);
     static_assert(offsetof(GarageBay, position) == 8);
     static_assert(offsetof(GarageBay, heading) == 20);

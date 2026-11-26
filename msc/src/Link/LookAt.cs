@@ -10,6 +10,23 @@ namespace PerkeleRim
     {
         const int HeaderSize = 8;  // sizeof(LookAtText)
 
+        // LookAt* flags for MSC's icons: the hand (global GUIuse), assemble (GUIassemble: a part held in its place
+        // on the car) and disassemble (GUIdisassemble: a part whose bolts are out).
+        public static uint Flags(bool use, bool assemble, bool disassemble)
+        {
+            return (use ? Wire.LookAtUse : 0u) | (assemble ? Wire.LookAtAssemble : 0u) | (disassemble ? Wire.LookAtDisassemble : 0u);
+        }
+
+        // The text MSC shows under its crosshair: its prompt (GUIinteraction), else its part name line (PickedPart, while
+        // its option OptionsPartNames is on), which adds LookAtPartName to the flags.
+        public static string Text(string interaction, string partName, bool partNames, ref uint flags)
+        {
+            if (!string.IsNullOrEmpty(interaction)) return interaction;
+            if (!partNames || string.IsNullOrEmpty(partName)) return "";
+            flags |= Wire.LookAtPartName;
+            return partName;
+        }
+
         // Payload for a_text (null or empty = no text) and LookAt* flags. Text over LookAtTextMax
         // bytes of UTF-8 is cut at a character boundary.
         public static byte[] Encode(string text, uint flags = 0)

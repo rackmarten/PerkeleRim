@@ -26,6 +26,33 @@ namespace PerkeleRim.Tests
         }
 
         [Test]
+        public void CarriesTheAssembleIcons()
+        {
+            Assert.That(LookAt.Flags(false, false, false), Is.EqualTo(0u));
+            Assert.That(LookAt.Flags(true, false, false), Is.EqualTo(Wire.LookAtUse));
+            Assert.That(LookAt.Flags(false, true, false), Is.EqualTo(Wire.LookAtAssemble));
+            Assert.That(LookAt.Flags(false, false, true), Is.EqualTo(Wire.LookAtDisassemble));
+            var payload = LookAt.Encode("Door left", LookAt.Flags(false, false, true));
+            Assert.That(LookAt.Decode(payload, payload.Length, out var flags), Is.EqualTo("Door left"));
+            Assert.That(flags, Is.EqualTo(Wire.LookAtDisassemble));
+        }
+
+        [Test]
+        public void ShowsThePartNameOnlyWithoutAPrompt()
+        {
+            uint flags = Wire.LookAtUse;
+            Assert.That(LookAt.Text("IGNITION", "spanner 10mm", true, ref flags), Is.EqualTo("IGNITION"));
+            Assert.That(flags, Is.EqualTo(Wire.LookAtUse));
+            flags = 0;
+            Assert.That(LookAt.Text("", "spanner 10mm", true, ref flags), Is.EqualTo("spanner 10mm"));
+            Assert.That(flags, Is.EqualTo(Wire.LookAtPartName));
+            flags = 0;
+            Assert.That(LookAt.Text("", "spanner 10mm", false, ref flags), Is.EqualTo(""));  // MSC's option is off
+            Assert.That(LookAt.Text(null, null, true, ref flags), Is.EqualTo(""));
+            Assert.That(flags, Is.EqualTo(0u));
+        }
+
+        [Test]
         public void LongTextIsCutAtACharacter()
         {
             var text = new string('a', (int)Wire.LookAtTextMax - 1) + "ää";

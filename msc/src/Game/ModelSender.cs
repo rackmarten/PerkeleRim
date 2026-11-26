@@ -119,7 +119,7 @@ namespace PerkeleRim.Game
         // look.Key keeps it apart from the same object read without them.
         public uint IdFor(Transform root, Predicate<Transform> include, Look look)
         {
-            var key = Key(root, include);
+            var key = Key(root, include, look);
             if (key == null) return 0;
             if (look != null) key = look.Key + "|" + key;
             var content = key;
@@ -433,7 +433,7 @@ namespace PerkeleRim.Game
         // model instead of a new one every scan; its model has them as they were when it was read. Each
         // part's scale does go in (it is baked into the model, and the pose doesn't carry it), and the
         // material's name (two labels on one atlas differ only by their offset).
-        static string Key(Transform root, Predicate<Transform> include)
+        static string Key(Transform root, Predicate<Transform> include, Look look = null)
         {
             StringBuilder key = null;
             foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
@@ -445,8 +445,9 @@ namespace PerkeleRim.Game
                 var bounds = mesh.bounds;
                 key.Append(mesh.name).Append('/').Append(mesh.vertexCount).Append('/').Append(mesh.subMeshCount)
                     .Append(Round(bounds.center)).Append(Round(bounds.size)).Append(':');
-                foreach (var material in renderer.sharedMaterials)
+                foreach (var lit in renderer.sharedMaterials)
                 {
+                    var material = Unlit(lit, look);
                     var texture = material != null ? material.mainTexture : null;
                     if (texture != null) key.Append(texture.name).Append('/').Append(texture.width).Append('x').Append(texture.height);
                     if (material != null)
@@ -557,7 +558,7 @@ namespace PerkeleRim.Game
 
         static string KeyFor(Transform root, Predicate<Transform> include, Look look)
         {
-            var key = Key(root, include);
+            var key = Key(root, include, look);
             return key != null && look != null ? look.Key + "|" + key : key;
         }
 
@@ -579,8 +580,24 @@ namespace PerkeleRim.Game
         }
 
         // How a caller draws MSC's materials instead of as they are (the van's rules).
+        // MSC's bolt highlight (2Spanner/Raycast :: Check gives the bolt the wrench is on its "activebolt" material) read
+        // as the plain bolt material: a part's model holds its bolts, and with the highlight in its key every turn of the
+        // wrench made the part a new model, read again (dropped from the car Skyrim draws meanwhile, and a read cut
+        // short as the highlight moved on). Only a look with Lit (BoltFocus's one bolt) keeps it.
+        static Material plainBolts;
+
+        static Material Unlit(Material material, Look look)
+        {
+            if (material == null || (look != null && look.Lit) || !material.name.StartsWith("activebolt")) return material;
+            if (plainBolts == null)
+                foreach (Material m in Resources.FindObjectsOfTypeAll(typeof(Material)))
+                    if (m.name == "BOLTS") { plainBolts = m; break; }
+            return plainBolts ?? material;
+        }
+
         public sealed class Look
         {
+            public bool Lit;                              // MSC's bolt highlight read as it is (else as the plain bolt)
             public string Key = "";                       // materials read with different looks are separate model materials
             public Predicate<Material> Keep;               // false leaves the submesh out; null keeps all
             public Func<Material, Texture> Diffuse;        // the texture drawn; null = the main texture
@@ -619,7 +636,7 @@ namespace PerkeleRim.Game
                     materials.Cut = true;
                     yield break;
                 }
-                var material = sub < shared.Length ? shared[sub] : null;
+                var material = Unlit(sub < shared.Length ? shared[sub] : null, look);
                 if (look != null && look.Keep != null && !look.Keep(material)) continue;
                 var triangles = triangleLists[sub];
                 if (triangles.Length == 0) continue;

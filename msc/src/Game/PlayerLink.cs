@@ -98,6 +98,8 @@ namespace PerkeleRim.Game
         TeimoVoice teimo;
         StallGoods stall;
         ItemLink items;
+        PartLink parts;
+        readonly BoltFocus bolt = new BoltFocus();
         ParticleLink particles;
         ActorLink actors;
         FingerLink finger;
@@ -194,6 +196,7 @@ namespace PerkeleRim.Game
             pocket = new PocketLink(junk, log);
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
+            parts = new PartLink(island, log);
             items.KeptRestored = garage.Restored;
             particles = new ParticleLink(island, models, () => Array.ConvertAll(vehicles, v => v.Car), log);
             actors = new ActorLink(island, charge, log, what => voice.Swear(what));
@@ -266,6 +269,16 @@ namespace PerkeleRim.Game
         public void InspectModel(string name) => models.Inspect(name);
         public void ModelsAgain(bool cold) => models.Again(cold);
         public void DumpItems() => items.Dump();
+        public void DumpParts(string word) => parts.Dump(word);
+
+        // Spike command "fit <trigger> ...": those parts put on through MSC's own Assembly (SatsumaParts.Assemble, as
+        // "satsuma half" does), for a scenario's setup (the brake a wheel wants).
+        public void FitParts(string[] triggers)
+        {
+            satsuma.Find();
+            satsumaParts.Attach(satsuma.Car);
+            StartCoroutine(satsumaParts.Assemble(triggers));
+        }
         public void DumpParticles() => particles.Dump();
         public void PuffParticles(int count) => particles.Puff(count);
 
@@ -447,7 +460,8 @@ namespace PerkeleRim.Game
             junk.Update(link, playing, player);
             pocket.Update(link, playing, player != null);
             windUp.Update(charge, Time.realtimeSinceStartup);
-            items.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
+            items.Update(link, playing, player, player != null ? Feet() : Vector3.zero, playing ? bolt.Mesh() : null);
+            parts.Update(link, playing, player != null ? Feet() : Vector3.zero);
             particles.Update(link, playing, player, player != null ? Feet() : Vector3.zero);
             var driven = playing ? Driven() : null;
             // MSC's push stance (J toggles it): PlayerFunctions holds both hands up in its On state.
@@ -634,10 +648,13 @@ namespace PerkeleRim.Game
             var g = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
             var text = g.FindFsmString("GUIinteraction");
             var use = g.FindFsmBool("GUIuse");
+            var assemble = g.FindFsmBool("GUIassemble");  // a part held to the car, or one to take off: the click is MSC's
+            var disassemble = g.FindFsmBool("GUIdisassemble");
             var left = g.FindFsmBool("PlayerHandLeft");
             var right = g.FindFsmBool("PlayerHandRight");
             var vehicle = g.FindFsmString("PlayerCurrentVehicle");
             return (text == null || string.IsNullOrEmpty(text.Value)) && (use == null || !use.Value) &&
+                   (assemble == null || !assemble.Value) && (disassemble == null || !disassemble.Value) && !RemovalUnder() &&
                    (watching || left == null || !left.Value) && (right == null || !right.Value) &&
                    (vehicle == null || string.IsNullOrEmpty(vehicle.Value)) &&
                    !PocketLink.Carrying() && PocketLink.Aimed() == null;  // an item MSC picks up shows no prompt (empty bottles)
@@ -1324,17 +1341,49 @@ namespace PerkeleRim.Game
             s.flags |= Wire.PlayerNeeds;
         }
 
+        // A part under the crosshair whose Removal FSM is in "Mouse over", where a right click takes it off. MSC sets
+        // GUIdisassemble only as that state starts, and its GUI/Icons clears every GUI flag each time it cycles (every 5 s
+        // while a door's own use hand is up), so the flag alone came and went while the part stayed removable.
+        static int removalFrame = -1;
+        static bool removalUnder;
+
+        // Once a frame (HandsFree and SendLookAt both ask): a raycast and Camera.main's tag search.
+        static bool RemovalUnder()
+        {
+            if (removalFrame == Time.frameCount) return removalUnder;
+            removalFrame = Time.frameCount;
+            removalUnder = RemovalUnderNow();
+            return removalUnder;
+        }
+
+        static bool RemovalUnderNow()
+        {
+            var cam = Camera.main;
+            RaycastHit hit;
+            if (cam == null || !Physics.Raycast(cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f)), out hit, 1f, 1 << 19)) return false;
+            foreach (var fsm in hit.collider.GetComponents<PlayMakerFSM>())
+                if (fsm.FsmName == "Removal" && fsm.enabled && fsm.ActiveStateName == "Mouse over") return true;
+            return false;
+        }
+
+        static bool GlobalBool(HutongGames.PlayMaker.FsmVariables globals, string name)
+        {
+            var b = globals.FindFsmBool(name);
+            return b != null && b.Value;
+        }
+
         // MSC's interaction prompt (globals GUIinteraction: "IGNITION", item names; GUIuse: the hand
-        // icon on doors and hatches), sent to Skyrim when it changes, and again from scratch each time
+        // icon on doors and hatches; GUIassemble and GUIdisassemble: a part going on or off the car), sent to Skyrim when it changes, and again from scratch each time
         // MSC gets the player. A full ring retries next frame.
         void SendLookAt(Link link, bool playing)
         {
             if (!playing) { lookAtSent = null; return; }
             var globals = HutongGames.PlayMaker.FsmVariables.GlobalVariables;
             var global = globals.FindFsmString("GUIinteraction");
-            var use = globals.FindFsmBool("GUIuse");
-            var text = global != null && global.Value != null ? global.Value : "";
-            uint flags = use != null && use.Value ? Wire.LookAtUse : 0;
+            uint flags = LookAt.Flags(GlobalBool(globals, "GUIuse"), GlobalBool(globals, "GUIassemble"), GlobalBool(globals, "GUIdisassemble") || RemovalUnder());
+            var partName = globals.FindFsmString("PickedPart");
+            var text = LookAt.Text(global != null ? global.Value : null, partName != null ? partName.Value : null,
+                GlobalBool(globals, "OptionsPartNames"), ref flags);
             var key = flags + ":" + text;
             if (key == lookAtSent) return;
             var payload = LookAt.Encode(text, flags);

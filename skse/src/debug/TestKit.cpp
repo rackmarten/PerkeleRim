@@ -10,7 +10,9 @@
 #include "link/LinkService.h"
 #include "look_at.h"
 #include "model/ModelView.h"
+#include "parts/PartTable.h"
 #include "player/PlayerSync.h"
+#include "shot/Shot.h"
 #include "shout.h"
 #include "teimo/Teimo.h"
 #include "vehicle/Hitbox.h"
@@ -71,6 +73,56 @@ namespace PerkeleRim::TestKit
         std::shared_ptr<OnDrop> Dropping(std::function<void()> a_what)
         {
             return std::make_shared<OnDrop>(std::move(a_what));
+        }
+
+        // Whether the Satsuma's PartSet has the part's object on the car now, with a model (Skyrim draws it there),
+        // and whether it is there at all.
+        std::pair<bool, bool> OnCar(std::uint32_t a_object)
+        {
+            if (a_object == 0) {
+                return { false, false };
+            }
+            auto set = std::make_unique<Protocol::PartSet>();  // 10 KB
+            if (!LinkService::Get().ReadPartSet(*set) || set->vehicle != Protocol::kVehicleSatsuma) {
+                return { false, false };
+            }
+            for (std::uint32_t i = 0; i < set->count && i < Protocol::kPartSetCapacity; i++) {
+                if (set->parts[i].part == a_object) {
+                    return { true, set->parts[i].model != 0 && (set->parts[i].flags & Protocol::kPartVisible) != 0 };
+                }
+            }
+            return { false, false };
+        }
+
+        // One of the Satsuma's parts as MSC last reported it (PartState): the bolt-state probe's answer, and whether
+        // Skyrim has it on the car it draws (the Satsuma's PartSet).
+        Json DescribePart(const Parts::Part& a_part)
+        {
+            const auto [attached, drawn] = OnCar(a_part.object);
+            return JsonObject{ { "name", a_part.name }, { "attached", attached }, { "drawnOnCar", drawn }, { "installed", a_part.Installed() }, { "bolted", a_part.Bolted() },
+                { "damaged", (a_part.flags & Protocol::kPartDamaged) != 0 }, { "placed", a_part.Placed() }, { "bolts", a_part.bolts },
+                { "boltsTight", a_part.boltsTight }, { "stages", a_part.stages }, { "allTight", a_part.AllTight() },
+                { "boltsOut", a_part.BoltsOut() }, { "tightness", a_part.tightness }, { "tightnessFull", a_part.tightnessFull },
+                { "x", a_part.position[0] }, { "y", a_part.position[1] }, { "z", a_part.position[2] } };
+        }
+
+        const Parts::Part& FindPart(std::string_view a_name)
+        {
+            const auto& table = PartTable::Get();
+            if (table.Size() == 0) {
+                throw Error("MSC hasn't reported any Satsuma part (it does while it has the player)");
+            }
+            const auto* part = table.Find(a_name);
+            if (!part) {
+                std::string names;
+                for (const auto& [key, p] : table.All()) {
+                    if (Parts::Key(p.name).starts_with(Parts::Key(a_name)) || names.size() < 200) {
+                        names += (names.empty() ? "" : ", ") + p.name;
+                    }
+                }
+                throw Error(std::format("no one Satsuma part named '{}' (MSC has {}: {})", a_name, table.Size(), names));
+            }
+            return *part;
         }
 
         // [Test] MSC=1: the session is ready once MSC has the player standing on its island and has gone quiet sending
@@ -453,6 +505,60 @@ namespace PerkeleRim::TestKit
                     };
                 });
 
+            SkseTestKit::AddTask("pr.mscshot", "<name>",
+                "My Summer Car's own view as a PNG, <name>_msc.png in the folder F11 saves to (Documents/My Games/PerkeleRim/Screenshots "
+                "or the ini's ScreenshotDir), while MSC has the player; answers with its path once MSC has saved it",
+                [](Call& a_call) -> Step {
+                    RequireMsc();
+                    const auto name = a_call.Text("name");
+                    if (name.empty() || name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") != std::string::npos) {
+                        throw Error("name is letters, digits, '.', '_' and '-'");
+                    }
+                    const auto path = Shot::AskMsc(name);
+                    if (path.empty()) {
+                        throw Error("MSC's view couldn't be asked for (not linked, or no screenshot folder)");
+                    }
+                    a_call.DefaultTimeout(15.0);
+                    return [path, last = std::uintmax_t{ 0 }](Call&) mutable -> std::optional<Json> {
+                        std::error_code error;
+                        const auto size = std::filesystem::exists(path, error) ? std::filesystem::file_size(path, error) : 0;
+                        if (error || size == 0 || size != last) {  // not there yet, or still being written
+                            last = error ? 0 : size;
+                            return std::nullopt;
+                        }
+                        const auto text = path.u8string();
+                        return JsonObject{ { "path", std::string(reinterpret_cast<const char*>(text.data()), text.size()) } };
+                    };
+                });
+
+            SkseTestKit::AddTask("pr.wheel", "<notches> [every=<s>]",
+                "Turns MSC's scroll wheel by notches (positive away from you: MSC tightens the bolt its tools are on, negative "
+                "loosens it), one notch every seconds (0.35: MSC turns a bolt one stage per 0.28 s), while MSC has the player; "
+                "answers once the last went",
+                [](Call& a_call) -> Step {
+                    RequireMsc();
+                    const double notches = a_call.Number("notches");
+                    const double every = a_call.Number("every", 0.35);
+                    if (notches == 0 || std::abs(notches) > 64 || notches != std::floor(notches)) {
+                        throw Error("notches is a whole number, -64 to 64, not 0");
+                    }
+                    if (every < 0.02 || every > 5.0) {
+                        throw Error("every is 0.02 to 5 seconds");
+                    }
+                    const int total = static_cast<int>(std::abs(notches)), step = notches > 0 ? 1 : -1;
+                    a_call.DefaultTimeout(total * every + 10.0);
+                    return [total, step, every, done = 0](Call& a_call) mutable -> std::optional<Json> {
+                        while (done < total && a_call.Seconds() >= done * every) {
+                            PlayerSync::DebugWheel(step);
+                            done++;
+                        }
+                        if (done < total) {
+                            return std::nullopt;
+                        }
+                        return JsonObject{ { "notches", total * step } };
+                    };
+                });
+
             SkseTestKit::AddTask("pr.shout", "[words] [shout=<hex form id>] [seconds=<s>]",
                 "Tells MSC the player shouted, as Combat does when a shout is released (PlayerShout: Whirlwind Sprint, 0002F7BA, unless "
                 "shout=; words 1 to 3, 3 by default), while MSC has the player; answers seconds (2) later with how far the player went, "
@@ -771,9 +877,16 @@ namespace PerkeleRim::TestKit
                     };
                 });
 
-            SkseTestKit::AddCommand("pr.lookat", "", "MSC's look-at prompt as Skyrim last got it: whether MSC shows its hand (doors, switches, knobs) and its text",
+            SkseTestKit::AddCommand("pr.lookat", "",
+                "MSC's look-at prompt as Skyrim last got it: whether MSC shows its hand (doors, switches, knobs), its assemble icon (a held part "
+                "in its place on the car), its disassemble icon (a part with its bolts out), the icon Skyrim draws and MSC's text",
                 [](Call&) -> Json {
-                    return JsonObject{ { "msc", PlayerSync::Owned() }, { "hand", PlayerSync::PromptHand() }, { "text", PlayerSync::PromptText() } };
+                    const auto flags = PlayerSync::PromptFlags();
+                    const auto icon = LookAt::IconFor(flags);
+                    return JsonObject{ { "msc", PlayerSync::Owned() }, { "hand", (flags & Protocol::kLookAtUse) != 0 },
+                        { "assemble", (flags & Protocol::kLookAtAssemble) != 0 }, { "disassemble", (flags & Protocol::kLookAtDisassemble) != 0 },
+                        { "icon", icon == LookAt::Icon::Assemble ? "assemble" : icon == LookAt::Icon::Disassemble ? "disassemble" : icon == LookAt::Icon::Hand ? "hand" : "none" },
+                        { "text", PlayerSync::PromptText() } };
                 });
 
             SkseTestKit::AddCommand("pr.teimo", "", "Teimo at his stall in Riverwood: found, loaded, drawn as MSC's Teimo, where, which way he faces, how far Kumpo is, the last line he said and his caption now",
@@ -829,6 +942,30 @@ namespace PerkeleRim::TestKit
                     player->SetPosition(to, true);
                     player->SetAngle(RE::NiPoint3(0.0f, 0.0f, facing));
                     return JsonObject{ { "x", to.x }, { "y", to.y }, { "z", to.z }, { "heading", facing * 57.29578 } };
+                });
+
+            SkseTestKit::AddCommand("pr.part", "[name]",
+                "One of the Satsuma's parts as MSC's database has it, as Skyrim last got it (PartState): on the car, bolted, its bolts "
+                "(tight, stages 0..8 each added up) and where it is; any spelling of MSC's name (door_left, Door Left, radiator, wheelfl). "
+                "Without a name, how many parts MSC reported and how many are on the car",
+                [](Call& a_call) -> Json {
+                    const auto name = a_call.Text("name");
+                    if (name.empty()) {
+                        const auto& table = PartTable::Get();
+                        return JsonObject{ { "parts", table.Size() }, { "installed", table.Installed() } };
+                    }
+                    return DescribePart(FindPart(name));
+                });
+
+            // pr.part:<name>: where one of the Satsuma's parts is, with MSC's bolt state as the details of every probe.
+            SkseTestKit::AddTarget("pr.part", "<name>", "One of the Satsuma's parts (MSC's database name): where MSC has it, its bolt state as details",
+                [](std::string_view a_name) {
+                    const auto& part = FindPart(a_name);
+                    if (!part.Placed() || part.generation != PlayerSync::Generation()) {
+                        throw Error(std::format("{} isn't on the island MSC has Kumpo on now", part.name));
+                    }
+                    return SkseTestKit::Place{ .x = part.position[0], .y = part.position[1], .z = part.position[2], .heading = 0.0f,
+                        .details = DescribePart(part) };
                 });
 
             // pr.teimo: Teimo's feet, facing the way his model does, his drawn model as the root.

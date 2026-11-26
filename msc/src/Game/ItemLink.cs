@@ -39,6 +39,8 @@ namespace PerkeleRim.Game
         readonly List<Entry> entries = new List<Entry>();         // items and their pieces, closest first
         float nextScan;
         int lastCount = -1, lastShown = -1;
+        Entry focus;           // the bolt MSC's tools are on (BoltFocus), sent last while there is one
+        static readonly ModelSender.Look LitBolt = new ModelSender.Look { Key = "lit", Lit = true };  // with MSC's highlight
         uint itemsGeneration;  // anchor the items' island positions are for, 0 = none yet
         Vec3 itemsAnchor;      // its Skyrim position
 
@@ -50,8 +52,9 @@ namespace PerkeleRim.Game
             this.findGround = findGround;
         }
 
-        // Call every LateUpdate. playing: MSC owns the player and it stands on the current island.
-        public void Update(Link link, bool playing, Transform player, Vector3 feet)
+        // Call every LateUpdate. playing: MSC owns the player and it stands on the current island. bolt: the highlighted
+        // bolt's mesh (BoltFocus), drawn as one more item at its live pose with MSC's highlight; null for none.
+        public void Update(Link link, bool playing, Transform player, Vector3 feet, Transform bolt = null)
         {
             var state = new ItemState { frame = (uint)Time.frameCount, generation = island.Generation };
             if (!playing || player == null)
@@ -76,8 +79,22 @@ namespace PerkeleRim.Game
             foreach (var e in entries)
             {
                 if (e.Transform == null) continue;  // destroyed since the scan (a bottle drunk)
+                if (n >= Wire.ItemCapacity - 1 && bolt != null) break;  // room for the bolt
                 state.Set(n++, Pose(e, player));
             }
+            if (bolt != null && n < Wire.ItemCapacity)
+            {
+                if (focus == null || focus.Transform != bolt)
+                {
+                    var only = bolt;
+                    // Its own id (the mesh's instance id with the top bit set, apart from the items' own), the model read with
+                    // MSC's highlight material, which keys it apart from the plain bolts.
+                    focus = new Entry { Transform = bolt, Id = unchecked((uint)bolt.GetInstanceID()) | 0x80000000u,
+                        Model = models.IdFor(bolt, t => t == only, LitBolt), Renderers = new[] { bolt.GetComponent<Renderer>() } };
+                }
+                state.Set(n++, Pose(focus, player));
+            }
+            else focus = null;
             state.count = (uint)n;
             link.WriteItems(ref state);
         }
