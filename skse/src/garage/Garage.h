@@ -1,5 +1,7 @@
 #pragma once
 
+#include "link.h"
+
 // The garage near Whiterun from PerkeleRim.esp (tools/esp-gen): a spawn marker in front of it, a
 // marker where the van parks inside (on the pit), the shack next to it with a wake-up marker by the
 // bed, and the shelf spots MSC stocks. The first handover of every save wakes the player up in the
@@ -35,4 +37,23 @@ namespace PerkeleRim::Garage
     bool                     StockDue(const RE::NiPoint3& a_player);
     const std::vector<Spot>& ShelfSpots();
     void                     Stocked();
+
+    // The Satsuma bay next to the garage (protocol GarageBay, msc/src/Link/SatsumaBay.cs). Once per
+    // save, the first time MSC has Kumpo near the bay, MSC moves the Satsuma and its loose parts from
+    // its home onto the stand and the shelves; the cosave remembers it once MSC says it's done, so a
+    // reload never repeats it (a save from before has no flag: its first time near the bay does it).
+    // Every later anchor near the bay tells MSC the body lives on its stand (kBayStand).
+    std::optional<Spot> Bay();           // the bay marker: its floor in the middle, the way it opens
+    bool                SatsumaMoved();  // this save had the move
+    void UpdateBay(RE::TESObjectREFR* a_player, bool a_owned, std::uint32_t a_generation);  // every frame
+    bool RequestBay(std::uint32_t a_what, std::uint32_t a_generation, const char* a_why);    // kBay*, now; false: no bay or the ring is full
+    void OnGarageDone(const std::uint8_t* a_data, std::uint32_t a_size);                    // MSC's GarageDone
+
+    struct BayResult
+    {
+        std::uint32_t        count = 0;  // GarageDone messages since the plugin started
+        Protocol::GarageDone done{};
+    };
+    const BayResult& LastBay();
+    std::uint32_t    BayRequests();  // GarageBay messages sent since the last load
 }

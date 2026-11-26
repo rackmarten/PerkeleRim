@@ -38,7 +38,7 @@ namespace PerkeleRim.Game
         readonly List<Transform> items = new List<Transform>();  // item roots
         readonly List<Entry> entries = new List<Entry>();         // items and their pieces, closest first
         float nextScan;
-        int lastCount = -1;
+        int lastCount = -1, lastShown = -1;
         uint itemsGeneration;  // anchor the items' island positions are for, 0 = none yet
         Vec3 itemsAnchor;      // its Skyrim position
 
@@ -122,6 +122,8 @@ namespace PerkeleRim.Game
         // Puts items back where a snapshot had them, on the current island, by instance id (so only
         // within the MSC session that took it). Items in the player's hands now stay there; ones
         // without ground yet are held until it arrives. Beer cases get their bottle count back.
+        public Func<Rigidbody, bool> KeptRestored;  // GarageMover.Restored: takes the Satsuma's loose parts and the spanner set
+
         public void Restore(List<Snapshot.Body> saved, Transform player)
         {
             var byId = new Dictionary<int, Snapshot.Body>();
@@ -139,6 +141,11 @@ namespace PerkeleRim.Game
                 t.rotation = new Quaternion(b.Rotation.x, b.Rotation.y, b.Rotation.z, b.Rotation.w);
                 body.position = t.position;
                 body.rotation = t.rotation;
+                if (KeptRestored != null && KeptRestored(body))
+                {
+                    moved++;  // GarageMover keeps it (and holds it for its ground)
+                    continue;
+                }
                 if (findGround(t.position).HasValue)
                 {
                     if (!body.isKinematic)
@@ -174,6 +181,7 @@ namespace PerkeleRim.Game
             foreach (var t in items)
             {
                 if (t == null || t.IsChildOf(player) || (t.position + delta - feet).sqrMagnitude > keep) continue;
+                if (t.root.name == "CARPARTS" || GarageMover.IsSpannerSet(t)) continue;  // the Satsuma's parts and the spanner set keep their place in Skyrim themselves (GarageMover)
                 t.position += delta;
                 var body = t.GetComponent<Rigidbody>();
                 if (body != null)
@@ -248,9 +256,11 @@ namespace PerkeleRim.Game
             items.Sort((a, b) => (a.position - feet).sqrMagnitude.CompareTo((b.position - feet).sqrMagnitude));
 
             entries.Clear();
+            int shown = 0;
             foreach (var item in items)
             {
                 if (entries.Count >= Wire.ItemCapacity) break;
+                shown++;
                 uint form = JunkLink.FormOf(item);
                 if (form != 0)
                 {
@@ -267,10 +277,12 @@ namespace PerkeleRim.Game
                     Add(child, t => t.IsChildOf(piece) && !InsideItem(t, piece, known));
                 }
             }
-            if (entries.Count != lastCount)
+            if (entries.Count != lastCount || shown != lastShown)
             {
                 lastCount = entries.Count;
-                log($"items: {entries.Count} entries from {items.Count} items near the player");
+                lastShown = shown;
+                log($"items: {entries.Count} entries from {items.Count} items near the player" +
+                    (shown < items.Count ? $", the farthest {items.Count - shown} left out: ItemState holds {Wire.ItemCapacity} entries" : ""));
             }
         }
 
@@ -298,6 +310,8 @@ namespace PerkeleRim.Game
             // as an item its whole model was read again (half a second) whenever its parts moved.
             if (t.GetComponent<CarDynamics>() != null) return false;
             if (t.name.Contains("(itemx)") || t.root.name == "ITEMS") return true;
+            // The Satsuma's loose parts, the engine block (95 kg) too: they lie in the garage's bay.
+            if (t.root.name == "CARPARTS" && t.CompareTag("PART") && !t.IsChildOf(player) && !body.isKinematic) return true;
             if (t.parent != null && t.parent.name == "ItemPivot") return true;  // in MSC's hand (an empty bottle out of the pocket never lay loose)
             if (t.IsChildOf(player) || body.isKinematic || body.mass > LooseMassMax) return false;
             var rootBody = t.root != t ? t.root.GetComponent<Rigidbody>() : null;

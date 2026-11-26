@@ -17,7 +17,7 @@
 namespace PerkeleRim::Protocol
 {
     inline constexpr std::uint32_t kMagic = 0x4D495250;  // "PRIM" in memory
-    inline constexpr std::uint32_t kProtocolVersion = 56;
+    inline constexpr std::uint32_t kProtocolVersion = 57;
 
     // Shared memory section, per Windows session. Whichever game starts first creates it.
     inline constexpr const wchar_t* kMappingName = L"Local\\PerkeleRim.Link";
@@ -37,14 +37,14 @@ namespace PerkeleRim::Protocol
     inline constexpr std::uint32_t kOffsetVehiclePartsSlot = 1024;  // after kVehicleCount VehicleSlots
     inline constexpr std::uint32_t kOffsetPartSetSlot = 42304;      // after kVehicleCount VehiclePartsSlots
     inline constexpr std::uint32_t kOffsetItemSlot = 52608;
-    inline constexpr std::uint32_t kOffsetHandLayerSlot = 57792;
-    inline constexpr std::uint32_t kOffsetActorSlot = 57856;
-    inline constexpr std::uint32_t kOffsetParticleSlot = 59456;
-    inline constexpr std::uint32_t kOffsetRingToMsc = 75904;        // RingHeader, data follows
+    inline constexpr std::uint32_t kOffsetHandLayerSlot = 62912;
+    inline constexpr std::uint32_t kOffsetActorSlot = 62976;
+    inline constexpr std::uint32_t kOffsetParticleSlot = 64576;
+    inline constexpr std::uint32_t kOffsetRingToMsc = 81024;        // RingHeader, data follows
     inline constexpr std::uint32_t kRingToMscCapacity = 4194304;    // 4 MiB: collision chunks
-    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4270272;   // 75904 + 64 + 4 MiB
+    inline constexpr std::uint32_t kOffsetRingToSkyrim = 4275392;   // 81024 + 64 + 4 MiB
     inline constexpr std::uint32_t kRingToSkyrimCapacity = 262144;  // 256 KiB: events
-    inline constexpr std::uint32_t kMappingSize = 4532480;         // 4270272 + 64 + 256 KiB
+    inline constexpr std::uint32_t kMappingSize = 4537600;         // 4275392 + 64 + 256 KiB
 
     enum class Side : std::uint32_t
     {
@@ -280,7 +280,7 @@ namespace PerkeleRim::Protocol
         std::uint8_t  pad[24];
     };
 
-    inline constexpr std::uint32_t kItemCapacity = 128;  // ItemState.items
+    inline constexpr std::uint32_t kItemCapacity = 256;  // ItemState.items (v57: 128 before; the Satsuma bay's parts)
     inline constexpr std::uint32_t kItemVisible = 0x1;   // ItemPose.flags: MSC draws it
     inline constexpr std::uint32_t kItemHeld = 0x2;      // ItemPose.flags: in the player's hands
     inline constexpr std::uint32_t kItemForm = 0x4;      // ItemPose.flags: model is a Skyrim form id, drawn with that form's own model (thrown junk, v46)
@@ -304,7 +304,7 @@ namespace PerkeleRim::Protocol
         std::uint32_t generation;  // WorldspaceChange.generation
         std::uint32_t count;       // <= kItemCapacity
         std::uint32_t reserved;
-        ItemPose      items[128];  // kItemCapacity
+        ItemPose      items[256];  // kItemCapacity
     };
 
     struct ItemSlot
@@ -470,6 +470,8 @@ namespace PerkeleRim::Protocol
         TeimoStall = 37,       // Skyrim -> MSC
         TeimoPay = 38,         // Skyrim -> MSC
         TeimoShop = 39,        // MSC -> Skyrim
+        GarageBay = 40,        // Skyrim -> MSC
+        GarageDone = 41,       // MSC -> Skyrim
     };
 
     struct MessageHeader
@@ -964,6 +966,43 @@ namespace PerkeleRim::Protocol
         std::uint32_t seq;       // the TeimoPay answered, 0 for the others
     };
 
+    // GarageBay (v57): the Satsuma bay next to the garage (PerkeleRim.esp; the layout and the slot of
+    // every part: msc/src/Link/SatsumaBay.cs). Skyrim sends the bay marker's pose and what to do:
+    // kBayMoveSatsuma once per save, when Kumpo first comes near the bay with MSC (the Satsuma's body
+    // onto its stand and its loose parts at MSC's home onto their slots); the garage board's
+    // kBayPartsHome (every loose car part, wherever it is, back to the bay) and kBayVehiclesHome
+    // (every vehicle to its spot by the garage); kBayCheck only counts (the test kit's probe);
+    // kBayStand, at every handover near the bay of a save that had the move, says the Satsuma lives
+    // on its stand (a restarted MSC that hasn't placed it yet sets the body back there). MSC
+    // answers each with GarageDone once it is done (it waits for the island's ground at the bay, 20 s
+    // at most); Skyrim's cosave remembers the move only then.
+    inline constexpr std::uint32_t kBayMoveSatsuma = 0x1;
+    inline constexpr std::uint32_t kBayPartsHome = 0x2;
+    inline constexpr std::uint32_t kBayVehiclesHome = 0x4;
+    inline constexpr std::uint32_t kBayCheck = 0x8;
+    inline constexpr std::uint32_t kBayStand = 0x10;
+
+    struct GarageBay
+    {
+        std::uint32_t generation;   // the anchor (WorldspaceChange) it is for
+        std::uint32_t request;      // kBay*
+        float         position[3];  // the bay marker: the bay's floor in its middle, Skyrim world space
+        float         heading;      // the way the bay opens (its +X), radians clockwise from north
+        std::uint32_t reserved[2];
+    };
+
+    struct GarageDone
+    {
+        std::uint32_t generation;  // as asked
+        std::uint32_t request;     // as asked; 0 = it couldn't (no ground at the bay in time, a new anchor, or the move with Kumpo in the body)
+        std::uint32_t body;        // 1: the Satsuma's body is on its stand (moved, or found there)
+        std::uint32_t slotted;     // Satsuma parts on their slots (put there, or kBayCheck: lying there)
+        std::uint32_t floor;       // parts laid on the bay's floor or its pile (no slot of their own free, or not the Satsuma's)
+        std::uint32_t vehicles;    // vehicles brought to their spots
+        std::uint32_t missed;      // kBayCheck: the Satsuma's parts on the island off their slots
+        std::uint32_t asked;       // the request as asked (kBay*), done or not
+    };
+
     // ---- Models (MSC -> Skyrim) ----
     //
     // MSC sends its own meshes and textures, read from the running game, and Skyrim builds them in
@@ -1150,10 +1189,10 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ItemPose, flags) == 8);
     static_assert(offsetof(ItemPose, position) == 12);
     static_assert(offsetof(ItemPose, rotation) == 24);
-    static_assert(sizeof(ItemState) == 5136);
+    static_assert(sizeof(ItemState) == 10256);
     static_assert(offsetof(ItemState, count) == 8);
     static_assert(offsetof(ItemState, items) == 16);
-    static_assert(sizeof(ItemSlot) == 5184);
+    static_assert(sizeof(ItemSlot) == 10304);
     static_assert(offsetof(ItemSlot, value) == 8);
     static_assert(sizeof(HandLayer) == 32);
     static_assert(offsetof(HandLayer, texture) == 8);
@@ -1259,6 +1298,11 @@ namespace PerkeleRim::Protocol
     static_assert(offsetof(ConsumeEvent, form) == 20);
     static_assert(sizeof(HeldDrink) == 56);
     static_assert(sizeof(TeimoLine) == 64);
+    static_assert(sizeof(GarageBay) == 32);
+    static_assert(offsetof(GarageBay, position) == 8);
+    static_assert(offsetof(GarageBay, heading) == 20);
+    static_assert(sizeof(GarageDone) == 32);
+    static_assert(offsetof(GarageDone, missed) == 24);
     static_assert(offsetof(TeimoLine, length) == 12);
     static_assert(offsetof(TeimoLine, clip) == 16);
     static_assert(sizeof(StallGood) == 20);

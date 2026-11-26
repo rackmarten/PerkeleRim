@@ -41,20 +41,35 @@ $ours = @(
     ($pluginsTxt = Join-Path $env:LOCALAPPDATA 'Skyrim Special Edition\plugins.txt'),
     (Join-Path $mods 'PerkeleRim.dll'))
 $others = @($Aside | Where-Object { $_ } | ForEach-Object { (Join-Path $plugins "$_.dll"), (Join-Path $plugins "$_.pdb") })
+# A session's own My Summer Car save (PERKELERIM_MSC_SAVE: a snapshot name or folder), the player's kept meanwhile.
+$mscSaveDir = Join-Path $env:USERPROFILE 'AppData\LocalLow\Amistech\My Summer Car'
 
 switch ($Mode) {
     'deploy' {
-        if (Save-SessionFiles $store -Keep $ours -Move $others) {
+        $mscSave = Resolve-MscSave $env:PERKELERIM_MSC_SAVE
+        $mscPaths = @(if ($mscSave) { Get-MscSavePaths $mscSaveDir $mscSave })
+        $keep = $ours + $mscPaths
+        if (Save-SessionFiles $store -Keep $keep -Move $others) {
             Write-Host "Kept the game's own files in $store$(if ($others) { "; set aside $(@($Aside) -join ', ')" })."
         } else {
             Write-Host "The game's own files from before this session are still kept in $store."
         }
         & "$PSScriptRoot/deploy-local.ps1"
-        Save-DeployStamps $store -Skip $pluginsTxt  # Skyrim rewrites it as it runs
+        if ($mscSave) {
+            Use-MscSave $mscSaveDir $mscSave
+            Write-Host "My Summer Car plays the save in $mscSave (the player's own comes back on restore)."
+        }
+        # Skyrim rewrites plugins.txt as it runs, MSC its save (kept by this or an earlier deploy of the session).
+        $mscKept = @(Read-SessionList $store | Where-Object { $_.path -like (Join-Path $mscSaveDir '*') } | ForEach-Object { $_.path })
+        Save-DeployStamps $store -Skip (@($pluginsTxt) + $mscPaths + $mscKept)
     }
     { $_ -in 'restore', 'restore-anyway' } {
         if (Restore-MscDoorstop $msc) { Write-Host "Put back My Summer Car's doorstop_config.ini (a hidden start hadn't)." }
+        # A session that played its own MSC save: what MSC wrote there that neither save had goes too.
+        $mscKept = @(Read-SessionList $store | Where-Object { $_.path -like (Join-Path $mscSaveDir '*') } | ForEach-Object { $_.path })
         $back = Restore-SessionFiles $store -Force:($Mode -eq 'restore-anyway')
+        $stray = Remove-MscStrayFiles $mscSaveDir $mscKept
+        if ($stray) { Write-Host "Deleted what My Summer Car wrote beside the session's save: $($stray -join ', ')." }
         if ($back) { Write-Host "Put back the game's own files ($(@($back).Count))." } else { Write-Host 'Nothing kept to put back.' }
         # A hidden start's test session marker (launch-msc.ps1) that MSC never read: the player's next start keeps its
         # sound. After the files, and never fatal: those matter more.

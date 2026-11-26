@@ -84,12 +84,13 @@ namespace PerkeleRim.Game
         Action<string> log;
         VehicleLink van, moped, kekmet, gifu;
         // The Satsuma: drawn, not driven yet. Not in vehicles (no fuel, calls, snapshots, tuning): it stays
-        // in MSC's garage with its parts until "satsuma here" (or later the garage) brings it.
+        // in MSC's garage with its parts until the Satsuma bay's move (GarageMover) brings it, or "satsuma here".
         VehicleLink satsuma;
         SatsumaParts satsumaParts;
         VehicleLink[] vehicles;
         BeerGift beer;  // spike "beer" only
         ShelfStocker shelves;
+        GarageMover garage;  // the Satsuma bay: its one-time move and the garage board
         FuelLink fuel;
         PocketLink pocket;
         JunkLink junk;
@@ -186,12 +187,14 @@ namespace PerkeleRim.Game
             satsuma.Exclude = t => satsumaParts.Excluded(t);
             beer = new BeerGift(log);
             shelves = new ShelfStocker(island, ground, log);
+            garage = new GarageMover(island, ground, () => satsuma, () => vehicles, () => player, log);
             moped.EndlessFuel = true;
             fuel = new FuelLink(island, log);
             junk = new JunkLink(island, log);
             pocket = new PocketLink(junk, log);
             models = new ModelSender(this, log);
             items = new ItemLink(island, models, ground, log);
+            items.KeptRestored = garage.Restored;
             particles = new ParticleLink(island, models, () => Array.ConvertAll(vehicles, v => v.Car), log);
             actors = new ActorLink(island, charge, log, what => voice.Swear(what));
             finger = new FingerLink(log);
@@ -232,6 +235,13 @@ namespace PerkeleRim.Game
         // Spike "teimo say <variation>": one of Teimo's lines, from where the player stands.
         public void TeimoSay(string name) => teimo.Say(name, null);
         public StallGoods Stall => stall;  // the spike's "shop"
+
+        // Spike "garage restart" (GarageMover.SimulateRestart).
+        public void GarageCommand(string what)
+        {
+            if (what == "restart") garage.SimulateRestart();
+            else log("garage: spike commands: restart");
+        }
 
         // Spike command "satsuma": "satsuma" lists its parts, "satsuma here" brings it in front of the
         // player as it is, "satsuma half" puts half its parts on, "satsuma bare" takes them off.
@@ -432,6 +442,7 @@ namespace PerkeleRim.Game
             if (playing) beer.Update(player, Feet());  // where the player is in Skyrim, not left behind
             shelves.Update(playing);
             stall.Update(link, playing, player != null ? Feet() : Vector3.zero);
+            garage.Update(link, playing);
             pocket.Paused = input.Paused;
             junk.Update(link, playing, player);
             pocket.Update(link, playing, player != null);
@@ -556,6 +567,8 @@ namespace PerkeleRim.Game
                 stall.OnPay(payload, size);
             else if (type == MessageType.StockShelves)
                 shelves.OnMessage(payload, size);
+            else if (type == MessageType.GarageBay)
+                garage.OnMessage(payload, size);
             else if (type == MessageType.FuelStations)
                 fuel.OnStations(payload, size);
             else if (type == MessageType.LoadReset)
@@ -909,6 +922,17 @@ namespace PerkeleRim.Game
         }
     }
 }";
+
+        // Spike "surfaces x y": every upward-facing island surface at Skyrim world (x, y), in Skyrim
+        // units, top first: a shelf's boards, the stand under the Satsuma.
+        public void LogSurfaces(float x, float y)
+        {
+            var at = island.SkyrimToIsland(new Vec3(x, y, island.Anchor.z));
+            var list = IslandSurfaces(new Vector3(at.x, at.y, at.z));
+            var heights = new List<string>();
+            foreach (var h in list) heights.Add(island.IslandToSkyrim(new Vec3(at.x, h, at.z)).z.ToString("0"));
+            log($"player: island surfaces at ({x:0},{y:0}): {(heights.Count > 0 ? string.Join(", ", heights.ToArray()) : "none")}");
+        }
 
         // Spike "island steps [radius]": the island triangles within radius (m, default 8) of the
         // player steeper than 30 degrees with their top within 1 m of the feet, steepest first, with

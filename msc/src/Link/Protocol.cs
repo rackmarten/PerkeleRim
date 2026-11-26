@@ -8,7 +8,7 @@ namespace PerkeleRim.Protocol
     public static class Wire
     {
         public const uint Magic = 0x4D495250;
-        public const uint ProtocolVersion = 56;
+        public const uint ProtocolVersion = 57;
         public const string MappingName = @"Local\PerkeleRim.Link";
         public const uint PeerTimeoutMs = 2000;
         public const uint CollisionChunkUnits = 2048;
@@ -20,14 +20,14 @@ namespace PerkeleRim.Protocol
         public const uint OffsetVehiclePartsSlot = 1024;
         public const uint OffsetPartSetSlot = 42304;
         public const uint OffsetItemSlot = 52608;
-        public const uint OffsetHandLayerSlot = 57792;
-        public const uint OffsetActorSlot = 57856;
-        public const uint OffsetParticleSlot = 59456;
-        public const uint OffsetRingToMsc = 75904;
+        public const uint OffsetHandLayerSlot = 62912;
+        public const uint OffsetActorSlot = 62976;
+        public const uint OffsetParticleSlot = 64576;
+        public const uint OffsetRingToMsc = 81024;
         public const uint RingToMscCapacity = 4194304;
-        public const uint OffsetRingToSkyrim = 4270272;
+        public const uint OffsetRingToSkyrim = 4275392;
         public const uint RingToSkyrimCapacity = 262144;
-        public const uint MappingSize = 4532480;
+        public const uint MappingSize = 4537600;
 
         public const uint InputOwnsPlayer = 0x1;
         public const uint InputPaused = 0x2;
@@ -69,7 +69,7 @@ namespace PerkeleRim.Protocol
         public const uint PartVisible = 0x1;
         public const uint PartSetCapacity = 256;
         public const uint PartSetBuilding = 0x1;
-        public const uint ItemCapacity = 128;
+        public const uint ItemCapacity = 256;
         public const uint ItemVisible = 0x1;
         public const uint ItemHeld = 0x2;
         public const uint ItemForm = 0x4;
@@ -158,6 +158,11 @@ namespace PerkeleRim.Protocol
         public const uint ShopPaid = 2;
         public const uint ShopShort = 3;
         public const uint ShopStolen = 4;
+        public const uint BayMoveSatsuma = 0x1;    // GarageBay.request
+        public const uint BayPartsHome = 0x2;
+        public const uint BayVehiclesHome = 0x4;
+        public const uint BayCheck = 0x8;
+        public const uint BayStand = 0x10;
         public const uint FuelPumpsMax = 8;
         public const uint MaterialCutout = 0x1;
         public const uint MaterialBlend = 0x2;
@@ -210,6 +215,8 @@ namespace PerkeleRim.Protocol
         TeimoStall = 37,
         TeimoPay = 38,
         TeimoShop = 39,
+        GarageBay = 40,
+        GarageDone = 41,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -436,7 +443,7 @@ namespace PerkeleRim.Protocol
         public uint generation;
         public uint count;
         public uint reserved;
-        public fixed byte items[5120];
+        public fixed byte items[10240];
 
         public ItemPose Get(int i)
         {
@@ -870,6 +877,29 @@ namespace PerkeleRim.Protocol
         public fixed float position[3];
         public uint length;
         public fixed byte clip[48];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct GarageBay
+    {
+        public uint generation;
+        public uint request;
+        public fixed float position[3];
+        public float heading;
+        public fixed uint reserved[2];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct GarageDone
+    {
+        public uint generation;
+        public uint request;
+        public uint body;
+        public uint slotted;
+        public uint floor;
+        public uint vehicles;
+        public uint missed;
+        public uint asked;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

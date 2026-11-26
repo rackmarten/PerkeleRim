@@ -79,6 +79,25 @@ namespace PerkeleRim.Spike
             }
         }
 
+        // Spike "fetch <part>": that loose part of the Satsuma's dropped 1 m in front of the player.
+        static void Fetch(string name)
+        {
+            var player = GameObject.Find("PLAYER");
+            if (player == null) { SpikeLog.Write("cmd: fetch: no PLAYER"); return; }
+            foreach (Rigidbody body in FindObjectsOfType(typeof(Rigidbody)))
+            {
+                var t = body.transform;
+                if (t.root.name != "CARPARTS" || !t.CompareTag("PART") || !t.name.Equals(name, StringComparison.OrdinalIgnoreCase)) continue;
+                var at = player.transform.position + player.transform.forward * 1f + Vector3.up * 0.5f;
+                t.position = at;
+                body.position = at;
+                body.velocity = Vector3.zero;
+                SpikeLog.Write($"cmd: fetch: {t.name} dropped at {at}");
+                return;
+            }
+            SpikeLog.Write("cmd: fetch: no loose part named " + name);
+        }
+
         // Tag, layer, physics and FSMs of every object whose name contains text (prefabs and inactive
         // templates included), at most 20.
         static void Inspect(string text)
@@ -528,6 +547,11 @@ namespace PerkeleRim.Spike
                         if (satsumaLink != null) satsumaLink.SatsumaCommand(words.Length > 1 ? words[1].ToLower() : "");
                         else SpikeLog.Write("cmd: no PlayerLink");
                         break;
+                    case "garage":  // "garage restart": the Satsuma bay as after MSC restarted with parts in it
+                        var garageLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (garageLink != null) garageLink.GarageCommand(words.Length > 1 ? words[1].ToLower() : "");
+                        else SpikeLog.Write("cmd: no PlayerLink");
+                        break;
                     case "tree":  // "tree SATSUMA(557kg, 248)" writes its whole hierarchy to PerkeleRim_tree_<name>.txt; "tree roots" every root rigidbody
                         TreeDump.Run(lines[0].Trim().Substring(4).Trim());
                         break;
@@ -553,6 +577,17 @@ namespace PerkeleRim.Spike
                         break;
                     case "hands":
                         HandsDump.Run();
+                        break;
+                    case "fetch":  // "fetch gearbox(Clone)": that loose part of the Satsuma's (under CARPARTS) dropped 1 m in front of the player
+                        Fetch(lines[0].Trim().Substring(5).Trim());
+                        break;
+                    case "satsumadump":  // the Satsuma, its loose parts and MSC's part database, to PerkeleRim_satsuma.txt
+                        SatsumaDump.Run();
+                        break;
+                    case "surfaces":  // "surfaces 15000 -14500": the island's surfaces at that Skyrim x, y (a shelf's boards)
+                        var surfaceLink = FindObjectOfType<PerkeleRim.Game.PlayerLink>();
+                        if (surfaceLink == null || words.Length < 3) { SpikeLog.Write("cmd: surfaces <x> <y>, with PlayerLink"); break; }
+                        surfaceLink.LogSurfaces(float.Parse(words[1], CultureInfo.InvariantCulture), float.Parse(words[2], CultureInfo.InvariantCulture));
                         break;
                     case "handlayer":
                         string mode = words.Length > 1 ? words[1].ToLower() : "on";

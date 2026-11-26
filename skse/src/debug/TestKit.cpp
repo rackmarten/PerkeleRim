@@ -5,6 +5,8 @@
 #include "coords.h"
 #include "debug/HitTest.h"
 #include "fuel/Fuel.h"
+#include "garage/Garage.h"
+#include "garage/GarageBoard.h"
 #include "link/LinkService.h"
 #include "look_at.h"
 #include "model/ModelView.h"
@@ -172,6 +174,21 @@ namespace PerkeleRim::TestKit
         Json Point(const float (&a_point)[3])
         {
             return JsonObject{ { "x", a_point[0] }, { "y", a_point[1] }, { "z", a_point[2] } };
+        }
+
+        Json DescribeBay()
+        {
+            const auto& last = Garage::LastBay();
+            const auto& d = last.done;
+            JsonObject  json{ { "moved", Garage::SatsumaMoved() }, { "requests", static_cast<double>(Garage::BayRequests()) }, { "answers", static_cast<double>(last.count) } };
+            if (const auto bay = Garage::Bay()) {
+                json["bay"] = JsonObject{ { "x", bay->position.x }, { "y", bay->position.y }, { "z", bay->position.z }, { "heading", bay->heading } };
+            }
+            if (last.count > 0) {
+                json["last"] = JsonObject{ { "request", static_cast<double>(d.request) }, { "asked", static_cast<double>(d.asked) }, { "generation", static_cast<double>(d.generation) }, { "body", d.body != 0 }, { "slotted", static_cast<double>(d.slotted) },
+                    { "floor", static_cast<double>(d.floor) }, { "missed", static_cast<double>(d.missed) }, { "vehicles", static_cast<double>(d.vehicles) } };
+            }
+            return json;
         }
 
         // What the kit says about a vehicle MSC has on the island: where, how fast, drawn or not, which of its
@@ -578,6 +595,92 @@ namespace PerkeleRim::TestKit
                     };
                 });
 
+            SkseTestKit::AddCommand("pr.garage", "", "The Satsuma bay next to the garage: whether this save had the Satsuma's move, the bay requests sent since the load, and MSC's last answer (what it did, the body on its stand, parts on their slots, on the floor, off their slots, vehicles brought home)",
+                [](Call&) -> Json { return DescribeBay(); });
+
+            SkseTestKit::AddTask("pr.garage.ask", "<what>",
+                "Asks MSC for what the bay does (MSC has the player): move (the one-time move, again), parts (the garage board's bring loose car parts "
+                "home), vehicles (bring all vehicles home), check (count the parts on and off their slots), stand (the body back on its stand); "
+                "answers with MSC's GarageDone, as pr.garage",
+                [](Call& a_call) -> Step {
+                    RequireMsc();
+                    const auto what = a_call.Text("what");
+                    std::uint32_t request = 0;
+                    if (what == "move") {
+                        request = Protocol::kBayMoveSatsuma;
+                    } else if (what == "parts") {
+                        request = Protocol::kBayPartsHome;
+                    } else if (what == "vehicles") {
+                        request = Protocol::kBayVehiclesHome;
+                    } else if (what == "check") {
+                        request = Protocol::kBayCheck;
+                    } else if (what == "stand") {
+                        request = Protocol::kBayStand;
+                    } else {
+                        throw Error("what is move, parts, vehicles, check or stand");
+                    }
+                    if (!Garage::Bay()) {
+                        throw Error("PerkeleRim.esp has no Satsuma bay (rebuild it with scripts/build-esp.ps1)");
+                    }
+                    a_call.DefaultTimeout(40.0);
+                    struct Seen
+                    {
+                        bool          sent = false;
+                        std::uint32_t before = 0;
+                    };
+                    return [request, seen = std::make_shared<Seen>()](Call&) -> std::optional<Json> {
+                        // An automatic stand request's answer may still be on its way: only this one's counts.
+                        if (!seen->sent) {
+                            seen->before = Garage::LastBay().count;
+                            if (!Garage::RequestBay(request, PlayerSync::Generation(), "test kit")) {
+                                return std::nullopt;  // the ring is full: next frame
+                            }
+                            seen->sent = true;
+                        }
+                        if (Garage::LastBay().count == seen->before || Garage::LastBay().done.asked != request) {
+                            return std::nullopt;
+                        }
+                        return DescribeBay();
+                    };
+                });
+
+            SkseTestKit::AddTask("pr.garage.board", "<what>",
+                "Uses the garage board as Kumpo does (its question, then the answer clicked): vehicles (bring all vehicles home) or parts "
+                "(bring loose car parts home); answers with MSC's GarageDone, as pr.garage",
+                [](Call& a_call) -> Step {
+                    RequireMsc();
+                    const auto what = a_call.Text("what");
+                    if (what != "vehicles" && what != "parts") {
+                        throw Error("what is vehicles or parts");
+                    }
+                    a_call.DefaultTimeout(40.0);
+                    struct Seen
+                    {
+                        int           phase = 0;  // 0 open it, 1 answer it, 2 wait for MSC
+                        std::uint32_t before = 0;
+                    };
+                    return [button = what == "vehicles" ? 0 : 1, seen = std::make_shared<Seen>()](Call&) -> std::optional<Json> {
+                        if (seen->phase == 0) {
+                            seen->before = Garage::LastBay().count;
+                            GarageBoard::Open();
+                            seen->phase = 1;
+                            return std::nullopt;
+                        }
+                        if (seen->phase == 1) {
+                            if (!GarageBoard::Choose(button)) {
+                                return std::nullopt;  // the box isn't up yet
+                            }
+                            seen->phase = 2;
+                            return std::nullopt;
+                        }
+                        const auto asked = button == 0 ? Protocol::kBayVehiclesHome : Protocol::kBayPartsHome;
+                        if (Garage::LastBay().count == seen->before || Garage::LastBay().done.asked != asked) {
+                            return std::nullopt;
+                        }
+                        return DescribeBay();
+                    };
+                });
+
             SkseTestKit::AddCommand("pr.fuel", "", "The fuel line on the HUD as Skyrim shows it (MSC's with the nearest pump on a low tank), MSC's flags for it (low, dry) and whether this save had the tow tip",
                 [](Call&) -> Json {
                     const auto flags = Fuel::LastFlags();
@@ -737,6 +840,16 @@ namespace PerkeleRim::TestKit
                     }
                     return SkseTestKit::Place{ .x = s.position.x, .y = s.position.y, .z = s.position.z + 90.0f, .heading = s.heading,
                         .root = Teimo::Node(), .details = DescribeTeimo() };
+                });
+
+            // pr.bay: the Satsuma bay's marker on its floor in the middle, facing out of its open front.
+            SkseTestKit::AddTarget("pr.bay", "", "The Satsuma bay next to the garage: its floor in the middle, facing out of its open front",
+                [](std::string_view) {
+                    const auto bay = Garage::Bay();
+                    if (!bay) {
+                        throw Error("PerkeleRim.esp has no Satsuma bay");
+                    }
+                    return SkseTestKit::Place{ .x = bay->position.x, .y = bay->position.y, .z = bay->position.z + 60.0f, .heading = bay->heading, .details = DescribeBay() };
                 });
 
             // The cameras' and the probes' pr.vehicle:<name>: the vehicle's origin facing its way, its drawn model as the

@@ -120,6 +120,42 @@ function Restore-SessionFiles([string] $Store, [switch] $Force) {
 # My Summer Car's doorstop_config.ini as it was before a hidden start (launch-msc.ps1 -Hidden keeps it here while its
 # own copy has MSCLoader's skip switches on). $true when it put one back.
 $MscDoorstopKept = Join-Path $env:LOCALAPPDATA 'PerkeleRim\doorstop_config.ini.test-backup'
+
+# A test session with its own My Summer Car save (PERKELERIM_MSC_SAVE, scripts/test-deploy.ps1): the save files it
+# changes in MSC's save folder $SaveDir, i.e. every file there or in the chosen save $Source, MSC's settings aside. The
+# deploy keeps them like its own files (restore puts the player's save back), then Use-MscSave puts the chosen one in.
+$MscSettingsFiles = @('options.txt', 'Mods.txt', 'steam_autocloud.vdf')
+function Get-MscSavePaths([string] $SaveDir, [string] $Source) {
+    $names = @(@(Get-ChildItem -LiteralPath $SaveDir -File -ErrorAction SilentlyContinue) + @(Get-ChildItem -LiteralPath $Source -File) |
+        ForEach-Object { $_.Name } | Where-Object { $MscSettingsFiles -notcontains $_ } | Sort-Object -Unique)
+    return @($names | ForEach-Object { Join-Path $SaveDir $_ })
+}
+
+# Makes $SaveDir's save the one in $Source: its files copied in, the other save files there deleted, settings kept.
+function Use-MscSave([string] $SaveDir, [string] $Source) {
+    foreach ($path in Get-MscSavePaths $SaveDir $Source) {
+        $from = Join-Path $Source (Split-Path -Leaf $path)
+        if (Test-Path -LiteralPath $from) { Copy-Item -LiteralPath $from $path -Force }
+        elseif (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+    }
+}
+
+# Files a session's own MSC save left in $SaveDir that neither save had (MSC writes new ones as it plays): deleted
+# before the kept files go back, the settings aside. $Kept: the save paths the session kept (Read-SessionList).
+function Remove-MscStrayFiles([string] $SaveDir, [string[]] $Kept) {
+    if (-not $Kept -or -not (Test-Path -LiteralPath $SaveDir)) { return @() }
+    $stray = @(Get-ChildItem -LiteralPath $SaveDir -File | Where-Object { $MscSettingsFiles -notcontains $_.Name -and $Kept -notcontains $_.FullName })
+    $stray | Remove-Item -Force
+    return @($stray | ForEach-Object { $_.Name })
+}
+
+# PERKELERIM_MSC_SAVE as a folder: a folder path as it is, else the name of a scripts/msc-save.ps1 snapshot.
+function Resolve-MscSave([string] $Value) {
+    if (-not $Value) { return $null }
+    $folder = if (Test-Path -LiteralPath $Value -PathType Container) { $Value } else { Join-Path $env:LOCALAPPDATA "PerkeleRim\msc-saves\$Value" }
+    if (-not (Test-Path -LiteralPath (Join-Path $folder 'defaultES2File.txt'))) { throw "PERKELERIM_MSC_SAVE '$Value': no My Summer Car save (defaultES2File.txt) in $folder." }
+    return (Resolve-Path -LiteralPath $folder).Path
+}
 function Restore-MscDoorstop([string] $Msc) {
     if (-not (Test-Path -LiteralPath $MscDoorstopKept)) { return $false }
     Copy-Item -LiteralPath $MscDoorstopKept (Join-Path $Msc 'doorstop_config.ini') -Force
