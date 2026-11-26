@@ -309,7 +309,9 @@ namespace PerkeleRim.Spike
             }
             if (best == null) { SpikeLog.Write($"cmd: open: no Use FSM with '{text}' in its path"); return; }
             var open = best.FsmVariables.FindFsmBool("Open");
-            if (open != null && open.Value) { SpikeLog.Write($"cmd: open: {FullPath(best.transform)} is open already"); return; }
+            // Bool test flips Open: without the bool there's no telling, and an open lid would be closed.
+            if (open == null) { SpikeLog.Write($"cmd: open: {FullPath(best.transform)} has no Open bool, left as it is"); return; }
+            if (open.Value) { SpikeLog.Write($"cmd: open: {FullPath(best.transform)} is open already"); return; }
             // USE is only heard in "Wait button" (the crosshair on it): straight to where it leads, "Bool test".
             var state = best.Fsm.GetState("Bool test");
             if (state == null || PerkeleRim.Game.SaveSync.SwitchState == null) { SpikeLog.Write($"cmd: open: {FullPath(best.transform)} has no Bool test state"); return; }

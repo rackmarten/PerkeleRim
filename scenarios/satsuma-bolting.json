@@ -25,6 +25,8 @@
     {"label": "MSC has Kumpo", "cmd": "pr.msc", "expect": ["msc == true"]},
     {"label": "his hand, not the tools (1)", "cmd": "pr.key", "key": 49},
     {"label": "the Satsuma on its stand in the bay (the session's handover moved it there)", "cmd": "wait", "until": "moved == true", "for": "pr.garage", "timeout": 30},
+    {"label": "and MSC answered that its body is on the stand", "cmd": "wait", "until": "last.body == true", "for": "pr.garage", "timeout": 30},
+    {"cmd": "pr.garage", "expect": ["moved == true", "answers > 0", "last.body == true"]},
     {"label": "every part off it, so the scenario starts the same whatever MSC had on it", "cmd": "pr.satsuma", "what": "bare", "expect": ["drawn == true"]},
     {"label": "the body held still on its stand", "cmd": "pr.send", "line": "freeze SATSUMA"},
     {"label": "MSC's spanner set, by the car's nose, opened as the use key on its lid does", "cmd": "pr.send", "line": "open spanner set(itemx) top"},
